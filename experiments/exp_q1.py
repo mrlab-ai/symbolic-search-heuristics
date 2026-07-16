@@ -43,6 +43,7 @@ def main():
     C.add_algorithm(exp, "blind_fw", "sym_fw()")
     C.add_algorithm(exp, "pot_m8", "sym_fw_pot(m=8)")
     C.add_algorithm(exp, "pdb", "sym_fw_pdb(budget=100000)")
+    C.add_algorithm(exp, "ms", "sym_fw_ms(max_states=10000)")
 
     C.add_standard_steps(exp, C.ATTRIBUTES)
     exp.run_steps()

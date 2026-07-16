@@ -53,6 +53,16 @@ public:
     virtual int get_value(const State &state) const override;
     virtual bool is_total() const override;
     virtual void dump(utils::LogProxy &log) const override;
+
+    // Read-only access for the width-bounded-heuristics level-set construction
+    // (valid in abstract-state-id mode, i.e. before set_distances). Maps a
+    // variable value to its abstract state id.
+    int get_variable() const {
+        return var_id;
+    }
+    const std::vector<int> &get_lookup_table() const {
+        return lookup_table;
+    }
 };
 
 class MergeAndShrinkRepresentationMerge : public MergeAndShrinkRepresentation {
@@ -71,6 +81,20 @@ public:
     virtual int get_value(const State &state) const override;
     virtual bool is_total() const override;
     virtual void dump(utils::LogProxy &log) const override;
+
+    // Read-only access for the width-bounded-heuristics level-set construction
+    // (valid in abstract-state-id mode, before set_distances). The lookup
+    // table maps (left abstract state, right abstract state) to the merged
+    // abstract state id (cascading tables of Helmert et al.).
+    const MergeAndShrinkRepresentation &get_left_child() const {
+        return *left_child;
+    }
+    const MergeAndShrinkRepresentation &get_right_child() const {
+        return *right_child;
+    }
+    const std::vector<std::vector<int>> &get_lookup_table() const {
+        return lookup_table;
+    }
 };
 }
 

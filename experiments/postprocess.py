@@ -24,7 +24,7 @@ from pathlib import Path
 
 DATA = Path(__file__).resolve().parent / "data"
 
-HEUR_CONFIGS = {"pot_m8", "pdb", "pot_m0", "pot_m1", "pot_m2", "pot_m4",
+HEUR_CONFIGS = {"pot_m8", "pdb", "ms", "pot_m0", "pot_m1", "pot_m2", "pot_m4",
                 "pot_m16", "pot_unbounded"}
 
 

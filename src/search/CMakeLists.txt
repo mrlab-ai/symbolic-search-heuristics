@@ -1012,6 +1012,7 @@ create_fast_downward_library(
         symbolic/plan_selection/top_k_selector
         symbolic/plan_selection/unordered_selector
         symbolic/plan_selection/validation_selector
+        symbolic/search_algorithms/symbolic_ms_search
         symbolic/search_algorithms/symbolic_pdb_search
         symbolic/search_algorithms/symbolic_potential_search
         symbolic/search_algorithms/symbolic_search
@@ -1035,6 +1036,7 @@ create_fast_downward_library(
         symbolic/sym_utils
         symbolic/sym_variables
         symbolic/wbh_add_stats
+        symbolic/wbh_ms_levels
         symbolic/wbh_pdb_levels
         symbolic/wbh_potential_levels
         symbolic/wbh_stats
@@ -1043,6 +1045,7 @@ create_fast_downward_library(
         symbolic/transition_relations/disjunctive_transition_relation
         tasks/effect_aggregated_task
     DEPENDS
+        mas_heuristic
         pdbs
         potentials
 )
