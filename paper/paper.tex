@@ -1,0 +1,1277 @@
+% =========================================================================
+% Width-Bounded Heuristics for Symbolic Search
+% Draft for ICAPS 2027. Compile with pdflatex; port to icaps27.sty later.
+% Experiments section contains TODO placeholders pending implementation.
+% =========================================================================
+\documentclass[letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{natbib}
+\usepackage{booktabs}
+\usepackage{microtype}
+
+% ------------------------------- macros ---------------------------------
+\newcommand{\inlinecite}[1]{\citet{#1}}
+\newcommand{\task}{\ensuremath{\Pi}}
+\newcommand{\vars}{\ensuremath{\mathcal{V}}}
+\newcommand{\ops}{\ensuremath{\mathcal{O}}}
+\newcommand{\states}{\ensuremath{\mathcal{S}}}
+\newcommand{\sinit}{\ensuremath{s_{\mathrm{I}}}}
+\newcommand{\sgoal}{\ensuremath{s_\star}}
+\newcommand{\pre}{\ensuremath{\mathit{pre}}}
+\newcommand{\eff}{\ensuremath{\mathit{eff}}}
+\newcommand{\cost}{\ensuremath{\mathit{cost}}}
+\newcommand{\hstar}{\ensuremath{h^{*}}}
+\newcommand{\hblind}{\ensuremath{h^{0}}}
+\newcommand{\hpot}{\ensuremath{h^{\text{pot}}}}
+\newcommand{\gstar}{\ensuremath{g^{*}}}
+\newcommand{\copt}{\ensuremath{C^{*}}}
+\newcommand{\bdd}[1]{\ensuremath{B_{#1}}}
+\newcommand{\bddsize}[1]{\ensuremath{|B_{#1}|}}
+\newcommand{\cofcount}{\ensuremath{Q}}
+\newcommand{\width}{\ensuremath{\mathsf{w}}}
+\newcommand{\values}{\ensuremath{V}}
+\newcommand{\level}[2]{\ensuremath{H_{#2}}}
+\newcommand{\effort}{\ensuremath{\mathit{effort}}}
+\newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
+\newcommand{\img}{\ensuremath{\mathrm{img}}}
+\newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
+\newcommand{\astar}{A\ensuremath{^{*}}}
+\newcommand{\ghseta}{GHSETA\ensuremath{^{*}}}
+\newcommand{\symba}{SymBA\ensuremath{^{*}}}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\title{Width-Bounded Heuristics for Symbolic Search}
+\author{Anonymous for review}
+\date{}
+
+\begin{document}
+\maketitle
+
+% ============================== abstract =================================
+\begin{abstract}
+Symbolic search with binary decision diagrams (BDDs) is a leading approach
+to cost-optimal classical planning, but its dominant instantiation remains
+blind: heuristics partition the search frontier by heuristic value, and
+this partitioning can increase BDD sizes so much that even the perfect
+heuristic deteriorates search performance exponentially. This negative
+result leaves open the central question of when heuristics provably help
+symbolic search. We answer it with a sufficient condition. We introduce
+\emph{width-bounded heuristics}, whose value is computable by scanning the
+state variables once in the BDD variable order while distinguishing at
+most $W$ cases at any point. We prove that partitioning \emph{any} state
+set by the values of a width-$W$ heuristic increases the total BDD size by
+at most a factor polynomial in $W$ and the number of variables, and that
+symbolic \astar\ with a
+consistent width-$W$ heuristic incurs at most a polynomial-factor overhead
+over blind symbolic search---in contrast to the exponential deterioration
+possible in general, which we show requires exponential width. Potential
+heuristics, pattern databases over pattern prefixes and linear
+merge-and-shrink abstractions are width-bounded, which explains the
+empirical success of operator-potential heuristics. Finally, we show how
+to synthesize informative width-bounded potential heuristics, turning the
+width bound into a knob that trades heuristic accuracy against a
+guaranteed limit on representational overhead.
+\end{abstract}
+
+% ============================ introduction ===============================
+\section{Introduction}
+
+A common approach to solving classical planning tasks optimally is
+\astar\ search \citep{hart-et-al-ieeessc1968} with an admissible heuristic
+\citep{pearl-1984}. Symbolic search
+\citep{mcmillan-1993,edelkamp-helmert-ecp1999} replaces the expansion of
+individual states with the expansion of state sets, compactly represented
+as binary decision diagrams \citep[BDDs;][]{bryant-tc1986}. Symbolic
+bidirectional blind search is among the strongest algorithms for
+cost-optimal planning
+\citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and a key component
+of the winning entry of the optimal track of the International Planning
+Competition (IPC) 2023.
+
+Combining the two paradigms has a long history. \bddastar\
+\citep{edelkamp-reffel-ki1998} represents a heuristic $h$ as one BDD per
+heuristic value and splits each search layer into buckets of states that
+share a $g$- and an $h$-value. SetA\ensuremath{^{*}} and \ghseta\
+\citep{jensen-et-al-aij2008} instead fold the heuristic-value change into
+the transition relations, and ADDA\ensuremath{^{*}}
+\citep{hansen-et-al-sara2002} stores $h$ as an algebraic decision diagram
+(ADD). Empirically, all of these variants beat blind symbolic search in
+some domains and lose in others
+\citep{torralba-phd2015,torralba-et-al-aij2017}.
+\citet{speck-et-al-icaps2020} explained why: in symbolic search the
+effort of an expansion is governed by the number of BDD nodes rather than
+the number of represented states, and they prove that even the perfect
+heuristic \hstar\ can increase the cumulative size of the expanded BDDs
+exponentially. Consequently, heuristic symbolic search lost traction, the
+one notable exception being operator-potential heuristics
+\citep{fiser-et-al-aaai2022,fiser-et-al-aij2024}, which integrate
+LP-based potential heuristics \citep{pommerening-et-al-aaai2015} into
+\ghseta\ and empirically ``hardly ever suffer'' from increased BDD sizes.
+Why this particular family behaves so well has remained without formal
+explanation, and no condition is known under which a heuristic
+\emph{provably} cannot hurt symbolic search. Recently,
+\citet{speck-helmert-ecai2025} gave the first worst-case performance
+guarantees for symbolic search relative to explicit search, but their
+analysis concerns the representation of transition relations and goal
+formulas and explicitly leaves heuristics aside.
+
+In this paper we close this gap. We introduce \emph{width-bounded
+heuristics}: a heuristic has width $W$ under a variable order if its
+value can be determined by reading the state variables once in that
+order while maintaining at most $W$ distinct cases at any point,
+i.e., if its algebraic decision diagram in the search's variable order
+has at most $W$ nodes per level. Our contributions are as follows.
+First, we prove a \emph{fragmentation theorem}: partitioning an arbitrary
+state-set BDD by the values of a width-$W$ heuristic yields buckets whose
+total size is bounded by a polynomial in $W$ times the size of the
+original BDD---for every state set, every layer and every task. The bound
+covers both known failure modes of heuristic symbolic search, the
+fragmentation of the frontier and the fact that a subset of a state set
+can have an exponentially larger BDD. Second, we prove a
+\emph{search-effort theorem}: \bddastar\ with a consistent width-$W$
+heuristic expands BDDs whose cumulative size exceeds that of blind
+symbolic forward search by at most a factor $O(W^{2}n)$, where $n$ is
+the number of binary variables. Third, we show that the pathological
+heuristic in the construction of \citet{speck-et-al-icaps2020} has width
+$2^{\Omega(n)}$, so exponential width is necessary for their exponential
+deterioration. Fourth, we identify natural width-bounded families:
+integer potential heuristics, pattern databases whose pattern is a prefix
+of the variable order, and merge-and-shrink heuristics with a linear
+merge strategy---whose shrink size limit \emph{is} a width bound. This
+yields, to our knowledge, the first formal performance guarantee for the
+operator-potential approach. Finally, we describe how to synthesize
+informative width-bounded potential heuristics and outline an empirical
+evaluation in the SymK planner \citep{speck-et-al-jair2025}.
+
+% ============================ background =================================
+\section{Background}
+
+\subsection{Classical Planning}
+
+We consider planning tasks in the SAS$^{+}$ formalism
+\citep{backstrom-nebel-compint1995}.
+
+\begin{definition}[planning task]
+A \emph{planning task} is a tuple
+$\task = \langle \vars, \ops, \sinit, \sgoal \rangle$, where \vars\ is a
+finite set of \emph{state variables} $v$, each with a finite domain
+$D_v$, \ops\ is a finite set of \emph{operators}
+$o = \langle \pre_o, \eff_o \rangle$ given by partial variable
+assignments and each associated with a cost
+$\cost(o) \in \mathbb{Z}_{\geq 1}$, \sinit\ is a state (a total
+assignment) and \sgoal\ is a partial assignment.
+\end{definition}
+
+Operator $o$ is applicable in state $s$ iff $s \models \pre_o$, and
+applying it yields the state $s[o]$ that agrees with $\eff_o$ where
+defined and with $s$ elsewhere. A \emph{plan} for $s$ is a sequence of
+operators leading from $s$ to a goal state; its cost is the sum of the
+operator costs. The perfect heuristic $\hstar(s)$ is the cost of a
+cheapest plan for $s$, or $\infty$ if none exists, and
+$\gstar(s)$ is the cost of a cheapest path from \sinit\ to $s$. We write
+$\copt = \hstar(\sinit)$ and assume $0 < \copt < \infty$. A
+\emph{heuristic} is a function
+$h \colon \states \to \mathbb{Z}_{\geq 0} \cup \{\infty\}$. It is
+\emph{admissible} if $h \leq \hstar$ and \emph{consistent} if
+$h(s) \leq h(s[o]) + \cost(o)$ for all $s$ and applicable $o$, and
+$h(s) = 0$ for all goal states. The blind heuristic is
+$\hblind \equiv 0$. Restricting costs to positive integers excludes
+zero-cost operators; this keeps the layer structure of uniform-cost
+search simple and follows \citet{speck-et-al-icaps2020}, who assume unit
+costs.
+
+\subsection{Binary Decision Diagrams}
+
+We fix a binary encoding of states: each variable $v$ is encoded by
+$\lceil \log_2 |D_v| \rceil$ Boolean variables, and we assume every
+Boolean assignment that does not encode a state is mapped to a designated
+non-state value (Remark~\ref{rem-encoding} discusses this choice). Let
+$x_1, \dots, x_n$ denote the Boolean variables in a fixed order $\pi$; we
+call $\pi$ \emph{variable-contiguous} if the bits of each SAS$^{+}$
+variable are consecutive. A set of states $S$ is represented by its
+characteristic function $\chi_S \colon \{0,1\}^n \to \{0,1\}$ as a
+reduced ordered BDD $\bdd{S}$ with respect to $\pi$
+\citep{bryant-tc1986}. We write $\bddsize{S}$ for the number of inner
+nodes of $\bdd{S}$. For a Boolean or integer-valued function $f$ over
+$x_1, \dots, x_n$ and a prefix assignment $\rho \in \{0,1\}^i$ to
+$x_1, \dots, x_i$, the \emph{cofactor} $f|_\rho$ is the function of
+$x_{i+1}, \dots, x_n$ obtained by fixing the prefix. We write
+$\sub{i}{f} = \{\, f|_\rho \mid \rho \in \{0,1\}^i \,\}$ for the set of
+distinct cofactors of $f$ after $i$ variables, with
+$\sub{0}{f} = \{f\}$. Reduced ordered BDDs are canonical: the nodes of
+$\bdd{f}$ labeled $x_{i+1}$ correspond exactly to the cofactors in
+$\sub{i}{f}$ that essentially depend on $x_{i+1}$
+\citep{wegener-2000}. The following quantity, which counts all cofactors
+including those represented implicitly by long edges and constants, is
+central to our analysis.
+
+\begin{definition}[cofactor count]
+\label{def-cofcount}
+For a function $f$ over $x_1, \dots, x_n$, the \emph{cofactor count} is
+$\cofcount(f) = \sum_{i=0}^{n-1} |\sub{i}{f}|$.
+\end{definition}
+
+$\cofcount(f)$ equals the number of inner nodes of the quasi-reduced
+(complete) OBDD of $f$, in which every root-to-sink path tests every
+variable. Both size measures are polynomially related:
+
+\begin{lemma}
+\label{lem-qsize}
+For every Boolean $f$ over $x_1, \dots, x_n$,
+$\bddsize{f} \leq \cofcount(f) \leq n \cdot (\bddsize{f} + 2)$.
+\end{lemma}
+
+\begin{proof}
+For the first inequality, consider a node $N$ of $\bdd{f}$ labeled
+$x_{i+1}$. Since every node of a reduced OBDD is reachable from the root,
+there is a path from the root to $N$; fixing the variables tested along
+this path to the corresponding edge values and all remaining variables
+among $x_1, \dots, x_i$ arbitrarily yields a prefix $\rho \in \{0,1\}^i$
+with $f|_\rho$ equal to the function computed by $N$, because variables
+skipped by long edges do not influence the traversal. Hence every node
+labeled $x_{i+1}$ computes an element of $\sub{i}{f}$, and by canonicity
+distinct nodes compute distinct functions, so the map is injective.
+Summing over $i$ gives
+$\bddsize{f} \leq \sum_{i=0}^{n-1} |\sub{i}{f}| = \cofcount(f)$. For the
+second inequality, fix $i$ and consider any $u \in \sub{i}{f}$. Either
+$u$ is a constant function, of which there are at most two, or $u$
+essentially depends on some variable; let $x_j$ with $j > i$ be the first
+such variable. Traversing $\bdd{f}$ from the root under any prefix
+witnessing $u$ ends at an inner node labeled $x_j$ that computes $u$, and
+by canonicity this node is unique. Hence
+$|\sub{i}{f}| \leq \bddsize{f} + 2$ for every $i$, and summing over the
+$n$ levels yields the claim.
+\end{proof}
+
+The factor $n$ in Lemma~\ref{lem-qsize} is unavoidable: for
+$f = x_1$ we have $\bddsize{f} = 1$ but $\cofcount(f) = 2n - 1$, since
+the constants $0$ and $1$ are cofactors at every level $i \geq 1$.
+
+\subsection{Symbolic Heuristic Search and Expansion Size}
+
+Symbolic uniform-cost search maintains, for increasing $g$, the BDD of
+the layer $L_g = \{\, s \mid \gstar(s) = g \,\}$, obtained by an image
+operation on the previous layers followed by removal of the closed
+states \citep{torralba-et-al-aij2017}. \bddastar\
+\citep{edelkamp-reffel-ki1998} additionally represents the heuristic $h$
+by one BDD per value: for $v \in \img(h)$, the \emph{level set} is
+$\level{h}{v} = \{\, s \mid h(s) = v \,\}$. Successor sets are
+intersected with the level sets, and the resulting \emph{buckets} of
+states sharing a $g$-value and an $h$-value are expanded in order of
+increasing $f = g + v$. Following
+\citet{kissmann-edelkamp-aaai2011,torralba-phd2015,speck-et-al-icaps2020},
+ties are broken in favor of smaller $g$-values, all states with the same
+$(g, v)$ are represented by a single BDD, generated states already in the
+closed list are removed before bucketing, states with $h$-value $\infty$
+are discarded, and the search terminates as soon as a selected bucket
+contains a goal state.\footnote{Fixing the goal test to selected rather
+than generated buckets matches the reading of
+\citet{speck-et-al-icaps2020} that all buckets counted by
+Definition~\ref{def-effort} \emph{must} be expanded before an optimal
+plan is returned; they note that for their task family the choice is
+immaterial.} We measure search effort exactly as
+\citet{speck-et-al-icaps2020}:
+
+\begin{definition}[expansion size, \citealp{speck-et-al-icaps2020}]
+\label{def-effort}
+Let $B_{\task,h}(g,v)$ denote the unique BDD expanded by \bddastar\ with
+$g$-value $g$ and $h$-value $v$ on task \task\ with heuristic $h$, with
+$B_{\task,h}(g,v)$ representing the empty set if no such expansion
+occurs. The \emph{expansion size} of \bddastar\ is
+$\effort(\task,h) = \sum_{\,g + v \leq \copt,\ g < \copt}
+|B_{\task,h}(g,v)|$.
+\end{definition}
+
+For $\hblind$ all states have $h$-value $0$, and \bddastar\ coincides
+with symbolic uniform-cost search, so
+$\effort(\task,\hblind) = \sum_{g < \copt} \bddsize{L_g}$.
+\citet{speck-et-al-icaps2020} prove that no analogue of the classical
+domination result for consistent heuristics in explicit \astar\ holds:
+there is a family of tasks $\task_n$ on which
+$\effort(\task_n, \hstar)$ is exponentially larger than
+$\effort(\task_n, \hblind)$. The reason is that a strict subset
+$S' \subsetneq S$ can have an exponentially larger BDD than $S$
+\citep{torralba-phd2015,speck-et-al-icaps2020}, so both splitting a
+layer into buckets and pruning states from it can increase
+representation size. Our goal is a property of $h$ that rules out both
+effects for every state set at once.
+
+% ===================== width-bounded heuristics ==========================
+\section{Width-Bounded Heuristics}
+
+Our key definition measures how much information about the prefix of a
+state a heuristic must retain in order to determine its value from the
+remaining suffix. We treat a heuristic as a function
+$h \colon \{0,1\}^n \to \mathbb{Z}_{\geq 0} \cup \{\infty\}$ over the
+Boolean encoding.
+
+\begin{definition}[width]
+\label{def-width}
+The \emph{width} of a heuristic $h$ under variable order $\pi$ is
+$\width_\pi(h) = \max_{0 \leq i \leq n} |\sub{i}{h}|$. We call $h$
+\emph{$(\pi,W)$-width-bounded} if $\width_\pi(h) \leq W$.
+\end{definition}
+
+Equivalently, $h$ is $(\pi,W)$-width-bounded iff it is computed by a
+deterministic layered automaton that reads $x_1, \dots, x_n$ in the order
+$\pi$ using at most $W$ states per level: the automaton states at level
+$i$ are exactly the cofactors in $\sub{i}{h}$, the transition on reading
+a value $b$ for $x_{i+1}$ maps the cofactor $u$ to $u|_{x_{i+1} = b}$,
+and the output of a final-level state, which is a constant function, is
+its value. In OBDD terminology, $\width_\pi(h)$ is the maximal number of
+nodes per level of the quasi-reduced multi-terminal BDD of $h$ under
+$\pi$. Three immediate consequences will do much of the work below.
+
+\begin{proposition}[value range]
+\label{prop-range}
+If $\width_\pi(h) \leq W$, then $|\img(h)| \leq W$.
+\end{proposition}
+
+\begin{proof}
+Every cofactor in $\sub{n}{h}$ is a constant function, one per attained
+value, so $|\img(h)| = |\sub{n}{h}| \leq \width_\pi(h) \leq W$.
+\end{proof}
+
+We write $\values = |\img(h) \setminus \{\infty\}|$ for the number of
+finite values of $h$; by Proposition~\ref{prop-range},
+$\values \leq W$.
+
+\begin{proposition}[closure]
+\label{prop-closure}
+Let $h_1, h_2$ have widths $W_1, W_2$ under $\pi$ and let
+$\oplus \in \{+, \max, \min\}$. Then
+$\width_\pi(h_1 \oplus h_2) \leq W_1 \cdot W_2$.
+\end{proposition}
+
+\begin{proof}
+For every prefix $\rho$ we have
+$(h_1 \oplus h_2)|_\rho = h_1|_\rho \oplus h_2|_\rho$, so the map
+$(h_1|_\rho, h_2|_\rho) \mapsto (h_1 \oplus h_2)|_\rho$ is a surjection
+from a set of size at most $W_1 W_2$ onto $\sub{i}{h_1 \oplus h_2}$ for
+every $i$.
+\end{proof}
+
+Hence maximization and admissible additive combinations of few
+width-bounded heuristics remain width-bounded, at a multiplicative cost
+per component. Finally, width-boundedness is essentially equivalent to
+the compactness of the heuristic's ADD in the search's variable order.
+Let $\mathrm{ADD}_\pi(h)$ denote the reduced ordered ADD of $h$ under
+$\pi$ \citep{bahar-et-al-iccad1993} and $|\mathrm{ADD}_\pi(h)|$ its
+number of inner nodes.
+
+\begin{proposition}[ADD characterization]
+\label{prop-add}
+$\width_\pi(h) \leq |\mathrm{ADD}_\pi(h)| + |\img(h)|$ and
+$|\mathrm{ADD}_\pi(h)| \leq n \cdot \width_\pi(h)$.
+\end{proposition}
+
+\begin{proof}
+For the first inequality, every cofactor in $\sub{i}{h}$ is either a
+constant, of which there are $|\img(h)|$ many, or the function computed
+by a unique inner node of $\mathrm{ADD}_\pi(h)$ at a level below $i$, by
+canonicity of reduced ADDs. For the second, every inner node of
+$\mathrm{ADD}_\pi(h)$ labeled $x_{i+1}$ computes a distinct cofactor in
+$\sub{i}{h}$, so the nodes per level number at most $\width_\pi(h)$, and
+there are $n$ levels.
+\end{proof}
+
+Width-bounded heuristics are thus exactly the heuristics with small ADDs
+\emph{in the variable order used by the search}. This order dependence is
+essential and is what separates our results from statements about the
+existence of some good order: the search fixes one $\pi$ for state sets,
+transition relations and heuristic alike
+\citep{kissmann-hoffmann-jair2014}.
+
+\begin{remark}
+\label{rem-encoding}
+Definitions over $\{0,1\}^n$ require fixing $h$ on Boolean assignments
+that encode no state. All upper bounds below hold for whichever total
+extension is used to build the level-set BDDs, so an implementation
+should pick an extension of low width; for the families in
+Section~\ref{sec-instances} the natural arithmetic or table-based
+extension works. Lower bounds only ever evaluate $h$ on genuine states
+and therefore hold for every extension.
+\end{remark}
+
+% ======================= fragmentation theorems ==========================
+\section{Bounded Fragmentation}
+\label{sec-fragmentation}
+
+We now bound the representational cost of splitting an arbitrary state
+set by heuristic values. Throughout, fix the order $\pi$ and write
+$W = \width_\pi(h)$. Recall the classical product bound
+$\bddsize{f \wedge g} \leq \bddsize{f} \cdot \bddsize{g}$
+\citep{bryant-tc1986}. Applied naively with $g = \chi_{\level{h}{v}}$ it
+bounds a single bucket by
+$\bddsize{S} \cdot \bddsize{\level{h}{v}}$, which does not control the
+sum over all buckets. The next two theorems give bounds whose sum over
+buckets stays small. The proofs use one observation, which we isolate.
+
+\begin{lemma}
+\label{lem-pair}
+Let $S \subseteq \{0,1\}^n$, let $U \subseteq \img(h)$ and let
+$\rho, \rho' \in \{0,1\}^i$ be prefixes with
+$\chi_S|_\rho = \chi_S|_{\rho'}$ and $h|_\rho = h|_{\rho'}$. Then
+$\chi_{S \cap h^{-1}(U)}|_\rho = \chi_{S \cap h^{-1}(U)}|_{\rho'}$.
+\end{lemma}
+
+\begin{proof}
+For every suffix $\sigma \in \{0,1\}^{n-i}$,
+$\chi_{S \cap h^{-1}(U)}|_\rho(\sigma) = \chi_S|_\rho(\sigma) \cdot
+[h|_\rho(\sigma) \in U]$, which by assumption equals
+$\chi_S|_{\rho'}(\sigma) \cdot [h|_{\rho'}(\sigma) \in U]
+= \chi_{S \cap h^{-1}(U)}|_{\rho'}(\sigma)$.
+\end{proof}
+
+In other words, the cofactor of a bucket is determined by the pair
+consisting of the cofactor of the state set and the cofactor of the
+heuristic. Counting realized pairs yields our first main result.
+
+\begin{theorem}[bucket bound]
+\label{thm-bucket}
+Let $S \subseteq \{0,1\}^n$ and $U \subseteq \img(h)$. Then
+\[
+\bddsize{S \cap h^{-1}(U)}
+\;\leq\; \cofcount(\chi_{S \cap h^{-1}(U)})
+\;\leq\; W \cdot \cofcount(\chi_S)
+\;\leq\; W n \, (\bddsize{S} + 2).
+\]
+\end{theorem}
+
+\begin{proof}
+The first and last inequalities are Lemma~\ref{lem-qsize}. For the
+middle inequality, fix $i \in \{0, \dots, n-1\}$ and define the set of
+\emph{realized pairs}
+$R_i = \{\, (\chi_S|_\rho,\, h|_\rho) \mid \rho \in \{0,1\}^i \,\}$.
+Consider the map
+$\mu \colon \sub{i}{\chi_{S \cap h^{-1}(U)}} \to R_i$ defined as
+follows: for $u \in \sub{i}{\chi_{S \cap h^{-1}(U)}}$, choose any
+prefix $\rho$ with $u = \chi_{S \cap h^{-1}(U)}|_\rho$ and set
+$\mu(u) = (\chi_S|_\rho, h|_\rho)$. The map is well defined on the
+chosen representatives, and it is injective: if
+$\mu(u) = \mu(u')$ via prefixes $\rho, \rho'$, then
+$\chi_S|_\rho = \chi_S|_{\rho'}$ and $h|_\rho = h|_{\rho'}$, so
+$u = u'$ by Lemma~\ref{lem-pair}. Hence
+$|\sub{i}{\chi_{S \cap h^{-1}(U)}}| \leq |R_i|
+\leq |\sub{i}{\chi_S}| \cdot |\sub{i}{h}|
+\leq W \cdot |\sub{i}{\chi_S}|$.
+Summing over $i = 0, \dots, n-1$ gives
+$\cofcount(\chi_{S \cap h^{-1}(U)}) \leq W \cdot \cofcount(\chi_S)$.
+\end{proof}
+
+With $U = \{v\}$, Theorem~\ref{thm-bucket} bounds the size of every
+single bucket $S \cap \level{h}{v}$. Beyond that, it bounds the size of
+\emph{every} state set obtained by removing value slices from $S$: with
+$U = \img(h) \setminus \{\infty\}$ it caps the non-dead-end subset of
+$S$, and with $U = \{\, v \mid v \leq c \,\}$ it caps $f$-value-based
+pruning. It therefore also controls the subset blowup that drives the
+negative result of \citet{speck-et-al-icaps2020}: no subset of $S$
+selected by heuristic values can outgrow $S$ by more than a factor
+$Wn$, up to additive terms. Summing over all values and applying
+Proposition~\ref{prop-range} bounds the entire partition.
+
+\begin{theorem}[partition bound]
+\label{thm-partition}
+Let $S \subseteq \{0,1\}^n$. Then
+\[
+\sum_{v \in \img(h)} \bddsize{S \cap \level{h}{v}}
+\;\leq\; W^{2} \cdot \cofcount(\chi_S)
+\;\leq\; W^{2} n \, (\bddsize{S} + 2).
+\]
+\end{theorem}
+
+\begin{proof}
+By Theorem~\ref{thm-bucket} applied to $U = \{v\}$, each of the at most
+$|\img(h)| \leq W$ (Proposition~\ref{prop-range}) buckets has BDD size
+at most $W \cdot \cofcount(\chi_S)$; the second inequality is
+Lemma~\ref{lem-qsize}.
+\end{proof}
+
+\begin{remark}
+The factor $W$ contributed by Proposition~\ref{prop-range} can be
+refined: in the proof of Theorem~\ref{thm-bucket}, the pair
+$(\chi_S|_\rho, h|_\rho)$ contributes a nonconstant cofactor only for
+values $v \in \img(h|_\rho)$, so the sum over $v$ of the cofactor counts
+is bounded by
+$\sum_{i} \sum_{(u,c) \in R_i} |\img(c)|$, where $c$ ranges over
+heuristic cofactors. The number of values attainable from a cofactor is
+often far smaller than $W$; implementations that share isomorphic
+subgraphs across buckets in a unique table, as CUDD does, profit
+accordingly.
+\end{remark}
+
+\begin{example}
+\label{ex-parity}
+The factor $n$ in Theorems~\ref{thm-bucket} and~\ref{thm-partition}
+stems from Lemma~\ref{lem-qsize} and cannot be removed when sizes are
+measured in reduced BDDs. Let $S = \{\, s \mid s(x_1) = 1 \,\}$, so
+$\bddsize{S} = 1$, and let $h(s) = \bigl(\sum_{i=1}^{n} s(x_i)\bigr)
+\bmod 2$, which has width $2$ under any order. The bucket
+$S \cap \level{h}{0}$ consists of the assignments with $x_1 = 1$ and an
+odd number of ones among $x_2, \dots, x_n$; its reduced BDD consists of
+one node for $x_1$ and a parity chain with one node for $x_2$ and two
+nodes for each of $x_3, \dots, x_n$, i.e., $2n - 2$ nodes in total: a
+factor $2n - 2$ larger than $\bdd{S}$ although $W = 2$. Measured in
+cofactor counts, where $\cofcount(\chi_S) = 2n - 1$, the bound of
+Theorem~\ref{thm-bucket} is met within a factor of about two.
+\end{example}
+
+% ======================= search-effort guarantees ========================
+\section{Search-Effort Guarantees}
+\label{sec-effort}
+
+We lift the set-level bounds to a guarantee on the expansion size of
+\bddastar. The first step identifies the expanded buckets with slices of
+the blind layers. This correspondence is folklore for explicit \astar\
+with consistent heuristics; we prove it in the symbolic bucket setting
+because the completeness of buckets at expansion time, i.e., that a
+bucket is never re-populated after its expansion, is what makes
+Definition~\ref{def-effort} well defined and our accounting exact.
+
+\begin{lemma}[bucket identity]
+\label{lem-identity}
+Let $h$ be consistent. \bddastar\ on \task\ with $h$ selects every
+bucket key $(g,v)$ with $g + v \leq \copt$ and $g < \copt$ and
+$L_g \cap \level{h}{v} \neq \emptyset$ exactly once before terminating,
+and the BDD expanded with key $(g,v)$ represents exactly
+$L_g \cap \level{h}{v}$. No other bucket is expanded before
+termination.
+\end{lemma}
+
+\begin{proof}
+Throughout, the \emph{key} of a generated state $s$ is the pair
+$(c, h(s))$, where $c$ is the cost of the generating path, and the
+$f$-value of a key $(g,v)$ is $g + v$. We prove five claims.
+
+\emph{Claim 1 (monotone selection): if a key $(g_1,v_1)$ is selected at
+step $t_1$ and a key $(g_2,v_2)$ at step $t_2 > t_1$, then
+$g_1 + v_1 \leq g_2 + v_2$, and if $g_1 + v_1 = g_2 + v_2$ then
+$g_1 \leq g_2$.}
+For the $f$-part, every state inserted into the open list during the
+expansion of a bucket with key $(g,v)$ is a successor $s[o]$ of a state
+$s$ with $h(s) = v$ and has key $(g + \cost(o),\, h(s[o]))$, whose
+$f$-value satisfies
+$g + \cost(o) + h(s[o]) \geq g + h(s) = g + v$ by consistency. Hence
+expanding a minimum-$f$ key only inserts keys of at least that
+$f$-value, the minimum $f$-value of the open list never decreases, and
+selected $f$-values are non-decreasing over time. For the $g$-part,
+suppose for contradiction that there are selections at steps
+$t_1 < t_2$ of keys with equal $f$-value $F$ and $g_2 < g_1$, and among
+all such violations choose one minimizing $t_2$. The bucket of
+$(g_2,v_2)$ must be empty at step $t_1$: otherwise the tie-breaking
+rule would select it instead of $(g_1,v_1)$. Its content is also not
+inserted at step $t_1$ itself, since states inserted by the expansion
+of $(g_1,v_1)$ have $g$-component $g_1 + \cost(o) > g_1 > g_2$. So
+every state of the bucket is inserted at some step $t'$ with
+$t_1 < t' < t_2$ by expanding a key $(g',v')$ with
+$g' = g_2 - \cost(o) < g_2$ for some operator $o$. Consistency gives
+$g' + v' \leq g_2 + v_2 = F$ as above, and the $f$-part applied to
+$t_1 < t'$ gives $g' + v' \geq F$, so $g' + v' = F$ and $g' < g_1$:
+the pair $(t_1, t')$ is a violation with $t' < t_2$, contradicting
+minimality.
+
+\emph{Claim 2 (no re-population): after a key $(g,v)$ is selected at
+step $t$, no state with key $(g,v)$ is inserted into the open list;
+consequently every key is selected at most once, and at its selection
+its bucket contains every state that was ever generated with this key
+and not expanded before.}
+Suppose a state with key $(g,v)$ is inserted at a step $t' > t$ by
+expanding a key $(g',v')$. Then $g' + v' \leq g + v$ by consistency as
+in Claim~1, and $g' + v' \geq g + v$ by the $f$-part of Claim~1, so the
+$f$-values are equal; but $g' = g - \cost(o) < g$ contradicts the
+$g$-part. A second selection of the same key would require an
+insertion after step $t$, which is excluded. Finally, a state generated
+with key $(g,v)$ before step $t$ enters the bucket unless it is removed
+by the closed-list test, which removes only previously expanded states,
+and states are removed from the open list only when their bucket is
+selected.
+
+\emph{Claim 3 (optimal $g$-values): every state $s$ in a selected
+bucket with key $(g,v)$ satisfies $\gstar(s) = g$ and $h(s) = v$.}
+We use induction on the selection step; Claims~1 and~2 hold
+unconditionally and may be used freely. That $h(s) = v$ holds by
+construction of the level-set partition, and $\gstar(s) \leq g$ because
+$s$ is reached by a path of cost $g$. Suppose $\gstar(s) < g$ for some
+$s$ in the bucket selected at the current step, and fix a cheapest path
+$p_0 = \sinit, \dots, p_k = s$, all of whose prefixes are cheapest
+paths to their end states. Let $j$ be the smallest index such that
+$p_j$ has not been expanded before the current step; $j$ exists because
+$s$ qualifies, and $j \geq 1$ because \bddastar\ selects the initial
+bucket $\{\sinit\}$ first. By the induction hypothesis, every earlier
+expansion of $p_{j-1}$ has key $(\gstar(p_{j-1}), h(p_{j-1}))$, so
+$p_j$ was generated with key $(\gstar(p_j), h(p_j))$ before the current
+step. This key has not been selected yet: a selection after the
+generation of $p_j$ would have expanded $p_j$ (Claim~2), contradicting
+the choice of $j$, and a selection before the generation would
+contradict Claim~2 directly. Hence the open list currently contains the
+key $(\gstar(p_j), h(p_j))$, and consistency along the path segment
+from $p_j$ to $s$ yields
+$\gstar(p_j) + h(p_j) \leq \gstar(s) + h(s) < g + v$, using
+$\gstar(s) < g$ and $h(s) = v$. This contradicts minimum-$f$ selection.
+
+\emph{Claim 4 (completeness): every state $s$ with
+$\gstar(s) = g < \copt$ and $g + h(s) \leq \copt$ is generated with key
+$(g, h(s))$, and this key is selected before the search terminates.}
+By strong induction on $g$. \emph{Generation:} for $g = 0$, $s = \sinit$
+initializes the open list with key $(0, h(\sinit))$. For $g > 0$, let
+$p$ be the predecessor of $s$ on a cheapest path, with
+$\gstar(p) = g - \cost(o) < g$ and, by consistency,
+$\gstar(p) + h(p) \leq \gstar(s) + h(s) \leq \copt$. By the induction
+hypothesis, $p$ is generated with key $(\gstar(p), h(p))$ and this key
+is selected before termination; by Claim~2 the bucket then contains
+$p$, because any earlier expansion of $p$ would, by Claim~3, have
+occurred with the same key, which is selected only once. Expanding the
+bucket generates $s$ at cost $\gstar(p) + \cost(o) = g$ with key
+$(g, h(s))$. \emph{Selection:} let $K = (g, h(s))$, with
+$f(K) \leq \copt$ and $g < \copt$. From the step at which $K$ first
+becomes nonempty, $K$ remains in the open list until it is selected
+(Claim~2). The search terminates only when a selected bucket contains a
+goal state, and by Claim~3 a goal state in a selected bucket has key
+$(\gstar(s_G), 0)$ with $\gstar(s_G) \geq \copt$, since consistent
+heuristics assign $0$ to goal states and \copt\ is the cheapest goal
+cost. While $K$ is open, no such key is selected: its $f$-value is at
+least $\copt \geq f(K)$, and in case of equality its $g$-component
+$\gstar(s_G) \geq \copt > g$ loses the tie-break against $K$ or another
+open key with smaller $g$-component. Hence the search does not
+terminate while $K$ is open. Moreover, while $K$ is open every
+selection picks a key with $f$-value at most $f(K) \leq \copt$; there
+are at most $(\copt + 1)(\copt + 2)/2$ keys $(g', v')$ of nonnegative
+integers with $g' + v' \leq \copt$, each selected at most once
+(Claim~2), and the open list is nonempty while $K$ is open. Hence after
+finitely many steps $K$ itself is selected, before termination.
+
+\emph{Claim 5 (no other expansions): every bucket selected before the
+terminating selection has a key $(g,v)$ with $g + v \leq \copt$ and
+$g < \copt$.}
+Fix a cheapest plan $q_0 = \sinit, \dots, q_r$ with $q_r$ a goal state
+and all prefixes cheapest, so that consistency yields
+$\gstar(q_l) + h(q_l) \leq \copt$ for every $l$. First we exhibit a
+witness key: at every step at which the search has not yet terminated,
+let $l$ be the smallest index such that $q_l$ is unexpanded, which
+exists because $q_r$ is unexpanded before termination. If $l = 0$, the
+initial key $(0, h(\sinit))$ has not been selected, since its bucket
+contains $\sinit$, and is therefore open. If $l \geq 1$, then $q_{l-1}$
+was expanded, by Claim~3 with key $(\gstar(q_{l-1}), h(q_{l-1}))$, so
+$q_l$ was generated with key $K_l = (\gstar(q_l), h(q_l))$; exactly as
+in the proof of Claim~3, $K_l$ has not been selected and is therefore
+open. In all cases the open list contains a key with $f$-value at most
+\copt, namely $(0, h(\sinit))$ or $K_l$; call it the witness. Second,
+minimum-$f$ selection against the witness implies that every selected
+key satisfies $g + v \leq \copt$. Third, a selected key with
+$g + v \leq \copt$ and $g \geq \copt$ must equal $(\copt, 0)$, and we
+show that its selection is the terminating one. Consider the step at
+which $(\copt, 0)$ is selected and let $l$ be as above. If $l < r$,
+the witness $K_l$ is open with $f$-value at most \copt\ and
+$g$-component $\gstar(q_l) < \copt$; then either its $f$-value is
+smaller than \copt, contradicting minimum-$f$ selection of
+$(\copt, 0)$, or it equals \copt\ and the tie-breaking rule prefers
+$K_l$ or another open key of smaller $g$-component over $(\copt, 0)$,
+again a contradiction. Hence $l = r$, so $q_r$ was generated with key
+$(\copt, 0)$ and, being unexpanded, lies in its bucket at selection
+time by Claim~2. The selected bucket thus contains the goal state
+$q_r$ and the search terminates. Consequently, every selection before
+the terminating one has $g + v \leq \copt$ and $g < \copt$.
+
+\emph{Assembly.} Let $(g,v)$ with $g + v \leq \copt$ and $g < \copt$
+and $L_g \cap \level{h}{v} \neq \emptyset$. Every
+$s \in L_g \cap \level{h}{v}$ satisfies the premise of Claim~4, so its
+key $(g,v)$ is selected exactly once before termination (Claims~2
+and~4), and at this selection the bucket contains $s$ (Claim~2, with
+prior expansion of $s$ excluded because, by Claim~3, it would have
+occurred at the same, uniquely selected key). Conversely, by Claim~3
+the selected bucket contains only states with $\gstar = g$ and
+$h$-value $v$. Hence the expanded BDD represents exactly
+$L_g \cap \level{h}{v}$. Keys whose intersection is empty are never
+selected, since buckets enter the open list only when populated, and by
+Claim~5 no key outside the stated range is expanded before the search
+stops.
+\end{proof}
+
+With the bucket identity in place, the effort bound follows from the
+partition bound applied layer by layer.
+
+\begin{theorem}[effort bound]
+\label{thm-effort}
+Let $h$ be consistent with $\width_\pi(h) \leq W$. Then
+\[
+\effort(\task, h)
+\;\leq\; W^{2} n \cdot \bigl(\effort(\task, \hblind) + 2\copt\bigr).
+\]
+\end{theorem}
+
+\begin{proof}
+By Lemma~\ref{lem-identity} and Definition~\ref{def-effort},
+\[
+\effort(\task,h)
+= \sum_{g < \copt} \;\sum_{\substack{v \in \img(h)\\ g + v \leq \copt}}
+\bddsize{L_g \cap \level{h}{v}}
+\;\leq\; \sum_{\substack{g < \copt\\ L_g \neq \emptyset}}
+\;\sum_{v \in \img(h)}
+\bddsize{L_g \cap \level{h}{v}},
+\]
+where the restriction to nonempty layers loses nothing because all
+buckets of an empty layer are empty and the BDD of the empty set has no
+inner nodes. By Theorem~\ref{thm-partition}, the inner sum is at most
+$W^{2} n \,(\bddsize{L_g} + 2)$ for every $g$. Writing $N$ for the
+number of nonempty layers $L_g$ with $g < \copt$ and using
+$\effort(\task,\hblind) = \sum_{g < \copt} \bddsize{L_g}$, we obtain
+\begin{equation}
+\effort(\task,h)
+\;\leq\; W^{2} n \,\bigl(\effort(\task,\hblind) + 2N\bigr),
+\label{eq-effort-nonempty}
+\end{equation}
+and $N \leq \copt$ yields the claim.
+\end{proof}
+
+\begin{corollary}
+\label{cor-effort}
+If additionally every nonempty layer $L_g$ with $g < \copt$ is a proper
+subset of the set of all Boolean assignments, then
+$\effort(\task, h) \leq 3\, W^{2} n \cdot \effort(\task, \hblind)$.
+\end{corollary}
+
+\begin{proof}
+The BDD of a nonempty proper subset has at least one inner node, so
+$N \leq \effort(\task,\hblind)$ in
+Equation~\ref{eq-effort-nonempty}.
+\end{proof}
+
+The condition of Corollary~\ref{cor-effort} fails only in degenerate
+tasks. Theorem~\ref{thm-effort} extends beyond \bddastar:
+\citet{speck-et-al-icaps2020} observe that Lazy \bddastar\
+\citep{torralba-phd2015} and SetA\ensuremath{^{*}}
+\citep{jensen-et-al-aij2008}, and by the same argument its
+cost-general variant \ghseta, expand exactly the same state sets as
+\bddastar, differing only in when and how the partition is computed, so
+the bound on the cumulative size of expanded BDDs applies to these
+variants as well. Two honest limitations. First, the guarantee is
+one-sided by design: it caps the overhead of using $h$, while the
+potential savings, namely the layers and dead ends that $h$ prunes via
+the constraints $g + v \leq \copt$ and $v \neq \infty$, remain
+unbounded, which is the desired asymmetry. Second, the baseline is blind
+\emph{forward} search; the strongest blind configuration in practice is
+bidirectional \citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and
+extending the analysis to bidirectional \bddastar, where the backward
+frontier interacts with forward buckets, is future work.
+
+\subsection{Exponential Width Is Necessary for the Known Pathology}
+
+We now revisit the family $\task_n$ of \citet{speck-et-al-icaps2020} on
+which \bddastar\ with \hstar\ is exponentially worse than with \hblind.
+The task has binary variables
+$v_1, \dots, v_{2n}$ and $x_0, \dots, x_{2n+1}$; initially only $x_0$
+is true, operators $o_i$ and $\bar o_i$ with precondition
+$x_{i-1} \wedge \neg x_i$ set $x_i$ true while setting $v_i$ true or
+false, respectively, and once $x_0, \dots, x_{2n}$ are all true, a goal
+operator $g_i$ with precondition $x_{2n} \wedge v_i \wedge v_{n+i}$ for
+some $i \in \{1, \dots, n\}$ achieves the goal
+$x_{2n+1}$. The variable order is
+$\pi_n = x_0, \dots, x_{2n+1}, v_1, \dots, v_{2n}$, and the exponential
+blowup arises in the bucket of non-dead-end states at $g = 2n$, whose
+characteristic function contains
+$\bigvee_{i=1}^{n} (v_i \wedge v_{n+i})$, a function with exponential
+OBDD size under $\pi_n$ \citep{kissmann-phd2012,speck-et-al-icaps2020}.
+
+\begin{theorem}[width lower bound]
+\label{thm-lb}
+For the tasks $\task_n$ and orders $\pi_n$ of
+\citet{speck-et-al-icaps2020},
+$\width_{\pi_n}(\hstar) \geq 2^{n}$.
+\end{theorem}
+
+\begin{proof}
+We exhibit $2^n$ prefixes with pairwise distinct \hstar-cofactors. For
+$A \subseteq \{1, \dots, n\}$ let $\rho_A$ be the prefix that assigns
+the $x$-variables the encoding of chain position $2n$, i.e.,
+$x_0, \dots, x_{2n}$ true and $x_{2n+1}$ false, and assigns $v_i = 1$
+iff $i \in A$ for $i \in \{1, \dots, n\}$. All $\rho_A$ fix the same
+variables $x_0, \dots, x_{2n+1}, v_1, \dots, v_n$, so their cofactors
+lie in $\sub{m}{\hstar}$ for the same level $m = (2n + 2) + n$. Let
+$A \neq A'$ and pick without loss of generality
+$i \in A \setminus A'$. Define the suffix $\sigma$ over
+$v_{n+1}, \dots, v_{2n}$ by $v_{n+i} = 1$ and $v_{n+j} = 0$ for
+$j \neq i$. The state $\rho_A \sigma$ satisfies
+$v_i \wedge v_{n+i}$, so a goal operator is applicable and
+$\hstar(\rho_A \sigma) = 1$. The state $\rho_{A'} \sigma$ satisfies
+$v_j \wedge v_{n+j}$ for no $j$: for $j = i$ because $v_i = 0$ under
+$\rho_{A'}$, and for $j \neq i$ because $v_{n+j} = 0$ under $\sigma$.
+No other operator is applicable in either state, since every $o_i$ and
+$\bar o_i$ requires $\neg x_i$ and $x_1, \dots, x_{2n}$ are all true.
+Hence $\rho_{A'} \sigma$ is a dead
+end and $\hstar(\rho_{A'} \sigma) = \infty \neq 1 =
+\hstar(\rho_A \sigma)$, so
+$\hstar|_{\rho_A} \neq \hstar|_{\rho_{A'}}$, and
+$|\sub{m}{\hstar}| \geq 2^{n}$. Since the argument evaluates \hstar\
+only on states, it applies to every total extension of \hstar\ to
+$\{0,1\}^n$ (Remark~\ref{rem-encoding}).
+\end{proof}
+
+Theorems~\ref{thm-effort} and~\ref{thm-lb} together delimit the
+phenomenon discovered by \citet{speck-et-al-icaps2020}: any heuristic
+that deteriorates \bddastar\ by a superpolynomial factor over blind
+search must have superpolynomial width under the search order, and the
+perfect heuristic on their family indeed has exponential width.
+Width-boundedness is a sufficient condition for safety, not a necessary
+one: a heuristic of large width may still happen to induce small
+buckets. Note also that \hstar\ on $\task_n$ takes at most
+$2n + 3$ distinct values, so a small value range does not imply small
+width; the width captures how much prefix information the level sets
+entangle, not how many there are.
+
+% ============================ instances ==================================
+\section{Width-Bounded Heuristic Families}
+\label{sec-instances}
+
+We now show that several practically important heuristic families are
+width-bounded, with widths governed by natural parameters. Throughout,
+$\pi$ is variable-contiguous, $d = \max_{v \in \vars} |D_v|$ and
+$m = |\vars|$, so $n \leq m \lceil \log_2 d \rceil$.
+
+\subsection{Potential Heuristics}
+
+A potential heuristic \citep{pommerening-et-al-aaai2015} assigns a
+potential $P(v, w) \in \mathbb{R}$ to every fact and evaluates to
+$\hpot(s) = \sum_{v \in \vars} P(v, s(v))$. Admissibility and
+consistency are enforced by linear constraints.
+\citet{fiser-et-al-aaai2022} round potentials to integers inside the
+optimization to integrate them into \ghseta; we adopt their integer
+setting.
+
+\begin{proposition}
+\label{prop-pot}
+Let \hpot\ have integer potentials with $|P(v,w)| \leq M$ for all
+facts, extended to non-state assignments by the same sum over the bit
+encoding's induced table, with table values on invalid bit codes also
+in $[-M, M]$, e.g., $0$, and let $\pi$ be variable-contiguous. Then
+$\width_\pi(\hpot) \leq d \, (2mM + 1)$ and
+$|\img(\hpot)| \leq 2mM + 1$.
+\end{proposition}
+
+\begin{proof}
+Consider a prefix $\rho$ that fixes the variables
+$v_1, \dots, v_j$ completely and the first $b < \lceil \log_2 d \rceil$
+bits of $v_{j+1}$. The cofactor $\hpot|_\rho$ is determined by the pair
+consisting of the accumulated sum
+$\sum_{j' \leq j} P(v_{j'}, \rho(v_{j'}))$, an integer in
+$[-mM, mM]$, and the assignment to the $b$ read bits of $v_{j+1}$,
+because the remaining function is the fixed table sum over the
+unread variables shifted by the accumulated constant and restricted to
+the read bits. There are at most $2mM + 1$ accumulated sums and at most
+$2^{b} \leq d$ bit prefixes, so
+$|\sub{i}{\hpot}| \leq d\,(2mM + 1)$ for every level $i$. The value
+range consists of total sums, integers in $[-mM, mM]$, at most
+$2mM + 1$ many; shifting by a constant to make values nonnegative
+changes neither count.
+\end{proof}
+
+\begin{corollary}
+\label{cor-pot}
+For consistent integer potential heuristics with magnitudes at most
+$M$, under the conditions of Corollary~\ref{cor-effort},
+$\effort(\task, \hpot) \leq
+3\, d^{2} (2mM + 1)^{2}\, n \cdot \effort(\task, \hblind)$,
+a factor polynomial in the task size and $M$.
+\end{corollary}
+
+Corollary~\ref{cor-pot} is, to our knowledge, the first formal
+performance guarantee for the operator-potential approach of
+\citet{fiser-et-al-aaai2022,fiser-et-al-aij2024}, whose reported
+behavior---informative guidance with rarely increased BDD
+sizes---matches exactly what a small width predicts. It also explains
+why their integer rounding matters twice: rounding coarsens the value
+range \emph{and} caps the width through $M$.
+
+\subsection{Pattern Databases over Pattern Prefixes}
+
+A pattern database \citep[PDB;][]{culberson-schaeffer-compint1998,%
+edelkamp-ecp2001} projects \task\ onto a pattern
+$P \subseteq \vars$ and stores the abstract goal distance
+$h^{P}(s)$ of the abstract state induced by $s$.
+
+\begin{proposition}
+\label{prop-pdb}
+Let $P \subseteq \vars$ such that the variables of $P$ form a prefix of
+the variable-contiguous order $\pi$, and let
+$|\states^{P}| = \prod_{v \in P} |D_v|$ denote the number of abstract
+states. Then $\width_\pi(h^{P}) \leq d \cdot |\states^{P}|$.
+\end{proposition}
+
+\begin{proof}
+For a prefix $\rho$ inside the pattern block, the cofactor
+$h^{P}|_\rho$ is determined by the assignment to the read pattern
+variables together with the read bits of the current variable: two
+prefixes inducing the same partial abstract state and bit buffer have
+identical completions. The number of partial abstract states is at most
+$|\states^{P}|$ and the bit buffer contributes a factor at most $d$ as
+in Proposition~\ref{prop-pot}. For prefixes beyond the pattern block,
+$h^{P}|_\rho$ is the constant $h^{P}$-value of the abstract state fixed
+by $\rho$, so the cofactor count is at most
+$|\img(h^{P})| \leq |\states^{P}|$.
+\end{proof}
+
+The bound $d \cdot |\states^{P}|$ is coarse; the exact width is the
+maximal level size of the PDB's quasi-reduced ADD, which reduction
+often makes much smaller. The requirement that $P$ be a prefix of $\pi$
+is the price of alignment between abstraction and representation:
+patterns scattered through the order can entangle prefix information
+much like Theorem~\ref{thm-lb}. By Proposition~\ref{prop-closure},
+maximizing or admissibly adding a few prefix PDBs, e.g., under a cost
+partitioning, multiplies the width bounds.
+
+\subsection{Linear Merge-and-Shrink}
+
+Merge-and-shrink (M\&S) abstractions
+\citep{helmert-et-al-jacm2014} iteratively merge factors of a factored
+transition system and shrink intermediate abstractions to at most $N$
+abstract states. With a \emph{linear} merge strategy, the abstraction
+mapping is representable by cascading tables, equivalently a factored
+mapping \citep{helmert-et-al-icaps2015}: a chain of tables
+$\tau_1, \dots, \tau_m$ where $\tau_j$ maps the pair of the previous
+intermediate abstract state and the value of variable $v_j$ to the next
+intermediate abstract state.
+
+\begin{proposition}
+\label{prop-ms}
+Let $h^{\alpha}$ be an M\&S heuristic built with a linear merge
+strategy whose variable order agrees with the variable-contiguous
+$\pi$ and with intermediate abstraction sizes at most $N$. Then
+$\width_\pi(h^{\alpha}) \leq d \cdot N$.
+\end{proposition}
+
+\begin{proof}
+For a prefix $\rho$ fixing $v_1, \dots, v_j$ and $b$ bits of
+$v_{j+1}$, the cofactor $h^{\alpha}|_\rho$ is determined by the
+intermediate abstract state $\tau_j(\cdots)$ reached after processing
+$v_1, \dots, v_j$ through the cascading tables, of which there are at
+most $N$, together with the $b$-bit buffer, at most $d$ cases: the
+remaining computation applies the fixed tables
+$\tau_{j+1}, \dots, \tau_m$ and the final distance table to the suffix.
+\end{proof}
+
+Proposition~\ref{prop-ms} recasts a known compactness result in a new
+role. \citet{torralba-phd2015} proved that linear M\&S heuristics have
+BDD representations with at most polynomial overhead, enabling their
+use in symbolic search; Proposition~\ref{prop-ms} sharpens the
+representational statement to a per-level width bound and, through
+Theorems~\ref{thm-partition} and~\ref{thm-effort}, converts it for the
+first time into a guarantee on \emph{search behavior}: the shrink size
+limit $N$, imposed anyway to keep M\&S construction tractable, doubles
+as a bound on the harm the heuristic can do to the symbolic search that
+uses it. In contrast, no small-width representation is known for
+$h^{\max}$, $h^{\mathrm{add}}$ or LM-cut, whose values depend on
+optimization problems that entangle all variables, and
+Theorem~\ref{thm-lb} shows that perfect goal-distance information can
+force exponential width.
+
+% ============================ synthesis ==================================
+\section{Synthesizing Width-Bounded Heuristics}
+\label{sec-synthesis}
+
+The results above invert the usual heuristic-selection problem for
+symbolic search: instead of choosing the most informative heuristic and
+hoping that the partition stays benign, we propose to optimize
+informativeness \emph{subject to a width budget}. For potential
+heuristics this is directly actionable. The LP of
+\citet{pommerening-et-al-aaai2015} maximizes, e.g., the heuristic value
+of the initial state or the average value over samples, subject to
+admissibility and consistency constraints. Following
+\citet{fiser-et-al-aaai2022} we require integer potentials, and we add
+box constraints $|P(v,w)| \leq M$, which by
+Proposition~\ref{prop-pot} enforce
+$\width_\pi(\hpot) \leq d\,(2mM+1)$. Coarsening potentials to multiples
+of an integer $k$ tightens the width bound to $d\,(2mM/k + 1)$ at a
+bounded loss of accuracy, since down-rounding sums to multiples of $k$
+preserves admissibility. The budget $M$ (or $M/k$) is thus a knob that
+interpolates between blind search ($M = 0$) and unconstrained potential
+heuristics, with Corollary~\ref{cor-pot} guaranteeing the overhead at
+every setting. A sharper objective minimizes the number of distinct
+reachable partial sums directly, which is the exact width up to the bit
+buffer; we formulate this as a MIP but expect the box-constraint
+relaxation to be the practical variant. For prefix PDBs, synthesis
+amounts to pattern selection constrained to prefixes of $\pi$, which
+composes with the causal-graph-based orders of
+\citet{kissmann-edelkamp-aaai2011} and dovetails with the variable
+relaxation strategy used for symbolic perimeter abstractions
+\citep{torralba-et-al-aij2018}.
+
+% ============================ experiments ================================
+\section{Experiments}
+\label{sec-experiments}
+
+% TODO: run experiments; all numbers below are placeholders.
+We implemented width instrumentation, width-capped potential heuristics
+and prefix-PDB heuristics in the SymK planning system
+\citep{speck-et-al-jair2025}, which extends Fast Downward
+\citep{helmert-jair2006}, and used the Downward Lab toolkit
+\citep{seipp-et-al-zenodo2017} for running experiments.
+% TODO: hardware.
+Our benchmark set consists of all tasks without conditional effects and
+axioms from the optimal sequential tracks of the IPCs 1998--2023,
+matching the suite of \citet{fiser-et-al-aij2024}. We limit time to
+30\,minutes and memory to 8\,GiB. All benchmarks, code and experiment
+data are available online.
+% TODO: Zenodo record.
+
+We focus on coverage (number of solved tasks), the expansion size
+(Definition~\ref{def-effort}) measured in BDD nodes, peak memory and
+the \emph{fragmentation ratio}, i.e., the total size of the buckets of
+a layer divided by the size of the unpartitioned layer BDD, which
+Theorem~\ref{thm-partition} predicts to be at most polynomial in the
+measured width. We compare against symbolic bidirectional blind search
+in SymK, forward blind search, the operator-potential configurations of
+\citet{fiser-et-al-aij2024} and \symba\ \citep{torralba-et-al-aij2017}.
+Our evaluation addresses four questions. (Q1)~Does the measured
+fragmentation ratio respect the width bound, and does width predict
+fragmentation across domains? (Q2)~How do coverage and expansion size
+change with the width budget $M$? (Q3)~Do width-capped potentials
+recover the domains in which unconstrained operator potentials lose to
+blind search while preserving their gains? (Q4)~How does the resulting
+configuration compare per domain to the state of the art in symbolic
+planning?
+% TODO: Tables 1-4 with results for Q1-Q4; fix winning M value after Q2.
+
+% =========================== related work ================================
+\section{Related Work}
+
+Our work connects three lines of research. First, analyses of heuristic
+symbolic search: \citet{jensen-et-al-aij2008} identified the arithmetic
+partitioning of frontiers as a bottleneck and mitigated it through
+transition-relation branching partitions;
+\citet{speck-et-al-icaps2020} proved that no heuristic, not even
+\hstar, is guaranteed to help \bddastar; we give the matching sufficient
+condition and show their pathology requires exponential width. Second,
+compact representations of heuristics:
+\citet{edelkamp-et-al-ecai2012} compiled PDB and M\&S heuristics into
+vectors of BDDs for \bddastar, \citet{torralba-phd2015} proved
+polynomial-size BDD representations for linear M\&S and analyzed
+ADD-to-BDD conversions, and \citet{helmert-et-al-icaps2015} introduced
+factored mappings, which our width notion relativizes to the search
+order; none of these works bounds the effect of the representation on
+the search frontier, which is our contribution. The operator-potential
+line \citep{fiser-et-al-aaai2022,fiser-et-al-aij2024} demonstrated
+empirically that potential heuristics integrate well into \ghseta;
+Corollary~\ref{cor-pot} supplies the missing guarantee and identifies
+the responsible parameter. Third, performance guarantees for symbolic
+search: \citet{speck-helmert-ecai2025} bound the overhead of symbolic
+over explicit blind search via conjunctive transition-relation
+partitioning; our results are complementary, bounding the overhead of
+heuristic over blind \emph{symbolic} search via a property of the
+heuristic, and combining the two guarantee regimes is an appealing
+direction. Related but orthogonal are symbolic perimeter abstraction
+heuristics \citep{torralba-et-al-ijcai2016,torralba-et-al-aij2018},
+which defer heuristic computation until blind search stalls, variable
+ordering analyses \citep{kissmann-hoffmann-jair2014} and EVMDD-based
+representations of state-dependent cost structure
+\citep{speck-et-al-icaps2018}.
+
+% ============================ conclusions ================================
+\section{Conclusions}
+
+We introduced width-bounded heuristics and proved that bounded width is
+a sufficient condition for heuristics to be provably safe in symbolic
+search: partitioning any state set by heuristic values costs at most a
+polynomial factor in the width, and \bddastar\ with a consistent
+width-$W$ heuristic incurs at most an $O(W^2 n)$ overhead over blind
+symbolic forward search, whereas the known exponential deterioration
+requires exponential width. Potential heuristics, prefix PDBs and
+linear merge-and-shrink instantiate the class with widths controlled by
+the potential magnitude, the abstract state count and the shrink limit,
+respectively. In future work, we want to extend the guarantee to
+bidirectional symbolic search, study whether width-aware variable
+ordering can enlarge the class in practice, and investigate
+size-monitored search regimes for heuristics outside the class.
+
+% ------------------------------------------------------------------------
+\begin{thebibliography}{99}
+
+\bibitem[B{\"a}ckstr{\"o}m and Nebel(1995)]{backstrom-nebel-compint1995}
+C.~B{\"a}ckstr{\"o}m and B.~Nebel.
+\newblock Complexity results for SAS$^{+}$ planning.
+\newblock \emph{Computational Intelligence}, 11(4):625--655, 1995.
+
+\bibitem[Bahar et~al.(1993)]{bahar-et-al-iccad1993}
+R.~I. Bahar, E.~A. Frohm, C.~M. Gaona, G.~D. Hachtel, E.~Macii, A.~Pardo
+  and F.~Somenzi.
+\newblock Algebraic decision diagrams and their applications.
+\newblock In \emph{Proc.\ ICCAD 1993}, pages 188--191, 1993.
+
+\bibitem[Bryant(1986)]{bryant-tc1986}
+R.~E. Bryant.
+\newblock Graph-based algorithms for Boolean function manipulation.
+\newblock \emph{IEEE Transactions on Computers}, 35(8):677--691, 1986.
+
+\bibitem[Culberson and Schaeffer(1998)]{culberson-schaeffer-compint1998}
+J.~C. Culberson and J.~Schaeffer.
+\newblock Pattern databases.
+\newblock \emph{Computational Intelligence}, 14(3):318--334, 1998.
+
+\bibitem[Edelkamp(2001)]{edelkamp-ecp2001}
+S.~Edelkamp.
+\newblock Planning with pattern databases.
+\newblock In \emph{Proc.\ ECP 2001}, pages 84--90, 2001.
+
+\bibitem[Edelkamp and Helmert(1999)]{edelkamp-helmert-ecp1999}
+S.~Edelkamp and M.~Helmert.
+\newblock Exhibiting knowledge in planning problems to minimize state
+  encoding length.
+\newblock In \emph{Proc.\ ECP 1999}, pages 135--147, 1999.
+
+\bibitem[Edelkamp and Reffel(1998)]{edelkamp-reffel-ki1998}
+S.~Edelkamp and F.~Reffel.
+\newblock {OBDDs} in heuristic search.
+\newblock In \emph{Proc.\ KI 1998}, pages 81--92, 1998.
+
+\bibitem[Edelkamp et~al.(2012)]{edelkamp-et-al-ecai2012}
+S.~Edelkamp, P.~Kissmann and {\'A}.~Torralba.
+\newblock Symbolic {A}$^{*}$ search with pattern databases and the
+  merge-and-shrink abstraction.
+\newblock In \emph{Proc.\ ECAI 2012}, pages 306--311, 2012.
+
+\bibitem[Fi{\v s}er et~al.(2022)]{fiser-et-al-aaai2022}
+D.~Fi{\v s}er, {\'A}.~Torralba and J.~Hoffmann.
+\newblock Operator-potential heuristics for symbolic search.
+\newblock In \emph{Proc.\ AAAI 2022}, pages 9750--9757, 2022.
+
+\bibitem[Fi{\v s}er et~al.(2024)]{fiser-et-al-aij2024}
+D.~Fi{\v s}er, {\'A}.~Torralba and J.~Hoffmann.
+\newblock Boosting optimal symbolic planning: Operator-potential
+  heuristics.
+\newblock \emph{Artificial Intelligence}, 334:104174, 2024.
+
+\bibitem[Hansen et~al.(2002)]{hansen-et-al-sara2002}
+E.~A. Hansen, R.~Zhou and Z.~Feng.
+\newblock Symbolic heuristic search using decision diagrams.
+\newblock In \emph{Proc.\ SARA 2002}, pages 83--98, 2002.
+
+\bibitem[Hart et~al.(1968)]{hart-et-al-ieeessc1968}
+P.~E. Hart, N.~J. Nilsson and B.~Raphael.
+\newblock A formal basis for the heuristic determination of minimum cost
+  paths.
+\newblock \emph{IEEE Transactions on Systems Science and Cybernetics},
+  4(2):100--107, 1968.
+
+\bibitem[Helmert(2006)]{helmert-jair2006}
+M.~Helmert.
+\newblock The {Fast Downward} planning system.
+\newblock \emph{Journal of Artificial Intelligence Research},
+  26:191--246, 2006.
+
+\bibitem[Helmert et~al.(2014)]{helmert-et-al-jacm2014}
+M.~Helmert, P.~Haslum, J.~Hoffmann and R.~Nissim.
+\newblock Merge-and-shrink abstraction: A method for generating lower
+  bounds in factored state spaces.
+\newblock \emph{Journal of the ACM}, 61(3):16:1--16:63, 2014.
+
+\bibitem[Helmert et~al.(2015)]{helmert-et-al-icaps2015}
+M.~Helmert, G.~R{\"o}ger and S.~Sievers.
+\newblock On the expressive power of non-linear merge-and-shrink
+  representations.
+\newblock In \emph{Proc.\ ICAPS 2015}, pages 106--114, 2015.
+
+\bibitem[Jensen et~al.(2008)]{jensen-et-al-aij2008}
+R.~M. Jensen, M.~M. Veloso and R.~E. Bryant.
+\newblock State-set branching: Leveraging {BDDs} for heuristic search.
+\newblock \emph{Artificial Intelligence}, 172(2--3):103--139, 2008.
+
+\bibitem[Kissmann and Edelkamp(2011)]{kissmann-edelkamp-aaai2011}
+P.~Kissmann and S.~Edelkamp.
+\newblock Improving cost-optimal domain-independent symbolic planning.
+\newblock In \emph{Proc.\ AAAI 2011}, pages 992--997, 2011.
+
+\bibitem[Kissmann(2012)]{kissmann-phd2012}
+P.~Kissmann.
+\newblock \emph{Symbolic Search in Planning and General Game Playing}.
+\newblock PhD thesis, University of Bremen, 2012.
+
+\bibitem[Kissmann and Hoffmann(2014)]{kissmann-hoffmann-jair2014}
+P.~Kissmann and J.~Hoffmann.
+\newblock {BDD} ordering heuristics for classical planning.
+\newblock \emph{Journal of Artificial Intelligence Research},
+  51:779--804, 2014.
+
+\bibitem[McMillan(1993)]{mcmillan-1993}
+K.~L. McMillan.
+\newblock \emph{Symbolic Model Checking}.
+\newblock Kluwer Academic Publishers, 1993.
+
+\bibitem[Pearl(1984)]{pearl-1984}
+J.~Pearl.
+\newblock \emph{Heuristics: Intelligent Search Strategies for Computer
+  Problem Solving}.
+\newblock Addison-Wesley, 1984.
+
+\bibitem[Pommerening et~al.(2015)]{pommerening-et-al-aaai2015}
+F.~Pommerening, M.~Helmert, G.~R{\"o}ger and J.~Seipp.
+\newblock From non-negative to general operator cost partitioning.
+\newblock In \emph{Proc.\ AAAI 2015}, pages 3335--3341, 2015.
+
+\bibitem[Seipp et~al.(2017)]{seipp-et-al-zenodo2017}
+J.~Seipp, F.~Pommerening, S.~Sievers and M.~Helmert.
+\newblock {Downward Lab}.
+\newblock Zenodo, 2017.
+
+\bibitem[Speck and Helmert(2025)]{speck-helmert-ecai2025}
+D.~Speck and M.~Helmert.
+\newblock On performance guarantees for symbolic search in classical
+  planning.
+\newblock In \emph{Proc.\ ECAI 2025}, pages 4628--4636, 2025.
+
+\bibitem[Speck et~al.(2018)]{speck-et-al-icaps2018}
+D.~Speck, F.~Gei{\ss}er and R.~Mattm{\"u}ller.
+\newblock Symbolic planning with edge-valued multi-valued decision
+  diagrams.
+\newblock In \emph{Proc.\ ICAPS 2018}, pages 250--258, 2018.
+
+\bibitem[Speck et~al.(2020)]{speck-et-al-icaps2020}
+D.~Speck, F.~Gei{\ss}er and R.~Mattm{\"u}ller.
+\newblock When perfect is not good enough: On the search behaviour of
+  symbolic heuristic search.
+\newblock In \emph{Proc.\ ICAPS 2020}, pages 263--271, 2020.
+
+\bibitem[Speck et~al.(2025)]{speck-et-al-jair2025}
+D.~Speck, J.~Seipp and {\'A}.~Torralba.
+\newblock Symbolic search for cost-optimal planning with expressive
+  model extensions.
+\newblock \emph{Journal of Artificial Intelligence Research},
+  82:1349--1405, 2025.
+
+\bibitem[Torralba(2015)]{torralba-phd2015}
+{\'A}.~Torralba.
+\newblock \emph{Symbolic Search and Abstraction Heuristics for
+  Cost-Optimal Planning}.
+\newblock PhD thesis, Universidad Carlos III de Madrid, 2015.
+
+\bibitem[Torralba et~al.(2016)]{torralba-et-al-ijcai2016}
+{\'A}.~Torralba, C.~Linares~L{\'o}pez and D.~Borrajo.
+\newblock Abstraction heuristics for symbolic bidirectional search.
+\newblock In \emph{Proc.\ IJCAI 2016}, pages 3272--3278, 2016.
+
+\bibitem[Torralba et~al.(2017)]{torralba-et-al-aij2017}
+{\'A}.~Torralba, V.~Alc{\'a}zar, P.~Kissmann and S.~Edelkamp.
+\newblock Efficient symbolic search for cost-optimal planning.
+\newblock \emph{Artificial Intelligence}, 242:52--79, 2017.
+
+\bibitem[Torralba et~al.(2018)]{torralba-et-al-aij2018}
+{\'A}.~Torralba, C.~Linares~L{\'o}pez and D.~Borrajo.
+\newblock Symbolic perimeter abstraction heuristics for cost-optimal
+  planning.
+\newblock \emph{Artificial Intelligence}, 259:1--31, 2018.
+
+\bibitem[Wegener(2000)]{wegener-2000}
+I.~Wegener.
+\newblock \emph{Branching Programs and Binary Decision Diagrams}.
+\newblock SIAM, 2000.
+
+\end{thebibliography}
+\end{document}
