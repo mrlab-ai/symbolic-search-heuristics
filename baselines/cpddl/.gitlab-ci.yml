@@ -1,0 +1,63 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "master"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^release-.*$/
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_MESSAGE =~ /:run-pipeline:/
+
+
+.build:
+  stage: build
+  image: debian:bullseye-slim
+
+  parallel:
+    matrix:
+      - WITH_BLISS: [y,n]
+        WITH_CUDD: [y,n]
+
+  script:
+    - echo "WERROR = yes" >>Makefile.config
+    - '[ "$WITH_BLISS" = "y" ] && make bliss'
+    - '[ "$WITH_CUDD" = "y" ] && make cudd'
+    - make bin
+
+build-debian-gcc:
+  extends: .build
+  before_script:
+    - apt update && apt -y install make gcc g++ autoconf automake cmake git libstdc++6
+
+build-debian-clang:
+  extends: .build
+  before_script:
+    - apt update && apt -y install make clang autoconf automake cmake git libstdc++6
+    - echo "CC = clang" >>Makefile.config
+    - echo "CXX = clang++" >>Makefile.config
+
+
+test-barebone:
+  stage: test
+  image: debian:bullseye-slim
+  before_script:
+    - apt update && apt -y install make gcc g++ git
+    - git clone --depth 1 https://gitlab.com/danfis/pddl-data pddl-data
+    - apt -y purge git
+    - apt -y autoremove
+  script:
+    - echo "WERROR = yes" >>Makefile.config
+    - make bin
+    - bash ./scripts/gitlab-ci-test-barebone.sh
+
+test:
+  stage: test
+  image: debian:bullseye-slim
+  before_script:
+    - apt update && apt -y install make gcc g++ autoconf automake cmake git libstdc++6
+    - apt install -y git
+    - git clone --depth 1 https://gitlab.com/danfis/pddl-data pddl-data
+    - apt -y purge git
+    - apt -y autoremove
+  script:
+    - echo "WERROR = yes" >>Makefile.config
+    - make third-party && make bin
+    - bash ./scripts/gitlab-ci-test-barebone.sh
+    - bash ./scripts/gitlab-ci-test.sh
