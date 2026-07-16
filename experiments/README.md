@@ -62,9 +62,19 @@ Speck et al. (add `mutex_type=MUTEX_NOT` to the sym_* configs). For Q2/Q3
 coverage runs keep SymK defaults for external validity, and state the
 difference in the results README.
 
+## Q2 "unbounded" cap
+
+The integer MIP needs a finite box, so "unbounded" uses a large-but-tractable
+cap (`UNBOUNDED_CAP = 10000` in `exp_q2.py`). The heuristic width saturates once
+the cap exceeds the LP optimum magnitude (empirically ~m=100 on small tasks),
+while the MIP solve time grows with the cap (a 1e6 box makes CPLEX hang even on
+Gripper). State this approximation when reporting the "unbounded" column.
+
 ## Q3 / Q4 external baselines (TODO before those runs)
 
-- Q3 (c): Fiser et al. (2024) A+I operator-potential planner -- obtain and
-  build; report their numbers from our runs on our suite.
+- Q3 (c): Fiser et al. (2024) A+I operator-potential planner -- code in the
+  cpddl library <https://gitlab.com/danfis/cpddl> (dataset
+  <https://gitlab.com/danfis/pddl-data>); build separately and report their
+  numbers from our runs on our suite.
 - Q3 (d): SymBA* if available in this build.
 - Q4: Scorpion (coverage-only).

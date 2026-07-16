@@ -6,9 +6,13 @@ coverage, geometric-mean effort and expansions vs blind forward. The winning M
 is picked from the report and frozen in experiments/WINNING_M (do this after
 the full sweep).
 
-"unbounded" is approximated by a very large finite cap (the integer MIP
-requires a finite bound; a large cap leaves the potentials effectively
-unconstrained while keeping them integral). Note this in the README.
+"unbounded" is approximated by a large finite cap (the integer MIP requires a
+finite bound). The heuristic's width saturates once the cap exceeds the LP
+optimum magnitude (empirically around m~100 on small tasks: width_upper_bound
+stops growing), while the MIP solve time grows with the cap. We therefore use a
+cap that is effectively unbounded for these benchmarks yet keeps the MIP
+tractable (m=10000 solves in ~1 s where m=1e6 does not). Note this in the
+README.
 
 Dry run: WBH_LOCAL=1 python3 experiments/exp_q2.py build start parse fetch report
 """
@@ -21,7 +25,9 @@ import exp_common as C
 import suite_wbh
 
 M_VALUES = [0, 1, 2, 4, 8, 16]
-UNBOUNDED_CAP = 1000000  # effectively unbounded, still integer
+# Effectively unbounded for these benchmarks; keeps the integer MIP tractable
+# (a 1e6 box makes CPLEX hang even on trivial tasks).
+UNBOUNDED_CAP = 10000
 
 
 def main():
