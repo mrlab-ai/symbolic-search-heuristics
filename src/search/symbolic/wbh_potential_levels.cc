@@ -1,11 +1,11 @@
 #include "wbh_potential_levels.h"
 
+#include "wbh_add_stats.h"
 #include "wbh_stats.h"
 
 #include "../utils/system.h"
 
 #include <cmath>
-#include <unordered_set>
 
 using namespace std;
 
@@ -15,7 +15,8 @@ PotentialLevelSets::PotentialLevelSets(
     : vars(vars) {
     build_add(fact_potentials);
     build_level_sets();
-    compute_statistics();
+    add_stats = compute_add_stats(
+        vars, h_add, static_cast<int>(h_add.CountLeaves()));
 }
 
 void PotentialLevelSets::build_add(
@@ -49,37 +50,6 @@ void PotentialLevelSets::build_level_sets() {
     }
 }
 
-void PotentialLevelSets::compute_statistics() {
-    num_values = static_cast<int>(h_add.CountLeaves());
-
-    DdManager *dd = vars->getCudd()->getManager();
-    add_level_nodes.assign(Cudd_ReadSize(dd), 0);
-    long inner = 0;
-    unordered_set<DdNode *> visited;
-    vector<DdNode *> stack;
-    stack.push_back(Cudd_Regular(h_add.getNode()));
-    while (!stack.empty()) {
-        DdNode *node = stack.back();
-        stack.pop_back();
-        if (visited.count(node) > 0) {
-            continue;
-        }
-        visited.insert(node);
-        if (Cudd_IsConstant(node)) {
-            continue;
-        }
-        int index = Cudd_NodeReadIndex(node);
-        int level = Cudd_ReadPerm(dd, index);
-        ++add_level_nodes[level];
-        ++inner;
-        stack.push_back(Cudd_Regular(Cudd_T(node)));
-        stack.push_back(Cudd_Regular(Cudd_E(node)));
-    }
-    add_inner_nodes = inner;
-    // Paper Prop. prop-add: width upper bound U = A + V.
-    width_upper_bound = add_inner_nodes + num_values;
-}
-
 int PotentialLevelSets::value_of_state(const BDD &state) const {
     for (const auto &[value, level] : level_sets) {
         if (!(state * level).IsZero()) {
@@ -90,7 +60,6 @@ int PotentialLevelSets::value_of_state(const BDD &state) const {
 }
 
 void PotentialLevelSets::log_heuristic(WbhStats &stats) const {
-    stats.log_heuristic(
-        add_inner_nodes, num_values, add_level_nodes, width_upper_bound);
+    log_heuristic_stats(stats, add_stats);
 }
 }

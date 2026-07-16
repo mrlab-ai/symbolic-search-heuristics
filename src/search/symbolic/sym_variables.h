@@ -213,6 +213,12 @@ public:
         return manager;
     }
 
+    // FDR variable order used for the BDD encoding (Gamer order by default).
+    // The prefix PDB pattern (PR4) is taken from the front of this order.
+    const std::vector<int> &get_var_order() const {
+        return var_order;
+    }
+
     inline BDD validStates() const {
         return validBDD;
     }

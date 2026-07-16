@@ -2,6 +2,7 @@
 #define SYMBOLIC_WBH_POTENTIAL_LEVELS_H
 
 #include "sym_variables.h"
+#include "wbh_add_stats.h"
 
 #include <map>
 #include <vector>
@@ -38,16 +39,10 @@ class PotentialLevelSets {
 
     ADD h_add;
     std::map<int, BDD> level_sets; // value v -> H_v (valid states only)
-
-    // Statistics for the "heuristic" log event.
-    long add_inner_nodes = 0;
-    int num_values = 0;
-    std::vector<long> add_level_nodes;
-    long width_upper_bound = 0;
+    AddStats add_stats;
 
     void build_add(const std::vector<std::vector<int>> &fact_potentials);
     void build_level_sets();
-    void compute_statistics();
 
 public:
     PotentialLevelSets(
@@ -65,7 +60,7 @@ public:
     void log_heuristic(WbhStats &stats) const;
 
     long get_width_upper_bound() const {
-        return width_upper_bound;
+        return add_stats.width_upper_bound;
     }
 };
 }

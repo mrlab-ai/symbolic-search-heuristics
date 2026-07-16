@@ -11,7 +11,6 @@
 #include <utility>
 
 namespace symbolic {
-class PotentialLevelSets;
 class WbhStats;
 
 /*
@@ -25,6 +24,11 @@ class WbhStats;
   and (delayed) closed-list subtraction, the successor set is intersected with
   each H_v to form the (g', v') buckets (product at evaluation). The goal test
   is on the selected bucket, matching paper Def. def-effort.
+
+  The level sets are supplied by the caller (potentials in PR3, prefix PDBs in
+  PR4) as a value -> H_v map plus a dead-end set (states with h = infinity,
+  empty for potentials). Dead-end successors are discarded before insertion and
+  counted (paper's pruned_deadends event).
 
   With the all-zero potential (M = 0) there is a single value 0 and
   H_0 = valid states, so this reduces exactly to blind symbolic forward search
@@ -40,7 +44,8 @@ class HeuristicFwSearch : public SymSearch {
     // blind forward search to detect and reconstruct solutions via cuts.
     std::shared_ptr<ClosedList> perfectHeuristic;
 
-    const PotentialLevelSets *levels;
+    const std::map<int, BDD> *level_sets;
+    BDD dead_ends;
     WbhStats *stats;
 
     // Open buckets keyed by (g, v). Each value is a (possibly multi-BDD)
@@ -53,13 +58,17 @@ class HeuristicFwSearch : public SymSearch {
     void insert_open(int g, int v, const BDD &bdd);
     bool select_min(std::pair<int, int> &key);
     int min_open_f() const;
+    int value_of_state(const BDD &state) const;
 
 public:
     HeuristicFwSearch(SymbolicSearch *eng, const SymParameters &params);
 
+    // level_sets maps each finite heuristic value v to H_v; dead_ends is the
+    // set of states with h = infinity (empty BDD if none). Both must outlive
+    // the search.
     bool init(
         std::shared_ptr<SymStateSpaceManager> manager,
-        const PotentialLevelSets *levels);
+        const std::map<int, BDD> *level_sets, const BDD &dead_ends);
 
     std::shared_ptr<ClosedList> getClosedShared() const {
         return closed;

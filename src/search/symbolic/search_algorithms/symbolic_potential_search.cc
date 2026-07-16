@@ -66,7 +66,8 @@ void SymbolicPotentialForwardSearch::initialize() {
 
     auto search_ptr =
         unique_ptr<HeuristicFwSearch>(new HeuristicFwSearch(this, sym_params));
-    search_ptr->init(mgr, level_sets.get());
+    // Potentials never produce infinity, so the dead-end set is empty.
+    search_ptr->init(mgr, &level_sets->get_level_sets(), vars->zeroBDD());
 
     auto sym_trs = search_ptr->getStateSpaceShared()->get_transition_relations();
     solution_registry->init(

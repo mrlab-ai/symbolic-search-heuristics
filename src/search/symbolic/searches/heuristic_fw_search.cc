@@ -2,7 +2,6 @@
 
 #include "../sym_state_space_manager.h"
 #include "../sym_variables.h"
-#include "../wbh_potential_levels.h"
 #include "../wbh_stats.h"
 
 #include "../../utils/system.h"
@@ -19,7 +18,7 @@ HeuristicFwSearch::HeuristicFwSearch(
     SymbolicSearch *eng, const SymParameters &params)
     : SymSearch(eng, params),
       closed(make_shared<ClosedList>()),
-      levels(nullptr),
+      level_sets(nullptr),
       stats(nullptr),
       has_current_f(false),
       current_f(0) {
@@ -27,16 +26,17 @@ HeuristicFwSearch::HeuristicFwSearch(
 
 bool HeuristicFwSearch::init(
     shared_ptr<SymStateSpaceManager> manager,
-    const PotentialLevelSets *levels_) {
+    const map<int, BDD> *level_sets_, const BDD &dead_ends_) {
     mgr = manager;
-    levels = levels_;
+    level_sets = level_sets_;
+    dead_ends = dead_ends_;
     stats = sym_params.stats.get();
 
     if (mgr->has_zero_cost_transition()) {
         ABORT(
-            "Heuristic symbolic forward search (sym_fw_pot) requires positive "
-            "operator costs (the width-bounded-heuristics assumption; the "
-            "experiment suite excludes zero-cost operators).");
+            "Heuristic symbolic forward search requires positive operator "
+            "costs (the width-bounded-heuristics assumption; the experiment "
+            "suite excludes zero-cost operators).");
     }
 
     closed->init(mgr.get());
@@ -48,12 +48,21 @@ bool HeuristicFwSearch::init(
     perfectHeuristic->insert(0, mgr->get_goal());
 
     BDD initial_state = mgr->get_initial_state();
-    int v0 = levels->value_of_state(initial_state);
+    int v0 = value_of_state(initial_state);
     insert_open(0, v0, initial_state);
 
     engine->setLowerBound(0 + v0);
     engine->setMinG(0);
     return true;
+}
+
+int HeuristicFwSearch::value_of_state(const BDD &state) const {
+    for (const auto &[value, level] : *level_sets) {
+        if (!(state * level).IsZero()) {
+            return value;
+        }
+    }
+    ABORT("Initial state has no finite heuristic value (dead end?).");
 }
 
 void HeuristicFwSearch::insert_open(int g, int v, const BDD &bdd) {
@@ -173,10 +182,28 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
         if (successors.IsZero()) {
             continue;
         }
+
+        // Discard dead ends (h = infinity) before partitioning and count them
+        // (paper's pruned_deadends event). Empty for potentials.
+        if (!dead_ends.IsZero()) {
+            BDD pruned = successors * dead_ends;
+            if (!pruned.IsZero()) {
+                if (stats) {
+                    stats->log_pruned_deadends(
+                        g2, mgr->getVars()->numStates(pruned),
+                        pruned.nodeCount());
+                }
+                successors *= !dead_ends;
+                if (successors.IsZero()) {
+                    continue;
+                }
+            }
+        }
+
         long layer_nodes = successors.nodeCount();
         long sum_bucket_nodes = 0;
         int num_buckets = 0;
-        for (const auto &value_and_level : levels->get_level_sets()) {
+        for (const auto &value_and_level : *level_sets) {
             int vv = value_and_level.first;
             BDD partition = successors * value_and_level.second;
             if (!partition.IsZero()) {
