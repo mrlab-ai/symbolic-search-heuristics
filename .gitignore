@@ -1,4 +1,6 @@
 __pycache__/
+/experiments/.venv/
+/experiments/data/
 /output.sas
 /sas_plan
 /sas_plan.*
