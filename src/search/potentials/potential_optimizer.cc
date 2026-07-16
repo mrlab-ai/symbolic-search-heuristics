@@ -7,6 +7,7 @@
 #include "../utils/collections.h"
 #include "../utils/system.h"
 
+#include <cmath>
 #include <limits>
 #include <unordered_map>
 
@@ -20,14 +21,20 @@ static int get_undefined_value(VariableProxy var) {
 
 PotentialOptimizer::PotentialOptimizer(
     const shared_ptr<AbstractTask> &transform, lp::LPSolverType lpsolver,
-    double max_potential)
+    double max_potential, bool integer_potentials)
     : task(transform),
       task_proxy(*task),
       lp_solver(lpsolver),
       max_potential(max_potential),
+      integer_potentials(integer_potentials),
       num_lp_vars(0) {
     task_properties::verify_no_axioms(task_proxy);
     task_properties::verify_no_conditional_effects(task_proxy);
+    if (integer_potentials && !potentials_are_bounded()) {
+        cerr << "Integer potentials require a finite max_potential (the "
+                "width cap M)." << endl;
+        utils::exit_with(ExitCode::SEARCH_INPUT_ERROR);
+    }
     initialize();
 }
 
@@ -102,11 +109,17 @@ void PotentialOptimizer::construct_lp() {
     double infinity = lp_solver.get_infinity();
     double upper_bound = (potentials_are_bounded() ? max_potential : infinity);
 
+    // For integer (width-capped) potentials we box the variables symmetrically
+    // in [-M, M] and declare them integer (AIJ 2024, Sec. 3.1 MIP). Otherwise
+    // we keep the original unbounded-below real relaxation.
+    double lower_bound = integer_potentials ? -max_potential : -infinity;
+
     named_vector::NamedVector<lp::LPVariable> lp_variables;
     lp_variables.reserve(num_lp_vars);
     for (int lp_var_id = 0; lp_var_id < num_lp_vars; ++lp_var_id) {
         // Use dummy coefficient for now. Adapt coefficient later.
-        lp_variables.emplace_back(-infinity, upper_bound, 1.0);
+        lp_variables.emplace_back(
+            lower_bound, upper_bound, 1.0, integer_potentials);
     }
 
     named_vector::NamedVector<lp::LPConstraint> lp_constraints;
@@ -208,8 +221,13 @@ void PotentialOptimizer::extract_lp_solution() {
     assert(has_optimal_solution());
     const vector<double> solution = lp_solver.extract_solution();
     for (FactProxy fact : task_proxy.get_variables().get_facts()) {
-        fact_potentials[fact.get_variable().get_id()][fact.get_value()] =
-            solution[get_lp_var_id(fact)];
+        double value = solution[get_lp_var_id(fact)];
+        // MIP solvers return integer variables with floating-point noise; snap
+        // to the exact integer so that |P| <= M and the width argument hold.
+        if (integer_potentials) {
+            value = round(value);
+        }
+        fact_potentials[fact.get_variable().get_id()][fact.get_value()] = value;
     }
 }
 

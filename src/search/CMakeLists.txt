@@ -978,6 +978,7 @@ create_fast_downward_library(
         potentials/single_potential_heuristics
         potentials/subcategory
         potentials/util
+        potentials/width_capped_potential_heuristic
     DEPENDS
         lp_solver
         sampling

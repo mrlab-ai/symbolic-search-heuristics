@@ -46,6 +46,14 @@ class PotentialOptimizer {
     TaskProxy task_proxy;
     lp::LPSolver lp_solver;
     const double max_potential;
+    // Width-bounded heuristics (PR2): when true the fact-potential variables
+    // are integer-valued and box-constrained to [-max_potential, max_potential],
+    // turning the LP into the MIP of Fiser, Torralba & Hoffmann (AIJ 2024,
+    // Sec. 3.1): forcing integrality inside the program rather than rounding
+    // afterwards preserves consistency (their Fig. 1 shows naive rounding does
+    // not). Integer fact potentials imply integer operator potentials Q(o)
+    // (their Eq. 4) and bound the heuristic's ADD width (paper Prop. prop-pot).
+    const bool integer_potentials;
     int num_lp_vars;
     std::vector<std::vector<int>> lp_var_ids;
     std::vector<std::vector<double>> fact_potentials;
@@ -59,7 +67,8 @@ class PotentialOptimizer {
 public:
     PotentialOptimizer(
         const std::shared_ptr<AbstractTask> &transform,
-        lp::LPSolverType lpsolver, double max_potential);
+        lp::LPSolverType lpsolver, double max_potential,
+        bool integer_potentials = false);
     ~PotentialOptimizer() = default;
 
     std::shared_ptr<AbstractTask> get_task() const;
@@ -72,6 +81,17 @@ public:
     bool has_optimal_solution() const;
 
     std::unique_ptr<PotentialFunction> get_potential_function() const;
+
+    // The extracted fact-potential table P[var][value]. With integer_potentials
+    // these are exact integers (rounded from the MIP solution). Used by the
+    // symbolic level-set / ADD construction (PR3/PR4).
+    const std::vector<std::vector<double>> &get_fact_potentials() const {
+        return fact_potentials;
+    }
+
+    bool has_integer_potentials() const {
+        return integer_potentials;
+    }
 };
 }
 
