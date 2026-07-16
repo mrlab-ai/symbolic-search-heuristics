@@ -27,8 +27,13 @@ def parse_wbh_log(content, props):
         line = line.strip()
         if not line:
             continue
-        event = json.loads(line)
-        kind = event["event"]
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            # A run killed by the time/memory limit can leave a truncated final
+            # line; skip malformed lines rather than aborting the whole parse.
+            continue
+        kind = event.get("event")
         if kind == "expand":
             expands.append(event)
         elif kind == "partition":

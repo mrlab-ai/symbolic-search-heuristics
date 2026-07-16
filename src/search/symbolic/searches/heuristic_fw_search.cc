@@ -4,6 +4,7 @@
 #include "../sym_variables.h"
 #include "../wbh_stats.h"
 
+#include "../../utils/logging.h"
 #include "../../utils/system.h"
 #include "../../utils/timer.h"
 #include "../plan_reconstruction/sym_solution_cut.h"
@@ -14,6 +15,8 @@
 using namespace std;
 
 namespace symbolic {
+// Sentinel returned by value_of_state when a state lies in no finite level set.
+static const int NO_FINITE_VALUE = numeric_limits<int>::min();
 HeuristicFwSearch::HeuristicFwSearch(
     SymbolicSearch *eng, const SymParameters &params)
     : SymSearch(eng, params),
@@ -33,10 +36,13 @@ bool HeuristicFwSearch::init(
     stats = sym_params.stats.get();
 
     if (mgr->has_zero_cost_transition()) {
-        ABORT(
-            "Heuristic symbolic forward search requires positive operator "
-            "costs (the width-bounded-heuristics assumption; the experiment "
-            "suite excludes zero-cost operators).");
+        // Positive-cost assumption (paper). Exit cleanly as unsupported rather
+        // than aborting, so the task is cleanly excluded in experiments.
+        utils::g_log << "Heuristic symbolic forward search requires positive "
+                        "operator costs; task has zero-cost operators "
+                        "(unsupported)."
+                     << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_UNSUPPORTED);
     }
 
     closed->init(mgr.get());
@@ -49,6 +55,14 @@ bool HeuristicFwSearch::init(
 
     BDD initial_state = mgr->get_initial_state();
     int v0 = value_of_state(initial_state);
+    if (v0 == NO_FINITE_VALUE) {
+        // The initial state maps to an infinite heuristic value (e.g. a
+        // dead-end abstract state for a PDB): the task is unsolvable.
+        utils::g_log << "Initial state has infinite heuristic value; task is "
+                        "unsolvable."
+                     << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_UNSOLVABLE);
+    }
     insert_open(0, v0, initial_state);
 
     engine->setLowerBound(0 + v0);
@@ -62,7 +76,7 @@ int HeuristicFwSearch::value_of_state(const BDD &state) const {
             return value;
         }
     }
-    ABORT("Initial state has no finite heuristic value (dead end?).");
+    return NO_FINITE_VALUE;
 }
 
 void HeuristicFwSearch::insert_open(int g, int v, const BDD &bdd) {
