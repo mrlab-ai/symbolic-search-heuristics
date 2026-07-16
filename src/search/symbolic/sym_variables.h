@@ -206,6 +206,13 @@ public:
         return manager->constant(c);
     }
 
+    // Access to the underlying CUDD manager (e.g. for ADD node traversal in
+    // the width-bounded-heuristics statistics). Dynamic reordering is off by
+    // default, so CUDD indices coincide with levels; use ReadPerm otherwise.
+    Cudd *getCudd() const {
+        return manager;
+    }
+
     inline BDD validStates() const {
         return validBDD;
     }
