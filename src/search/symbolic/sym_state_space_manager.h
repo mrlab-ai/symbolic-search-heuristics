@@ -65,6 +65,10 @@ public:
         return initial_state;
     }
 
+    SymVariables *getVars() const {
+        return sym_vars;
+    }
+
     BDD zeroBDD() const {
         return sym_vars->zeroBDD();
     }

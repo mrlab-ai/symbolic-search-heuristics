@@ -2,6 +2,7 @@
 
 #include "../sym_state_space_manager.h"
 #include "../sym_variables.h"
+#include "../wbh_stats.h"
 
 #include "../../task_utils/task_properties.h"
 #include "../../tasks/cost_adapted_task.h"
@@ -122,6 +123,9 @@ SearchStatus SymbolicSearch::step() {
 
     if (cur_status == SOLVED) {
         set_plan(plan_data_base->get_first_accepted_plan());
+        if (sym_params.stats) {
+            sym_params.stats->log_done(upper_bound);
+        }
         cout << endl;
         return cur_status;
     }

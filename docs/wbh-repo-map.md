@@ -159,3 +159,20 @@ Plugins `sym_fw` / `sym_bw` / `sym_bd` are registered in
   `PotentialFunction` holds a `fact_potentials[var][value]` double table.
 - **Heuristic search (PR3):** wrap the g-only `OpenList` with a `(g, v)` map;
   build level-set BDDs `H_v` and intersect successors in `stepImage`.
+
+## Instrumentation flag (PR1)
+
+The plan's `--wbh-log <path>` is implemented as a search-config option (the
+idiomatic Fast Downward mechanism), not a driver flag:
+
+```
+./fast-downward.py <task> --search 'sym_fw(wbh_log="run.jsonl")'
+```
+
+String option values must be double-quoted in the FD plugin parser. Empty
+(the default) disables logging and leaves search behavior unchanged. The
+logger (`symbolic/wbh_stats.{h,cc}`) lives behind a `shared_ptr<WbhStats>` in
+`SymParameters`, shared across the forward/backward `UniformCostSearch`
+copies. Only forward expansions are logged (the paper's effort accounting is
+forward). Validate logs with `experiments/validate_wbh_log.py`; the
+no-behavior-change acceptance test is `experiments/check_no_behavior_change.py`.

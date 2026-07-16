@@ -1,5 +1,7 @@
 #include "sym_parameters.h"
 
+#include "wbh_stats.h"
+
 #include "../plugins/plugin.h"
 #include "../task_utils/task_properties.h"
 #include "../utils/logging.h"
@@ -38,6 +40,11 @@ SymParameters::SymParameters(
 
     max_alloted_nodes = max_alloted_nodes < 0 ? 0 : max_alloted_nodes;
     max_alloted_time = max_alloted_time < 0 ? 0 : max_alloted_time;
+
+    string wbh_log = opts.get<string>("wbh_log");
+    if (!wbh_log.empty()) {
+        stats = make_shared<WbhStats>(wbh_log);
+    }
 }
 
 void SymParameters::increase_bound() {
@@ -109,5 +116,11 @@ void SymParameters::add_options_to_feature(plugins::Feature &feature) {
     feature.add_option<bool>(
         "print_symbolic_task_size",
         "Prints the sizes of the basic symbolic task representation.", "false");
+    feature.add_option<std::string>(
+        "wbh_log",
+        "If non-empty, path to a JSON-lines log file for the "
+        "width-bounded-heuristics instrumentation (PR1). Empty disables "
+        "logging and leaves search behavior unchanged.",
+        "\"\"");
 }
 }

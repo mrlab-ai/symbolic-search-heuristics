@@ -3,6 +3,7 @@
 #include "../closed_list.h"
 #include "../frontier.h"
 #include "../sym_utils.h"
+#include "../wbh_stats.h"
 
 #include "../../utils/timer.h"
 #include "../plan_reconstruction/sym_solution_cut.h"
@@ -139,7 +140,26 @@ void UniformCostSearch::stepImage(int maxTime, int maxNodes) {
     }
 
     int stepNodes = frontier.nodes();
+
+    // WBH instrumentation (PR1): record the forward bucket about to be
+    // expanded. All queries are read-only, so search behavior is unchanged.
+    // Blind search always reports h = 0; the heuristic search (PR3) is a
+    // separate algorithm that fills in a real h-value.
+    int wbh_g = frontier.g();
+    long wbh_nodes = stepNodes;
+    double wbh_states = 0;
+    bool wbh_log_this = sym_params.stats && fw;
+    if (wbh_log_this) {
+        for (const BDD &b : frontier.prepared_bucket()) {
+            wbh_states += mgr->getVars()->numStates(b);
+        }
+    }
+    utils::Timer wbh_image_timer;
     ResultExpansion res_expansion = frontier.expand(maxTime, maxNodes, fw);
+    if (wbh_log_this) {
+        sym_params.stats->log_expand(
+            wbh_g, 0, wbh_nodes, wbh_states, wbh_image_timer());
+    }
 
     if (res_expansion.ok) {
         lastStepCost = false; // Must be set to false before calling checkCut

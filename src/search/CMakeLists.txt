@@ -1030,6 +1030,7 @@ create_fast_downward_library(
         symbolic/sym_transition_relations
         symbolic/sym_utils
         symbolic/sym_variables
+        symbolic/wbh_stats
         symbolic/transition_relations/conjunctive_transition_relation
         symbolic/transition_relations/transition_relation
         symbolic/transition_relations/disjunctive_transition_relation

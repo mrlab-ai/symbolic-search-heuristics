@@ -6,6 +6,7 @@
 #include "../abstract_task.h"
 
 #include <algorithm>
+#include <memory>
 
 namespace plugins {
 class Options;
@@ -13,6 +14,8 @@ class Feature;
 } // namespace options
 
 namespace symbolic {
+class WbhStats;
+
 struct SymParameters {
     ConditionalEffectsTransitionType ce_transition_type;
     int max_tr_size, max_tr_time;
@@ -31,6 +34,11 @@ struct SymParameters {
     bool non_stop;
 
     bool print_symbolic_task_size;
+
+    // Width-bounded-heuristics instrumentation logger (PR1). Non-null iff the
+    // wbh_log option is a non-empty path. Shared across all copies of this
+    // struct so that forward and backward searches write to one file.
+    std::shared_ptr<WbhStats> stats;
 
     SymParameters(
         const plugins::Options &opts,
