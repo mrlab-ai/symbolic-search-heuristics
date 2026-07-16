@@ -15,8 +15,25 @@ after the full sweeps (links to the `report.html` under
 
 ## Q1 -- fragmentation validation
 
-TODO: scatter `frag_ratio_geomean` vs `width_upper_bound` for capped potentials
-(m=8) and prefix PDBs; Pi_n anchor. Report HTML: `exp_q1-eval/report.html`.
+Sweep launched and parsed (`exp_q1-eval/`). Use `postprocess.py` for the fair
+comparison: the raw coverage is inflated for blind by zero-cost tasks the
+heuristic configs do not support (positive-cost assumption). On the
+**positive-cost subset (1377 of 1697 tasks)**:
+
+| config   | coverage (positive-cost) |
+|----------|--------------------------|
+| pdb      | 685 |
+| blind_fw | 681 |
+| pot_m8   | 622 |
+
+So the prefix-PDB heuristic search slightly exceeds blind-forward coverage,
+and capped potentials trail a little -- a sensible fragmentation-validation
+result. Heuristic-config outcomes: 1307 solved, 1245 timeout, 180 oom, 640
+zero-cost-unsupported (320 tasks x 2 configs), 22 provably-unsolvable (11 x 2,
+the unsolvable mystery instances).
+
+TODO: scatter `frag_ratio_geomean` vs `width_upper_bound` (attributes are in
+the properties); Pi_n anchor. Report HTML: `exp_q1-eval/report.html`.
 
 ## Q2 -- width knob
 
