@@ -70,11 +70,21 @@ the cap exceeds the LP optimum magnitude (empirically ~m=100 on small tasks),
 while the MIP solve time grows with the cap (a 1e6 box makes CPLEX hang even on
 Gripper). State this approximation when reporting the "unbounded" column.
 
-## Q3 / Q4 external baselines (TODO before those runs)
+## Q3 / Q4 external baselines
 
-- Q3 (c): Fiser et al. (2024) A+I operator-potential planner -- code in the
-  cpddl library <https://gitlab.com/danfis/cpddl> (dataset
-  <https://gitlab.com/danfis/pddl-data>); build separately and report their
-  numbers from our runs on our suite.
-- Q3 (d): SymBA* if available in this build.
-- Q4: Scorpion (coverage-only).
+Built and wired via `exp_baselines.py` (a generic lab experiment over the
+pre-built binaries in `../baselines`; see `baselines/README.md` for build
+steps). Algorithms:
+
+- `a_plus_i`  -- Q3 (c) Fišer et al. A+I operator potentials (cpddl pddl-symba).
+- `symba_star` -- Q3 (d) SymBA* (cpddl pddl-symba without potentials; the
+  original IPC-2014 SymBA* does not build on this toolchain).
+- `scorpion`  -- Q4 context (Scorpion flagship optimal alias).
+
+```
+WBH_LOCAL=1 experiments/.venv/bin/python experiments/exp_baselines.py build start parse fetch report
+```
+
+Combine `data/exp_baselines-eval/properties` with the SymK-config results
+(`exp_q3`/`exp_q1`) for the per-domain coverage tables. Report baseline numbers
+from our runs on our suite, never from the original papers' tables (pitfall #8).

@@ -44,15 +44,12 @@ def main():
     C.add_algorithm(exp, f"pot_m{m}", f"sym_fw_pot(m={m})")
     C.add_algorithm(exp, "blind_fw", "sym_fw()")
     C.add_algorithm(exp, "blind_bd", "sym_bd()")
-    # TODO(Q3): add the Fiser et al. A+I operator-potential baseline. Their
-    # code is in the cpddl library: https://gitlab.com/danfis/cpddl (dataset:
-    # https://gitlab.com/danfis/pddl-data). Build cpddl separately (own LP/build
-    # deps) and add it as a separate add_algorithm against that binary; report
-    # their numbers from our runs on our suite -- never from their paper's
-    # tables. If it does not build within reasonable effort, report back before
-    # using the weaker fallback (our own unconstrained-M integration, i.e.
-    # sym_fw_pot with a large cap).
-    # TODO(Q3): add SymBA* if available in this build.
+    # The external baselines (c) A+I and (d) SymBA* run via
+    # experiments/exp_baselines.py (a_plus_i, symba_star), which invokes the
+    # pre-built cpddl planner in ../baselines. Fetch its properties alongside
+    # this experiment's and build a combined per-domain coverage table. They
+    # are separate experiments because the baselines are not Fast Downward
+    # repositories and were vendored without git history.
 
     C.add_standard_steps(exp, C.ATTRIBUTES)
     exp.run_steps()

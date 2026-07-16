@@ -29,7 +29,9 @@ def main():
     m = read_winning_m()
     C.add_algorithm(exp, f"pot_m{m}", f"sym_fw_pot(m={m})")
     C.add_algorithm(exp, "blind_bd", "sym_bd()")
-    # TODO(Q4): add Scorpion (external) for a coverage-only comparison.
+    # Scorpion (external, coverage-only context) runs via
+    # experiments/exp_baselines.py (the "scorpion" algorithm). Fetch its
+    # properties alongside this experiment's for the combined coverage table.
 
     C.add_standard_steps(exp, ["coverage", "solution_cost", "total_time"])
     exp.run_steps()

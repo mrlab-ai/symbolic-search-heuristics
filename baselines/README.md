@@ -15,24 +15,59 @@ Cloned 2026-07-16. Licenses are included in each directory (`LICENSE*`).
 
 ## Building
 
-Each baseline has its own build system and dependencies; build them
-separately (not via SymK's `build.py`):
+Build artifacts are gitignored (see `.gitignore`); only source is tracked.
 
-- **cpddl**: `cd cpddl && cp Makefile.config.tpl Makefile.config && make`
-  (needs an LP solver; see `cpddl/README.md` and `Makefile.config`). Bundles
-  CUDD and bliss under `third-party/`. The A+I operator-potential
-  configuration is selected via cpddl's planner scripts under `bin/`/`scripts/`.
-- **symba**: `cd symba && ./build.py` (old Fast Downward build). The SymBA\*
-  configuration is a symbolic bidirectional search with perimeter abstraction
-  heuristics; see `symba/driver` / the IPC-2014 plan script.
-- **scorpion**: `cd scorpion && ./build.py`. Used coverage-only for Q4.
+### cpddl (A+I, and the SymBA\* stand-in) — builds ✓
+
+Needs the bundled CUDD + bliss and an LP solver (CPLEX). Verified steps on
+this machine (CPLEX at `~/lib/cplex`):
+
+```
+cd cpddl
+cp Makefile.config.tpl Makefile.config
+cat >> Makefile.config <<'EOF'
+IBM_CPLEX_ROOT = /home/x_jense/lib/cplex
+USE_CPOPTIMIZER = no
+EOF
+make cudd bliss     # build bundled third-party/cudd/libcudd.a + bliss (autotools)
+make -j              # rebuild libpddl.a with CUDD (defines PDDL_CUDD)
+make -C bin          # build bin/pddl-symba etc.
+```
+
+`IBM_CPLEX_ROOT` must be the parent of `cplex/`. If `libcudd.a` is missing when
+`make` runs, cpddl silently uses `bdd-stub.o` and aborts at run time with
+"require the CUDD library" — build `make cudd` first, then remove
+`pddl/config.h .objs/bdd.o .objs/sym.o` and rebuild so `PDDL_CUDD` is set.
+
+Verified runs (gripper, optimal cost 11):
+- **A+I** (Q3 c): `bin/pddl-symba --symba bi --symba-fw-pot --symba-fw-pot-cfg I --symba-bw-pot --symba-bw-pot-cfg I DOMAIN PROBLEM`
+- **SymBA\*** (Q3 d): `bin/pddl-symba --symba bi DOMAIN PROBLEM` (bidirectional
+  symbolic search without potentials).
+
+### scorpion (Q4) — builds ✓
+
+```
+cd scorpion && ./build.py
+```
+Run with `./fast-downward.py --alias scorpion DOMAIN PROBLEM`.
+
+### symba = Torralba's original SymBA\* (IPC 2014) — does NOT build here
+
+Old 64-bit Fast Downward. `./build.py release64` avoids the default 32-bit
+requirement, but the legacy C++ `preprocess` component fails to link on this
+toolchain (gcc 11). Rather than patch the old code, we use **cpddl's** `symba`
+(the maintained successor by the same authors) as the SymBA\* baseline (above);
+this is documented in `experiments/exp_baselines.py`. The directory is kept for
+provenance.
 
 ## Wiring into the experiments
 
-`experiments/exp_q3.py` and `exp_q4.py` currently add the SymK configs and
-leave these baselines as documented TODOs. To include them, build the baseline,
-then add it in the experiment as a separate algorithm pointing at the built
-binary (report the baseline's numbers **from our runs on our suite**, never
-from the original papers' tables — pitfall #8). For SymK's own blind
-bidirectional baseline use `sym_bd()` (already wired); SymBA\* here is the
-distinct abstraction-based planner.
+The baselines run via `experiments/exp_baselines.py` — a generic Downward Lab
+experiment that invokes the **pre-built** binaries directly (vendoring removed
+the `.git` dirs, so lab's cached-revision build cannot be used). It defines the
+`a_plus_i`, `symba_star` and `scorpion` algorithms with per-run limits
+(30 min, 8 GiB) and parses coverage / plan cost. Combine its `properties` with
+the SymK-config results from `exp_q3.py` / `exp_q1.py` at report time. Report
+baseline numbers **from our runs on our suite**, never from the original
+papers' tables (pitfall #8). SymK's own blind bidirectional baseline is
+`sym_bd()` (wired in `exp_q3.py`).

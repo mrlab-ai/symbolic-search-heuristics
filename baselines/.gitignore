@@ -1,0 +1,31 @@
+# Build artifacts of the vendored baselines (keep source, ignore build outputs).
+
+# Fast Downward-style builds (scorpion, symba)
+scorpion/builds/
+symba/builds/
+
+# Object files, static/shared libs, dep files (cpddl in-tree + bundled deps)
+**/*.o
+**/*.a
+**/*.so
+**/*.d
+cpddl/.objs/
+
+# cpddl built binaries (ELF, no extension) and generated files
+cpddl/bin/pddl
+cpddl/bin/pddl-fdr
+cpddl/bin/pddl-symba
+cpddl/bin/pddl-pddl
+cpddl/bin/pddl-lplan
+cpddl/bin/pddl-asnets
+cpddl/Makefile.config
+cpddl/cpddl.pc
+cpddl/pddl/config.h
+cpddl/src/tmp.cudd-version.h
+cpddl/src/_version.c
+cpddl/src/*-stub.c
+cpddl/third-party/cudd/cudd.h
+
+# Python caches
+**/__pycache__/
+**/*.pyc
