@@ -1,0 +1,33 @@
+# Smoke suite for width-bounded heuristics (30 small tasks).
+# Format: <domain-dir> <problem-file>  (domain.pddl is shared per directory)
+# All must be solved by blind forward search in < 60s each on a laptop.
+gripper prob01.pddl
+gripper prob02.pddl
+gripper prob03.pddl
+miconic s1-0.pddl
+miconic s1-1.pddl
+miconic s1-2.pddl
+blocks probBLOCKS-4-0.pddl
+blocks probBLOCKS-4-1.pddl
+blocks probBLOCKS-4-2.pddl
+logistics00 probLOGISTICS-4-0.pddl
+logistics00 probLOGISTICS-4-1.pddl
+logistics00 probLOGISTICS-5-0.pddl
+depot p01.pddl
+depot p02.pddl
+driverlog p01.pddl
+driverlog p02.pddl
+driverlog p03.pddl
+zenotravel p01.pddl
+zenotravel p02.pddl
+zenotravel p03.pddl
+satellite p01-pfile1.pddl
+satellite p02-pfile2.pddl
+satellite p03-pfile3.pddl
+tpp p01.pddl
+tpp p02.pddl
+tpp p03.pddl
+openstacks-opt08-strips p01.pddl
+openstacks-opt08-strips p02.pddl
+visitall-opt11-strips problem02-full.pddl
+visitall-opt11-strips problem03-full.pddl

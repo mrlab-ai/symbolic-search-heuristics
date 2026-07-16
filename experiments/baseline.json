@@ -1,0 +1,362 @@
+{
+  "blocks:probBLOCKS-4-0.pddl": {
+    "sym_bd": {
+      "cost": 6,
+      "status": "solved",
+      "total_time": 0.316511
+    },
+    "sym_fw": {
+      "cost": 6,
+      "status": "solved",
+      "total_time": 0.342368
+    }
+  },
+  "blocks:probBLOCKS-4-1.pddl": {
+    "sym_bd": {
+      "cost": 10,
+      "status": "solved",
+      "total_time": 0.335648
+    },
+    "sym_fw": {
+      "cost": 10,
+      "status": "solved",
+      "total_time": 0.346918
+    }
+  },
+  "blocks:probBLOCKS-4-2.pddl": {
+    "sym_bd": {
+      "cost": 6,
+      "status": "solved",
+      "total_time": 0.342746
+    },
+    "sym_fw": {
+      "cost": 6,
+      "status": "solved",
+      "total_time": 0.321856
+    }
+  },
+  "depot:p01.pddl": {
+    "sym_bd": {
+      "cost": 10,
+      "status": "solved",
+      "total_time": 0.39513
+    },
+    "sym_fw": {
+      "cost": 10,
+      "status": "solved",
+      "total_time": 0.386493
+    }
+  },
+  "depot:p02.pddl": {
+    "sym_bd": {
+      "cost": 15,
+      "status": "solved",
+      "total_time": 0.50093
+    },
+    "sym_fw": {
+      "cost": 15,
+      "status": "solved",
+      "total_time": 0.56347
+    }
+  },
+  "driverlog:p01.pddl": {
+    "sym_bd": {
+      "cost": 7,
+      "status": "solved",
+      "total_time": 0.333767
+    },
+    "sym_fw": {
+      "cost": 7,
+      "status": "solved",
+      "total_time": 0.344773
+    }
+  },
+  "driverlog:p02.pddl": {
+    "sym_bd": {
+      "cost": 19,
+      "status": "solved",
+      "total_time": 0.35304
+    },
+    "sym_fw": {
+      "cost": 19,
+      "status": "solved",
+      "total_time": 0.368176
+    }
+  },
+  "driverlog:p03.pddl": {
+    "sym_bd": {
+      "cost": 12,
+      "status": "solved",
+      "total_time": 0.352175
+    },
+    "sym_fw": {
+      "cost": 12,
+      "status": "solved",
+      "total_time": 0.368533
+    }
+  },
+  "gripper:prob01.pddl": {
+    "sym_bd": {
+      "cost": 11,
+      "status": "solved",
+      "total_time": 0.391351
+    },
+    "sym_fw": {
+      "cost": 11,
+      "status": "solved",
+      "total_time": 0.414294
+    }
+  },
+  "gripper:prob02.pddl": {
+    "sym_bd": {
+      "cost": 17,
+      "status": "solved",
+      "total_time": 0.359885
+    },
+    "sym_fw": {
+      "cost": 17,
+      "status": "solved",
+      "total_time": 0.373207
+    }
+  },
+  "gripper:prob03.pddl": {
+    "sym_bd": {
+      "cost": 23,
+      "status": "solved",
+      "total_time": 0.406499
+    },
+    "sym_fw": {
+      "cost": 23,
+      "status": "solved",
+      "total_time": 0.386082
+    }
+  },
+  "logistics00:probLOGISTICS-4-0.pddl": {
+    "sym_bd": {
+      "cost": 20,
+      "status": "solved",
+      "total_time": 0.388285
+    },
+    "sym_fw": {
+      "cost": 20,
+      "status": "solved",
+      "total_time": 0.403184
+    }
+  },
+  "logistics00:probLOGISTICS-4-1.pddl": {
+    "sym_bd": {
+      "cost": 19,
+      "status": "solved",
+      "total_time": 0.402849
+    },
+    "sym_fw": {
+      "cost": 19,
+      "status": "solved",
+      "total_time": 0.383996
+    }
+  },
+  "logistics00:probLOGISTICS-5-0.pddl": {
+    "sym_bd": {
+      "cost": 27,
+      "status": "solved",
+      "total_time": 0.341651
+    },
+    "sym_fw": {
+      "cost": 27,
+      "status": "solved",
+      "total_time": 0.338337
+    }
+  },
+  "miconic:s1-0.pddl": {
+    "sym_bd": {
+      "cost": 4,
+      "status": "solved",
+      "total_time": 0.351506
+    },
+    "sym_fw": {
+      "cost": 4,
+      "status": "solved",
+      "total_time": 0.347822
+    }
+  },
+  "miconic:s1-1.pddl": {
+    "sym_bd": {
+      "cost": 3,
+      "status": "solved",
+      "total_time": 0.375979
+    },
+    "sym_fw": {
+      "cost": 3,
+      "status": "solved",
+      "total_time": 0.376259
+    }
+  },
+  "miconic:s1-2.pddl": {
+    "sym_bd": {
+      "cost": 4,
+      "status": "solved",
+      "total_time": 0.364473
+    },
+    "sym_fw": {
+      "cost": 4,
+      "status": "solved",
+      "total_time": 0.373836
+    }
+  },
+  "openstacks-opt08-strips:p01.pddl": {
+    "sym_bd": {
+      "cost": 2,
+      "status": "solved",
+      "total_time": 0.377201
+    },
+    "sym_fw": {
+      "cost": 2,
+      "status": "solved",
+      "total_time": 0.365753
+    }
+  },
+  "openstacks-opt08-strips:p02.pddl": {
+    "sym_bd": {
+      "cost": 2,
+      "status": "solved",
+      "total_time": 0.375532
+    },
+    "sym_fw": {
+      "cost": 2,
+      "status": "solved",
+      "total_time": 0.391032
+    }
+  },
+  "satellite:p01-pfile1.pddl": {
+    "sym_bd": {
+      "cost": 9,
+      "status": "solved",
+      "total_time": 0.311797
+    },
+    "sym_fw": {
+      "cost": 9,
+      "status": "solved",
+      "total_time": 0.307303
+    }
+  },
+  "satellite:p02-pfile2.pddl": {
+    "sym_bd": {
+      "cost": 13,
+      "status": "solved",
+      "total_time": 0.37549
+    },
+    "sym_fw": {
+      "cost": 13,
+      "status": "solved",
+      "total_time": 0.364441
+    }
+  },
+  "satellite:p03-pfile3.pddl": {
+    "sym_bd": {
+      "cost": 11,
+      "status": "solved",
+      "total_time": 0.380028
+    },
+    "sym_fw": {
+      "cost": 11,
+      "status": "solved",
+      "total_time": 0.382164
+    }
+  },
+  "tpp:p01.pddl": {
+    "sym_bd": {
+      "cost": 5,
+      "status": "solved",
+      "total_time": 0.33912
+    },
+    "sym_fw": {
+      "cost": 5,
+      "status": "solved",
+      "total_time": 0.341133
+    }
+  },
+  "tpp:p02.pddl": {
+    "sym_bd": {
+      "cost": 8,
+      "status": "solved",
+      "total_time": 0.351776
+    },
+    "sym_fw": {
+      "cost": 8,
+      "status": "solved",
+      "total_time": 0.352369
+    }
+  },
+  "tpp:p03.pddl": {
+    "sym_bd": {
+      "cost": 11,
+      "status": "solved",
+      "total_time": 0.40362
+    },
+    "sym_fw": {
+      "cost": 11,
+      "status": "solved",
+      "total_time": 0.395178
+    }
+  },
+  "visitall-opt11-strips:problem02-full.pddl": {
+    "sym_bd": {
+      "cost": 3,
+      "status": "solved",
+      "total_time": 0.336315
+    },
+    "sym_fw": {
+      "cost": 3,
+      "status": "solved",
+      "total_time": 0.326784
+    }
+  },
+  "visitall-opt11-strips:problem03-full.pddl": {
+    "sym_bd": {
+      "cost": 8,
+      "status": "solved",
+      "total_time": 0.349014
+    },
+    "sym_fw": {
+      "cost": 8,
+      "status": "solved",
+      "total_time": 0.350736
+    }
+  },
+  "zenotravel:p01.pddl": {
+    "sym_bd": {
+      "cost": 1,
+      "status": "solved",
+      "total_time": 0.342835
+    },
+    "sym_fw": {
+      "cost": 1,
+      "status": "solved",
+      "total_time": 0.316054
+    }
+  },
+  "zenotravel:p02.pddl": {
+    "sym_bd": {
+      "cost": 6,
+      "status": "solved",
+      "total_time": 0.307201
+    },
+    "sym_fw": {
+      "cost": 6,
+      "status": "solved",
+      "total_time": 0.311875
+    }
+  },
+  "zenotravel:p03.pddl": {
+    "sym_bd": {
+      "cost": 6,
+      "status": "solved",
+      "total_time": 0.351292
+    },
+    "sym_fw": {
+      "cost": 6,
+      "status": "solved",
+      "total_time": 0.342279
+    }
+  }
+}

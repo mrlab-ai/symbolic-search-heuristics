@@ -5,10 +5,13 @@
 #include "../plugins/plugin.h"
 #include "../task_utils/task_properties.h"
 #include "../utils/logging.h"
+#include "../utils/system.h"
 #include "sym_axiom/sym_axiom_compilation.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -163,6 +166,59 @@ void SymVariables::init(const vector<int> &v_order) {
         manager->AutodynEnable(Cudd_ReorderingType::CUDD_REORDER_GROUP_SIFT);
         // Mtr_PrintGroups(manager->ReadTree(), 0);
     }
+
+    assert_variable_contiguity();
+}
+
+void SymVariables::assert_variable_contiguity() const {
+    // The width-bounded-heuristics theory (Prop. prop-pot, prop-pdb, prop-ms in
+    // paper/paper.tex) requires the order to be variable-contiguous: the
+    // unprimed BDD variables of each FDR variable must form a consecutive block
+    // in the projection onto unprimed variables. Primed variables may
+    // interleave. With dynamic reordering the runtime order is not stable, so
+    // the check would be meaningless; skip and warn in that case.
+    if (dynamic_reordering) {
+        utils::g_log << "WARNING: dynamic reordering is on; skipping the "
+                        "variable-contiguity check required by the "
+                        "width-bounded-heuristics theory." << endl;
+        return;
+    }
+
+    // Collect (level, fd_var) for every unprimed BDD variable and sort by the
+    // CUDD level (the projection order onto unprimed variables).
+    vector<pair<int, int>> level_var;
+    for (int var : var_order) {
+        for (int index : bdd_index_pre[var]) {
+            level_var.emplace_back(manager->ReadPerm(index), var);
+        }
+    }
+    sort(level_var.begin(), level_var.end());
+
+    // Walking in level order, each FDR variable must appear as a single
+    // contiguous run: it is a violation if a variable reappears after some
+    // other variable's block has begun.
+    set<int> completed;
+    int prev_var = -1;
+    for (const auto &[level, var] : level_var) {
+        if (var == prev_var) {
+            continue;
+        }
+        if (completed.count(var) > 0) {
+            utils::g_log << "ERROR: variable-contiguity check failed: the "
+                            "unprimed bits of FDR variable " << var
+                         << " are not consecutive in the unprimed variable "
+                            "order. The width-bounded-heuristics guarantees "
+                            "(paper/paper.tex, Sec. width-bounded families) do "
+                            "not apply." << endl;
+            ABORT("Variable order is not variable-contiguous.");
+        }
+        if (prev_var != -1) {
+            completed.insert(prev_var);
+        }
+        prev_var = var;
+    }
+    utils::g_log << "Variable-contiguity check passed (" << var_order.size()
+                 << " FDR variables, unprimed projection)." << endl;
 }
 
 double SymVariables::numStates(const BDD &bdd) const {

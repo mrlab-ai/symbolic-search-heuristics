@@ -112,6 +112,13 @@ public:
 
     BDD getPartialStateBDD(const std::vector<std::pair<int, int>> &state) const;
 
+    // Width-bounded-heuristics theory precondition: verify that the unprimed
+    // BDD variables of each FDR variable occupy a consecutive block of levels
+    // in the projection onto unprimed variables (primed variables may
+    // interleave). Aborts if the check fails. See docs/wbh-repo-map.md and
+    // Prop. prop-pot in paper/paper.tex.
+    void assert_variable_contiguity() const;
+
     inline const std::vector<int> &vars_index_pre(int variable) const {
         return bdd_index_pre[variable];
     }
