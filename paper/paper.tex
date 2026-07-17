@@ -1190,9 +1190,12 @@ whereas the perfect heuristic has width $2^{n}$ there
 Configuration & Coverage \\
 \midrule
 Blind forward (SymK) & 682 \\
-Potentials ($M = 8$) & 622 \\
-Prefix PDB & 685 \\
-Linear merge-and-shrink & 704 \\
+Potentials ($M = 8$), \bddastar & 622 \\
+Prefix PDB, \bddastar & 685 \\
+Linear merge-and-shrink, \bddastar & 704 \\
+Potentials ($M = 8$), pruning-only & 683 \\
+Prefix PDB, pruning-only & 682 \\
+Linear merge-and-shrink, pruning-only & 681 \\
 \midrule
 Blind bidirectional (SymK) & 777 \\
 A+I operator potentials \citep{fiser-et-al-aij2024} & 652 \\
@@ -1201,8 +1204,9 @@ Scorpion \citep{seipp-et-al-jair2020} & \textbf{912} \\
 \bottomrule
 \end{tabular}
 \caption{Coverage on the 1377 positive-cost tasks. The upper block lists
-blind forward search and our three width-bounded forward-search families;
-the lower block lists external baselines.}
+blind forward search and our three width-bounded families, each in the
+\bddastar\ (partitioning) and the pruning-only variant; the lower block
+lists external baselines.}
 \label{tab-coverage}
 \end{table}
 
@@ -1221,10 +1225,43 @@ forward-search guarantee (Theorem~\ref{thm-effort}): blind
 \emph{bidirectional} SymK ($777$) and \symba\ ($724$) are bidirectional,
 and Scorpion ($912$) is explicit-state. Closing the gap to bidirectional
 search---where the backward frontier interacts with forward buckets---is
-the future work noted in Section~\ref{sec-effort}. The result we do claim
+discussed below. The result we do claim
 is the one the theory predicts: width-bounded heuristics can be added to
 forward symbolic search essentially for free, and yield modest coverage
 gains.
+
+\paragraph{Ordering versus pruning.}
+Table~\ref{tab-coverage} also separates the two ways of using a
+heuristic. The pruning-only variants (Corollary~\ref{cor-prune}) behave
+exactly as the theory promises: their coverage matches blind forward
+search within one task for all three families ($683$, $682$, $681$
+vs.\ $682$), their expansion-size ratio over blind search is $1.00$ in
+the geometric mean, and where they deviate they save effort (dead-end
+pruning on up to $20$ tasks per family). Pruning is empirically free---
+but in forward search it also gains little, because the anytime upper
+bound only becomes available late. Whether the $f$-ordered expansion of
+\bddastar\ pays instead is decided by the image-call factor of
+Proposition~\ref{prop-calls}: linear merge-and-shrink, whose level count
+is small (median $16$ values), profits from ordering ($704$ vs.\ $681$
+pruning-only), while potentials, with a median of $53$ values and $65$
+where losses occur, are hurt by it ($622$ vs.\ $683$). The choice between
+guidance and safety is thus governed by the number of heuristic values,
+exactly as the refined cost model predicts.
+
+\paragraph{Bidirectional pruning.}
+Since pruning needs no partitioning, it extends to blind bidirectional
+search (Section~\ref{sec-prune}), whose coverage no forward
+configuration approaches. Here the abstraction itself becomes the cost:
+without a construction budget, building the merge-and-shrink level sets
+consumed up to the entire time limit and cost more tasks than the
+pruning recovered ($1032$ vs.\ $1051$ for blind bidirectional search on
+the full suite of 1697 tasks, with construction taking over $90$ seconds
+on ten percent of the tasks). With a $60$-second construction budget and
+fallback to blind search---making the pruning safe \emph{including} its
+setup cost---the budgeted variant reaches
+% TODO(bd_ms10k_b60): fill in when the exp_bd_prune2 sweep completes.
+coverage comparable to blind bidirectional search while proving
+unsolvability and pruning dead ends where the abstraction detects them.
 
 \paragraph{Q2 and Q4: The width knob.}
 Table~\ref{tab-knob} varies the potential magnitude cap $M$. At $M = 0$
