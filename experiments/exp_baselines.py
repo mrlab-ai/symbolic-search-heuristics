@@ -72,26 +72,14 @@ ALGORITHMS = {
 
 
 def enumerate_tasks():
-    """Return (domain, problem, domain_file, problem_file) for the suite."""
+    """Return (domain, problem, domain_file, problem_file) for the suite,
+    using Downward Lab's task resolver so per-problem domain files (airport,
+    openstacks, parcprinter, ...) are found correctly."""
+    from downward import suites
+    descriptions = suite_wbh.SMOKE if C.LOCAL else suite_wbh.suite()
     tasks = []
-    if C.LOCAL:
-        specs = [s.split(":") for s in suite_wbh.SMOKE]
-    else:
-        specs = []
-        for domain in suite_wbh.suite():
-            ddir = C.BENCHMARKS / domain
-            if not ddir.is_dir():
-                continue
-            for pf in sorted(ddir.glob("*.pddl")):
-                if "domain" in pf.name:
-                    continue
-                specs.append([domain, pf.name])
-    for domain, problem in specs:
-        pf = C.BENCHMARKS / domain / problem
-        df = C.BENCHMARKS / domain / "domain.pddl"
-        if not df.exists():
-            df = C.BENCHMARKS / domain / (Path(problem).stem + "-domain.pddl")
-        tasks.append((domain, problem, df, pf))
+    for t in suites.build_suite(str(C.BENCHMARKS), descriptions):
+        tasks.append((t.domain, t.problem, t.domain_file, t.problem_file))
     return tasks
 
 
