@@ -17,15 +17,15 @@ from pathlib import Path
 
 DATA = Path(__file__).resolve().parent / "data"
 RESULTS = Path(__file__).resolve().parent.parent / "results"
-EXPS = ["exp_q1", "exp_q2", "exp_baselines", "exp_ms", "exp_blind_bd", "exp_prune", "exp_bd_prune"]
+EXPS = ["exp_q1", "exp_q2", "exp_baselines", "exp_ms", "exp_blind_bd", "exp_prune", "exp_bd_prune", "exp_bd_prune2"]
 HEUR = {"pot_m8", "pdb", "ms", "pot_m0", "pot_m1", "pot_m2", "pot_m4",
         "pot_m16", "pot_unbounded", "pot_m8_prune", "pdb_prune", "ms_prune"}
 # Report order; dedup keeps the first experiment that has each algorithm.
 ALGS = ["blind_fw", "blind_bd", "pot_m8", "pdb", "ms",
         "pot_m8_prune", "pdb_prune", "ms_prune",
-        "bd_ms10k", "bd_ms100k",
+        "bd_ms10k", "bd_ms100k", "bd_ms10k_b60",
         "a_plus_i", "symba_star", "scorpion"]
-EXP_ORDER = ["exp_q2", "exp_q1", "exp_ms", "exp_prune", "exp_bd_prune", "exp_blind_bd", "exp_baselines"]
+EXP_ORDER = ["exp_q2", "exp_q1", "exp_ms", "exp_prune", "exp_bd_prune", "exp_bd_prune2", "exp_blind_bd", "exp_baselines"]
 
 
 def load(name):
