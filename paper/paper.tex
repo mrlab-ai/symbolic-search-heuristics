@@ -1083,7 +1083,9 @@ $\tau_{j+1}, \dots, \tau_m$ and the final distance table to the suffix.
 \end{proof}
 
 Proposition~\ref{prop-ms} recasts a known compactness result in a new
-role. \citet{torralba-phd2015} proved that linear M\&S heuristics have
+role. Running \bddastar\ with M\&S heuristics compiled into BDDs goes
+back to \citet{edelkamp-et-al-ecai2012}, and \citet{torralba-phd2015}
+proved that linear M\&S heuristics have
 BDD representations with at most polynomial overhead, enabling their
 use in symbolic search; Proposition~\ref{prop-ms} sharpens the
 representational statement to a per-level width bound and, through
@@ -1091,7 +1093,17 @@ Theorems~\ref{thm-partition} and~\ref{thm-effort}, converts it for the
 first time into a guarantee on \emph{search behavior}: the shrink size
 limit $N$, imposed anyway to keep M\&S construction tractable, doubles
 as a bound on the harm the heuristic can do to the symbolic search that
-uses it. In contrast, no small-width representation is known for
+uses it. Our merge-and-shrink configuration is thus deliberately the
+configuration of \citet{edelkamp-et-al-ecai2012} made safe: same
+algorithmic skeleton, now with an alignment condition (merge order
+matching the search's variable order), a width guarantee, and---in
+Section~\ref{sec-experiments}---an account of when it pays
+off.\footnote{Our implementation merges along a fixed linear variable
+order that need not coincide with the search's Gamer order; the
+statistics we report therefore measure the width of the constructed ADD
+directly \emph{in the search order}, which is the quantity the theorems
+consume. Aligning the merge order with the search order is a natural
+refinement.} In contrast, no small-width representation is known for
 $h^{\max}$, $h^{\mathrm{add}}$ or LM-cut, whose values depend on
 optimization problems that entangle all variables, and
 Theorem~\ref{thm-lb} shows that perfect goal-distance information can
@@ -1307,15 +1319,28 @@ transition-relation branching partitions;
 \citet{speck-et-al-icaps2020} proved that no heuristic, not even
 \hstar, is guaranteed to help \bddastar; we give the matching sufficient
 condition and show their pathology requires exponential width. Second,
-compact representations of heuristics:
-\citet{edelkamp-et-al-ecai2012} compiled PDB and M\&S heuristics into
-vectors of BDDs for \bddastar, \citet{torralba-phd2015} proved
-polynomial-size BDD representations for linear M\&S and analyzed
-ADD-to-BDD conversions, and \citet{helmert-et-al-icaps2015} introduced
-factored mappings, which our width notion relativizes to the search
-order; none of these works bounds the effect of the representation on
-the search frontier, which is our contribution. The operator-potential
-line \citep{fiser-et-al-aaai2022,fiser-et-al-aij2024} demonstrated
+compact representations of heuristics.
+Our merge-and-shrink configuration deserves an explicit comparison,
+since its algorithmic skeleton is not new:
+\citet{edelkamp-et-al-ecai2012} already compiled PDB and M\&S heuristics
+into vectors of BDDs and ran \bddastar, and \citet{torralba-phd2015}
+proved polynomial-size BDD representations for linear M\&S and analyzed
+ADD-to-BDD conversions; the factored mappings of
+\citet{helmert-et-al-icaps2015}, whose cascading tables our level-set
+construction walks, made the representation explicit. What none of these
+works provides---and what, after the negative result of
+\citet{speck-et-al-icaps2020}, made the whole approach appear unsafe---is
+a bound on the effect of the representation on the \emph{search
+frontier}. Our contribution to this line is therefore not the encoding
+but the account of when it works: the alignment condition between merge
+order and search variable order, the width bound
+$\width_\pi(h^\alpha) \leq dN$ that turns the standard shrink limit $N$
+into a safety knob (Proposition~\ref{prop-ms}), and the image-call
+analysis (Proposition~\ref{prop-calls}) that predicts---correctly, per
+Section~\ref{sec-experiments}---that this family profits from
+$f$-ordering precisely because its value count is small. The
+operator-potential line
+\citep{fiser-et-al-aaai2022,fiser-et-al-aij2024} demonstrated
 empirically that potential heuristics integrate well into \ghseta;
 Corollary~\ref{cor-pot} supplies the missing guarantee and identifies
 the responsible parameter. Third, performance guarantees for symbolic
@@ -1324,12 +1349,20 @@ over explicit blind search via conjunctive transition-relation
 partitioning; our results are complementary, bounding the overhead of
 heuristic over blind \emph{symbolic} search via a property of the
 heuristic, and combining the two guarantee regimes is an appealing
-direction. Related but orthogonal are symbolic perimeter abstraction
-heuristics \citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018},
-which defer heuristic computation until blind search stalls, variable
-ordering analyses \citep{kissmann-hoffmann-jair2014} and EVMDD-based
-representations of state-dependent cost structure
-\citep{speck-et-al-icaps2018}.
+direction. Closest to our bidirectional pruning variant are the symbolic
+perimeter abstraction heuristics of
+\citet{torralba-et-al-ijcai2016a,torralba-et-al-aij2018}, which also
+delay heuristic effort---they construct abstractions once blind search
+stalls, we construct ours once the first solution makes the bound slice
+applicable. The differences are the mechanism and the guarantee: SymPA
+computes perimeter abstractions symbolically and uses them to order the
+frontier, whereas we prune whole layers with an explicitly computed
+abstraction whose init and goal distances serve both directions at once,
+under the factor-$Wn$ safety bound of Corollary~\ref{cor-prune} and with
+a construction budget that bounds the total overhead including setup.
+Related but orthogonal are variable ordering analyses
+\citep{kissmann-hoffmann-jair2014} and EVMDD-based representations of
+state-dependent cost structure \citep{speck-et-al-icaps2018}.
 
 % ============================ conclusions ================================
 \section{Conclusions}
