@@ -1258,10 +1258,15 @@ pruning recovered ($1032$ vs.\ $1051$ for blind bidirectional search on
 the full suite of 1697 tasks, with construction taking over $90$ seconds
 on ten percent of the tasks). With a $60$-second construction budget and
 fallback to blind search---making the pruning safe \emph{including} its
-setup cost---the budgeted variant reaches
-% TODO(bd_ms10k_b60): fill in when the exp_bd_prune2 sweep completes.
-coverage comparable to blind bidirectional search while proving
-unsolvability and pruning dead ends where the abstraction detects them.
+setup cost---the budgeted variant recovers most of the difference
+($1041$ vs.\ $1051$) but remains ten tasks behind: three wins from
+dead-end pruning do not offset the residual setup and slicing overhead
+on tasks that blind search solves close to the time limit. We consider
+this an instructive negative result: bidirectional blind search is
+robust not because heuristic information fragments its BDDs---our bounds
+and measurements rule that out---but because at this level of
+performance even provably safe pruning must first pay for computing its
+heuristic, and on this suite that constant cost is not recouped.
 
 \paragraph{Q2 and Q4: The width knob.}
 Table~\ref{tab-knob} varies the potential magnitude cap $M$. At $M = 0$
