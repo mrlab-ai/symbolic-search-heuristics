@@ -25,9 +25,13 @@ BDD WbhPruner::prune(BDD states, int g) const {
         states *= !dead_ends;
     }
     int upper_bound = engine->getUpperBound();
-    if (upper_bound < numeric_limits<int>::max()) {
+    if (upper_bound < numeric_limits<int>::max() &&
+        !cumulative_levels.empty() &&
+        upper_bound - 1 - g < cumulative_levels.back().first) {
         // Keep only { s : h(s) <= upper_bound - 1 - g }: the largest
-        // cumulative slice below the bound.
+        // cumulative slice below the bound. (When the bound admits every
+        // finite value the product is skipped entirely -- pruning cost is
+        // then zero until g approaches upper_bound - max h.)
         int max_h = upper_bound - 1 - g;
         const BDD *keep = nullptr;
         for (const auto &[value, cumulative] : cumulative_levels) {

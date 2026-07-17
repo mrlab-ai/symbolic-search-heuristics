@@ -5,7 +5,9 @@
 #include "wbh_add_stats.h"
 
 #include "../task_proxy.h"
+#include "../utils/countdown_timer.h"
 
+#include <limits>
 #include <map>
 #include <vector>
 
@@ -49,12 +51,24 @@ class MsLevelSets {
     int num_abstract_states = 0;
 
     std::map<int, BDD> build_state_map(
-        const merge_and_shrink::MergeAndShrinkRepresentation &rep) const;
+        const merge_and_shrink::MergeAndShrinkRepresentation &rep,
+        const utils::CountdownTimer &budget) const;
+
+    bool construction_failed = false;
 
 public:
+    // max_time bounds the abstraction + level-set construction (infinity =
+    // unbounded); on breach, construction_timed_out() is true and the level
+    // sets are unusable (callers fall back to blind search -- the pruning
+    // guarantee then holds including its setup cost).
     MsLevelSets(
         SymVariables *vars, const TaskProxy &task_proxy, int max_states,
-        int shrink_seed, bool both_directions = false);
+        int shrink_seed, bool both_directions = false,
+        double max_time = std::numeric_limits<double>::infinity());
+
+    bool construction_timed_out() const {
+        return construction_failed;
+    }
 
     const std::map<int, BDD> &get_level_sets() const {
         return level_sets;

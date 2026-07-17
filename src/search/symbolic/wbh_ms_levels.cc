@@ -26,9 +26,10 @@ namespace ms = merge_and_shrink;
 namespace symbolic {
 MsLevelSets::MsLevelSets(
     SymVariables *vars, const TaskProxy &task_proxy, int max_states,
-    int shrink_seed, bool both_directions)
+    int shrink_seed, bool both_directions, double max_time)
     : vars(vars), dead_ends(vars->zeroBDD()), init_dead_ends(vars->zeroBDD()) {
     utils::LogProxy log = utils::get_silent_log();
+    utils::CountdownTimer budget(max_time);
 
     // Linear merge over a variable-order-finder order; bisimulation shrink to
     // <= max_states; pruning OFF so the abstraction mapping is total (every
@@ -46,10 +47,17 @@ MsLevelSets::MsLevelSets(
         /*prune_unreachable_states=*/false, /*prune_irrelevant_states=*/false,
         /*max_states=*/max_states, /*max_states_before_merge=*/max_states,
         /*threshold_before_merge=*/1,
-        /*main_loop_max_time=*/numeric_limits<double>::infinity(),
+        /*main_loop_max_time=*/max_time,
         utils::Verbosity::SILENT);
     ms::FactoredTransitionSystem fts =
         algorithm.build_factored_transition_system(task_proxy);
+
+    // If the main loop hit its time limit, the merge is incomplete (multiple
+    // active factors) and the cascading-table walk is not applicable.
+    if (budget.is_expired() || fts.get_num_active_entries() != 1) {
+        construction_failed = true;
+        return;
+    }
 
     // After a full linear merge there is a single active factor.
     int factor = -1;
@@ -69,7 +77,11 @@ MsLevelSets::MsLevelSets(
     // Build abstract-state-id -> BDD over the cascading tables, then group by
     // goal distance into level sets (dead ends: goal distance infinity), and
     // with both_directions also by init distance for the backward direction.
-    map<int, BDD> state_map = build_state_map(*representation);
+    map<int, BDD> state_map = build_state_map(*representation, budget);
+    if (budget.is_expired()) {
+        construction_failed = true;
+        return;
+    }
     num_abstract_states = static_cast<int>(state_map.size());
     for (const auto &[abstract_id, bdd] : state_map) {
         int d = distances->get_goal_distance(abstract_id);
@@ -143,8 +155,12 @@ MsLevelSets::MsLevelSets(
 }
 
 map<int, BDD> MsLevelSets::build_state_map(
-    const ms::MergeAndShrinkRepresentation &rep) const {
+    const ms::MergeAndShrinkRepresentation &rep,
+    const utils::CountdownTimer &budget) const {
     map<int, BDD> result;
+    if (budget.is_expired()) {
+        return result;
+    }
     if (const auto *leaf =
             dynamic_cast<const ms::MergeAndShrinkRepresentationLeaf *>(&rep)) {
         int var = leaf->get_variable();
@@ -165,10 +181,13 @@ map<int, BDD> MsLevelSets::build_state_map(
     } else {
         const auto &merge =
             dynamic_cast<const ms::MergeAndShrinkRepresentationMerge &>(rep);
-        map<int, BDD> left = build_state_map(merge.get_left_child());
-        map<int, BDD> right = build_state_map(merge.get_right_child());
+        map<int, BDD> left = build_state_map(merge.get_left_child(), budget);
+        map<int, BDD> right = build_state_map(merge.get_right_child(), budget);
         const vector<vector<int>> &table = merge.get_lookup_table();
         for (const auto &[id_left, bdd_left] : left) {
+            if (budget.is_expired()) {
+                return result;
+            }
             for (const auto &[id_right, bdd_right] : right) {
                 int merged = table[id_left][id_right];
                 if (merged == ms::PRUNED_STATE) {

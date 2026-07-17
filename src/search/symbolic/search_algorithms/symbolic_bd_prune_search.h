@@ -20,6 +20,7 @@ class WbhPruner;
 */
 class SymbolicBdPruneSearch : public SymbolicSearch {
     const int max_states;
+    const double build_time_limit;
 
     std::shared_ptr<MsLevelSets> level_sets;
     std::shared_ptr<WbhPruner> fw_pruner;
