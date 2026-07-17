@@ -23,17 +23,30 @@ HeuristicFwSearch::HeuristicFwSearch(
       closed(make_shared<ClosedList>()),
       level_sets(nullptr),
       stats(nullptr),
+      prune_only(false),
       has_current_f(false),
       current_f(0) {
 }
 
 bool HeuristicFwSearch::init(
     shared_ptr<SymStateSpaceManager> manager,
-    const map<int, BDD> *level_sets_, const BDD &dead_ends_) {
+    const map<int, BDD> *level_sets_, const BDD &dead_ends_,
+    bool prune_only_) {
     mgr = manager;
     level_sets = level_sets_;
     dead_ends = dead_ends_;
+    prune_only = prune_only_;
     stats = sym_params.stats.get();
+
+    if (prune_only) {
+        // Cumulative slices P_t = union_{v <= t} H_v for one-intersection
+        // interval pruning.
+        BDD acc = mgr->zeroBDD();
+        for (const auto &[value, level] : *level_sets) {
+            acc += level;
+            cumulative_levels.emplace_back(value, acc);
+        }
+    }
 
     if (mgr->has_zero_cost_transition()) {
         // Positive-cost assumption (paper). Exit cleanly as unsupported rather
@@ -63,11 +76,25 @@ bool HeuristicFwSearch::init(
                      << endl;
         utils::exit_with(utils::ExitCode::SEARCH_UNSOLVABLE);
     }
-    insert_open(0, v0, initial_state);
+    // In prune-only mode the open list is keyed by g alone (v = 0), matching
+    // blind expansion order; the heuristic acts only through slice pruning.
+    insert_open(0, prune_only ? 0 : v0, initial_state);
 
-    engine->setLowerBound(0 + v0);
+    engine->setLowerBound(prune_only ? 0 : 0 + v0);
     engine->setMinG(0);
     return true;
+}
+
+BDD HeuristicFwSearch::keep_slice(int max_h) const {
+    // Union of H_v for v <= max_h (zero BDD if below all values).
+    BDD result = mgr->zeroBDD();
+    for (const auto &[value, cumulative] : cumulative_levels) {
+        if (value > max_h) {
+            break;
+        }
+        result = cumulative;
+    }
+    return result;
 }
 
 int HeuristicFwSearch::value_of_state(const BDD &state) const {
@@ -153,6 +180,21 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
         return;
     }
 
+    // Prune-only: re-apply the interval slice at selection time, since the
+    // anytime upper bound may have tightened after this bucket was generated
+    // (e.g. by the solution cut just above).
+    if (prune_only) {
+        int upper_bound = engine->getUpperBound();
+        if (upper_bound < numeric_limits<int>::max()) {
+            states *= keep_slice(upper_bound - 1 - g);
+        }
+        if (states.IsZero()) {
+            has_current_f = false;
+            engine->setLowerBound(min_open_f());
+            return;
+        }
+    }
+
     // Mutex filtering (idempotent; same setting as blind search). Reduces to
     // the identical set blind produces for this layer.
     Bucket filtered{states};
@@ -212,6 +254,22 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
                     continue;
                 }
             }
+        }
+
+        if (prune_only) {
+            // Prune-only variant: keep the layer whole; discard the interval
+            // slice { s : g2 + h(s) >= U } once an anytime upper bound U is
+            // known from the engine's solution cuts (states there cannot lie
+            // on a plan cheaper than U). One intersection, one open bucket.
+            int upper_bound = engine->getUpperBound();
+            if (upper_bound < numeric_limits<int>::max()) {
+                successors *= keep_slice(upper_bound - 1 - g2);
+                if (successors.IsZero()) {
+                    continue;
+                }
+            }
+            insert_open(g2, 0, successors);
+            continue;
         }
 
         long layer_nodes = successors.nodeCount();

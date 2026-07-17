@@ -765,6 +765,69 @@ bidirectional \citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and
 extending the analysis to bidirectional \bddastar, where the backward
 frontier interacts with forward buckets, is future work.
 
+\subsection{Pruning-Only Search}
+\label{sec-prune}
+
+\bddastar\ pays for its expansion order: partitioning a layer into up to
+$\values$ buckets multiplies the number of image operations per layer by
+$\values$, a cost that Definition~\ref{def-effort} does not capture
+because it counts BDD nodes rather than image calls. This motivates a
+variant that keeps every layer in a \emph{single} BDD, exactly like blind
+forward search, and uses the heuristic only to discard states that
+provably cannot contribute a better plan. \emph{Pruning-only search} runs
+symbolic uniform-cost search and maintains the incumbent bound $c$, the
+cost of the best solution found so far ($c = \infty$ initially; symbolic
+forward search discovers solutions through frontier--goal cuts before
+optimality is proved). From each generated layer it discards the states
+with $h(s) = \infty$ and the slice $\{\, s \mid g + h(s) \geq c \,\}$,
+re-applying the current bound when the layer is expanded. Admissibility
+of $h$ makes both discards sound.
+
+\begin{lemma}[slice identity]
+\label{lem-slice}
+Let $h$ be consistent, and let $c_g$ denote the incumbent bound when
+pruning-only search expands the layer with $g$-value $g$. Since layers
+are expanded in order of increasing $g$ and the incumbent bound never
+increases, the expanded layer is exactly
+$L_g \cap h^{-1}(\{\, v \mid v < c_g - g \,\})$.
+\end{lemma}
+
+\begin{proof}
+The expanded set is contained in the slice because the bound $c_g$ is
+applied at expansion time. For the converse, let
+$s \in L_g$ with $g + h(s) < c_g$ and let
+$p_0 = \sinit, \dots, p_k = s$ be a cheapest path, so
+$\gstar(p_j) + h(p_j) \leq \gstar(s) + h(s) < c_g$ for every $j$ by
+consistency along the path. Layer $\gstar(p_j)$ was expanded no later
+than layer $g$, so its bound satisfied $c_{\gstar(p_j)} \geq c_g$, and
+$p_j$ survived both its generation-time and expansion-time pruning; by
+induction along the path, $s$ is generated at cost $g$ and survives, so
+it lies in the expanded layer.
+\end{proof}
+
+Each expanded layer is thus a single value slice of the blind layer, so
+Theorem~\ref{thm-bucket} with $U = \{\, v \mid v < c_g - g \,\}$ applies
+directly, and only one such set is expanded per layer:
+
+\begin{corollary}[pruning bound]
+\label{cor-prune}
+Let $h$ be admissible and consistent with $\width_\pi(h) \leq W$. The
+cumulative size of the layers expanded by pruning-only search is at most
+$W n \cdot (\effort(\task, \hblind) + 2\copt)$, one factor $W$ less than
+the \bddastar\ bound of Theorem~\ref{thm-effort}, with one image
+operation per layer as in blind search. With $c = \infty$ throughout
+(no solution found yet) and no dead ends, the search coincides with
+blind forward search.
+\end{corollary}
+
+Pruning-only search trades the $f$-ordered expansion of \bddastar\ for
+the layer structure of blind search: it reaches the first solution at
+the same time as blind search, but then prunes the remaining
+optimality-proof effort by the $g + h \geq c$ slices, and it discards
+dead ends from the start. It thereby turns the width bound into a pure
+safety guarantee: never more than a factor $Wn$ worse than blind search,
+never an extra image operation, and any pruning is a strict saving.
+
 \subsection{Exponential Width Is Necessary for the Known Pathology}
 
 We now revisit the family $\task_n$ of \citet{speck-et-al-icaps2020} on

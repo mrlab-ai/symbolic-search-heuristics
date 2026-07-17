@@ -21,6 +21,7 @@ SymbolicPotentialForwardSearch::SymbolicPotentialForwardSearch(
     const plugins::Options &opts)
     : SymbolicSearch(opts),
       m(opts.get<int>("m")),
+      prune_only(opts.get<bool>("prune_only")),
       objective_all_states(opts.get<bool>("all_states_objective")),
       lp_solver_type(opts.get<lp::LPSolverType>("lpsolver")) {
 }
@@ -67,7 +68,8 @@ void SymbolicPotentialForwardSearch::initialize() {
     auto search_ptr =
         unique_ptr<HeuristicFwSearch>(new HeuristicFwSearch(this, sym_params));
     // Potentials never produce infinity, so the dead-end set is empty.
-    search_ptr->init(mgr, &level_sets->get_level_sets(), vars->zeroBDD());
+    search_ptr->init(
+        mgr, &level_sets->get_level_sets(), vars->zeroBDD(), prune_only);
 
     auto sym_trs = search_ptr->getStateSpaceShared()->get_transition_relations();
     solution_registry->init(
@@ -99,6 +101,12 @@ public:
             "Width cap: integer potentials with |P(v,w)| <= m. m=0 reduces to "
             "blind forward search.",
             "8", plugins::Bounds("0", "infinity"));
+        add_option<bool>(
+            "prune_only",
+            "Use the heuristic only for pruning (dead ends and, once an "
+            "anytime upper bound is known, the g+h >= bound slice); layers "
+            "stay whole as in blind search (paper Cor. cor-prune).",
+            "false");
         add_option<bool>(
             "all_states_objective",
             "Optimize the potentials for the average over all states instead "

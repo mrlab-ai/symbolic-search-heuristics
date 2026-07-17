@@ -75,6 +75,13 @@ public:
         return lower_bound;
     }
 
+    // Cost of the best solution found so far (anytime upper bound; INT_MAX if
+    // none). Used by the width-bounded pruning search to discard states with
+    // g + h >= upper bound.
+    virtual int getUpperBound() const {
+        return upper_bound;
+    }
+
     virtual int getMinG() const {
         return min_g;
     }

@@ -15,7 +15,8 @@ using namespace std;
 
 namespace symbolic {
 SymbolicMsForwardSearch::SymbolicMsForwardSearch(const plugins::Options &opts)
-    : SymbolicSearch(opts), max_states(opts.get<int>("max_states")) {
+    : SymbolicSearch(opts), max_states(opts.get<int>("max_states")),
+      prune_only(opts.get<bool>("prune_only")) {
 }
 
 void SymbolicMsForwardSearch::initialize() {
@@ -38,7 +39,8 @@ void SymbolicMsForwardSearch::initialize() {
     auto search_ptr =
         unique_ptr<HeuristicFwSearch>(new HeuristicFwSearch(this, sym_params));
     search_ptr->init(
-        mgr, &level_sets->get_level_sets(), level_sets->get_dead_ends());
+        mgr, &level_sets->get_level_sets(), level_sets->get_dead_ends(),
+        prune_only);
 
     auto sym_trs = search_ptr->getStateSpaceShared()->get_transition_relations();
     solution_registry->init(
@@ -69,6 +71,12 @@ public:
             "Shrink size limit N (the width knob): intermediate abstractions "
             "are shrunk to at most N states.",
             "10000", plugins::Bounds("1", "infinity"));
+        add_option<bool>(
+            "prune_only",
+            "Use the heuristic only for pruning (dead ends and, once an "
+            "anytime upper bound is known, the g+h >= bound slice); layers "
+            "stay whole as in blind search (paper Cor. cor-prune).",
+            "false");
         this->add_option<shared_ptr<symbolic::PlanSelector>>(
             "plan_selection", "plan selection strategy", "top_k(num_plans=1)");
     }

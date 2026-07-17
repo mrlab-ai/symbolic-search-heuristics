@@ -30,6 +30,16 @@ class WbhStats;
   empty for potentials). Dead-end successors are discarded before insertion and
   counted (paper's pruned_deadends event).
 
+  PRUNE-ONLY VARIANT (paper Cor. cor-prune): with prune_only=true the search
+  keeps each layer as a single BDD like blind forward search (one image call
+  per layer, no partitioning) and uses the heuristic only to discard states
+  that provably cannot lie on an improving plan: the dead ends (h = infinity)
+  and, once an anytime upper bound U is known from the engine's solution cuts,
+  the interval slice { s : g + h(s) >= U }. By the bucket bound (paper Thm.
+  thm-bucket with an interval U) each expanded layer costs at most a factor
+  Wn over the blind layer -- a factor W better than the per-value partition --
+  and with no bound and no dead ends the search is exactly blind.
+
   With the all-zero potential (M = 0) there is a single value 0 and
   H_0 = valid states, so this reduces exactly to blind symbolic forward search
   (sym_fw): the blind-equivalence invariant of PR3.
@@ -47,6 +57,13 @@ class HeuristicFwSearch : public SymSearch {
     const std::map<int, BDD> *level_sets;
     BDD dead_ends;
     WbhStats *stats;
+    bool prune_only;
+
+    // For prune_only: cumulative level sets P_t = union of H_v for v <= t,
+    // sorted by value; used to slice a layer to { s : h(s) <= t } with one
+    // intersection.
+    std::vector<std::pair<int, BDD>> cumulative_levels;
+    BDD keep_slice(int max_h) const;
 
     // Open buckets keyed by (g, v). Each value is a (possibly multi-BDD)
     // bucket; BDDs are merged on selection.
@@ -65,10 +82,12 @@ public:
 
     // level_sets maps each finite heuristic value v to H_v; dead_ends is the
     // set of states with h = infinity (empty BDD if none). Both must outlive
-    // the search.
+    // the search. With prune_only the heuristic is used for pruning slices
+    // only (single bucket per layer, see class comment).
     bool init(
         std::shared_ptr<SymStateSpaceManager> manager,
-        const std::map<int, BDD> *level_sets, const BDD &dead_ends);
+        const std::map<int, BDD> *level_sets, const BDD &dead_ends,
+        bool prune_only = false);
 
     std::shared_ptr<ClosedList> getClosedShared() const {
         return closed;
