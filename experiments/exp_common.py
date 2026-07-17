@@ -40,15 +40,20 @@ MEMORY_LIMIT = "4G" if LOCAL else "8G"
 WBH_LOG = 'wbh.jsonl'
 
 
+# NSC/Tetralith allocation for this project. Per-run limits (30 min, 8 GiB) are
+# enforced by the Fast Downward driver (add_algorithm below); Tetralith's
+# defaults (9 GiB/cpu, 24 h/job) comfortably envelope them so the driver limits
+# bind first and fail gracefully.
+TETRALITH_EMAIL = os.environ.get("WBH_EMAIL", "jendrik.seipp@liu.se")
+TETRALITH_ACCOUNT = os.environ.get("WBH_ACCOUNT", "naiss2025-5-382")
+
+
 def get_environment():
     if LOCAL:
         return LocalEnvironment(processes=4)
-    # Adjust email/partition/account for your Tetralith allocation before the
-    # full sweep.
     return TetralithEnvironment(
-        email=os.environ.get("WBH_EMAIL"),
-        memory_per_cpu="8G",
-        extra_options="#SBATCH --account=" + os.environ.get("WBH_ACCOUNT", "TODO"),
+        email=TETRALITH_EMAIL,
+        extra_options=f"#SBATCH --account={TETRALITH_ACCOUNT}",
     )
 
 
