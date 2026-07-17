@@ -30,10 +30,17 @@ namespace symbolic {
  */
 class SymController;
 class ClosedList;
+class WbhPruner;
 
 class UniformCostSearch : public SymSearch {
 protected:
     bool fw; // Direction of the search. true=forward, false=backward
+
+    // Optional width-bounded pruning hook (paper Sec. sec-prune): applied to
+    // the popped frontier in filterFrontier(), i.e. at expansion time like
+    // the duplicate filtering. Null (the default) leaves blind search
+    // untouched.
+    std::shared_ptr<WbhPruner> wbh_pruner;
 
     Estimation step_estimation;
 
@@ -114,6 +121,10 @@ public:
 
     std::shared_ptr<ClosedList> getClosedShared() const {
         return closed;
+    }
+
+    void set_wbh_pruner(const std::shared_ptr<WbhPruner> &pruner) {
+        wbh_pruner = pruner;
     }
 
     void filterDuplicates(Bucket &bucket);

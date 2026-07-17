@@ -39,6 +39,12 @@ class MsLevelSets {
 
     std::map<int, BDD> level_sets; // goal distance d -> H_d (valid states)
     BDD dead_ends;
+    // Init-distance level sets for the backward direction of bidirectional
+    // search (built only with both_directions): the abstract init distance is
+    // an admissible estimate of dist(init, s), so backward search may discard
+    // { s : g_bw + init_dist(s) >= upper bound } and the init-unreachable set.
+    std::map<int, BDD> init_level_sets;
+    BDD init_dead_ends;
     AddStats add_stats;
     int num_abstract_states = 0;
 
@@ -48,13 +54,19 @@ class MsLevelSets {
 public:
     MsLevelSets(
         SymVariables *vars, const TaskProxy &task_proxy, int max_states,
-        int shrink_seed);
+        int shrink_seed, bool both_directions = false);
 
     const std::map<int, BDD> &get_level_sets() const {
         return level_sets;
     }
     const BDD &get_dead_ends() const {
         return dead_ends;
+    }
+    const std::map<int, BDD> &get_init_level_sets() const {
+        return init_level_sets;
+    }
+    const BDD &get_init_dead_ends() const {
+        return init_dead_ends;
     }
     int get_num_abstract_states() const {
         return num_abstract_states;

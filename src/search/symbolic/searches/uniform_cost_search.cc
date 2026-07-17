@@ -3,6 +3,7 @@
 #include "../closed_list.h"
 #include "../frontier.h"
 #include "../sym_utils.h"
+#include "../wbh_pruner.h"
 #include "../wbh_stats.h"
 
 #include "../../utils/timer.h"
@@ -117,6 +118,13 @@ bool UniformCostSearch::prepareBucket() {
 void UniformCostSearch::filterFrontier() {
     frontier.filter(!closed->notClosed());
     mgr->filter_mutex(frontier.bucket(), fw, initialization());
+    if (wbh_pruner) {
+        // Width-bounded pruning (paper Cor. cor-prune): discard heuristic
+        // dead ends and, given an anytime upper bound, the g+h >= bound slice.
+        for (BDD &states : frontier.bucket()) {
+            states = wbh_pruner->prune(states, frontier.g());
+        }
+    }
     remove_zero(frontier.bucket());
 }
 

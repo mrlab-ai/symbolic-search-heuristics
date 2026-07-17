@@ -765,13 +765,50 @@ bidirectional \citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and
 extending the analysis to bidirectional \bddastar, where the backward
 frontier interacts with forward buckets, is future work.
 
+\subsection{A Refined Cost Model: Image Calls}
+\label{sec-cost}
+
+Definition~\ref{def-effort} inherits from \citet{speck-et-al-icaps2020} a
+cost model that counts the BDD nodes of the expanded sets. This captures
+the representational cost of partitioning, but not its \emph{operational}
+cost: every expanded bucket triggers its own image computation, and an
+image operation carries overhead beyond the size of its argument---the
+traversal of the transition relations and the associated cache
+effects. We make this explicit.
+
+\begin{definition}[image-aware effort]
+\label{def-image-effort}
+For $\alpha \geq 0$, the \emph{$\alpha$-effort} of a symbolic search run
+is $\effort_\alpha = \sum_{B} (\alpha + |B|)$, where the sum ranges over
+the image operations performed before termination and $B$ is the argument
+of each. Definition~\ref{def-effort} is the case $\alpha = 0$ restricted
+to the buckets counted there.
+\end{definition}
+
+\begin{proposition}[image-call counts]
+\label{prop-calls}
+On a task with $N_\ell$ nonempty layers, blind forward search performs
+$N_\ell$ image operations. \bddastar\ with heuristic $h$ performs
+$\sum_{g} \values_g$ image operations, where $\values_g \leq \values$ is
+the number of nonempty buckets of layer $g$; the total can thus exceed
+the blind count by a factor of up to $\values$, the number of finite
+heuristic values, regardless of the width and of the total BDD size.
+\end{proposition}
+
+Theorem~\ref{thm-effort} bounds the node term of $\effort_\alpha$ for
+every $\alpha$, but no width bound can cap the $\alpha$-term of \bddastar:
+the factor $\values_g$ is inherent to expanding buckets separately. This
+gap between the two cost models is not hypothetical---in our experiments
+(Section~\ref{sec-experiments}), the tasks where \bddastar\ with
+potentials loses coverage against blind search are exactly the tasks with
+many distinct heuristic values (median $65$), while the node-based
+fragmentation stays small everywhere. The remedy is an algorithm whose
+image-call count matches blind search by construction.
+
 \subsection{Pruning-Only Search}
 \label{sec-prune}
 
-\bddastar\ pays for its expansion order: partitioning a layer into up to
-$\values$ buckets multiplies the number of image operations per layer by
-$\values$, a cost that Definition~\ref{def-effort} does not capture
-because it counts BDD nodes rather than image calls. This motivates a
+The preceding analysis motivates a
 variant that keeps every layer in a \emph{single} BDD, exactly like blind
 forward search, and uses the heuristic only to discard states that
 provably cannot contribute a better plan. \emph{Pruning-only search} runs
@@ -824,9 +861,32 @@ Pruning-only search trades the $f$-ordered expansion of \bddastar\ for
 the layer structure of blind search: it reaches the first solution at
 the same time as blind search, but then prunes the remaining
 optimality-proof effort by the $g + h \geq c$ slices, and it discards
-dead ends from the start. It thereby turns the width bound into a pure
-safety guarantee: never more than a factor $Wn$ worse than blind search,
-never an extra image operation, and any pruning is a strict saving.
+dead ends from the start. In the refined cost model its
+$\alpha$-effort is at most
+$W n \cdot (\effort(\task, \hblind) + 2\copt) + \alpha N_\ell$ for every
+$\alpha$---the same image-call term as blind search, in contrast to
+Proposition~\ref{prop-calls}. It thereby turns the width bound into a
+pure safety guarantee: never more than a factor $Wn$ worse than blind
+search, never an extra image operation, and any pruning is a strict
+saving.
+
+Unlike the $f$-ordered expansion of \bddastar, whose analysis is tied to
+forward search, the pruning argument is direction-agnostic, so it
+extends to the practically strongest configuration, bidirectional blind
+search. Each direction uses its own admissible estimate: the forward
+frontier discards $\{\, s \mid g_{\mathrm{fw}} + h(s) \geq c \,\}$ with
+$h$ estimating goal distance, the backward frontier
+$\{\, s \mid g_{\mathrm{bw}} + \bar{h}(s) \geq c \,\}$ with $\bar{h}$
+estimating the distance \emph{from the initial state}. For any fixed
+direction schedule, Lemma~\ref{lem-slice} applies within each direction,
+so the cumulative expanded size is at most a factor
+$\max(\width_\pi(h), \width_\pi(\bar h)) \cdot n$ times that of blind
+bidirectional search under the same schedule, again with no additional
+image operations. A single linear merge-and-shrink abstraction
+conveniently supplies both estimates---the goal distances and the init
+distances of the same shrunk transition system---and, because pruning
+never partitions, this variant also requires no restriction to positive
+operator costs for its soundness.
 
 \subsection{Exponential Width Is Necessary for the Known Pathology}
 

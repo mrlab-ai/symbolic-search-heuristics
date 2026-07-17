@@ -26,8 +26,8 @@ namespace ms = merge_and_shrink;
 namespace symbolic {
 MsLevelSets::MsLevelSets(
     SymVariables *vars, const TaskProxy &task_proxy, int max_states,
-    int shrink_seed)
-    : vars(vars), dead_ends(vars->zeroBDD()) {
+    int shrink_seed, bool both_directions)
+    : vars(vars), dead_ends(vars->zeroBDD()), init_dead_ends(vars->zeroBDD()) {
     utils::LogProxy log = utils::get_silent_log();
 
     // Linear merge over a variable-order-finder order; bisimulation shrink to
@@ -61,12 +61,14 @@ MsLevelSets::MsLevelSets(
         ABORT("Merge-and-shrink produced no active factor.");
     }
     auto [representation, distances] = fts.extract_factor(factor);
-    if (!distances->are_goal_distances_computed()) {
-        distances->compute_distances(false, true, log);
+    if (!distances->are_goal_distances_computed() ||
+        (both_directions && !distances->are_init_distances_computed())) {
+        distances->compute_distances(both_directions, true, log);
     }
 
     // Build abstract-state-id -> BDD over the cascading tables, then group by
-    // goal distance into level sets (dead ends: goal distance infinity).
+    // goal distance into level sets (dead ends: goal distance infinity), and
+    // with both_directions also by init distance for the backward direction.
     map<int, BDD> state_map = build_state_map(*representation);
     num_abstract_states = static_cast<int>(state_map.size());
     for (const auto &[abstract_id, bdd] : state_map) {
@@ -79,6 +81,19 @@ MsLevelSets::MsLevelSets(
                 level_sets[d] = bdd;
             } else {
                 it->second += bdd;
+            }
+        }
+        if (both_directions) {
+            int di = distances->get_init_distance(abstract_id);
+            if (di == ms::INF) {
+                init_dead_ends += bdd;
+            } else {
+                auto it = init_level_sets.find(di);
+                if (it == init_level_sets.end()) {
+                    init_level_sets[di] = bdd;
+                } else {
+                    it->second += bdd;
+                }
             }
         }
     }
