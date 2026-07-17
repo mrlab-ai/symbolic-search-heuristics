@@ -18,13 +18,27 @@ class WbhPruner;
   once a solution is found). With max_states=1 both heuristics are constant 0
   and the search coincides with blind bidirectional search (sym_bd).
 */
+class UniformCostSearch;
+
 class SymbolicBdPruneSearch : public SymbolicSearch {
     const int max_states;
     const double build_time_limit;
+    // Deferred mode (default): construct the abstraction only when the first
+    // solution is found (the upper-bound slice cannot prune before then), so
+    // the search is exactly blind bidirectional until that point and pruning
+    // can only help.
+    const bool defer_build;
 
     std::shared_ptr<MsLevelSets> level_sets;
     std::shared_ptr<WbhPruner> fw_pruner;
     std::shared_ptr<WbhPruner> bw_pruner;
+
+    // Non-owning; the searches are owned by the BidirectionalSearch.
+    UniformCostSearch *fw_search_ptr = nullptr;
+    UniformCostSearch *bw_search_ptr = nullptr;
+    bool build_attempted = false;
+
+    void build_and_attach_pruners();
 
 protected:
     virtual void initialize() override;
