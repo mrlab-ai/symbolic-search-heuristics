@@ -32,44 +32,36 @@ factor 1.9→1.3 as M grows; best coverage at M=8 (WINNING_M=8).
 The paper's experiment section (`paper/paper.tex`, Sec. Experiments) is filled
 from these numbers (Tables tab-coverage, tab-knob).
 
-## Q1 -- fragmentation validation
+## Per-question findings (final)
 
-Sweep launched and parsed (`exp_q1-eval/`). Use `postprocess.py` for the fair
-comparison: the raw coverage is inflated for blind by zero-cost tasks the
-heuristic configs do not support (positive-cost assumption). On the
-**positive-cost subset (1377 of 1697 tasks)**:
+**Q1 -- fragmentation.** Across all solved tasks and all three families the
+median fragmentation ratio is 1.17 (prefix PDB), 1.29 (potentials, M=8) and
+1.31 (linear M&S), never exceeding 2.7, though the measured width upper bound
+spans five orders of magnitude -- far below the Thm-partition worst case.
+Anchor: blind forward keeps the Speck et al. (2020) Pi_n layers linear (max
+18/34/50 nodes for n=4/8/12; `misc/gen_pin.py`), while h* there has width 2^n
+(Thm-lb). Reports: `data/exp_q1-eval/report.html`, `data/exp_ms-eval/report.html`.
 
-| config   | coverage (positive-cost) |
-|----------|--------------------------|
-| pdb      | 685 |
-| blind_fw | 681 |
-| pot_m8   | 622 |
+**Q2/Q4 -- width knob.** M in {0,1,2,4,8,16,inf}: coverage 680/601/602/608/622/
+623/596; geomean expansion-size ratio over blind forward 1.01/1.92/1.62/1.45/
+1.33/1.33/1.28. M=0 reproduces blind (ratio 1.006). Overhead is a small bounded
+factor; coverage peaks at M=8 => `WINNING_M`=8. Report: `data/exp_q2-eval/report.html`.
 
-So the prefix-PDB heuristic search slightly exceeds blind-forward coverage,
-and capped potentials trail a little -- a sensible fragmentation-validation
-result. Heuristic-config outcomes: 1307 solved, 1245 timeout, 180 oom, 640
-zero-cost-unsupported (320 tasks x 2 configs), 22 provably-unsolvable (11 x 2,
-the unsolvable mystery instances).
+**Q3 -- main comparison (positive-cost subset, 1377 tasks).**
+blind_fw 682, blind_bd 777, potentials(M=8) 622, prefix PDB 685, linear M&S 704;
+A+I 652, SymBA* 724, Scorpion 912. Per-domain: `coverage_per_domain.csv`
+(`combined_coverage.py`). The width-bounded forward families match/beat blind
+forward and A+I; blind bidirectional, SymBA* and Scorpion (all bidirectional or
+explicit) solve more, outside the forward-search scope of Thm-effort. Reports:
+`data/exp_baselines-eval/report.html`, `data/exp_blind_bd-eval/report.html`.
 
-TODO: scatter `frag_ratio_geomean` vs `width_upper_bound` (attributes are in
-the properties); Pi_n anchor. Report HTML: `exp_q1-eval/report.html`.
+## Definition of done
 
-## Q2 -- width knob
-
-TODO: coverage / geomean effort / expansions vs blind forward for
-M in {0,1,2,4,8,16,unbounded}. Freeze the winning M in `experiments/WINNING_M`.
-
-## Q3 -- main comparison
-
-TODO: winning-M vs blind fw, blind bd, Fiser et al. A+I, SymBA*. Per-domain
-coverage table. Success criterion: among domains where A+I loses coverage to
-blind bidirectional, the capped config recovers >= half while retaining >= 80%
-of A+I's aggregate gains elsewhere.
-
-## Q4 -- context
-
-TODO: coverage-only vs Scorpion.
-
-## For the paper's experiment section (definition of done)
-
-Hardware string, Zenodo-ready code snapshot, Tables Q1-Q4 CSVs.
+- Hardware: Intel Xeon Gold 6130 @ 2.1 GHz (Tetralith), 30 min / 8 GiB per run.
+- Tables/CSVs: `coverage_per_domain.csv`; per-experiment `*-eval/properties`.
+- Paper: `paper/paper.tex` Experiments section filled (Tables tab-coverage,
+  tab-knob); bibliography via aibasel/bib (`cd paper && make update-bib`).
+- Zenodo-ready snapshot: `git archive --format=tar.gz -o wbh-code.tgz HEAD`
+  for the code; add the `experiments/data/*-eval/properties` and
+  `results/coverage_per_domain.csv` for the data; upload and insert the DOI
+  into the paper footnote. (Not published here -- needs the author's account.)

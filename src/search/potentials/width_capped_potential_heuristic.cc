@@ -39,6 +39,16 @@ using namespace std;
   for finite width caps M.
 */
 
+// DEFER (implementation plan PR2, step 4): further width-reduction variants
+// are intentionally not implemented here:
+//   * coarsening the integer potentials to multiples of a constant k (shrinks
+//     the value range V, hence the width, at a bounded admissibility loss), and
+//   * a MIP objective that directly minimizes the number of distinct partial
+//     sums (i.e. the ADD width) rather than the initial-state / all-states
+//     objective.
+// Both are additive knobs on top of the current MIP; add them only if the
+// width cap M proves too coarse in practice.
+
 namespace potentials {
 enum class OptimizeFor {
     INITIAL_STATE,

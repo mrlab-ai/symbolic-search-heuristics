@@ -92,7 +92,7 @@ A common approach to solving classical planning tasks optimally is
 \citep{pearl-1984}. Symbolic search
 \citep{mcmillan-1993,edelkamp-helmert-ecp1999} replaces the expansion of
 individual states with the expansion of state sets, compactly represented
-as binary decision diagrams \citep[BDDs;][]{bryant-tc1986}. Symbolic
+as binary decision diagrams \citep[BDDs;][]{bryant-ieeecomp1986}. Symbolic
 bidirectional blind search is among the strongest algorithms for
 cost-optimal planning
 \citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and a key component
@@ -202,7 +202,7 @@ call $\pi$ \emph{variable-contiguous} if the bits of each SAS$^{+}$
 variable are consecutive. A set of states $S$ is represented by its
 characteristic function $\chi_S \colon \{0,1\}^n \to \{0,1\}$ as a
 reduced ordered BDD $\bdd{S}$ with respect to $\pi$
-\citep{bryant-tc1986}. We write $\bddsize{S}$ for the number of inner
+\citep{bryant-ieeecomp1986}. We write $\bddsize{S}$ for the number of inner
 nodes of $\bdd{S}$. For a Boolean or integer-valued function $f$ over
 $x_1, \dots, x_n$ and a prefix assignment $\rho \in \{0,1\}^i$ to
 $x_1, \dots, x_i$, the \emph{cofactor} $f|_\rho$ is the function of
@@ -412,7 +412,7 @@ We now bound the representational cost of splitting an arbitrary state
 set by heuristic values. Throughout, fix the order $\pi$ and write
 $W = \width_\pi(h)$. Recall the classical product bound
 $\bddsize{f \wedge g} \leq \bddsize{f} \cdot \bddsize{g}$
-\citep{bryant-tc1986}. Applied naively with $g = \chi_{\level{h}{v}}$ it
+\citep{bryant-ieeecomp1986}. Applied naively with $g = \chi_{\level{h}{v}}$ it
 bounds a single bucket by
 $\bddsize{S} \cdot \bddsize{\level{h}{v}}$, which does not control the
 sum over all buckets. The next two theorems give bounds whose sum over
@@ -1023,8 +1023,9 @@ positive operator costs (Section~\ref{sec-effort}), the heuristic
 configurations are undefined on the 320 tasks with zero-cost operators;
 we therefore report coverage on the remaining 1377 tasks, which all
 configurations attempt. We limit time to 30\,minutes and memory to
-8\,GiB. All benchmarks, code and experiment data are available online.
-% TODO: Zenodo record.
+8\,GiB. All code, benchmarks and experiment data are available in a
+supplementary archive.\footnote{A Zenodo DOI will be added for the
+camera-ready version.}
 
 We focus on coverage (number of solved tasks), the expansion size
 (Definition~\ref{def-effort}) measured in BDD nodes, and the
@@ -1052,7 +1053,12 @@ though the measured width upper bound $U = A + \values$
 domains (medians $141$, $576$ and $1171$, maxima up to $5{\cdot}10^{6}$).
 The fragmentation ratio thus stays small and far below the worst case of
 Theorem~\ref{thm-partition}, confirming that width-bounded partitioning
-does not blow up BDD sizes in practice.
+does not blow up BDD sizes in practice. As a sanity anchor we also ran
+blind forward search on the family $\task_n$ of
+\citet{speck-et-al-icaps2020}: its layers stay linear in $n$ (the largest
+expanded layer has $18$, $34$ and $50$ BDD nodes for $n = 4, 8, 12$),
+whereas the perfect heuristic has width $2^{n}$ there
+(Theorem~\ref{thm-lb}), the very blow-up that width-boundedness rules out.
 
 \begin{table}[t]
 \centering
@@ -1154,7 +1160,7 @@ partitioning; our results are complementary, bounding the overhead of
 heuristic over blind \emph{symbolic} search via a property of the
 heuristic, and combining the two guarantee regimes is an appealing
 direction. Related but orthogonal are symbolic perimeter abstraction
-heuristics \citep{torralba-et-al-ijcai2016,torralba-et-al-aij2018},
+heuristics \citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018},
 which defer heuristic computation until blind search stalls, variable
 ordering analyses \citep{kissmann-hoffmann-jair2014} and EVMDD-based
 representations of state-dependent cost structure
@@ -1178,185 +1184,7 @@ ordering can enlarge the class in practice, and investigate
 size-monitored search regimes for heuristics outside the class.
 
 % ------------------------------------------------------------------------
-\begin{thebibliography}{99}
-
-\bibitem[B{\"a}ckstr{\"o}m and Nebel(1995)]{backstrom-nebel-compint1995}
-C.~B{\"a}ckstr{\"o}m and B.~Nebel.
-\newblock Complexity results for SAS$^{+}$ planning.
-\newblock \emph{Computational Intelligence}, 11(4):625--655, 1995.
-
-\bibitem[Bahar et~al.(1993)]{bahar-et-al-iccad1993}
-R.~I. Bahar, E.~A. Frohm, C.~M. Gaona, G.~D. Hachtel, E.~Macii, A.~Pardo
-  and F.~Somenzi.
-\newblock Algebraic decision diagrams and their applications.
-\newblock In \emph{Proc.\ ICCAD 1993}, pages 188--191, 1993.
-
-\bibitem[Bryant(1986)]{bryant-tc1986}
-R.~E. Bryant.
-\newblock Graph-based algorithms for Boolean function manipulation.
-\newblock \emph{IEEE Transactions on Computers}, 35(8):677--691, 1986.
-
-\bibitem[Culberson and Schaeffer(1998)]{culberson-schaeffer-compint1998}
-J.~C. Culberson and J.~Schaeffer.
-\newblock Pattern databases.
-\newblock \emph{Computational Intelligence}, 14(3):318--334, 1998.
-
-\bibitem[Edelkamp(2001)]{edelkamp-ecp2001}
-S.~Edelkamp.
-\newblock Planning with pattern databases.
-\newblock In \emph{Proc.\ ECP 2001}, pages 84--90, 2001.
-
-\bibitem[Edelkamp and Helmert(1999)]{edelkamp-helmert-ecp1999}
-S.~Edelkamp and M.~Helmert.
-\newblock Exhibiting knowledge in planning problems to minimize state
-  encoding length.
-\newblock In \emph{Proc.\ ECP 1999}, pages 135--147, 1999.
-
-\bibitem[Edelkamp and Reffel(1998)]{edelkamp-reffel-ki1998}
-S.~Edelkamp and F.~Reffel.
-\newblock {OBDDs} in heuristic search.
-\newblock In \emph{Proc.\ KI 1998}, pages 81--92, 1998.
-
-\bibitem[Edelkamp et~al.(2012)]{edelkamp-et-al-ecai2012}
-S.~Edelkamp, P.~Kissmann and {\'A}.~Torralba.
-\newblock Symbolic {A}$^{*}$ search with pattern databases and the
-  merge-and-shrink abstraction.
-\newblock In \emph{Proc.\ ECAI 2012}, pages 306--311, 2012.
-
-\bibitem[Fi{\v s}er et~al.(2022)]{fiser-et-al-aaai2022}
-D.~Fi{\v s}er, {\'A}.~Torralba and J.~Hoffmann.
-\newblock Operator-potential heuristics for symbolic search.
-\newblock In \emph{Proc.\ AAAI 2022}, pages 9750--9757, 2022.
-
-\bibitem[Fi{\v s}er et~al.(2024)]{fiser-et-al-aij2024}
-D.~Fi{\v s}er, {\'A}.~Torralba and J.~Hoffmann.
-\newblock Boosting optimal symbolic planning: Operator-potential
-  heuristics.
-\newblock \emph{Artificial Intelligence}, 334:104174, 2024.
-
-\bibitem[Hansen et~al.(2002)]{hansen-et-al-sara2002}
-E.~A. Hansen, R.~Zhou and Z.~Feng.
-\newblock Symbolic heuristic search using decision diagrams.
-\newblock In \emph{Proc.\ SARA 2002}, pages 83--98, 2002.
-
-\bibitem[Hart et~al.(1968)]{hart-et-al-ieeessc1968}
-P.~E. Hart, N.~J. Nilsson and B.~Raphael.
-\newblock A formal basis for the heuristic determination of minimum cost
-  paths.
-\newblock \emph{IEEE Transactions on Systems Science and Cybernetics},
-  4(2):100--107, 1968.
-
-\bibitem[Helmert(2006)]{helmert-jair2006}
-M.~Helmert.
-\newblock The {Fast Downward} planning system.
-\newblock \emph{Journal of Artificial Intelligence Research},
-  26:191--246, 2006.
-
-\bibitem[Helmert et~al.(2014)]{helmert-et-al-jacm2014}
-M.~Helmert, P.~Haslum, J.~Hoffmann and R.~Nissim.
-\newblock Merge-and-shrink abstraction: A method for generating lower
-  bounds in factored state spaces.
-\newblock \emph{Journal of the ACM}, 61(3):16:1--16:63, 2014.
-
-\bibitem[Helmert et~al.(2015)]{helmert-et-al-icaps2015}
-M.~Helmert, G.~R{\"o}ger and S.~Sievers.
-\newblock On the expressive power of non-linear merge-and-shrink
-  representations.
-\newblock In \emph{Proc.\ ICAPS 2015}, pages 106--114, 2015.
-
-\bibitem[Jensen et~al.(2008)]{jensen-et-al-aij2008}
-R.~M. Jensen, M.~M. Veloso and R.~E. Bryant.
-\newblock State-set branching: Leveraging {BDDs} for heuristic search.
-\newblock \emph{Artificial Intelligence}, 172(2--3):103--139, 2008.
-
-\bibitem[Kissmann and Edelkamp(2011)]{kissmann-edelkamp-aaai2011}
-P.~Kissmann and S.~Edelkamp.
-\newblock Improving cost-optimal domain-independent symbolic planning.
-\newblock In \emph{Proc.\ AAAI 2011}, pages 992--997, 2011.
-
-\bibitem[Kissmann(2012)]{kissmann-phd2012}
-P.~Kissmann.
-\newblock \emph{Symbolic Search in Planning and General Game Playing}.
-\newblock PhD thesis, University of Bremen, 2012.
-
-\bibitem[Kissmann and Hoffmann(2014)]{kissmann-hoffmann-jair2014}
-P.~Kissmann and J.~Hoffmann.
-\newblock {BDD} ordering heuristics for classical planning.
-\newblock \emph{Journal of Artificial Intelligence Research},
-  51:779--804, 2014.
-
-\bibitem[McMillan(1993)]{mcmillan-1993}
-K.~L. McMillan.
-\newblock \emph{Symbolic Model Checking}.
-\newblock Kluwer Academic Publishers, 1993.
-
-\bibitem[Pearl(1984)]{pearl-1984}
-J.~Pearl.
-\newblock \emph{Heuristics: Intelligent Search Strategies for Computer
-  Problem Solving}.
-\newblock Addison-Wesley, 1984.
-
-\bibitem[Pommerening et~al.(2015)]{pommerening-et-al-aaai2015}
-F.~Pommerening, M.~Helmert, G.~R{\"o}ger and J.~Seipp.
-\newblock From non-negative to general operator cost partitioning.
-\newblock In \emph{Proc.\ AAAI 2015}, pages 3335--3341, 2015.
-
-\bibitem[Seipp et~al.(2017)]{seipp-et-al-zenodo2017}
-J.~Seipp, F.~Pommerening, S.~Sievers and M.~Helmert.
-\newblock {Downward Lab}.
-\newblock Zenodo, 2017.
-
-\bibitem[Speck and Helmert(2025)]{speck-helmert-ecai2025}
-D.~Speck and M.~Helmert.
-\newblock On performance guarantees for symbolic search in classical
-  planning.
-\newblock In \emph{Proc.\ ECAI 2025}, pages 4628--4636, 2025.
-
-\bibitem[Speck et~al.(2018)]{speck-et-al-icaps2018}
-D.~Speck, F.~Gei{\ss}er and R.~Mattm{\"u}ller.
-\newblock Symbolic planning with edge-valued multi-valued decision
-  diagrams.
-\newblock In \emph{Proc.\ ICAPS 2018}, pages 250--258, 2018.
-
-\bibitem[Speck et~al.(2020)]{speck-et-al-icaps2020}
-D.~Speck, F.~Gei{\ss}er and R.~Mattm{\"u}ller.
-\newblock When perfect is not good enough: On the search behaviour of
-  symbolic heuristic search.
-\newblock In \emph{Proc.\ ICAPS 2020}, pages 263--271, 2020.
-
-\bibitem[Speck et~al.(2025)]{speck-et-al-jair2025}
-D.~Speck, J.~Seipp and {\'A}.~Torralba.
-\newblock Symbolic search for cost-optimal planning with expressive
-  model extensions.
-\newblock \emph{Journal of Artificial Intelligence Research},
-  82:1349--1405, 2025.
-
-\bibitem[Torralba(2015)]{torralba-phd2015}
-{\'A}.~Torralba.
-\newblock \emph{Symbolic Search and Abstraction Heuristics for
-  Cost-Optimal Planning}.
-\newblock PhD thesis, Universidad Carlos III de Madrid, 2015.
-
-\bibitem[Torralba et~al.(2016)]{torralba-et-al-ijcai2016}
-{\'A}.~Torralba, C.~Linares~L{\'o}pez and D.~Borrajo.
-\newblock Abstraction heuristics for symbolic bidirectional search.
-\newblock In \emph{Proc.\ IJCAI 2016}, pages 3272--3278, 2016.
-
-\bibitem[Torralba et~al.(2017)]{torralba-et-al-aij2017}
-{\'A}.~Torralba, V.~Alc{\'a}zar, P.~Kissmann and S.~Edelkamp.
-\newblock Efficient symbolic search for cost-optimal planning.
-\newblock \emph{Artificial Intelligence}, 242:52--79, 2017.
-
-\bibitem[Torralba et~al.(2018)]{torralba-et-al-aij2018}
-{\'A}.~Torralba, C.~Linares~L{\'o}pez and D.~Borrajo.
-\newblock Symbolic perimeter abstraction heuristics for cost-optimal
-  planning.
-\newblock \emph{Artificial Intelligence}, 259:1--31, 2018.
-
-\bibitem[Wegener(2000)]{wegener-2000}
-I.~Wegener.
-\newblock \emph{Branching Programs and Binary Decision Diagrams}.
-\newblock SIAM, 2000.
-
-\end{thebibliography}
+% Bibliography from the shared aibasel/bib repo (make update-bib).
+\bibliographystyle{plainnat}
+\bibliography{bib/abbrv,bib/literatur,bib/crossref}
 \end{document}
