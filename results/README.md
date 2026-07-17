@@ -15,8 +15,9 @@ Full sweeps launched and parsed on Tetralith (Xeon Gold 6130, 30 min / 8 GiB):
 **Coverage (positive-cost subset, 1377 tasks; `combined_coverage.py`):**
 blind_fw 682 · potentials(M=8) 622 · prefix PDB 685 · **linear M&S 704** ·
 prune-only pot/pdb/ms 683/682/681 (= blind, Cor cor-prune confirmed) ·
-blind_bd 777 · bd_ms10k_b60 774 (full-suite 1041 vs 1051; no-budget ablation
-1032/990) · A+I 652 · SymBA* 724 · Scorpion 912. Per-domain breakdown in
+blind_bd 777 · bd_ms deferred 1046 / budgeted 1041 / eager 1032 vs 1051
+full-suite (three designs, consistent small negative -- honest verdict in
+paper) · A+I 652 · SymBA* 724 · Scorpion 912. Per-domain breakdown in
 `coverage_per_domain.csv`. The width-bounded forward families match/beat blind
 forward (the theory's baseline) and the A+I operator-potential planner; the
 configs solving more (blind bidirectional, SymBA*, Scorpion) all use search
