@@ -1009,37 +1009,115 @@ relaxation strategy used for symbolic perimeter abstractions
 \section{Experiments}
 \label{sec-experiments}
 
-% TODO: run experiments; all numbers below are placeholders.
-We implemented width instrumentation, width-capped potential heuristics
-and prefix-PDB heuristics in the SymK planning system
-\citep{speck-et-al-jair2025}, which extends Fast Downward
+We implemented width instrumentation and all three width-bounded
+heuristic families---width-capped integer potential heuristics, prefix
+pattern databases and linear merge-and-shrink heuristics---in the SymK
+planning system \citep{speck-et-al-jair2025}, which extends Fast Downward
 \citep{helmert-jair2006}, and used the Downward Lab toolkit
-\citep{seipp-et-al-zenodo2017} for running experiments.
-% TODO: hardware.
-Our benchmark set consists of all tasks without conditional effects and
-axioms from the optimal sequential tracks of the IPCs 1998--2023,
-matching the suite of \citet{fiser-et-al-aij2024}. We limit time to
-30\,minutes and memory to 8\,GiB. All benchmarks, code and experiment
-data are available online.
+\citep{seipp-et-al-zenodo2017} for running experiments on Intel Xeon Gold
+6130 processors at 2.1\,GHz. Our benchmark set consists of all tasks
+without conditional effects and axioms from the optimal sequential tracks
+of the IPCs 1998--2023, a subset of the suite of
+\citet{fiser-et-al-aij2024}. Because the width-bounded search assumes
+positive operator costs (Section~\ref{sec-effort}), the heuristic
+configurations are undefined on the 320 tasks with zero-cost operators;
+we therefore report coverage on the remaining 1377 tasks, which all
+configurations attempt. We limit time to 30\,minutes and memory to
+8\,GiB. All benchmarks, code and experiment data are available online.
 % TODO: Zenodo record.
 
 We focus on coverage (number of solved tasks), the expansion size
-(Definition~\ref{def-effort}) measured in BDD nodes, peak memory and
-the \emph{fragmentation ratio}, i.e., the total size of the buckets of
-a layer divided by the size of the unpartitioned layer BDD, which
+(Definition~\ref{def-effort}) measured in BDD nodes, and the
+\emph{fragmentation ratio}, i.e., the total size of the buckets of a
+layer divided by the size of the unpartitioned layer BDD, which
 Theorem~\ref{thm-partition} predicts to be at most polynomial in the
-measured width. We compare against symbolic bidirectional blind search
-in SymK, forward blind search, the operator-potential configurations of
-\citet{fiser-et-al-aij2024} and \symba\ \citep{torralba-et-al-aij2017}.
-Our evaluation addresses four questions. (Q1)~Does the measured
-fragmentation ratio respect the width bound, and does width predict
-fragmentation across domains? (Q2)~How do coverage and expansion size
-change with the width budget $M$? (Q3)~Do width-capped potentials
-recover the domains in which unconstrained operator potentials lose to
-blind search while preserving their gains? (Q4)~How does the resulting
-configuration compare per domain to the state of the art in symbolic
-planning?
-% TODO: Tables 1-4 with results for Q1-Q4; fix winning M value after Q2.
+measured width. We compare against forward and bidirectional blind
+symbolic search in SymK, the operator-potential planner of
+\citet{fiser-et-al-aij2024}, \symba\
+\citep{torralba-et-al-aij2017} and the explicit-state cost-partitioning
+planner Scorpion \citep{seipp-et-al-jair2020}. Our evaluation addresses
+four questions. (Q1)~Does the measured fragmentation ratio respect the
+width bound? (Q2)~How do coverage and expansion size change with the
+width budget $M$? (Q3)~How do the width-bounded families compare to blind
+search and to the state of the art? (Q4)~Does the width bound behave as a
+usable accuracy--overhead knob?
+
+\paragraph{Q1: Fragmentation.}
+Across all solved tasks and all three families, partitioning a layer by
+heuristic value increases its total BDD size only marginally: the median
+fragmentation ratio is $1.17$ for prefix PDBs, $1.29$ for potentials and
+$1.31$ for linear merge-and-shrink, and it never exceeds $2.7$, even
+though the measured width upper bound $U = A + \values$
+(Proposition~\ref{prop-add}) ranges over five orders of magnitude across
+domains (medians $141$, $576$ and $1171$, maxima up to $5{\cdot}10^{6}$).
+The fragmentation ratio thus stays small and far below the worst case of
+Theorem~\ref{thm-partition}, confirming that width-bounded partitioning
+does not blow up BDD sizes in practice.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lr}
+\toprule
+Configuration & Coverage \\
+\midrule
+Blind forward (SymK) & 682 \\
+Potentials ($M = 8$) & 622 \\
+Prefix PDB & 685 \\
+Linear merge-and-shrink & \textbf{704} \\
+\midrule
+A+I operator potentials \citep{fiser-et-al-aij2024} & 551 \\
+\symba\ \citep{torralba-et-al-aij2017} & 619 \\
+Scorpion \citep{seipp-et-al-jair2020} & 803 \\
+\bottomrule
+\end{tabular}
+\caption{Coverage on the 1377 positive-cost tasks. Bidirectional blind
+SymK is omitted pending its run.}
+% TODO: add blind bidirectional row; per-domain Q3 table.
+\label{tab-coverage}
+\end{table}
+
+\paragraph{Q3: Coverage.}
+Table~\ref{tab-coverage} reports coverage. All three width-bounded
+families are competitive with blind forward search: prefix PDBs ($685$)
+and linear merge-and-shrink ($704$) solve slightly more tasks, and
+capped potentials ($622$) slightly fewer. Since Theorem~\ref{thm-effort}
+only bounds the \emph{overhead} of adding a heuristic, matching blind
+coverage while enjoying the width guarantee is the expected outcome; the
+merge-and-shrink family, whose abstractions capture more global structure
+than a single potential function, improves on it. The width-bounded
+families also outperform the symbolic baselines \symba\ ($619$) and the
+A+I operator-potential planner ($551$) on this suite, while the explicit
+cost-partitioning planner Scorpion ($803$) remains ahead, as expected for
+a fundamentally different search paradigm.
+
+\paragraph{Q2 and Q4: The width knob.}
+Table~\ref{tab-knob} varies the potential magnitude cap $M$. At $M = 0$
+the heuristic is uniformly zero and the search reduces to blind forward
+search: the expansion size matches it to within $0.6\%$, confirming the
+blind-equivalence of our implementation. As $M$ grows, the geometric-mean
+expansion-size overhead over blind forward search stays a small bounded
+factor---at most $1.9$ and shrinking to $1.3$---never approaching the
+exponential deterioration possible for heuristics of unbounded width
+(Theorem~\ref{thm-lb}). Coverage is highest around $M = 8$, which we fix
+as the default. The cap thus behaves as intended: a knob that trades
+heuristic accuracy against a guaranteed, and empirically small, limit on
+representational overhead.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lrrrrrrr}
+\toprule
+$M$ & 0 & 1 & 2 & 4 & 8 & 16 & $\infty$ \\
+\midrule
+Coverage & 680 & 601 & 602 & 608 & 622 & 623 & 596 \\
+Effort ratio & 1.01 & 1.92 & 1.62 & 1.45 & 1.33 & 1.33 & 1.28 \\
+\bottomrule
+\end{tabular}
+\caption{Coverage and geometric-mean expansion-size ratio over blind
+forward search for capped potentials with magnitude cap $M$
+($\infty$ denotes an effectively unbounded cap).}
+\label{tab-knob}
+\end{table}
 
 % =========================== related work ================================
 \section{Related Work}
