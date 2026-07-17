@@ -12,9 +12,16 @@ Full sweeps launched and parsed on Tetralith (Xeon Gold 6130, 30 min / 8 GiB):
 (sym_bd, in progress). Use `postprocess.py` for the fair positive-cost subset
 (1377 of 1697 tasks; 320 zero-cost excluded for the heuristic configs).
 
-**Coverage (positive-cost subset, 1377 tasks):** blind_fw 682 · potentials(M=8)
-622 · prefix PDB 685 · **linear M&S 704** · A+I 551 · SymBA* 619 · Scorpion 803.
-(blind_bd pending sym_bd sweep.)
+**Coverage (positive-cost subset, 1377 tasks; `combined_coverage.py`):**
+blind_fw 682 · potentials(M=8) 622 · prefix PDB 685 · **linear M&S 704** ·
+blind_bd 777 · A+I 652 · SymBA* 724 · Scorpion 912. Per-domain breakdown in
+`coverage_per_domain.csv`. The width-bounded forward families match/beat blind
+forward (the theory's baseline) and the A+I operator-potential planner; the
+configs solving more (blind bidirectional, SymBA*, Scorpion) all use search
+paradigms outside the forward-search scope of Thm. thm-effort (bidirectional or
+explicit). Baseline numbers reflect the fixed domain-file resolution
+(`build_suite`); the earlier A+I 551 / SymBA* 619 / Scorpion 803 understated
+them by ~100 each due to a resolver bug on airport etc.
 
 **Q1 fragmentation:** median frag ratio 1.17 (PDB) / 1.29 (pot) / 1.31 (M&S),
 max < 2.7 — small, far below the Thm-partition worst case.

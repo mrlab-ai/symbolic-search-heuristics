@@ -1063,32 +1063,39 @@ Configuration & Coverage \\
 Blind forward (SymK) & 682 \\
 Potentials ($M = 8$) & 622 \\
 Prefix PDB & 685 \\
-Linear merge-and-shrink & \textbf{704} \\
+Linear merge-and-shrink & 704 \\
 \midrule
-A+I operator potentials \citep{fiser-et-al-aij2024} & 551 \\
-\symba\ \citep{torralba-et-al-aij2017} & 619 \\
-Scorpion \citep{seipp-et-al-jair2020} & 803 \\
+Blind bidirectional (SymK) & 777 \\
+A+I operator potentials \citep{fiser-et-al-aij2024} & 652 \\
+\symba\ \citep{torralba-et-al-aij2017} & 724 \\
+Scorpion \citep{seipp-et-al-jair2020} & \textbf{912} \\
 \bottomrule
 \end{tabular}
-\caption{Coverage on the 1377 positive-cost tasks. Bidirectional blind
-SymK is omitted pending its run.}
-% TODO: add blind bidirectional row; per-domain Q3 table.
+\caption{Coverage on the 1377 positive-cost tasks. The upper block lists
+blind forward search and our three width-bounded forward-search families;
+the lower block lists external baselines.}
 \label{tab-coverage}
 \end{table}
 
 \paragraph{Q3: Coverage.}
 Table~\ref{tab-coverage} reports coverage. All three width-bounded
 families are competitive with blind forward search: prefix PDBs ($685$)
-and linear merge-and-shrink ($704$) solve slightly more tasks, and
-capped potentials ($622$) slightly fewer. Since Theorem~\ref{thm-effort}
-only bounds the \emph{overhead} of adding a heuristic, matching blind
-coverage while enjoying the width guarantee is the expected outcome; the
+and linear merge-and-shrink ($704$) solve slightly more tasks, capped
+potentials ($622$) slightly fewer. Since Theorem~\ref{thm-effort} only
+bounds the \emph{overhead} of adding a heuristic, matching blind coverage
+while enjoying the width guarantee is the expected outcome; the
 merge-and-shrink family, whose abstractions capture more global structure
-than a single potential function, improves on it. The width-bounded
-families also outperform the symbolic baselines \symba\ ($619$) and the
-A+I operator-potential planner ($551$) on this suite, while the explicit
-cost-partitioning planner Scorpion ($803$) remains ahead, as expected for
-a fundamentally different search paradigm.
+than a single potential function, improves on it, and both improve on the
+A+I operator-potential planner ($652$). The remaining configurations that
+solve more tasks all use search paradigms outside the scope of our
+forward-search guarantee (Theorem~\ref{thm-effort}): blind
+\emph{bidirectional} SymK ($777$) and \symba\ ($724$) are bidirectional,
+and Scorpion ($912$) is explicit-state. Closing the gap to bidirectional
+search---where the backward frontier interacts with forward buckets---is
+the future work noted in Section~\ref{sec-effort}. The result we do claim
+is the one the theory predicts: width-bounded heuristics can be added to
+forward symbolic search essentially for free, and yield modest coverage
+gains.
 
 \paragraph{Q2 and Q4: The width knob.}
 Table~\ref{tab-knob} varies the potential magnitude cap $M$. At $M = 0$
