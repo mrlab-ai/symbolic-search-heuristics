@@ -51,7 +51,7 @@
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
-\title{Width-Bounded Heuristics for Symbolic Search}
+\title{Heuristics with Bounded Cofactor Width for Symbolic Search}
 \author{Anonymous for review}
 \date{}
 
@@ -60,28 +60,33 @@
 
 % ============================== abstract =================================
 \begin{abstract}
-Symbolic search with binary decision diagrams (BDDs) is a leading approach
-to cost-optimal classical planning, but its dominant instantiation remains
-blind: heuristics partition the search frontier by heuristic value, and
-this partitioning can increase BDD sizes so much that even the perfect
-heuristic deteriorates search performance exponentially. This negative
-result leaves open the central question of when heuristics provably help
-symbolic search. We answer it with a sufficient condition. We introduce
-\emph{width-bounded heuristics}, whose value is computable by scanning the
-state variables once in the BDD variable order while distinguishing at
-most $W$ cases at any point. We prove that partitioning \emph{any} state
-set by the values of a width-$W$ heuristic increases the total BDD size by
-at most a factor polynomial in $W$ and the number of variables, and that
-symbolic \astar\ with a
-consistent width-$W$ heuristic incurs at most a polynomial-factor overhead
-over blind symbolic search---in contrast to the exponential deterioration
-possible in general, which we show requires exponential width. Potential
-heuristics, pattern databases over pattern prefixes and linear
-merge-and-shrink abstractions are width-bounded, which explains the
-empirical success of operator-potential heuristics. Finally, we show how
-to synthesize informative width-bounded potential heuristics, turning the
-width bound into a knob that trades heuristic accuracy against a
-guaranteed limit on representational overhead.
+Symbolic search with binary decision diagrams (BDDs) is a leading
+approach to cost-optimal classical planning, but its dominant
+instantiation remains blind: partitioning the search frontier by
+heuristic value can increase BDD sizes so much that even the perfect
+heuristic deteriorates performance exponentially. We give the matching
+sufficient condition for safety. A heuristic has \emph{cofactor width}
+$W$ under the search's variable order if its value is computable by
+scanning the state variables once in that order while distinguishing at
+most $W$ cases. We prove that partitioning \emph{any} state set by such
+a heuristic inflates the total BDD size by at most a factor polynomial
+in $W$ and the number of variables, that symbolic \astar\ with a
+consistent width-$W$ heuristic incurs at most this polynomial overhead
+over blind forward search, and that the known exponential deterioration
+requires exponential width. Integer potential heuristics, prefix pattern
+databases and linear merge-and-shrink abstractions instantiate the class
+with widths controlled by their standard parameters. A refined cost
+model that counts image operations then predicts \emph{which} of two
+uses of a heuristic pays off: $f$-ordered expansion multiplies image
+calls by the number of heuristic values, while a novel
+\emph{pruning-only} search keeps blind layer structure, discards
+provably useless slices, and enjoys a bound a factor $W$ tighter.
+Experiments in SymK confirm both the theory and the model: fragmentation
+stays negligible; merge-and-shrink, whose value count is small, beats
+blind forward search with ordering, while potentials, with many values,
+only match it via pruning; and in bidirectional search---outside our
+guarantee---even provably safe pruning cannot reliably recoup the cost
+of computing the heuristic.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -127,9 +132,9 @@ analysis concerns the representation of transition relations and goal
 formulas and explicitly leaves heuristics aside.
 
 In this paper we close this gap. We introduce \emph{width-bounded
-heuristics}: a heuristic has width $W$ under a variable order if its
-value can be determined by reading the state variables once in that
-order while maintaining at most $W$ distinct cases at any point,
+heuristics}: a heuristic has cofactor width $W$ under a variable order
+if its value can be determined by reading the state variables once in
+that order while maintaining at most $W$ distinct cases at any point,
 i.e., if its algebraic decision diagram in the search's variable order
 has at most $W$ nodes per level. Our contributions are as follows.
 First, we prove a \emph{fragmentation theorem}: partitioning an arbitrary
@@ -150,9 +155,18 @@ integer potential heuristics, pattern databases whose pattern is a prefix
 of the variable order, and merge-and-shrink heuristics with a linear
 merge strategy---whose shrink size limit \emph{is} a width bound. This
 yields, to our knowledge, the first formal performance guarantee for the
-operator-potential approach. Finally, we describe how to synthesize
-informative width-bounded potential heuristics and outline an empirical
-evaluation in the SymK planner \citep{speck-et-al-jair2025}.
+operator-potential approach. Fifth, we refine the cost model of symbolic
+search to count image operations, which the node-based effort measure
+cannot see, and derive from it a novel \emph{pruning-only} search that
+keeps the layer structure of blind search, uses the heuristic solely for
+provably sound discards, and improves the effort bound by a factor $W$.
+Finally, we implement all of the above in the SymK planner
+\citep{speck-et-al-jair2025} and evaluate it on the IPC benchmarks: the
+fragmentation predicted harmless stays harmless, the refined cost model
+correctly predicts that merge-and-shrink profits from $f$-ordering
+(surpassing blind forward search) while potential heuristics do not, and
+a candid study of bidirectional search delimits where the guarantee
+regime ends.
 
 % ============================ background =================================
 \section{Background}
@@ -308,7 +322,7 @@ representation size. Our goal is a property of $h$ that rules out both
 effects for every state set at once.
 
 % ===================== width-bounded heuristics ==========================
-\section{Width-Bounded Heuristics}
+\section{Bounded Cofactor Width}
 
 Our key definition measures how much information about the prefix of a
 state a heuristic must retain in order to determine its value from the
@@ -316,11 +330,12 @@ remaining suffix. We treat a heuristic as a function
 $h \colon \{0,1\}^n \to \mathbb{Z}_{\geq 0} \cup \{\infty\}$ over the
 Boolean encoding.
 
-\begin{definition}[width]
+\begin{definition}[cofactor width]
 \label{def-width}
-The \emph{width} of a heuristic $h$ under variable order $\pi$ is
-$\width_\pi(h) = \max_{0 \leq i \leq n} |\sub{i}{h}|$. We call $h$
-\emph{$(\pi,W)$-width-bounded} if $\width_\pi(h) \leq W$.
+The \emph{cofactor width} of a heuristic $h$ under variable order $\pi$
+is $\width_\pi(h) = \max_{0 \leq i \leq n} |\sub{i}{h}|$. We call $h$
+\emph{$(\pi,W)$-width-bounded} if $\width_\pi(h) \leq W$, and write
+\emph{width} for cofactor width throughout.
 \end{definition}
 
 Equivalently, $h$ is $(\pi,W)$-width-bounded iff it is computed by a
@@ -331,7 +346,18 @@ a value $b$ for $x_{i+1}$ maps the cofactor $u$ to $u|_{x_{i+1} = b}$,
 and the output of a final-level state, which is a constant function, is
 its value. In OBDD terminology, $\width_\pi(h)$ is the maximal number of
 nodes per level of the quasi-reduced multi-terminal BDD of $h$ under
-$\pi$. Three immediate consequences will do much of the work below.
+$\pi$---the classical width of a Boolean or pseudo-Boolean function
+\citep{wegener-2000}, here applied to heuristics and relativized to the
+order used by the search.
+
+A word on terminology. \emph{Cofactor width} is a property of the
+heuristic's \emph{representation} under a variable order and is
+unrelated to the novelty width of \citet{lipovetzky-geffner-ecai2012},
+which measures the size of value tuples needed to distinguish states
+during search, and only indirectly related to structural graph
+parameters such as pathwidth, whose boundedness is a classical
+sufficient condition for small OBDDs \citep{wegener-2000}. Three
+immediate consequences will do much of the work below.
 
 \begin{proposition}[value range]
 \label{prop-range}
@@ -780,9 +806,10 @@ effects. We make this explicit.
 \label{def-image-effort}
 For $\alpha \geq 0$, the \emph{$\alpha$-effort} of a symbolic search run
 is $\effort_\alpha = \sum_{B} (\alpha + |B|)$, where the sum ranges over
-the image operations performed before termination and $B$ is the argument
-of each. Definition~\ref{def-effort} is the case $\alpha = 0$ restricted
-to the buckets counted there.
+the image operations performed before termination and $B$ is the
+argument of each. The parameter $\alpha$ abstracts the per-call
+overhead; for $\alpha = 0$ and the expansions counted by
+Definition~\ref{def-effort}, the two measures coincide.
 \end{definition}
 
 \begin{proposition}[image-call counts]
@@ -794,6 +821,13 @@ the number of nonempty buckets of layer $g$; the total can thus exceed
 the blind count by a factor of up to $\values$, the number of finite
 heuristic values, regardless of the width and of the total BDD size.
 \end{proposition}
+
+\begin{proof}
+Immediate from the algorithms: blind search computes one image per
+expanded layer, and \bddastar\ expands every nonempty $(g, v)$ bucket
+separately (Lemma~\ref{lem-identity}), computing one image each; layer
+$g$ has $\values_g \leq |\img(h)| = \values$ nonempty buckets.
+\end{proof}
 
 Theorem~\ref{thm-effort} bounds the node term of $\effort_\alpha$ for
 every $\alpha$, but no width bound can cap the $\alpha$-term of \bddastar:
@@ -877,12 +911,17 @@ search. Each direction uses its own admissible estimate: the forward
 frontier discards $\{\, s \mid g_{\mathrm{fw}} + h(s) \geq c \,\}$ with
 $h$ estimating goal distance, the backward frontier
 $\{\, s \mid g_{\mathrm{bw}} + \bar{h}(s) \geq c \,\}$ with $\bar{h}$
-estimating the distance \emph{from the initial state}. For any fixed
-direction schedule, Lemma~\ref{lem-slice} applies within each direction,
-so the cumulative expanded size is at most a factor
+estimating the distance \emph{from the initial state}. Fixing the
+direction schedule and the sequence of incumbent bounds,
+Lemma~\ref{lem-slice} applies within each direction, so the cumulative
+expanded size is at most a factor
 $\max(\width_\pi(h), \width_\pi(\bar h)) \cdot n$ times that of blind
-bidirectional search under the same schedule, again with no additional
-image operations. A single linear merge-and-shrink abstraction
+bidirectional search under the same schedule, with no additional image
+operations. We state this as an observation rather than a theorem:
+pruning can shift \emph{when} solutions are discovered, which feeds back
+into the bound sequence and, in adaptive implementations, into the
+schedule itself; a self-contained formal treatment must account for this
+feedback and is left for future work. A single linear merge-and-shrink abstraction
 conveniently supplies both estimates---the goal distances and the init
 distances of the same shrunk transition system---and, because pruning
 never partitions, this variant also requires no restriction to positive
@@ -1157,7 +1196,12 @@ of the IPCs 1998--2023, a subset of the suite of
 positive operator costs (Section~\ref{sec-effort}), the heuristic
 configurations are undefined on the 320 tasks with zero-cost operators;
 we therefore report coverage on the remaining 1377 tasks, which all
-configurations attempt. We limit time to 30\,minutes and memory to
+configurations attempt. Two exceptions to this base are flagged where
+they occur: the bidirectional pruning study uses the full suite of 1697
+tasks, since pruning-only search needs no positive-cost restriction, and
+repeated runs of bidirectional SymK differ by one or two solved tasks
+because its direction selection is timing-based; we always compare runs
+from the same sweep. We limit time to 30\,minutes and memory to
 8\,GiB. All code, benchmarks and experiment data are available in a
 supplementary archive.\footnote{A Zenodo DOI will be added for the
 camera-ready version.}
@@ -1186,6 +1230,13 @@ $1.31$ for linear merge-and-shrink, and it never exceeds $2.7$, even
 though the measured width upper bound $U = A + \values$
 (Proposition~\ref{prop-add}) ranges over five orders of magnitude across
 domains (medians $141$, $576$ and $1171$, maxima up to $5{\cdot}10^{6}$).
+We emphasize the logical status of these statistics: $U$ is computed
+from the heuristic's ADD \emph{in the search's variable order}, which is
+exactly the quantity Theorems~\ref{thm-bucket}--\ref{thm-effort}
+consume, so the guarantees cover every reported run; the closed-form
+parameter bounds of Section~\ref{sec-instances} (such as $dN$ for
+merge-and-shrink) additionally require the stated alignment conditions,
+which our implementation does not enforce for the merge order.
 The fragmentation ratio thus stays small and far below the worst case of
 Theorem~\ref{thm-partition}, confirming that width-bounded partitioning
 does not blow up BDD sizes in practice. As a sanity anchor we also ran
@@ -1223,7 +1274,8 @@ lists external baselines.}
 \end{table}
 
 \paragraph{Q3: Coverage.}
-Table~\ref{tab-coverage} reports coverage. All three width-bounded
+Table~\ref{tab-coverage} reports total coverage and
+Table~\ref{tab-domains} the per-domain breakdown. All three width-bounded
 families are competitive with blind forward search: prefix PDBs ($685$)
 and linear merge-and-shrink ($704$) solve slightly more tasks, capped
 potentials ($622$) slightly fewer. Since Theorem~\ref{thm-effort} only
@@ -1231,7 +1283,13 @@ bounds the \emph{overhead} of adding a heuristic, matching blind coverage
 while enjoying the width guarantee is the expected outcome; the
 merge-and-shrink family, whose abstractions capture more global structure
 than a single potential function, improves on it, and both improve on the
-A+I operator-potential planner ($652$). The remaining configurations that
+A+I operator-potential planner ($652$). A caveat on the latter
+comparison: we run the A+I planner in its default single-potential
+configuration (forward and backward operator potentials from one LP with
+the initial-state objective); the strongest configurations reported by
+\citet{fiser-et-al-aij2024} combine several potential functions, so
+$652$ should be read as a lower bound on what that system can achieve on
+this suite. The remaining configurations that
 solve more tasks all use search paradigms outside the scope of our
 forward-search guarantee (Theorem~\ref{thm-effort}): blind
 \emph{bidirectional} SymK ($777$) and \symba\ ($724$) are bidirectional,
@@ -1249,16 +1307,22 @@ exactly as the theory promises: their coverage matches blind forward
 search within one task for all three families ($683$, $682$, $681$
 vs.\ $682$), their expansion-size ratio over blind search is $1.00$ in
 the geometric mean, and where they deviate they save effort (dead-end
-pruning on up to $20$ tasks per family). Pruning is empirically free---
-but in forward search it also gains little, because the anytime upper
-bound only becomes available late. Whether the $f$-ordered expansion of
+pruning on up to $20$ tasks per family). Runtime tells the same story
+with one nuance the node-based measure misses: the geometric-mean
+runtime ratio over blind search is $1.02$ for pruning with potentials
+but $1.20$ and $1.44$ for prefix PDBs and merge-and-shrink, whose
+heuristic \emph{construction} time is included---the search itself is
+free, computing the heuristic is not. Pruning also gains little in
+forward search, because the anytime upper bound only becomes available
+late. Whether the $f$-ordered expansion of
 \bddastar\ pays instead is decided by the image-call factor of
 Proposition~\ref{prop-calls}: linear merge-and-shrink, whose level count
 is small (median $16$ values), profits from ordering ($704$ vs.\ $681$
-pruning-only), while potentials, with a median of $53$ values and $65$
-where losses occur, are hurt by it ($622$ vs.\ $683$). The choice between
-guidance and safety is thus governed by the number of heuristic values,
-exactly as the refined cost model predicts.
+pruning-only, at a runtime ratio of $1.42$ that its extra coverage
+justifies), while potentials, with a median of $53$ values and $65$
+where losses occur, are hurt by it ($622$ vs.\ $683$; runtime ratio
+$1.77$). The choice between guidance and safety is thus governed by the
+number of heuristic values, exactly as the refined cost model predicts.
 
 \paragraph{Bidirectional pruning.}
 Since pruning needs no partitioning, it extends to blind bidirectional
@@ -1312,6 +1376,72 @@ Effort ratio & 1.01 & 1.92 & 1.62 & 1.45 & 1.33 & 1.33 & 1.28 \\
 forward search for capped potentials with magnitude cap $M$
 ($\infty$ denotes an effectively unbounded cap).}
 \label{tab-knob}
+\end{table}
+
+\begin{table}[p]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+Domain & \# & b-fw & pot & PDB & M\&S & b-bd & A+I & SymBA & Scrp \\
+\midrule
+airport & 50 & 23 & 22 & 23 & 23 & 24 & 27 & 27 & 37 \\
+barman-opt11 & 20 & 8 & 4 & 8 & 8 & 11 & 8 & 12 & 8 \\
+barman-opt14 & 14 & 3 & 3 & 3 & 3 & 6 & 3 & 6 & 3 \\
+blocks & 35 & 21 & 21 & 21 & 28 & 31 & 27 & 33 & 28 \\
+childsnack-opt14 & 20 & 4 & 2 & 4 & 2 & 3 & 2 & 2 & 0 \\
+depot & 22 & 5 & 4 & 6 & 8 & 7 & 7 & 7 & 13 \\
+driverlog & 20 & 11 & 11 & 11 & 13 & 14 & 12 & 14 & 15 \\
+floortile-opt11 & 20 & 14 & 14 & 14 & 14 & 14 & 14 & 14 & 6 \\
+floortile-opt14 & 20 & 20 & 17 & 20 & 17 & 20 & 20 & 20 & 5 \\
+freecell & 80 & 20 & 22 & 20 & 20 & 25 & 47 & 26 & 68 \\
+grid & 5 & 2 & 1 & 2 & 2 & 2 & 2 & 2 & 3 \\
+gripper & 20 & 20 & 20 & 20 & 20 & 20 & 20 & 20 & 7 \\
+hiking-opt14 & 20 & 16 & 15 & 16 & 16 & 18 & 13 & 18 & 19 \\
+logistics00 & 28 & 16 & 20 & 17 & 21 & 20 & 0 & 0 & 28 \\
+logistics98 & 35 & 5 & 5 & 5 & 6 & 6 & 5 & 5 & 12 \\
+miconic & 150 & 102 & 88 & 100 & 79 & 117 & 78 & 114 & 145 \\
+movie & 30 & 30 & 30 & 30 & 30 & 30 & 30 & 30 & 30 \\
+mprime & 35 & 25 & 11 & 25 & 27 & 26 & 27 & 27 & 33 \\
+mystery & 30 & 15 & 8 & 15 & 17 & 15 & 15 & 14 & 19 \\
+nomystery-opt11 & 20 & 13 & 13 & 13 & 16 & 16 & 14 & 16 & 20 \\
+organic-synthesis-opt18 & 20 & 7 & 7 & 7 & 7 & 7 & 13 & 13 & 7 \\
+parking-opt11 & 20 & 0 & 0 & 0 & 4 & 1 & 1 & 2 & 8 \\
+parking-opt14 & 20 & 0 & 0 & 0 & 4 & 1 & 3 & 4 & 8 \\
+pipesworld-notankage & 50 & 16 & 18 & 17 & 21 & 17 & 19 & 16 & 27 \\
+pipesworld-tankage & 50 & 17 & 18 & 17 & 18 & 17 & 17 & 15 & 18 \\
+psr-small & 50 & 50 & 50 & 50 & 50 & 50 & 50 & 50 & 50 \\
+rovers & 40 & 14 & 11 & 14 & 14 & 14 & 12 & 14 & 13 \\
+satellite & 36 & 7 & 7 & 7 & 8 & 12 & 7 & 12 & 12 \\
+scanalyzer-08 & 30 & 12 & 13 & 12 & 13 & 12 & 12 & 12 & 19 \\
+scanalyzer-opt11 & 20 & 9 & 10 & 9 & 10 & 9 & 10 & 9 & 16 \\
+snake-opt18 & 20 & 7 & 4 & 7 & 9 & 7 & 0 & 0 & 13 \\
+storage & 30 & 15 & 14 & 15 & 15 & 15 & 0 & 0 & 16 \\
+termes-opt18 & 20 & 12 & 12 & 14 & 12 & 18 & 13 & 18 & 7 \\
+tetris-opt14 & 17 & 10 & 10 & 10 & 10 & 11 & 10 & 11 & 11 \\
+tidybot-opt11 & 20 & 15 & 16 & 16 & 17 & 16 & 10 & 13 & 17 \\
+tidybot-opt14 & 20 & 9 & 10 & 11 & 12 & 12 & 2 & 5 & 13 \\
+tpp & 30 & 8 & 8 & 8 & 8 & 8 & 12 & 9 & 11 \\
+transport-opt08 & 30 & 11 & 11 & 11 & 11 & 14 & 11 & 14 & 15 \\
+transport-opt11 & 20 & 8 & 6 & 7 & 6 & 10 & 6 & 11 & 12 \\
+transport-opt14 & 20 & 7 & 6 & 7 & 7 & 9 & 5 & 9 & 10 \\
+trucks & 30 & 11 & 11 & 11 & 11 & 13 & 14 & 14 & 17 \\
+visitall-opt11 & 20 & 12 & 13 & 12 & 13 & 12 & 12 & 12 & 17 \\
+visitall-opt14 & 20 & 6 & 9 & 6 & 7 & 7 & 6 & 6 & 13 \\
+woodworking-opt08 & 30 & 21 & 12 & 20 & 21 & 28 & 21 & 28 & 30 \\
+woodworking-opt11 & 20 & 16 & 7 & 14 & 14 & 20 & 15 & 20 & 20 \\
+zenotravel & 20 & 9 & 8 & 10 & 12 & 12 & 0 & 0 & 13 \\
+\midrule
+Total & 1377 & 682 & 622 & 685 & 704 & 777 & 652 & 724 & 912 \\
+\bottomrule
+\end{tabular}
+\caption{Per-domain coverage on the positive-cost tasks: blind forward
+(b-fw), the three \bddastar\ families with bounded cofactor width
+(potentials $M=8$, prefix PDB, linear merge-and-shrink), blind
+bidirectional (b-bd), and the external baselines A+I, \symba\ and
+Scorpion (Scrp).}
+\label{tab-domains}
 \end{table}
 
 % =========================== related work ================================
@@ -1372,19 +1502,33 @@ state-dependent cost structure \citep{speck-et-al-icaps2018}.
 % ============================ conclusions ================================
 \section{Conclusions}
 
-We introduced width-bounded heuristics and proved that bounded width is
-a sufficient condition for heuristics to be provably safe in symbolic
-search: partitioning any state set by heuristic values costs at most a
-polynomial factor in the width, and \bddastar\ with a consistent
-width-$W$ heuristic incurs at most an $O(W^2 n)$ overhead over blind
-symbolic forward search, whereas the known exponential deterioration
-requires exponential width. Potential heuristics, prefix PDBs and
-linear merge-and-shrink instantiate the class with widths controlled by
-the potential magnitude, the abstract state count and the shrink limit,
-respectively. In future work, we want to extend the guarantee to
-bidirectional symbolic search, study whether width-aware variable
-ordering can enlarge the class in practice, and investigate
-size-monitored search regimes for heuristics outside the class.
+We introduced heuristics of bounded cofactor width and proved that
+bounded width is a sufficient condition for safety in symbolic search:
+partitioning any state set by heuristic values costs at most a
+polynomial factor in the width, \bddastar\ with a consistent width-$W$
+heuristic incurs at most an $O(W^2 n)$ overhead over blind symbolic
+forward search, and the known exponential deterioration requires
+exponential width. Potential heuristics, prefix PDBs and linear
+merge-and-shrink instantiate the class with widths controlled by the
+potential magnitude, the abstract state count and the shrink limit.
+Beyond the width theory, an image-call-aware cost model exposed the
+operational price of $f$-ordered expansion, and the derived pruning-only
+search carries a bound a factor $W$ tighter with the image-call profile
+of blind search. The experiments matched the theory unusually closely:
+fragmentation is negligible wherever width is bounded; pruning-only
+search is coverage-neutral and effort-neutral, as guaranteed;
+merge-and-shrink, whose value count is small, converts ordering into a
+coverage improvement over blind forward search; and potentials, with
+many values, cannot. In bidirectional search, outside our guarantee,
+three successively more careful designs consistently showed that even
+provably safe pruning does not reliably recoup the cost of computing the
+heuristic against SymK's blind bidirectional search. We see three open
+directions: a formal effort guarantee for bidirectional \bddastar\ that
+accounts for the bound-sequence feedback identified in
+Section~\ref{sec-prune}; merge and variable orders chosen jointly so
+that the closed-form width bounds apply a priori; and heuristics
+engineered directly for small cofactor width and cheap construction,
+the two quantities our analysis identifies as decisive.
 
 % ------------------------------------------------------------------------
 % Bibliography from the shared aibasel/bib repo (make update-bib).

@@ -25,7 +25,9 @@ ALGS = ["blind_fw", "blind_bd", "pot_m8", "pdb", "ms",
         "pot_m8_prune", "pdb_prune", "ms_prune",
         "bd_ms10k", "bd_ms100k", "bd_ms10k_b60",
         "a_plus_i", "symba_star", "scorpion"]
-EXP_ORDER = ["exp_q2", "exp_q1", "exp_ms", "exp_prune", "exp_bd_prune", "exp_bd_prune2", "exp_blind_bd", "exp_baselines"]
+# exp_blind_bd first so blind_bd comes from its dedicated sweep (repeated
+# sym_bd runs differ by a task or two through timing-based direction selection).
+EXP_ORDER = ["exp_q2", "exp_q1", "exp_ms", "exp_prune", "exp_blind_bd", "exp_bd_prune", "exp_bd_prune2", "exp_baselines"]
 
 
 def load(name):
