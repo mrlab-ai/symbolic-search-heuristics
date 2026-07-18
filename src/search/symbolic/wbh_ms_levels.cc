@@ -9,6 +9,7 @@
 #include "../merge_and_shrink/merge_and_shrink_representation.h"
 #include "../merge_and_shrink/merge_strategy_factory_precomputed.h"
 #include "../merge_and_shrink/merge_tree.h"
+#include "../merge_and_shrink/merge_tree_factory.h"
 #include "../merge_and_shrink/merge_tree_factory_linear.h"
 #include "../merge_and_shrink/shrink_bisimulation.h"
 #include "../merge_and_shrink/types.h"
@@ -24,9 +25,48 @@ using namespace std;
 namespace ms = merge_and_shrink;
 
 namespace symbolic {
+namespace {
+/*
+  Left-linear merge tree over a fixed FDR variable order (the search's Gamer
+  order). Atomic factor indices in the FTS coincide with variable ids, exactly
+  as exploited by MergeTreeFactoryLinear.
+*/
+class MergeTreeFactoryFixedOrder : public ms::MergeTreeFactory {
+    std::vector<int> order;
+
+protected:
+    virtual std::string name() const override {
+        return "fixed order (width-bounded heuristics)";
+    }
+
+public:
+    MergeTreeFactoryFixedOrder(const std::vector<int> &order, int seed)
+        : ms::MergeTreeFactory(seed, ms::UpdateOption::USE_FIRST),
+          order(order) {
+    }
+
+    virtual unique_ptr<ms::MergeTree> compute_merge_tree(
+        const TaskProxy &) override {
+        ms::MergeTreeNode *root = new ms::MergeTreeNode(order[0]);
+        for (size_t i = 1; i < order.size(); ++i) {
+            root = new ms::MergeTreeNode(root, new ms::MergeTreeNode(order[i]));
+        }
+        return make_unique<ms::MergeTree>(root, rng, update_option);
+    }
+
+    virtual bool requires_init_distances() const override {
+        return false;
+    }
+    virtual bool requires_goal_distances() const override {
+        return false;
+    }
+};
+}
+
 MsLevelSets::MsLevelSets(
     SymVariables *vars, const TaskProxy &task_proxy, int max_states,
-    int shrink_seed, bool both_directions, double max_time)
+    int shrink_seed, bool both_directions, double max_time,
+    bool align_merge_order)
     : vars(vars), dead_ends(vars->zeroBDD()), init_dead_ends(vars->zeroBDD()) {
     utils::LogProxy log = utils::get_silent_log();
     utils::CountdownTimer budget(max_time);
@@ -34,9 +74,15 @@ MsLevelSets::MsLevelSets(
     // Linear merge over a variable-order-finder order; bisimulation shrink to
     // <= max_states; pruning OFF so the abstraction mapping is total (every
     // concrete state has an abstract state, avoiding PRUNED_STATE handling).
-    auto merge_tree = make_shared<ms::MergeTreeFactoryLinear>(
-        variable_order_finder::VariableOrderType::LEVEL, shrink_seed,
-        ms::UpdateOption::USE_FIRST);
+    shared_ptr<ms::MergeTreeFactory> merge_tree;
+    if (align_merge_order) {
+        merge_tree = make_shared<MergeTreeFactoryFixedOrder>(
+            vars->get_var_order(), shrink_seed);
+    } else {
+        merge_tree = make_shared<ms::MergeTreeFactoryLinear>(
+            variable_order_finder::VariableOrderType::LEVEL, shrink_seed,
+            ms::UpdateOption::USE_FIRST);
+    }
     auto merge_strategy = make_shared<ms::MergeStrategyFactoryPrecomputed>(
         merge_tree, utils::Verbosity::SILENT);
     auto shrink_strategy =

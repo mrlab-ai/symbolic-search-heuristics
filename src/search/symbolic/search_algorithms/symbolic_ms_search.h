@@ -18,6 +18,7 @@ class MsLevelSets;
 class SymbolicMsForwardSearch : public SymbolicSearch {
     const int max_states;
     const bool prune_only;
+    const bool align_merge_order;
 
     std::shared_ptr<MsLevelSets> level_sets;
 

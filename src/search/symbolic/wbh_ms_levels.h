@@ -61,10 +61,15 @@ public:
     // unbounded); on breach, construction_timed_out() is true and the level
     // sets are unusable (callers fall back to blind search -- the pruning
     // guarantee then holds including its setup cost).
+    // align_merge_order: merge along the search's (Gamer) variable order
+    // instead of the causal-graph level order, satisfying the alignment
+    // condition of the paper's Prop. prop-ms so the a-priori dN width bound
+    // applies (not only the measured one).
     MsLevelSets(
         SymVariables *vars, const TaskProxy &task_proxy, int max_states,
         int shrink_seed, bool both_directions = false,
-        double max_time = std::numeric_limits<double>::infinity());
+        double max_time = std::numeric_limits<double>::infinity(),
+        bool align_merge_order = false);
 
     bool construction_timed_out() const {
         return construction_failed;

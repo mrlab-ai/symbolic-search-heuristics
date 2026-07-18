@@ -11,12 +11,15 @@
 #include "../plan_selection/plan_selector.h"
 #include "../searches/heuristic_fw_search.h"
 
+#include <limits>
+
 using namespace std;
 
 namespace symbolic {
 SymbolicMsForwardSearch::SymbolicMsForwardSearch(const plugins::Options &opts)
     : SymbolicSearch(opts), max_states(opts.get<int>("max_states")),
-      prune_only(opts.get<bool>("prune_only")) {
+      prune_only(opts.get<bool>("prune_only")),
+      align_merge_order(opts.get<bool>("align_merge_order")) {
 }
 
 void SymbolicMsForwardSearch::initialize() {
@@ -26,7 +29,9 @@ void SymbolicMsForwardSearch::initialize() {
 
     TaskProxy search_task_proxy(*search_task);
     level_sets = make_shared<MsLevelSets>(
-        vars.get(), search_task_proxy, max_states, /*shrink_seed=*/2011);
+        vars.get(), search_task_proxy, max_states, /*shrink_seed=*/2011,
+        /*both_directions=*/false,
+        numeric_limits<double>::infinity(), align_merge_order);
     utils::g_log << "wbh linear M&S heuristic: max_states=" << max_states
                  << ", abstract_states=" << level_sets->get_num_abstract_states()
                  << ", values=" << level_sets->get_level_sets().size()
@@ -71,6 +76,12 @@ public:
             "Shrink size limit N (the width knob): intermediate abstractions "
             "are shrunk to at most N states.",
             "10000", plugins::Bounds("1", "infinity"));
+        add_option<bool>(
+            "align_merge_order",
+            "Merge along the search's (Gamer) variable order instead of the "
+            "causal-graph level order, satisfying the alignment condition of "
+            "Prop. prop-ms (the a-priori dN width bound then applies).",
+            "false");
         add_option<bool>(
             "prune_only",
             "Use the heuristic only for pruning (dead ends and, once an "

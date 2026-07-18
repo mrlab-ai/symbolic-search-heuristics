@@ -1332,7 +1332,8 @@ without a construction budget, building the merge-and-shrink level sets
 consumed up to the entire time limit and cost more tasks than the
 pruning recovered ($1032$ vs.\ $1051$ for blind bidirectional search on
 the full suite of 1697 tasks, with construction taking over $90$ seconds
-on ten percent of the tasks). With a $60$-second construction budget and
+on ten percent of the tasks; a tenfold larger abstraction only widens
+the gap, to $990$). With a $60$-second construction budget and
 fallback to blind search---making the pruning safe \emph{including} its
 setup cost---the budgeted variant recovers most of the difference
 ($1041$ vs.\ $1051$). Deferring construction further, to the moment the
@@ -1347,7 +1348,13 @@ result: bidirectional blind search is robust not because heuristic
 information fragments its BDDs---our bounds and measurements rule that
 out---but because at this level of performance even provably safe
 pruning must first pay for computing its heuristic, and on this suite
-that constant cost is not reliably recouped.
+that constant cost is not reliably recouped. The potential is
+nevertheless real: the virtual best of blind bidirectional search and
+the forward merge-and-shrink configuration solves $1081$ tasks---the
+forward search solves $30$ tasks the bidirectional one cannot---but the
+unique solves are slow (median $947$ seconds), so neither time-slicing
+nor simple pre-search selection harvests the complementarity; doing so
+is an open problem our data makes concrete.
 
 \paragraph{Q2 and Q4: The width knob.}
 Table~\ref{tab-knob} varies the potential magnitude cap $M$. At $M = 0$
