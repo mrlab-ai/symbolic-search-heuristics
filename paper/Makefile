@@ -15,7 +15,7 @@ paper%.pdf: paper%.tex $(wildcard bib/*.bib)
 	pdflatex -interaction=nonstopmode $(basename $@).tex
 	pdflatex -interaction=nonstopmode $(basename $@).tex
 
-paper.pdf: paper.tex $(wildcard bib/*.bib) extra.bib
+paper.pdf: paper.tex $(wildcard bib/*.bib)
 	pdflatex -interaction=nonstopmode paper.tex
 	bibtex paper
 	pdflatex -interaction=nonstopmode paper.tex
