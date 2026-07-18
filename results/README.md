@@ -32,6 +32,11 @@ max < 2.7 — small, far below the Thm-partition worst case.
 **Q2 knob:** M=0 effort ratio 1.006 (blind-equivalent); overhead a bounded
 factor 1.9→1.3 as M grows; best coverage at M=8 (WINNING_M=8).
 
+**Merge-order alignment (exp_ms_aligned):** ms_aligned 687 vs ms 704
+(5 wins/22 losses); measured width DROPS (median 1380->1091, p90 50059->9751)
+but the causal-graph merge order gives more informative abstractions --
+accuracy beats compactness; width is a currency, not the objective.
+
 The paper's experiment section (`paper/paper.tex`, Sec. Experiments) is filled
 from these numbers (Tables tab-coverage, tab-knob).
 

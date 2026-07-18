@@ -1137,12 +1137,12 @@ configuration of \citet{edelkamp-et-al-ecai2012} made safe: same
 algorithmic skeleton, now with an alignment condition (merge order
 matching the search's variable order), a width guarantee, and---in
 Section~\ref{sec-experiments}---an account of when it pays
-off.\footnote{Our implementation merges along a fixed linear variable
+off.\footnote{Our default configuration merges along a causal-graph
 order that need not coincide with the search's Gamer order; the
 statistics we report therefore measure the width of the constructed ADD
 directly \emph{in the search order}, which is the quantity the theorems
-consume. Aligning the merge order with the search order is a natural
-refinement.} In contrast, no small-width representation is known for
+consume. Section~\ref{sec-experiments} evaluates enforcing the
+alignment condition.} In contrast, no small-width representation is known for
 $h^{\max}$, $h^{\mathrm{add}}$ or LM-cut, whose values depend on
 optimization problems that entangle all variables, and
 Theorem~\ref{thm-lb} shows that perfect goal-distance information can
@@ -1356,6 +1356,21 @@ unique solves are slow (median $947$ seconds), so neither time-slicing
 nor simple pre-search selection harvests the complementarity; doing so
 is an open problem our data makes concrete.
 
+\paragraph{Merge-order alignment.}
+Proposition~\ref{prop-ms} requires the merge order to match the search's
+variable order for the closed-form $dN$ bound; our default
+merge-and-shrink configuration instead uses a causal-graph order and is
+covered by the theorems through its measured width. Enforcing the
+alignment condition does what the theory predicts for the
+representation---the measured width drops (median $1380$ to $1091$, and
+the $90$th percentile falls fivefold, from $50\,059$ to
+$9\,751$)---but costs coverage ($687$ vs.\ $704$; five tasks won,
+twenty-two lost): the causal-graph merge order produces more informative
+abstractions under the same shrink limit, and here accuracy outweighs
+representational compactness. Width, in other words, is a currency, not
+the objective---consistent with our one-sided guarantee, which caps the
+harm of a heuristic but says nothing about its benefit.
+
 \paragraph{Q2 and Q4: The width knob.}
 Table~\ref{tab-knob} varies the potential magnitude cap $M$. At $M = 0$
 the heuristic is uniformly zero and the search reduces to blind forward
@@ -1532,10 +1547,12 @@ provably safe pruning does not reliably recoup the cost of computing the
 heuristic against SymK's blind bidirectional search. We see three open
 directions: a formal effort guarantee for bidirectional \bddastar\ that
 accounts for the bound-sequence feedback identified in
-Section~\ref{sec-prune}; merge and variable orders chosen jointly so
-that the closed-form width bounds apply a priori; and heuristics
-engineered directly for small cofactor width and cheap construction,
-the two quantities our analysis identifies as decisive.
+Section~\ref{sec-prune}; merge and variable orders chosen \emph{jointly}
+to balance representational width against abstraction accuracy---our
+alignment experiment shows that optimizing width alone sacrifices
+accuracy---and heuristics engineered directly for small cofactor width,
+high accuracy and cheap construction, the three quantities our analysis
+identifies as decisive.
 
 % ------------------------------------------------------------------------
 % Bibliography from the shared aibasel/bib repo (make update-bib).
