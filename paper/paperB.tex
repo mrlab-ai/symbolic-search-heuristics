@@ -1,0 +1,488 @@
+% =========================================================================
+% Width-Bounded Heuristics for Symbolic Search
+% Draft for ICAPS 2027. Compile with pdflatex; port to icaps27.sty later.
+% Experiments section reports results from the SymK implementation.
+% =========================================================================
+\documentclass[letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{natbib}
+\usepackage{booktabs}
+\usepackage{microtype}
+
+% ------------------------------- macros ---------------------------------
+\newcommand{\inlinecite}[1]{\citet{#1}}
+\newcommand{\task}{\ensuremath{\Pi}}
+\newcommand{\vars}{\ensuremath{\mathcal{V}}}
+\newcommand{\ops}{\ensuremath{\mathcal{O}}}
+\newcommand{\states}{\ensuremath{\mathcal{S}}}
+\newcommand{\sinit}{\ensuremath{s_{\mathrm{I}}}}
+\newcommand{\sgoal}{\ensuremath{s_\star}}
+\newcommand{\pre}{\ensuremath{\mathit{pre}}}
+\newcommand{\eff}{\ensuremath{\mathit{eff}}}
+\newcommand{\cost}{\ensuremath{\mathit{cost}}}
+\newcommand{\hstar}{\ensuremath{h^{*}}}
+\newcommand{\hblind}{\ensuremath{h^{0}}}
+\newcommand{\hpot}{\ensuremath{h^{\text{pot}}}}
+\newcommand{\gstar}{\ensuremath{g^{*}}}
+\newcommand{\copt}{\ensuremath{C^{*}}}
+\newcommand{\bdd}[1]{\ensuremath{B_{#1}}}
+\newcommand{\bddsize}[1]{\ensuremath{|B_{#1}|}}
+\newcommand{\cofcount}{\ensuremath{Q}}
+\newcommand{\width}{\ensuremath{\mathsf{w}}}
+\newcommand{\values}{\ensuremath{V}}
+\newcommand{\level}[2]{\ensuremath{H_{#2}}}
+\newcommand{\effort}{\ensuremath{\mathit{effort}}}
+\newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
+\newcommand{\img}{\ensuremath{\mathrm{img}}}
+\newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
+\newcommand{\astar}{A\ensuremath{^{*}}}
+\newcommand{\ghseta}{GHSETA\ensuremath{^{*}}}
+\newcommand{\symba}{SymBA\ensuremath{^{*}}}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\title{The Cost of Guidance in Symbolic Search}
+\author{Anonymous for review}
+\date{}
+
+\newtheorem{fact}{Fact}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Heuristic symbolic search has been analyzed through a single lens: the
+cumulative BDD size of the expanded state sets. Under this measure,
+heuristics of bounded cofactor width are provably safe---partitioning
+frontiers by their values costs at most a small polynomial factor---yet
+in practice such heuristics still lose coverage against blind search.
+We resolve this paradox by refining the cost model: expanding each of up
+to $\values$ heuristic-value buckets per layer triggers its own image
+operation, an operational cost that node counts cannot see and that no
+width bound caps. The refined model makes a testable prediction---%
+$f$-ordered expansion pays iff the number of heuristic values is
+small---and suggests an algorithm: \emph{pruning-only} search keeps the
+single-BDD layer structure of blind search, uses the heuristic solely
+for provably sound discards, matches blind search's image-call count,
+and improves the known effort bound by a factor of the width.
+Experiments on the IPC benchmarks confirm both: merge-and-shrink
+heuristics (few values) gain coverage through ordering while potential
+heuristics (many values) lose it and are repaired by pruning; and a
+four-design study of bidirectional search---culminating in seeding an
+incumbent from a satisficing planner---shows that the binding constraint
+at the state of the art is not fragmentation but the cost of computing
+the heuristic at all, while the incumbent itself emerges as the cheapest
+useful form of guidance, improving even blind search.
+\end{abstract}
+
+\section{Introduction}
+
+Symbolic search with binary decision diagrams
+\citep[BDDs;][]{bryant-ieeecomp1986,mcmillan-1993,edelkamp-helmert-ecp1999}
+is among the strongest approaches to cost-optimal classical planning,
+and its strongest configurations are blind
+\citep{torralba-et-al-aij2017,speck-et-al-jair2025}. The classical
+explanation is representational: partitioning a frontier BDD into
+buckets by heuristic value, as \bddastar\ \citep{edelkamp-reffel-ki1998}
+does, can inflate BDD sizes---exponentially in the worst case, even for
+the perfect heuristic \citep{speck-et-al-icaps2020}. A recent
+counterpoint shows the inflation is bounded by a polynomial in the
+heuristic's \emph{cofactor width}, the maximal number of distinct
+cofactors of the heuristic function per level of the search's variable
+order, and that standard heuristic families have small width (see the
+companion paper, cited here as \emph{Widths}\footnote{Reference
+suppressed for double-blind review; the companion manuscript is included
+as supplementary material. Its results used here are restated as
+Facts~\ref{thm-bucket}--\ref{thm-effort} below.}). And yet, measured on
+the IPC benchmarks, width-bounded heuristics with bounded fragmentation
+\emph{still} lose coverage against blind forward search. Safety, it
+turns out, is not the whole story.
+
+This paper locates the missing cost. The effort measure used throughout
+this literature \citep{speck-et-al-icaps2020} counts the BDD nodes of
+the expanded sets; it does not count \emph{image operations}. Expanding
+a layer bucket by bucket multiplies the number of image computations by
+the number of nonempty heuristic values $\values$, and each image
+operation carries overhead beyond the size of its argument. We make this
+operational cost explicit in an image-aware effort measure, prove that
+no width bound can cap the resulting factor for \bddastar, and derive
+two consequences. First, a prediction: $f$-ordered expansion should pay
+off precisely when $\values$ is small. Second, an algorithm:
+\emph{pruning-only search} keeps every layer in a single BDD exactly
+like blind search, uses an admissible heuristic only to discard states
+that provably cannot improve on the incumbent solution (dead ends, and
+the slice $g + h \geq c$ under upper bound $c$), performs one image
+operation per layer, and---via an exact correspondence between its
+layers and value slices of the blind layers---carries an effort bound a
+factor $W$ tighter than that of \bddastar.
+
+Our experiments in SymK \citep{speck-et-al-jair2025} confirm the
+prediction and probe the limits of the algorithm. Linear merge-and-shrink
+heuristics, with a median of $16$ values, convert ordering into a
+coverage gain over blind forward search; potential heuristics
+\citep{pommerening-et-al-aaai2015,fiser-et-al-aij2024}, with a median of
+$53$, lose coverage through ordering and are restored to parity by
+pruning. A four-design study of bidirectional search---eager, budgeted,
+deferred, and finally seeded with an incumbent from a satisficing
+planner---shows a consistent picture: pruning is safe and its search is
+free, but the cost of \emph{computing} the heuristic is not reliably
+recouped against blind bidirectional search, whereas the incumbent
+itself improves even the blind configuration. The emerging design rules
+are simple: order only with few-valued heuristics, prune with the rest,
+acquire an incumbent as early as possible, and spend on heuristic
+construction only what the proof phase can pay back.
+
+\section{Background}
+
+We consider cost-optimal planning for SAS$^{+}$ tasks
+\citep{backstrom-nebel-compint1995} with positive integer operator
+costs, binary-encoded into $n$ Boolean variables under a fixed variable
+order $\pi$ as usual in symbolic search
+\citep{torralba-et-al-aij2017,kissmann-hoffmann-jair2014}; $|B|$ denotes
+the inner-node count of a BDD $B$. Symbolic uniform-cost (blind) search
+expands, per $g$-value, the layer $L_g$ of states first reached at cost
+$g$, computing one image per layer; \bddastar\
+\citep{edelkamp-reffel-ki1998} splits each layer into buckets
+$L_g \cap h^{-1}(v)$ and expands them in order of increasing $f = g+v$,
+ties broken by smaller $g$. The \emph{effort} of a run is the cumulative
+size of the BDDs expanded with $g + v \leq \copt$ and $g < \copt$
+\citep{speck-et-al-icaps2020}, where \copt\ is the optimal cost.
+
+The \emph{cofactor width} $\width_\pi(h)$ of a heuristic $h$ is the
+maximal number of distinct cofactors of $h$ (as a function over the
+Boolean encoding) after any prefix of $\pi$---equivalently, the maximal
+number of nodes per level of its quasi-reduced algebraic decision
+diagram \citep{wegener-2000}. We write $\values \leq \width_\pi(h)$ for
+the number of finite heuristic values. Two results of the companion
+paper are used throughout; we restate them without proof.
+
+\begin{fact}[bucket bound, \emph{Widths}]
+\label{thm-bucket}
+For every state set $S$, every $U \subseteq \img(h)$, and
+$W = \width_\pi(h)$:
+$|B_{S \cap h^{-1}(U)}| \leq W n \, (|B_S| + 2)$.
+\end{fact}
+
+\begin{fact}[effort bound, \emph{Widths}]
+\label{thm-effort}
+For consistent $h$ with $\width_\pi(h) \leq W$, the effort of \bddastar\
+is at most $W^2 n \cdot (\mathit{effort}(\hblind) + 2\copt)$, and each
+expanded bucket with key $(g,v)$ is exactly $L_g \cap h^{-1}(v)$
+(bucket identity, \emph{Widths}).
+\end{fact}
+
+We also reuse the companion paper's width-bounded families: integer
+potential heuristics with magnitude cap $M$
+\citep{fiser-et-al-aij2024}, prefix pattern databases, and linear
+merge-and-shrink abstractions \citep{helmert-et-al-jacm2014} with shrink
+limit $N$, whose level sets $H_v = h^{-1}(v)$ we compute as BDDs in the
+search order. For the moved definitions referenced below we write
+$\effort(\task, \hblind)$ for blind forward effort and
+$N_\ell$ for the number of nonempty layers.
+
+\section{A Refined Cost Model: Image Calls}
+\label{sec-cost}
+
+The effort measure inherits from \citet{speck-et-al-icaps2020} a
+cost model that counts the BDD nodes of the expanded sets. This captures
+the representational cost of partitioning, but not its \emph{operational}
+cost: every expanded bucket triggers its own image computation, and an
+image operation carries overhead beyond the size of its argument---the
+traversal of the transition relations and the associated cache
+effects. We make this explicit.
+
+\begin{definition}[image-aware effort]
+\label{def-image-effort}
+For $\alpha \geq 0$, the \emph{$\alpha$-effort} of a symbolic search run
+is $\effort_\alpha = \sum_{B} (\alpha + |B|)$, where the sum ranges over
+the image operations performed before termination and $B$ is the
+argument of each. The parameter $\alpha$ abstracts the per-call
+overhead; for $\alpha = 0$ and the expansions counted by
+the standard effort measure, the two coincide.
+\end{definition}
+
+\begin{proposition}[image-call counts]
+\label{prop-calls}
+On a task with $N_\ell$ nonempty layers, blind forward search performs
+$N_\ell$ image operations. \bddastar\ with heuristic $h$ performs
+$\sum_{g} \values_g$ image operations, where $\values_g \leq \values$ is
+the number of nonempty buckets of layer $g$; the total can thus exceed
+the blind count by a factor of up to $\values$, the number of finite
+heuristic values, regardless of the width and of the total BDD size.
+\end{proposition}
+
+\begin{proof}
+Immediate from the algorithms: blind search computes one image per
+expanded layer, and \bddastar\ expands every nonempty $(g, v)$ bucket
+separately (the bucket identity, Fact~\ref{thm-effort}), computing one image each; layer
+$g$ has $\values_g \leq |\img(h)| = \values$ nonempty buckets.
+\end{proof}
+
+Fact~\ref{thm-effort} bounds the node term of $\effort_\alpha$ for
+every $\alpha$, but no width bound can cap the $\alpha$-term of \bddastar:
+the factor $\values_g$ is inherent to expanding buckets separately. This
+gap between the two cost models is not hypothetical---in our experiments
+(Section~\ref{sec-experiments}), the tasks where \bddastar\ with
+potentials loses coverage against blind search are exactly the tasks with
+many distinct heuristic values (median $65$), while the node-based
+fragmentation stays small everywhere. The remedy is an algorithm whose
+image-call count matches blind search by construction.
+
+\section{Pruning-Only Search}
+\label{sec-prune}
+
+The preceding analysis motivates a
+variant that keeps every layer in a \emph{single} BDD, exactly like blind
+forward search, and uses the heuristic only to discard states that
+provably cannot contribute a better plan. \emph{Pruning-only search} runs
+symbolic uniform-cost search and maintains the incumbent bound $c$, the
+cost of the best solution found so far ($c = \infty$ initially; symbolic
+forward search discovers solutions through frontier--goal cuts before
+optimality is proved). From each generated layer it discards the states
+with $h(s) = \infty$ and the slice $\{\, s \mid g + h(s) \geq c \,\}$,
+re-applying the current bound when the layer is expanded. Admissibility
+of $h$ makes both discards sound.
+
+\begin{lemma}[slice identity]
+\label{lem-slice}
+Let $h$ be consistent, and let $c_g$ denote the incumbent bound when
+pruning-only search expands the layer with $g$-value $g$. Since layers
+are expanded in order of increasing $g$ and the incumbent bound never
+increases, the expanded layer is exactly
+$L_g \cap h^{-1}(\{\, v \mid v < c_g - g \,\})$.
+\end{lemma}
+
+\begin{proof}
+The expanded set is contained in the slice because the bound $c_g$ is
+applied at expansion time. For the converse, let
+$s \in L_g$ with $g + h(s) < c_g$ and let
+$p_0 = \sinit, \dots, p_k = s$ be a cheapest path, so
+$\gstar(p_j) + h(p_j) \leq \gstar(s) + h(s) < c_g$ for every $j$ by
+consistency along the path. Layer $\gstar(p_j)$ was expanded no later
+than layer $g$, so its bound satisfied $c_{\gstar(p_j)} \geq c_g$, and
+$p_j$ survived both its generation-time and expansion-time pruning; by
+induction along the path, $s$ is generated at cost $g$ and survives, so
+it lies in the expanded layer.
+\end{proof}
+
+Each expanded layer is thus a single value slice of the blind layer, so
+Fact~\ref{thm-bucket} with $U = \{\, v \mid v < c_g - g \,\}$ applies
+directly, and only one such set is expanded per layer:
+
+\begin{corollary}[pruning bound]
+\label{cor-prune}
+Let $h$ be admissible and consistent with $\width_\pi(h) \leq W$. The
+cumulative size of the layers expanded by pruning-only search is at most
+$W n \cdot (\effort(\task, \hblind) + 2\copt)$, one factor $W$ less than
+the \bddastar\ bound of Fact~\ref{thm-effort}, with one image
+operation per layer as in blind search. With $c = \infty$ throughout
+(no solution found yet) and no dead ends, the search coincides with
+blind forward search.
+\end{corollary}
+
+Pruning-only search trades the $f$-ordered expansion of \bddastar\ for
+the layer structure of blind search: it reaches the first solution at
+the same time as blind search, but then prunes the remaining
+optimality-proof effort by the $g + h \geq c$ slices, and it discards
+dead ends from the start. In the refined cost model its
+$\alpha$-effort is at most
+$W n \cdot (\effort(\task, \hblind) + 2\copt) + \alpha N_\ell$ for every
+$\alpha$---the same image-call term as blind search, in contrast to
+Proposition~\ref{prop-calls}. It thereby turns the width bound into a
+pure safety guarantee: never more than a factor $Wn$ worse than blind
+search, never an extra image operation, and any pruning is a strict
+saving.
+
+Unlike the $f$-ordered expansion of \bddastar, whose analysis is tied to
+forward search, the pruning argument is direction-agnostic, so it
+extends to the practically strongest configuration, bidirectional blind
+search. Each direction uses its own admissible estimate: the forward
+frontier discards $\{\, s \mid g_{\mathrm{fw}} + h(s) \geq c \,\}$ with
+$h$ estimating goal distance, the backward frontier
+$\{\, s \mid g_{\mathrm{bw}} + \bar{h}(s) \geq c \,\}$ with $\bar{h}$
+estimating the distance \emph{from the initial state}. Fixing the
+direction schedule and the sequence of incumbent bounds,
+Lemma~\ref{lem-slice} applies within each direction, so the cumulative
+expanded size is at most a factor
+$\max(\width_\pi(h), \width_\pi(\bar h)) \cdot n$ times that of blind
+bidirectional search under the same schedule, with no additional image
+operations. We state this as an observation rather than a theorem:
+pruning can shift \emph{when} solutions are discovered, which feeds back
+into the bound sequence and, in adaptive implementations, into the
+schedule itself; a self-contained formal treatment must account for this
+feedback and is left for future work. A single linear merge-and-shrink abstraction
+conveniently supplies both estimates---the goal distances and the init
+distances of the same shrunk transition system---and, because pruning
+never partitions, this variant also requires no restriction to positive
+operator costs for its soundness.
+
+
+\section{Experiments}
+\label{sec-experiments}
+
+The setup follows the companion paper: all IPC 1998--2023 optimal-track
+tasks without conditional effects and axioms; SymK on Intel Xeon Gold
+6130 processors, 30 minutes and 8 GiB per run, Downward Lab
+\citep{seipp-et-al-zenodo2017}. Because the heuristic searches assume
+positive operator costs, forward comparisons use the 1377 positive-cost
+tasks; the bidirectional study uses all 1697 tasks (pruning-only search
+needs no cost restriction), and runs are always compared within the same
+sweep. Coverage counts proved-optimal outcomes only.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lrr}
+\toprule
+Configuration & \bddastar & pruning-only \\
+\midrule
+Blind forward (SymK) & \multicolumn{2}{c}{682} \\
+Potentials ($M=8$) & 622 & 683 \\
+Prefix PDB & 685 & 682 \\
+Linear merge-and-shrink & 704 & 681 \\
+\bottomrule
+\end{tabular}
+\caption{Coverage on the 1377 positive-cost tasks: $f$-ordered
+(\bddastar) versus pruning-only use of each width-bounded family.}
+\label{tab-coverage}
+\end{table}
+
+\paragraph{Ordering versus pruning.}
+Table~\ref{tab-coverage} also separates the two ways of using a
+heuristic. The pruning-only variants (Corollary~\ref{cor-prune}) behave
+exactly as the theory promises: their coverage matches blind forward
+search within one task for all three families ($683$, $682$, $681$
+vs.\ $682$), their expansion-size ratio over blind search is $1.00$ in
+the geometric mean, and where they deviate they save effort (dead-end
+pruning on up to $20$ tasks per family). Runtime tells the same story
+with one nuance the node-based measure misses: the geometric-mean
+runtime ratio over blind search is $1.02$ for pruning with potentials
+but $1.20$ and $1.44$ for prefix PDBs and merge-and-shrink, whose
+heuristic \emph{construction} time is included---the search itself is
+free, computing the heuristic is not. Pruning also gains little in
+forward search, because the anytime upper bound only becomes available
+late. Whether the $f$-ordered expansion of
+\bddastar\ pays instead is decided by the image-call factor of
+Proposition~\ref{prop-calls}: linear merge-and-shrink, whose level count
+is small (median $16$ values), profits from ordering ($704$ vs.\ $681$
+pruning-only, at a runtime ratio of $1.42$ that its extra coverage
+justifies), while potentials, with a median of $53$ values and $65$
+where losses occur, are hurt by it ($622$ vs.\ $683$; runtime ratio
+$1.77$). The choice between guidance and safety is thus governed by the
+number of heuristic values, exactly as the refined cost model predicts.
+
+
+\paragraph{Bidirectional pruning.}
+Since pruning needs no partitioning, it extends to blind bidirectional
+search (Section~\ref{sec-prune}), whose coverage no forward
+configuration approaches. Here the abstraction itself becomes the cost:
+without a construction budget, building the merge-and-shrink level sets
+consumed up to the entire time limit and cost more tasks than the
+pruning recovered ($1032$ vs.\ $1051$ for blind bidirectional search on
+the full suite of 1697 tasks, with construction taking over $90$ seconds
+on ten percent of the tasks; a tenfold larger abstraction only widens
+the gap, to $990$). With a $60$-second construction budget and
+fallback to blind search---making the pruning safe \emph{including} its
+setup cost---the budgeted variant recovers most of the difference
+($1041$ vs.\ $1051$). Deferring construction further, to the moment the
+first solution makes the bound slice applicable---so that the search is
+identical to blind bidirectional search up to that point---narrows the
+gap again ($1046$ vs.\ $1051$; one win, six losses), but does not close
+it: on the losing tasks the optimality proof consumes nearly the whole
+remaining budget, and the sixty seconds invested in the abstraction
+prune too little to pay for themselves. Across all three designs the
+picture is consistent, and we report it as an instructive negative
+result: bidirectional blind search is robust not because heuristic
+information fragments its BDDs---our bounds and measurements rule that
+out---but because at this level of performance even provably safe
+pruning must first pay for computing its heuristic, and on this suite
+that constant cost is not reliably recouped. The potential is
+nevertheless real: the virtual best of blind bidirectional search and
+the forward merge-and-shrink configuration solves $1081$ tasks---the
+forward search solves $30$ tasks the bidirectional one cannot---but the
+unique solves are slow (median $947$ seconds), so neither time-slicing
+nor simple pre-search selection harvests the complementarity; doing so
+is an open problem our data makes concrete.
+
+
+\paragraph{Bound seeding.}
+Since the $g + h \geq c$ slice can only prune once an incumbent exists,
+we finally supplied one externally: a $60$-second run of the satisficing
+planner \textsc{LAMA} yields a plan of cost $c$, and the symbolic search
+then runs with the exclusive bound $c$---it either finds a cheaper plan
+or, by exhausting the bounded space, proves the incumbent optimal. All
+configurations receive the same total budget, with seeding time charged
+to the seeded ones, and coverage counts only proved-optimal outcomes.
+The results reorder the picture in an unexpected way. Seeding helps
+plain blind bidirectional search itself ($1054$ vs.\ $1050$): with a
+bound it never needs to find or reconstruct a solution, only to raise
+its lower bound, and this saving alone exceeds the seeding cost. Adding
+merge-and-shrink pruning on top gains nothing ($1051$; it trails its own
+seedless-pruning control)---the construction cost again consumes the
+pruning gain. In the forward direction, by contrast, seeding completes
+the pruning story positively: pruning-only potentials reach $688$
+positive-cost tasks against $682$ for blind forward search and $683$
+unseeded, the first forward-potential configuration to show a net gain.
+The lesson is symmetric to the bidirectional one: an incumbent is the
+cheapest form of guidance---it even helps blind search---and heuristic
+pruning pays off on top of it exactly when the heuristic costs
+essentially nothing to build.
+
+
+\section{Related Work}
+
+The effort measure we refine originates with
+\citet{speck-et-al-icaps2020}, whose negative result for \bddastar\ the
+companion paper answers with the width condition; our contribution here
+is orthogonal to both: the operational cost that neither captures.
+SetA\ensuremath{^*} and \ghseta\ \citep{jensen-et-al-aij2008} and Lazy
+\bddastar\ \citep{torralba-phd2015} vary \emph{when} the partition is
+computed but expand the same buckets, so Proposition~\ref{prop-calls}
+applies to them as well; the operator-potential planner of
+\citet{fiser-et-al-aaai2022,fiser-et-al-aij2024} instantiates \ghseta\
+with LP potentials and is the many-valued extreme of our dichotomy.
+Closest to pruning-only search are the symbolic perimeter abstractions
+of \citet{torralba-et-al-ijcai2016a,torralba-et-al-aij2018}, which also
+delay heuristic effort (until blind search stalls; we delay until an
+incumbent exists) but use the abstraction to order the frontier;
+our variant never partitions and carries the factor-$Wn$ bound.
+Upper-bound pruning itself is classical in explicit branch-and-bound;
+its symbolic form here is distinguished by the exact slice
+characterization (Lemma~\ref{lem-slice}) that makes the guarantee
+possible.
+
+\section{Conclusions}
+
+Node counts were the wrong ledger. Counting image operations explains
+what a decade of experiments with heuristic symbolic search could not:
+$f$-ordering multiplies image calls by the number of heuristic values,
+so it pays exactly for few-valued heuristics---merge-and-shrink gains
+coverage, potentials lose it---and pruning-only search, which keeps
+blind search's image-call profile and a factor-$W$ tighter effort
+bound, is confirmed free but gains only what its discards are worth.
+Our bidirectional study sharpens the frontier: across four designs,
+heuristic pruning never reliably recouped the cost of computing the
+heuristic against blind bidirectional search, while seeding an incumbent
+from a satisficing planner improved even the blind configuration---the
+cheapest useful guidance requires no heuristic at all. The design rules
+for future heuristic symbolic search follow directly: order only with
+few values, prune with the rest, acquire incumbents early, and treat
+heuristic construction cost as a first-class quantity. Turning these
+rules into algorithms---coarse structural bucketing with a chosen image
+budget, synthesis that minimizes the value count rather than magnitudes,
+and guidance from information the search computes anyway---is where we
+are headed next.
+
+% ------------------------------------------------------------------------
+% Bibliography from the shared aibasel/bib repo (make update-bib).
+\bibliographystyle{plainnat}
+\bibliography{bib/abbrv,bib/literatur,bib/crossref}
+\end{document}

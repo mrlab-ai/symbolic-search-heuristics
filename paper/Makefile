@@ -3,9 +3,17 @@
 # via `make update-bib`; do not edit them directly (edit extra.bib for entries
 # not yet in the shared repository).
 
-.PHONY: paper update-bib clean
+.PHONY: paper paperA paperB update-bib clean
 
 paper: paper.pdf
+paperA: paperA.pdf
+paperB: paperB.pdf
+
+paper%.pdf: paper%.tex $(wildcard bib/*.bib)
+	pdflatex -interaction=nonstopmode $(basename $@).tex
+	bibtex $(basename $@)
+	pdflatex -interaction=nonstopmode $(basename $@).tex
+	pdflatex -interaction=nonstopmode $(basename $@).tex
 
 paper.pdf: paper.tex $(wildcard bib/*.bib) extra.bib
 	pdflatex -interaction=nonstopmode paper.tex
@@ -24,4 +32,4 @@ update-bib:
 	echo "$${note}" > bib/DO_NOT_EDIT_THESE_FILES
 
 clean:
-	rm -f paper.aux paper.bbl paper.blg paper.log paper.out paper.pdf
+	rm -f paper*.aux paper*.bbl paper*.blg paper*.log paper*.out paper*.pdf
