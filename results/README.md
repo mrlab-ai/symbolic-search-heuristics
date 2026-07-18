@@ -32,6 +32,13 @@ max < 2.7 — small, far below the Thm-partition worst case.
 **Q2 knob:** M=0 effort ratio 1.006 (blind-equivalent); overhead a bounded
 factor 1.9→1.3 as M grows; best coverage at M=8 (WINNING_M=8).
 
+**Bound seeding (exp_seeded, lama-first 60s -> bound=c, optimality-proved
+coverage, equal budgets):** seeded blind_bd **1054** > blind_bd 1050 (the seed
+helps blind itself: no solution finding/reconstruction needed -- best bd
+number of the project, with NO heuristic); seeded bd_ms 1051 (wash; trails its
+own control -- construction eats the pruning gain); seeded fw pot prune 688 >
+blind_fw 682 / unseeded 683 (forward pruning arc completes positively).
+
 **Merge-order alignment (exp_ms_aligned):** ms_aligned 687 vs ms 704
 (5 wins/22 losses); measured width DROPS (median 1380->1091, p90 50059->9751)
 but the causal-graph merge order gives more informative abstractions --

@@ -1356,6 +1356,29 @@ unique solves are slow (median $947$ seconds), so neither time-slicing
 nor simple pre-search selection harvests the complementarity; doing so
 is an open problem our data makes concrete.
 
+\paragraph{Bound seeding.}
+Since the $g + h \geq c$ slice can only prune once an incumbent exists,
+we finally supplied one externally: a $60$-second run of the satisficing
+planner \textsc{LAMA} yields a plan of cost $c$, and the symbolic search
+then runs with the exclusive bound $c$---it either finds a cheaper plan
+or, by exhausting the bounded space, proves the incumbent optimal. All
+configurations receive the same total budget, with seeding time charged
+to the seeded ones, and coverage counts only proved-optimal outcomes.
+The results reorder the picture in an unexpected way. Seeding helps
+plain blind bidirectional search itself ($1054$ vs.\ $1050$): with a
+bound it never needs to find or reconstruct a solution, only to raise
+its lower bound, and this saving alone exceeds the seeding cost. Adding
+merge-and-shrink pruning on top gains nothing ($1051$; it trails its own
+seedless-pruning control)---the construction cost again consumes the
+pruning gain. In the forward direction, by contrast, seeding completes
+the pruning story positively: pruning-only potentials reach $688$
+positive-cost tasks against $682$ for blind forward search and $683$
+unseeded, the first forward-potential configuration to show a net gain.
+The lesson is symmetric to the bidirectional one: an incumbent is the
+cheapest form of guidance---it even helps blind search---and heuristic
+pruning pays off on top of it exactly when the heuristic costs
+essentially nothing to build.
+
 \paragraph{Merge-order alignment.}
 Proposition~\ref{prop-ms} requires the merge order to match the search's
 variable order for the closed-form $dN$ bound; our default
@@ -1542,9 +1565,13 @@ search is coverage-neutral and effort-neutral, as guaranteed;
 merge-and-shrink, whose value count is small, converts ordering into a
 coverage improvement over blind forward search; and potentials, with
 many values, cannot. In bidirectional search, outside our guarantee,
-three successively more careful designs consistently showed that even
-provably safe pruning does not reliably recoup the cost of computing the
-heuristic against SymK's blind bidirectional search. We see three open
+four successively more careful designs---up to seeding an incumbent from
+a satisficing planner---consistently showed that even provably safe
+pruning does not reliably recoup the cost of computing the heuristic
+against SymK's blind bidirectional search, while the incumbent itself
+proved to be the cheapest useful form of guidance: it improves blind
+bidirectional search and turns forward pruning-only potentials into a
+net gain. We see three open
 directions: a formal effort guarantee for bidirectional \bddastar\ that
 accounts for the bound-sequence feedback identified in
 Section~\ref{sec-prune}; merge and variable orders chosen \emph{jointly}
