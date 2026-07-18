@@ -13,6 +13,8 @@
 #include "../searches/bidirectional_search.h"
 #include "../searches/uniform_cost_search.h"
 
+#include <limits>
+
 using namespace std;
 
 namespace symbolic {
@@ -35,7 +37,11 @@ void SymbolicBdPruneSearch::initialize() {
         unique_ptr<UniformCostSearch>(new UniformCostSearch(this, sym_params));
     fw_search_ptr = fw_search.get();
     bw_search_ptr = bw_search.get();
-    if (!defer_build) {
+    // Build eagerly if requested, or if an upper bound was seeded via the
+    // standard bound option (e.g. from a satisficing run): an incumbent
+    // already exists, so the deferred trigger condition holds from the start.
+    if (!defer_build ||
+        upper_bound < numeric_limits<int>::max()) {
         build_and_attach_pruners();
     }
 
