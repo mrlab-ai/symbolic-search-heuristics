@@ -834,7 +834,20 @@ $g$ has $\values_g \leq |\img(h)| = \values$ nonempty buckets.
 
 Theorem~\ref{thm-effort} bounds the node term of $\effort_\alpha$ for
 every $\alpha$, but no width bound can cap the $\alpha$-term of \bddastar:
-the factor $\values_g$ is inherent to expanding buckets separately. This
+the factor $\values_g$ is inherent to expanding buckets separately. Nor
+does laziness help: Lazy \bddastar\ \citep{torralba-phd2015} and
+SetA\ensuremath{^{*}}/\ghseta\ \citep{jensen-et-al-aij2008} change
+\emph{when} the partition is computed, not \emph{which} buckets are
+expanded---by the bucket identity (Lemma~\ref{lem-identity}) every
+nonempty $(g,v)$ bucket still incurs its own image operation, so
+Proposition~\ref{prop-calls} applies to these variants verbatim. The
+factor is both constructible and measurable: on the family of
+Theorem~\ref{thm-tight}, \bddastar\ performs $\Theta(W)$ image calls per
+layer by construction, and empirically the measured calls-per-layer
+factor has median $3.0$--$3.2$ on the tasks each configuration solves
+but $7.0$--$10.2$ on the tasks it fails while blind search
+succeeds---the losses concentrate exactly where the multiplication
+bites. This
 gap between the two cost models is not hypothetical---in our experiments
 (Section~\ref{sec-experiments}), the tasks where \bddastar\ with
 potentials loses coverage against blind search are exactly the tasks with
@@ -1426,62 +1439,60 @@ pruning-only, at a runtime ratio of $1.42$ that its extra coverage
 justifies), while potentials, with a median of $53$ values and $65$
 where losses occur, are hurt by it ($622$ vs.\ $683$; runtime ratio
 $1.77$). The choice between guidance and safety is thus governed by the
-number of heuristic values, exactly as the refined cost model predicts.
+number of heuristic values, exactly as the refined cost model predicts. The prediction also holds per task and per domain: among
+tasks solved by exactly one of a family's two variants, ordering wins at
+a median of $21$ heuristic values and loses at a median of $59$; per
+domain, ordering is better in $22$ domains and worse in $5$ for
+merge-and-shrink, but better in only $9$ and worse in $20$ for
+potentials.
 
-\paragraph{Bidirectional pruning.}
+\paragraph{Bidirectional search: pruning versus construction cost.}
 Since pruning needs no partitioning, it extends to blind bidirectional
-search (Section~\ref{sec-prune}), whose coverage no forward
-configuration approaches. Here the abstraction itself becomes the cost:
-without a construction budget, building the merge-and-shrink level sets
-consumed up to the entire time limit and cost more tasks than the
-pruning recovered ($1032$ vs.\ $1051$ for blind bidirectional search on
-the full suite of 1697 tasks, with construction taking over $90$ seconds
-on ten percent of the tasks; a tenfold larger abstraction only widens
-the gap, to $990$). With a $60$-second construction budget and
-fallback to blind search---making the pruning safe \emph{including} its
-setup cost---the budgeted variant recovers most of the difference
-($1041$ vs.\ $1051$). Deferring construction further, to the moment the
-first solution makes the bound slice applicable---so that the search is
-identical to blind bidirectional search up to that point---narrows the
-gap again ($1046$ vs.\ $1051$; one win, six losses), but does not close
-it: on the losing tasks the optimality proof consumes nearly the whole
-remaining budget, and the sixty seconds invested in the abstraction
-prune too little to pay for themselves. Across all three designs the
-picture is consistent, and we report it as an instructive negative
-result: bidirectional blind search is robust not because heuristic
-information fragments its BDDs---our bounds and measurements rule that
-out---but because at this level of performance even provably safe
-pruning must first pay for computing its heuristic, and on this suite
-that constant cost is not reliably recouped. The potential is
-nevertheless real: the virtual best of blind bidirectional search and
-the forward merge-and-shrink configuration solves $1081$ tasks---the
-forward search solves $30$ tasks the bidirectional one cannot---but the
-unique solves are slow (median $947$ seconds), so neither time-slicing
-nor simple pre-search selection harvests the complementarity; doing so
-is an open problem our data makes concrete.
+search (Section~\ref{sec-prune}), the strongest blind configuration
+(1050--1051 of all 1697 tasks; repeated runs differ by a task or two).
+Table~\ref{tab-bd} summarizes four successively more careful designs.
+The sign never flips: eagerly built merge-and-shrink level sets cost far
+more than they prune; a 60-second construction budget with fallback to
+blind search, deferring construction to the first solution, and finally
+seeding an incumbent from a 60-second run of \textsc{LAMA}
+\citep{richter-westphal-jair2010} (exclusive bound $c$: find a cheaper
+plan or prove the seed optimal; equal total budgets, coverage counts
+proved-optimal outcomes only) each close most of the remaining gap, but
+heuristic pruning never reliably recoups the cost of computing the
+heuristic. The seeded control is the sharpest datum: the incumbent alone
+lifts \emph{blind} bidirectional search to $1054$---the best
+bidirectional result we observed, with no heuristic---consistent with
+the fact that a bounded search need not find or reconstruct solutions.
+In the forward direction the same seed completes the pruning story
+positively: pruning-only potentials reach $688$ positive-cost tasks
+against $682$ for blind forward search and $683$ unseeded, the first
+forward-potential configuration with a net gain. The potential for
+guidance remains real but unharvested: the virtual best of blind
+bidirectional search and forward merge-and-shrink solves $1081$ tasks
+($30$ unique forward solves, median $947$ seconds), and neither
+time-slicing nor simple pre-search selection captures it. The full study
+appears in Appendix~\ref{app-bd}.
 
-\paragraph{Bound seeding.}
-Since the $g + h \geq c$ slice can only prune once an incumbent exists,
-we finally supplied one externally: a $60$-second run of the satisficing
-planner \textsc{LAMA} yields a plan of cost $c$, and the symbolic search
-then runs with the exclusive bound $c$---it either finds a cheaper plan
-or, by exhausting the bounded space, proves the incumbent optimal. All
-configurations receive the same total budget, with seeding time charged
-to the seeded ones, and coverage counts only proved-optimal outcomes.
-The results reorder the picture in an unexpected way. Seeding helps
-plain blind bidirectional search itself ($1054$ vs.\ $1050$): with a
-bound it never needs to find or reconstruct a solution, only to raise
-its lower bound, and this saving alone exceeds the seeding cost. Adding
-merge-and-shrink pruning on top gains nothing ($1051$; it trails its own
-seedless-pruning control)---the construction cost again consumes the
-pruning gain. In the forward direction, by contrast, seeding completes
-the pruning story positively: pruning-only potentials reach $688$
-positive-cost tasks against $682$ for blind forward search and $683$
-unseeded, the first forward-potential configuration to show a net gain.
-The lesson is symmetric to the bidirectional one: an incumbent is the
-cheapest form of guidance---it even helps blind search---and heuristic
-pruning pays off on top of it exactly when the heuristic costs
-essentially nothing to build.
+\begin{table}[t]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Configuration & Coverage & Wins & Losses \\
+\midrule
+Blind bidirectional & 1050--1051 & -- & -- \\
+\midrule
+M\&S pruning, eager & 1032 & 3 & 22 \\
+\quad + 60\,s construction budget & 1041 & 3 & 13 \\
+\quad + deferred to first solution & 1046 & 1 & 6 \\
+\quad + seeded incumbent (\textsc{LAMA}) & 1051 & 10 & 9 \\
+Seeded incumbent, no heuristic & \textbf{1054} & -- & -- \\
+\bottomrule
+\end{tabular}
+\caption{Bidirectional pruning on the full suite (1697 tasks):
+coverage and per-task wins/losses against blind bidirectional search
+from the same sweep.}
+\label{tab-bd}
+\end{table}
 
 \paragraph{Merge-order alignment.}
 Proposition~\ref{prop-ms} requires the merge order to match the search's
@@ -1684,6 +1695,68 @@ alignment experiment shows that optimizing width alone sacrifices
 accuracy---and heuristics engineered directly for small cofactor width,
 high accuracy and cheap construction, the three quantities our analysis
 identifies as decisive.
+
+\appendix
+\section{The Bidirectional Study in Detail}
+\label{app-bd}
+
+\paragraph{Design progression.}
+Since pruning needs no partitioning, it extends to blind bidirectional
+search (Section~\ref{sec-prune}), whose coverage no forward
+configuration approaches. Here the abstraction itself becomes the cost:
+without a construction budget, building the merge-and-shrink level sets
+consumed up to the entire time limit and cost more tasks than the
+pruning recovered ($1032$ vs.\ $1051$ for blind bidirectional search on
+the full suite of 1697 tasks, with construction taking over $90$ seconds
+on ten percent of the tasks; a tenfold larger abstraction only widens
+the gap, to $990$). With a $60$-second construction budget and
+fallback to blind search---making the pruning safe \emph{including} its
+setup cost---the budgeted variant recovers most of the difference
+($1041$ vs.\ $1051$). Deferring construction further, to the moment the
+first solution makes the bound slice applicable---so that the search is
+identical to blind bidirectional search up to that point---narrows the
+gap again ($1046$ vs.\ $1051$; one win, six losses), but does not close
+it: on the losing tasks the optimality proof consumes nearly the whole
+remaining budget, and the sixty seconds invested in the abstraction
+prune too little to pay for themselves. Across all three designs the
+picture is consistent, and we report it as an instructive negative
+result: bidirectional blind search is robust not because heuristic
+information fragments its BDDs---our bounds and measurements rule that
+out---but because at this level of performance even provably safe
+pruning must first pay for computing its heuristic, and on this suite
+that constant cost is not reliably recouped. The potential is
+nevertheless real: the virtual best of blind bidirectional search and
+the forward merge-and-shrink configuration solves $1081$ tasks---the
+forward search solves $30$ tasks the bidirectional one cannot---but the
+unique solves are slow (median $947$ seconds), so neither time-slicing
+nor simple pre-search selection harvests the complementarity; doing so
+is an open problem our data makes concrete.
+
+\paragraph{Bound seeding.}
+Since the $g + h \geq c$ slice can only prune once an incumbent exists,
+we finally supplied one externally: a $60$-second run of the satisficing
+planner \textsc{LAMA} \citep{richter-westphal-jair2010} yields a plan of
+cost $c$, and the symbolic search
+then runs with the exclusive bound $c$---it either finds a cheaper plan
+or, by exhausting the bounded space, proves the incumbent optimal. All
+configurations receive the same total budget, with seeding time charged
+to the seeded ones, and coverage counts only proved-optimal outcomes.
+The results reorder the picture in an unexpected way. Seeding helps
+plain blind bidirectional search itself ($1054$ vs.\ $1050$)---consistent
+with the fact that, given a bound, the search need not find or
+reconstruct solutions but only raise its lower bound---so the saving
+exceeds the seeding cost. Adding
+merge-and-shrink pruning on top gains nothing ($1051$; it trails its own
+seedless-pruning control)---the construction cost again consumes the
+pruning gain. In the forward direction, by contrast, seeding completes
+the pruning story positively: pruning-only potentials reach $688$
+positive-cost tasks against $682$ for blind forward search and $683$
+unseeded, the first forward-potential configuration to show a net gain.
+The lesson is symmetric to the bidirectional one: an incumbent is the
+cheapest form of guidance---it even helps blind search---and heuristic
+pruning pays off on top of it exactly when the heuristic costs
+essentially nothing to build.
+
 
 % ------------------------------------------------------------------------
 % Bibliography from the shared aibasel/bib repo (make update-bib).
