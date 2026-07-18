@@ -75,7 +75,9 @@ over blind forward search, and that the known exponential deterioration
 requires exponential width. Integer potential heuristics, prefix pattern
 databases and linear merge-and-shrink abstractions instantiate the class
 with widths controlled by their standard parameters, yielding the first
-formal performance guarantee for the operator-potential approach.
+formal performance guarantee for the operator-potential approach. The
+guarantee is one-sided by design: it caps the harm a heuristic can do,
+not the benefit.
 Experiments in the SymK planner confirm the theory: fragmentation stays
 negligible across five orders of magnitude of measured width, the
 potential-magnitude cap acts as a knob with bounded overhead, and the
@@ -154,7 +156,7 @@ Finally, we implement all of the above in the SymK planner
 \citep{speck-et-al-jair2025} and evaluate it on the IPC benchmarks: the
 fragmentation predicted harmless stays harmless, the width knob trades
 accuracy against a bounded and empirically small overhead, and the
-merge-and-shrink family surpasses blind forward search.
+merge-and-shrink family improves broadly on blind forward search.
 
 % ============================ background =================================
 \section{Background}
@@ -344,7 +346,10 @@ unrelated to the novelty width of \citet{lipovetzky-geffner-ecai2012},
 which measures the size of value tuples needed to distinguish states
 during search, and only indirectly related to structural graph
 parameters such as pathwidth, whose boundedness is a classical
-sufficient condition for small OBDDs \citep{wegener-2000}. Three
+sufficient condition for small OBDDs \citep{wegener-2000}. Width-style size measures likewise underlie knowledge
+compilation \citep{darwiche-marquis-jair2002,darwiche-ijcai2011}, where
+bounded-width classes trade succinctness for tractable operations---the
+same currency our results spend on search. Three
 immediate consequences will do much of the work below.
 
 \begin{proposition}[value range]
@@ -779,6 +784,85 @@ bidirectional \citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and
 extending the analysis to bidirectional \bddastar, where the backward
 frontier interacts with forward buckets, is future work.
 
+
+\subsection{The Factor $W^2$ Is Necessary}
+
+The factor $n$ in our bounds is unavoidable
+(Example~\ref{ex-parity}); we now show that the factor $W^{2}$ of
+Theorem~\ref{thm-effort} is necessary as well, so that only the factor
+$n$ between the two can be loose.
+
+\begin{theorem}[tightness]
+\label{thm-tight}
+For all integers $W \geq 2$ and $k \geq 4W$ there are tasks
+$\task_{k,W}$ with $n = \Theta(k)$ Boolean variables and consistent,
+admissible heuristics $h$ with $\width_\pi(h) = O(W)$ such that
+$\effort(\task_{k,W}, h) = \Omega(W^{2}) \cdot
+\effort(\task_{k,W}, \hblind)$.
+\end{theorem}
+
+\begin{proof}
+The task has binary variables $x_0, \dots, x_k$ (a chain),
+$v_1, \dots, v_k$ (choices) and $t_1, \dots, t_W$ (a tail); initially
+only $x_0$ holds. All operators cost $1$: for $i \in [k]$, operator
+$o_i^1$ has precondition $x_{i-1} \wedge \neg x_i$ and effect
+$x_i \wedge v_i$, and $o_i^0$ the same precondition and effect $x_i$;
+for $j \in [W]$, operator $u_j$ has precondition
+$x_k \wedge t_{j-1} \wedge \neg t_j$ (with $t_0 := x_k$) and effect
+$t_j$; the goal is $t_W$, so $\copt = k + W$. The order $\pi$ lists the
+$x$-block, then $v_1, \dots, v_k$, then the $t$-block.
+
+Let $\rho(s) = \bigl(\sum_{j=1}^{k} s(v_j)\bigr) \bmod W$ and define,
+over all Boolean assignments,
+$h(s) = \min\bigl(\rho(s),\; W - |\{ j \mid s(t_j) = 1 \}|\bigr)$.
+Both terms change by at most $1$ per operator application and $h$
+vanishes on goal states, so $h$ is consistent; $h \leq W - \#t \leq
+\hstar$ gives admissibility. Since $h$ ignores the $x$-block, its
+cofactors are determined by the partial residue in the $v$-block (at
+most $W$ values) and by the pair of final residue and tail count in the
+$t$-block, so $\width_\pi(h) = O(W)$.
+
+\emph{Blind effort.} The layer $L_i$ for $i \leq k$ fixes the chain
+prefix, sets $v_j$ for $j > i$ and all $t_j$ to false, and leaves
+$v_1, \dots, v_i$ unconstrained; free variables contribute no nodes, so
+$\bddsize{L_i} = \Theta(k + W)$, and the same holds for the $W$ tail
+layers. Hence $\effort(\task_{k,W}, \hblind) = \Theta(k(k+W)) =
+\Theta(k^2)$ for $W \leq k$.
+
+\emph{Heuristic effort.} At layer $i \leq k$ all tail variables are
+false, so $h(s) = \rho(s) = \bigl(\sum_{j \leq i} s(v_j)\bigr) \bmod W$,
+and \bddastar\ splits $L_i$ into the $W$ residue buckets
+$L_i \cap \{\rho = c\}$, all nonempty for $i \geq W - 1$ and all
+selected, since their keys satisfy $g + v \leq i + W - 1 < \copt$
+(Lemma~\ref{lem-identity}). Fix $i \geq 4W$ and a bucket $c$, and
+consider prefixes that agree on the chain and differ on
+$v_1, \dots, v_j$ with $W \leq j \leq i - W$. Prefixes with distinct
+partial residues $\rho_1 \neq \rho_2$ have distinct cofactors: the
+suffix that sets exactly $a = (c - \rho_1) \bmod W \leq W - 1 \leq i - j$
+of the remaining $v$-variables completes the first prefix to the bucket
+but not the second. Moreover, every such cofactor essentially depends on
+$v_{j+1}$: its two restrictions $[\rho + \Sigma \equiv c]$ and
+$[\rho + 1 + \Sigma \equiv c]$ over the remaining variables are distinct
+by the same argument. By canonicity, each of the $\min(j+1, W)$ residue
+cofactors at level $j$ is therefore represented by its own inner node
+labeled $v_{j+1}$ in the \emph{reduced} OBDD, so
+$\bddsize{L_i \cap \{\rho = c\}} \geq (i - 2W) \, W$ from the middle
+levels $W \leq j \leq i - W$ alone; this matches the classical
+$\Theta(iW)$ size of modular counting functions \citep{wegener-2000}.
+Summing over the $W$ buckets and the layers $i \in [4W, k]$,
+\[
+\effort(\task_{k,W}, h)
+\;\geq\; \sum_{i=4W}^{k} W \cdot \Omega(iW)
+\;=\; \Omega(k^{2} W^{2}),
+\]
+which exceeds blind effort by a factor $\Omega(W^{2})$.
+\end{proof}
+
+Theorem~\ref{thm-tight} should be read together with the small measured
+fragmentation ratios of Section~\ref{sec-experiments}: the quadratic
+overhead is realizable, but it requires heuristics whose level sets
+entangle the frontier in a way the natural families rarely do.
+
 \subsection{Exponential Width Is Necessary for the Known Pathology}
 
 We now revisit the family $\task_n$ of \citet{speck-et-al-icaps2020} on
@@ -1048,12 +1132,12 @@ of the IPCs 1998--2023, a subset of the suite of
 positive operator costs (Section~\ref{sec-effort}), the heuristic
 configurations are undefined on the 320 tasks with zero-cost operators;
 we therefore report coverage on the remaining 1377 tasks, which all
-configurations attempt. Two exceptions to this base are flagged where
-they occur: the bidirectional pruning study uses the full suite of 1697
-tasks, since pruning-only search needs no positive-cost restriction, and
-repeated runs of bidirectional SymK differ by one or two solved tasks
-because its direction selection is timing-based; we always compare runs
-from the same sweep. We limit time to 30\,minutes and memory to
+configurations attempt. The positive-cost restriction is inherited from the
+theory: the layer structure underlying the bucket identity
+(Lemma~\ref{lem-identity}) requires positive costs, and extending the
+guarantees across zero-cost strata is open. Repeated runs of bidirectional SymK (a baseline below) differ by
+one or two solved tasks because its direction selection is timing-based;
+we compare runs from a single sweep. We limit time to 30\,minutes and memory to
 8\,GiB. All code, benchmarks and experiment data are available in a
 supplementary archive.\footnote{A Zenodo DOI will be added for the
 camera-ready version.}
@@ -1088,7 +1172,15 @@ exactly the quantity Theorems~\ref{thm-bucket}--\ref{thm-effort}
 consume, so the guarantees cover every reported run; the closed-form
 parameter bounds of Section~\ref{sec-instances} (such as $dN$ for
 merge-and-shrink) additionally require the stated alignment conditions,
-which our implementation does not enforce for the merge order.
+which our implementation does not enforce for the merge order. The slack of the bounds is itself informative: on solved
+tasks, even the crude factor $\values$ (one bucket per value) overshoots
+the measured fragmentation by median factors of $8$--$26$ across the
+families, and the width-based factor $U$ by $120$--$879$; almost all of
+it is structure sharing between buckets, as the remark following
+Theorem~\ref{thm-partition} predicts. The theorems' quantitative value
+is thus the dichotomy they establish together with
+Theorems~\ref{thm-tight} and~\ref{thm-lb}---bounded width cannot blow up,
+unbounded width can---rather than a tight per-task prediction.
 The fragmentation ratio thus stays small and far below the worst case of
 Theorem~\ref{thm-partition}, confirming that width-bounded partitioning
 does not blow up BDD sizes in practice. As a sanity anchor we also ran
@@ -1096,7 +1188,10 @@ blind forward search on the family $\task_n$ of
 \citet{speck-et-al-icaps2020}: its layers stay linear in $n$ (the largest
 expanded layer has $18$, $34$ and $50$ BDD nodes for $n = 4, 8, 12$),
 whereas the perfect heuristic has width $2^{n}$ there
-(Theorem~\ref{thm-lb}), the very blow-up that width-boundedness rules out.
+(Theorem~\ref{thm-lb}), the very blow-up that width-boundedness rules out. Running the width-bounded families on $\task_n$ completes the
+contrast: capped potentials and prefix PDBs keep every expanded bucket
+linear as well (at most $50$ and $83$ nodes up to $n = 12$), succeeding
+exactly where the perfect heuristic provably cannot.
 
 \begin{table}[t]
 \centering
@@ -1141,7 +1236,15 @@ configuration (forward and backward operator potentials from one LP with
 the initial-state objective); the strongest configurations reported by
 \citet{fiser-et-al-aij2024} combine several potential functions, so
 $652$ should be read as a lower bound on what that system can achieve on
-this suite. The remaining configurations that
+this suite.
+
+Per domain, the merge-and-shrink improvement is broad but individually
+small: it solves more tasks than blind forward search in $21$ of $46$
+domains and fewer in $5$ (sign test, $p < 0.003$), while the aggregate
+difference of $22$ tasks is sensitive to domain weighting (a
+domain-level bootstrap gives the wide interval $[-40, 66]$), with
+\textsc{miconic} ($-23$) dominating the downside. Breadth, not aggregate
+mass, is the robust part of the signal. The remaining configurations that
 solve more tasks all use search paradigms outside the scope of our
 forward-search guarantee (Theorem~\ref{thm-effort}): blind
 \emph{bidirectional} SymK ($777$) and \symba\ ($724$) are bidirectional,
@@ -1334,8 +1437,9 @@ giving in particular the first formal guarantee for the
 operator-potential approach. The experiments matched the theory:
 fragmentation is negligible wherever width is bounded, the magnitude cap
 behaves as a knob with bounded overhead, and the merge-and-shrink family
-converts its guarantee into a coverage improvement over blind forward
-search. The alignment study adds the cautionary half of the message:
+converts its guarantee into a broad coverage improvement over blind
+forward search (better in 21 of 46 domains, worse in 5), whose aggregate
+margin however rests on few domains. The alignment study adds the cautionary half of the message:
 enforcing the condition that makes the closed-form width bound
 applicable shrinks the representation but costs accuracy---width is a
 currency to be spent, not an objective to be minimized. We see two open
