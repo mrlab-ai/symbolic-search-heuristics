@@ -72,8 +72,10 @@ most $W$ cases. We prove that partitioning \emph{any} state set by such
 a heuristic inflates the total BDD size by at most a factor polynomial
 in $W$ and the number of variables, that symbolic \astar\ with a
 consistent width-$W$ heuristic incurs at most this polynomial overhead
-over blind forward search, and that the known exponential deterioration
-requires exponential width. Integer potential heuristics, prefix pattern
+over blind forward search, that the known exponential deterioration
+requires exponential width, and that the quadratic width factor of the
+bound is realized by an explicit family, so the guarantee is tight in
+the width. Integer potential heuristics, prefix pattern
 databases and linear merge-and-shrink abstractions instantiate the class
 with widths controlled by their standard parameters. A refined cost
 model that counts image operations then predicts \emph{which} of two
@@ -86,7 +88,8 @@ stays negligible; merge-and-shrink, whose value count is small, improves broadly
 blind forward search with ordering (better in 21 of 46 domains), while
 potentials, with many values, only match it via pruning; and in bidirectional search---outside our
 guarantee---even provably safe pruning cannot reliably recoup the cost
-of computing the heuristic.
+of computing the heuristic, while an incumbent bound from a satisficing
+planner, the cheapest form of guidance, improves even blind search.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -147,10 +150,12 @@ can have an exponentially larger BDD. Second, we prove a
 \emph{search-effort theorem}: \bddastar\ with a consistent width-$W$
 heuristic expands BDDs whose cumulative size exceeds that of blind
 symbolic forward search by at most a factor $O(W^{2}n)$, where $n$ is
-the number of binary variables. Third, we show that the pathological
+the number of binary variables. Third, we delimit the bound from both sides: the pathological
 heuristic in the construction of \citet{speck-et-al-icaps2020} has width
 $2^{\Omega(n)}$, so exponential width is necessary for their exponential
-deterioration. Fourth, we identify natural width-bounded families:
+deterioration, and an explicit family of tasks and width-$W$ heuristics
+realizes an $\Omega(W^2)$ overhead, so the width factor of our bound is
+tight. Fourth, we identify natural width-bounded families:
 integer potential heuristics, pattern databases whose pattern is a prefix
 of the variable order, and merge-and-shrink heuristics with a linear
 merge strategy---whose shrink size limit \emph{is} a width bound. This
@@ -166,7 +171,8 @@ fragmentation predicted harmless stays harmless, the refined cost model
 correctly predicts that merge-and-shrink profits from $f$-ordering
 (surpassing blind forward search) while potential heuristics do not, and
 a candid study of bidirectional search delimits where the guarantee
-regime ends.
+regime ends and identifies incumbent bounds as the cheapest useful form
+of guidance.
 
 % ============================ background =================================
 \section{Background}
@@ -791,9 +797,154 @@ the constraints $g + v \leq \copt$ and $v \neq \infty$, remain
 unbounded, which is the desired asymmetry. Second, the baseline is blind
 \emph{forward} search; the strongest blind configuration in practice is
 bidirectional \citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and
-extending the analysis to bidirectional \bddastar, where the backward
-frontier interacts with forward buckets, is future work.
+extending the analysis to bidirectional search, where the backward
+frontier interacts with forward buckets, is achieved for the
+pruning-only variant in Section~\ref{sec-prune} and remains open for
+bidirectional \bddastar\ itself.
 
+\subsection{The Factor $W^2$ Is Necessary}
+
+The factor $n$ in our bounds is unavoidable
+(Example~\ref{ex-parity}); we now show that the factor $W^{2}$ of
+Theorem~\ref{thm-effort} is necessary as well, so that only the factor
+$n$ between the two can be loose.
+
+\begin{theorem}[tightness]
+\label{thm-tight}
+For all integers $W \geq 2$ and $k \geq 4W$ there are tasks
+$\task_{k,W}$ with $n = \Theta(k)$ Boolean variables and consistent,
+admissible heuristics $h$ with $\width_\pi(h) = O(W)$ such that
+$\effort(\task_{k,W}, h) = \Omega(W^{2}) \cdot
+\effort(\task_{k,W}, \hblind)$.
+\end{theorem}
+
+\begin{proof}
+The task has binary variables $x_0, \dots, x_k$ (a chain),
+$v_1, \dots, v_k$ (choices) and $t_1, \dots, t_W$ (a tail); initially
+only $x_0$ holds. All operators cost $1$: for $i \in [k]$, operator
+$o_i^1$ has precondition $x_{i-1} \wedge \neg x_i$ and effect
+$x_i \wedge v_i$, and $o_i^0$ the same precondition and effect $x_i$;
+for $j \in [W]$, operator $u_j$ has precondition
+$x_k \wedge t_{j-1} \wedge \neg t_j$ (with $t_0 := x_k$) and effect
+$t_j$; the goal is $t_W$, so $\copt = k + W$. The order $\pi$ lists the
+$x$-block, then $v_1, \dots, v_k$, then the $t$-block.
+
+Let $\rho(s) = \bigl(\sum_{j=1}^{k} s(v_j)\bigr) \bmod W$ and define,
+over all Boolean assignments,
+$h(s) = \min\bigl(\rho(s),\; W - |\{ j \mid s(t_j) = 1 \}|\bigr)$.
+Both terms change by at most $1$ per operator application and $h$
+vanishes on goal states, so $h$ is consistent; $h \leq W - \#t \leq
+\hstar$ gives admissibility. Since $h$ ignores the $x$-block, its
+cofactors are determined by the partial residue in the $v$-block (at
+most $W$ values) and by the pair of final residue and tail count in the
+$t$-block, so $\width_\pi(h) = O(W)$.
+
+\emph{Blind effort.} The layer $L_i$ for $i \leq k$ fixes the chain
+prefix, sets $v_j$ for $j > i$ and all $t_j$ to false, and leaves
+$v_1, \dots, v_i$ unconstrained; free variables contribute no nodes, so
+$\bddsize{L_i} = \Theta(k + W)$, and the same holds for the $W$ tail
+layers. Hence $\effort(\task_{k,W}, \hblind) = \Theta(k(k+W)) =
+\Theta(k^2)$ for $W \leq k$.
+
+\emph{Heuristic effort.} At layer $i \leq k$ all tail variables are
+false, so $h(s) = \rho(s) = \bigl(\sum_{j \leq i} s(v_j)\bigr) \bmod W$,
+and \bddastar\ splits $L_i$ into the $W$ residue buckets
+$L_i \cap \{\rho = c\}$, all nonempty for $i \geq W - 1$ and all
+selected, since their keys satisfy $g + v \leq i + W - 1 < \copt$
+(Lemma~\ref{lem-identity}). Fix $i \geq 4W$ and a bucket $c$, and
+consider prefixes that agree on the chain and differ on
+$v_1, \dots, v_j$ with $W \leq j \leq i - W$. Prefixes with distinct
+partial residues $\rho_1 \neq \rho_2$ have distinct cofactors: the
+suffix that sets exactly $a = (c - \rho_1) \bmod W \leq W - 1 \leq i - j$
+of the remaining $v$-variables completes the first prefix to the bucket
+but not the second. Moreover, every such cofactor essentially depends on
+$v_{j+1}$: its two restrictions $[\rho + \Sigma \equiv c]$ and
+$[\rho + 1 + \Sigma \equiv c]$ over the remaining variables are distinct
+by the same argument. By canonicity, each of the $\min(j+1, W)$ residue
+cofactors at level $j$ is therefore represented by its own inner node
+labeled $v_{j+1}$ in the \emph{reduced} OBDD, so
+$\bddsize{L_i \cap \{\rho = c\}} \geq (i - 2W) \, W$ from the middle
+levels $W \leq j \leq i - W$ alone; this matches the classical
+$\Theta(iW)$ size of modular counting functions \citep{wegener-2000}.
+Summing over the $W$ buckets and the layers $i \in [4W, k]$,
+\[
+\effort(\task_{k,W}, h)
+\;\geq\; \sum_{i=4W}^{k} W \cdot \Omega(iW)
+\;=\; \Omega(k^{2} W^{2}),
+\]
+which exceeds blind effort by a factor $\Omega(W^{2})$.
+\end{proof}
+
+Theorem~\ref{thm-tight} should be read together with the small measured
+fragmentation ratios of Section~\ref{sec-experiments}: the quadratic
+overhead is realizable, but it requires heuristics whose level sets
+entangle the frontier in a way the natural families rarely do.
+
+\subsection{Exponential Width Is Necessary for the Known Pathology}
+
+We now revisit the family $\task_n$ of \citet{speck-et-al-icaps2020} on
+which \bddastar\ with \hstar\ is exponentially worse than with \hblind.
+The task has binary variables
+$v_1, \dots, v_{2n}$ and $x_0, \dots, x_{2n+1}$; initially only $x_0$
+is true, operators $o_i$ and $\bar o_i$ with precondition
+$x_{i-1} \wedge \neg x_i$ set $x_i$ true while setting $v_i$ true or
+false, respectively, and once $x_0, \dots, x_{2n}$ are all true, a goal
+operator $g_i$ with precondition $x_{2n} \wedge v_i \wedge v_{n+i}$ for
+some $i \in \{1, \dots, n\}$ achieves the goal
+$x_{2n+1}$. The variable order is
+$\pi_n = x_0, \dots, x_{2n+1}, v_1, \dots, v_{2n}$, and the exponential
+blowup arises in the bucket of non-dead-end states at $g = 2n$, whose
+characteristic function contains
+$\bigvee_{i=1}^{n} (v_i \wedge v_{n+i})$, a function with exponential
+OBDD size under $\pi_n$ \citep{kissmann-phd2012,speck-et-al-icaps2020}.
+
+\begin{theorem}[width lower bound]
+\label{thm-lb}
+For the tasks $\task_n$ and orders $\pi_n$ of
+\citet{speck-et-al-icaps2020},
+$\width_{\pi_n}(\hstar) \geq 2^{n}$.
+\end{theorem}
+
+\begin{proof}
+We exhibit $2^n$ prefixes with pairwise distinct \hstar-cofactors. For
+$A \subseteq \{1, \dots, n\}$ let $\rho_A$ be the prefix that assigns
+the $x$-variables the encoding of chain position $2n$, i.e.,
+$x_0, \dots, x_{2n}$ true and $x_{2n+1}$ false, and assigns $v_i = 1$
+iff $i \in A$ for $i \in \{1, \dots, n\}$. All $\rho_A$ fix the same
+variables $x_0, \dots, x_{2n+1}, v_1, \dots, v_n$, so their cofactors
+lie in $\sub{m}{\hstar}$ for the same level $m = (2n + 2) + n$. Let
+$A \neq A'$ and pick without loss of generality
+$i \in A \setminus A'$. Define the suffix $\sigma$ over
+$v_{n+1}, \dots, v_{2n}$ by $v_{n+i} = 1$ and $v_{n+j} = 0$ for
+$j \neq i$. The state $\rho_A \sigma$ satisfies
+$v_i \wedge v_{n+i}$, so a goal operator is applicable and
+$\hstar(\rho_A \sigma) = 1$. The state $\rho_{A'} \sigma$ satisfies
+$v_j \wedge v_{n+j}$ for no $j$: for $j = i$ because $v_i = 0$ under
+$\rho_{A'}$, and for $j \neq i$ because $v_{n+j} = 0$ under $\sigma$.
+No other operator is applicable in either state, since every $o_i$ and
+$\bar o_i$ requires $\neg x_i$ and $x_1, \dots, x_{2n}$ are all true.
+Hence $\rho_{A'} \sigma$ is a dead
+end and $\hstar(\rho_{A'} \sigma) = \infty \neq 1 =
+\hstar(\rho_A \sigma)$, so
+$\hstar|_{\rho_A} \neq \hstar|_{\rho_{A'}}$, and
+$|\sub{m}{\hstar}| \geq 2^{n}$. Since the argument evaluates \hstar\
+only on states, it applies to every total extension of \hstar\ to
+$\{0,1\}^n$ (Remark~\ref{rem-encoding}).
+\end{proof}
+
+Theorems~\ref{thm-effort} and~\ref{thm-lb} together delimit the
+phenomenon discovered by \citet{speck-et-al-icaps2020}: any heuristic
+that deteriorates \bddastar\ by a superpolynomial factor over blind
+search must have superpolynomial width under the search order, and the
+perfect heuristic on their family indeed has exponential width.
+Width-boundedness is a sufficient condition for safety, not a necessary
+one: a heuristic of large width may still happen to induce small
+buckets. Note also that \hstar\ on $\task_n$ takes at most
+$2n + 3$ distinct values, so a small value range does not imply small
+width; the width captures how much prefix information the level sets
+entangle, not how many there are.
+
+% ============================ instances ==================================
 \subsection{A Refined Cost Model: Image Calls}
 \label{sec-cost}
 
@@ -944,149 +1095,6 @@ never partitions, this variant also requires no restriction to positive
 operator costs for its soundness.
 
 
-\subsection{The Factor $W^2$ Is Necessary}
-
-The factor $n$ in our bounds is unavoidable
-(Example~\ref{ex-parity}); we now show that the factor $W^{2}$ of
-Theorem~\ref{thm-effort} is necessary as well, so that only the factor
-$n$ between the two can be loose.
-
-\begin{theorem}[tightness]
-\label{thm-tight}
-For all integers $W \geq 2$ and $k \geq 4W$ there are tasks
-$\task_{k,W}$ with $n = \Theta(k)$ Boolean variables and consistent,
-admissible heuristics $h$ with $\width_\pi(h) = O(W)$ such that
-$\effort(\task_{k,W}, h) = \Omega(W^{2}) \cdot
-\effort(\task_{k,W}, \hblind)$.
-\end{theorem}
-
-\begin{proof}
-The task has binary variables $x_0, \dots, x_k$ (a chain),
-$v_1, \dots, v_k$ (choices) and $t_1, \dots, t_W$ (a tail); initially
-only $x_0$ holds. All operators cost $1$: for $i \in [k]$, operator
-$o_i^1$ has precondition $x_{i-1} \wedge \neg x_i$ and effect
-$x_i \wedge v_i$, and $o_i^0$ the same precondition and effect $x_i$;
-for $j \in [W]$, operator $u_j$ has precondition
-$x_k \wedge t_{j-1} \wedge \neg t_j$ (with $t_0 := x_k$) and effect
-$t_j$; the goal is $t_W$, so $\copt = k + W$. The order $\pi$ lists the
-$x$-block, then $v_1, \dots, v_k$, then the $t$-block.
-
-Let $\rho(s) = \bigl(\sum_{j=1}^{k} s(v_j)\bigr) \bmod W$ and define,
-over all Boolean assignments,
-$h(s) = \min\bigl(\rho(s),\; W - |\{ j \mid s(t_j) = 1 \}|\bigr)$.
-Both terms change by at most $1$ per operator application and $h$
-vanishes on goal states, so $h$ is consistent; $h \leq W - \#t \leq
-\hstar$ gives admissibility. Since $h$ ignores the $x$-block, its
-cofactors are determined by the partial residue in the $v$-block (at
-most $W$ values) and by the pair of final residue and tail count in the
-$t$-block, so $\width_\pi(h) = O(W)$.
-
-\emph{Blind effort.} The layer $L_i$ for $i \leq k$ fixes the chain
-prefix, sets $v_j$ for $j > i$ and all $t_j$ to false, and leaves
-$v_1, \dots, v_i$ unconstrained; free variables contribute no nodes, so
-$\bddsize{L_i} = \Theta(k + W)$, and the same holds for the $W$ tail
-layers. Hence $\effort(\task_{k,W}, \hblind) = \Theta(k(k+W)) =
-\Theta(k^2)$ for $W \leq k$.
-
-\emph{Heuristic effort.} At layer $i \leq k$ all tail variables are
-false, so $h(s) = \rho(s) = \bigl(\sum_{j \leq i} s(v_j)\bigr) \bmod W$,
-and \bddastar\ splits $L_i$ into the $W$ residue buckets
-$L_i \cap \{\rho = c\}$, all nonempty for $i \geq W - 1$ and all
-selected, since their keys satisfy $g + v \leq i + W - 1 < \copt$
-(Lemma~\ref{lem-identity}). Fix $i \geq 4W$ and a bucket $c$, and
-consider prefixes that agree on the chain and differ on
-$v_1, \dots, v_j$ with $W \leq j \leq i - W$. Prefixes with distinct
-partial residues $\rho_1 \neq \rho_2$ have distinct cofactors: the
-suffix that sets exactly $a = (c - \rho_1) \bmod W \leq W - 1 \leq i - j$
-of the remaining $v$-variables completes the first prefix to the bucket
-but not the second. Moreover, every such cofactor essentially depends on
-$v_{j+1}$: its two restrictions $[\rho + \Sigma \equiv c]$ and
-$[\rho + 1 + \Sigma \equiv c]$ over the remaining variables are distinct
-by the same argument. By canonicity, each of the $\min(j+1, W)$ residue
-cofactors at level $j$ is therefore represented by its own inner node
-labeled $v_{j+1}$ in the \emph{reduced} OBDD, so
-$\bddsize{L_i \cap \{\rho = c\}} \geq (i - 2W) \, W$ from the middle
-levels $W \leq j \leq i - W$ alone; this matches the classical
-$\Theta(iW)$ size of modular counting functions \citep{wegener-2000}.
-Summing over the $W$ buckets and the layers $i \in [4W, k]$,
-\[
-\effort(\task_{k,W}, h)
-\;\geq\; \sum_{i=4W}^{k} W \cdot \Omega(iW)
-\;=\; \Omega(k^{2} W^{2}),
-\]
-which exceeds blind effort by a factor $\Omega(W^{2})$.
-\end{proof}
-
-Theorem~\ref{thm-tight} should be read together with the small measured
-fragmentation ratios of Section~\ref{sec-experiments}: the quadratic
-overhead is realizable, but it requires heuristics whose level sets
-entangle the frontier in a way the natural families rarely do.
-
-\subsection{Exponential Width Is Necessary for the Known Pathology}
-
-We now revisit the family $\task_n$ of \citet{speck-et-al-icaps2020} on
-which \bddastar\ with \hstar\ is exponentially worse than with \hblind.
-The task has binary variables
-$v_1, \dots, v_{2n}$ and $x_0, \dots, x_{2n+1}$; initially only $x_0$
-is true, operators $o_i$ and $\bar o_i$ with precondition
-$x_{i-1} \wedge \neg x_i$ set $x_i$ true while setting $v_i$ true or
-false, respectively, and once $x_0, \dots, x_{2n}$ are all true, a goal
-operator $g_i$ with precondition $x_{2n} \wedge v_i \wedge v_{n+i}$ for
-some $i \in \{1, \dots, n\}$ achieves the goal
-$x_{2n+1}$. The variable order is
-$\pi_n = x_0, \dots, x_{2n+1}, v_1, \dots, v_{2n}$, and the exponential
-blowup arises in the bucket of non-dead-end states at $g = 2n$, whose
-characteristic function contains
-$\bigvee_{i=1}^{n} (v_i \wedge v_{n+i})$, a function with exponential
-OBDD size under $\pi_n$ \citep{kissmann-phd2012,speck-et-al-icaps2020}.
-
-\begin{theorem}[width lower bound]
-\label{thm-lb}
-For the tasks $\task_n$ and orders $\pi_n$ of
-\citet{speck-et-al-icaps2020},
-$\width_{\pi_n}(\hstar) \geq 2^{n}$.
-\end{theorem}
-
-\begin{proof}
-We exhibit $2^n$ prefixes with pairwise distinct \hstar-cofactors. For
-$A \subseteq \{1, \dots, n\}$ let $\rho_A$ be the prefix that assigns
-the $x$-variables the encoding of chain position $2n$, i.e.,
-$x_0, \dots, x_{2n}$ true and $x_{2n+1}$ false, and assigns $v_i = 1$
-iff $i \in A$ for $i \in \{1, \dots, n\}$. All $\rho_A$ fix the same
-variables $x_0, \dots, x_{2n+1}, v_1, \dots, v_n$, so their cofactors
-lie in $\sub{m}{\hstar}$ for the same level $m = (2n + 2) + n$. Let
-$A \neq A'$ and pick without loss of generality
-$i \in A \setminus A'$. Define the suffix $\sigma$ over
-$v_{n+1}, \dots, v_{2n}$ by $v_{n+i} = 1$ and $v_{n+j} = 0$ for
-$j \neq i$. The state $\rho_A \sigma$ satisfies
-$v_i \wedge v_{n+i}$, so a goal operator is applicable and
-$\hstar(\rho_A \sigma) = 1$. The state $\rho_{A'} \sigma$ satisfies
-$v_j \wedge v_{n+j}$ for no $j$: for $j = i$ because $v_i = 0$ under
-$\rho_{A'}$, and for $j \neq i$ because $v_{n+j} = 0$ under $\sigma$.
-No other operator is applicable in either state, since every $o_i$ and
-$\bar o_i$ requires $\neg x_i$ and $x_1, \dots, x_{2n}$ are all true.
-Hence $\rho_{A'} \sigma$ is a dead
-end and $\hstar(\rho_{A'} \sigma) = \infty \neq 1 =
-\hstar(\rho_A \sigma)$, so
-$\hstar|_{\rho_A} \neq \hstar|_{\rho_{A'}}$, and
-$|\sub{m}{\hstar}| \geq 2^{n}$. Since the argument evaluates \hstar\
-only on states, it applies to every total extension of \hstar\ to
-$\{0,1\}^n$ (Remark~\ref{rem-encoding}).
-\end{proof}
-
-Theorems~\ref{thm-effort} and~\ref{thm-lb} together delimit the
-phenomenon discovered by \citet{speck-et-al-icaps2020}: any heuristic
-that deteriorates \bddastar\ by a superpolynomial factor over blind
-search must have superpolynomial width under the search order, and the
-perfect heuristic on their family indeed has exponential width.
-Width-boundedness is a sufficient condition for safety, not a necessary
-one: a heuristic of large width may still happen to induce small
-buckets. Note also that \hstar\ on $\task_n$ takes at most
-$2n + 3$ distinct values, so a small value range does not imply small
-width; the width captures how much prefix information the level sets
-entangle, not how many there are.
-
-% ============================ instances ==================================
 \section{Width-Bounded Heuristic Families}
 \label{sec-instances}
 
@@ -1267,7 +1275,11 @@ heuristics, with Corollary~\ref{cor-pot} guaranteeing the overhead at
 every setting. A sharper objective minimizes the number of distinct
 reachable partial sums directly, which is the exact width up to the bit
 buffer; we formulate this as a MIP but expect the box-constraint
-relaxation to be the practical variant. For prefix PDBs, synthesis
+relaxation to be the practical variant. In light of
+Section~\ref{sec-cost}, the most consequential synthesis objective is
+yet another one: minimizing the number of distinct heuristic
+\emph{values} (or operator deltas) attacks the image-call factor at its
+source; we return to this in the conclusions. For prefix PDBs, synthesis
 amounts to pattern selection constrained to prefixes of $\pi$, which
 composes with the causal-graph-based orders of
 \citet{kissmann-edelkamp-aaai2011} and dovetails with the variable
@@ -1313,14 +1325,15 @@ measured width. We compare against forward and bidirectional blind
 symbolic search in SymK, the operator-potential planner of
 \citet{fiser-et-al-aij2024}, \symba\
 \citep{torralba-et-al-aij2017} and the explicit-state cost-partitioning
-planner Scorpion \citep{seipp-et-al-jair2020}. Our evaluation addresses
-four questions. (Q1)~Does the measured fragmentation ratio respect the
-width bound? (Q2)~How do coverage and expansion size change with the
-width budget $M$? (Q3)~How do the width-bounded families compare to blind
-search and to the state of the art? (Q4)~Does the width bound behave as a
-usable accuracy--overhead knob?
+planner Scorpion \citep{seipp-et-al-jair2020}. The evaluation proceeds in six steps:
+does measured fragmentation respect the width bound; how do the families
+compare to blind search and the state of the art; when does $f$-ordering
+beat pruning-only use of the same heuristic; what survives in
+bidirectional search; what does enforcing the merge-order alignment
+condition cost; and does the magnitude cap behave as a usable
+accuracy--overhead knob?
 
-\paragraph{Q1: Fragmentation.}
+\paragraph{Fragmentation.}
 Across all solved tasks and all three families, partitioning a layer by
 heuristic value increases its total BDD size only marginally: the median
 fragmentation ratio is $1.17$ for prefix PDBs, $1.29$ for potentials and
@@ -1382,7 +1395,7 @@ lists external baselines.}
 \label{tab-coverage}
 \end{table}
 
-\paragraph{Q3: Coverage.}
+\paragraph{Coverage.}
 Table~\ref{tab-coverage} reports total coverage and
 Table~\ref{tab-domains} the per-domain breakdown. All three width-bounded
 families are competitive with blind forward search: prefix PDBs ($685$)
@@ -1509,7 +1522,7 @@ representational compactness. Width, in other words, is a currency, not
 the objective---consistent with our one-sided guarantee, which caps the
 harm of a heuristic but says nothing about its benefit.
 
-\paragraph{Q2 and Q4: The width knob.}
+\paragraph{The width knob.}
 Table~\ref{tab-knob} varies the potential magnitude cap $M$. At $M = 0$
 the heuristic is uniformly zero and the search reduces to blind forward
 search: the expansion size matches it to within $0.6\%$, confirming the
@@ -1667,8 +1680,9 @@ bounded width is a sufficient condition for safety in symbolic search:
 partitioning any state set by heuristic values costs at most a
 polynomial factor in the width, \bddastar\ with a consistent width-$W$
 heuristic incurs at most an $O(W^2 n)$ overhead over blind symbolic
-forward search, and the known exponential deterioration requires
-exponential width. Potential heuristics, prefix PDBs and linear
+forward search, the known exponential deterioration requires
+exponential width, and an explicit family realizes the quadratic width
+factor, making the bound tight in $W$. Potential heuristics, prefix PDBs and linear
 merge-and-shrink instantiate the class with widths controlled by the
 potential magnitude, the abstract state count and the shrink limit.
 Beyond the width theory, an image-call-aware cost model exposed the
@@ -1692,13 +1706,19 @@ accounts for the bound-sequence feedback identified in
 Section~\ref{sec-prune}; merge and variable orders chosen \emph{jointly}
 to balance representational width against abstraction accuracy---our
 alignment experiment shows that optimizing width alone sacrifices
-accuracy---and heuristics engineered directly for small cofactor width,
-high accuracy and cheap construction, the three quantities our analysis
-identifies as decisive.
+accuracy---and heuristics engineered directly for few
+distinct values, small cofactor width, high accuracy and cheap
+construction---the quantities our analysis identifies as decisive, the
+first being the synthesis objective that Section~\ref{sec-synthesis}
+motivates but leaves open.
 
 \appendix
 \section{The Bidirectional Study in Detail}
 \label{app-bd}
+
+This appendix expands the summary of Table~\ref{tab-bd}: the design
+progression of the bidirectional pruning configurations and the
+bound-seeding study, with the per-design diagnoses.
 
 \paragraph{Design progression.}
 Since pruning needs no partitioning, it extends to blind bidirectional
