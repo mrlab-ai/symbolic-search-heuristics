@@ -169,7 +169,8 @@ Finally, we implement all of the above in the SymK planner
 \citep{speck-et-al-jair2025} and evaluate it on the IPC benchmarks: the
 fragmentation predicted harmless stays harmless, the refined cost model
 correctly predicts that merge-and-shrink profits from $f$-ordering
-(surpassing blind forward search) while potential heuristics do not, and
+(improving on blind forward search in 21 of 46 domains) while potential
+heuristics do not, and
 a candid study of bidirectional search delimits where the guarantee
 regime ends and identifies incumbent bounds as the cheapest useful form
 of guidance.
@@ -826,14 +827,16 @@ $o_i^1$ has precondition $x_{i-1} \wedge \neg x_i$ and effect
 $x_i \wedge v_i$, and $o_i^0$ the same precondition and effect $x_i$;
 for $j \in [W]$, operator $u_j$ has precondition
 $x_k \wedge t_{j-1} \wedge \neg t_j$ (with $t_0 := x_k$) and effect
-$t_j$; the goal is $t_W$, so $\copt = k + W$. The order $\pi$ lists the
+$t_j$; the goal is $t_1 \wedge \dots \wedge t_W$, so
+$\copt = k + W$. The order $\pi$ lists the
 $x$-block, then $v_1, \dots, v_k$, then the $t$-block.
 
 Let $\rho(s) = \bigl(\sum_{j=1}^{k} s(v_j)\bigr) \bmod W$ and define,
 over all Boolean assignments,
 $h(s) = \min\bigl(\rho(s),\; W - |\{ j \mid s(t_j) = 1 \}|\bigr)$.
-Both terms change by at most $1$ per operator application and $h$
-vanishes on goal states, so $h$ is consistent; $h \leq W - \#t \leq
+Both terms change by at most $1$ per operator application, and on
+every assignment satisfying the goal the tail term is $0$, so $h$
+vanishes there and $h$ is consistent; $h \leq W - \#t \leq
 \hstar$ gives admissibility. Since $h$ ignores the $x$-block, its
 cofactors are determined by the partial residue in the $v$-block (at
 most $W$ values) and by the pair of final residue and tail count in the
@@ -944,7 +947,6 @@ $2n + 3$ distinct values, so a small value range does not imply small
 width; the width captures how much prefix information the level sets
 entangle, not how many there are.
 
-% ============================ instances ==================================
 \subsection{A Refined Cost Model: Image Calls}
 \label{sec-cost}
 
@@ -1095,6 +1097,7 @@ never partitions, this variant also requires no restriction to positive
 operator costs for its soundness.
 
 
+% ============================ instances ==================================
 \section{Width-Bounded Heuristic Families}
 \label{sec-instances}
 
