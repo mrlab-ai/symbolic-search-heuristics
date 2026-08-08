@@ -1,0 +1,54 @@
+# Predeclared M&S value-cap pilot: two tasks from each of 25 domains.
+# Composition from the archived exp_ms data:
+#   7 blind-only resource wins, 13 exact-M&S-only wins, 30 joint controls.
+# Format: domain:problem
+airport:p20-airport3-p7.pddl
+airport:p36-airport5MUC-p2.pddl
+barman-opt11-strips:pfile01-003.pddl
+barman-opt11-strips:pfile01-002.pddl
+blocks:probBLOCKS-12-1.pddl
+blocks:probBLOCKS-14-0.pddl
+childsnack-opt14-strips:child-snack_pfile03-2.pddl
+childsnack-opt14-strips:child-snack_pfile01-2.pddl
+depot:p13.pddl
+depot:p04.pddl
+driverlog:p13.pddl
+driverlog:p08.pddl
+floortile-opt14-strips:p01-6-5-2.pddl
+floortile-opt14-strips:p02-6-4-2.pddl
+freecell:p03.pddl
+freecell:p04.pddl
+gripper:prob20.pddl
+gripper:prob18.pddl
+logistics00:probLOGISTICS-12-0.pddl
+logistics00:probLOGISTICS-9-0.pddl
+logistics98:prob35.pddl
+logistics98:prob33.pddl
+miconic:s17-0.pddl
+miconic:s16-4.pddl
+mprime:prob30.pddl
+mprime:prob11.pddl
+nomystery-opt11-strips:p07.pddl
+nomystery-opt11-strips:p17.pddl
+parking-opt14-strips:p_12_7-03.pddl
+parking-opt14-strips:p_12_7-01.pddl
+psr-small:p49-s105-n6-l2-f30.pddl
+psr-small:p48-s101-n5-l3-f30.pddl
+rovers:p06.pddl
+rovers:p08.pddl
+scanalyzer-08-strips:p07.pddl
+scanalyzer-08-strips:p06.pddl
+sokoban-opt08-strips:p07.pddl
+sokoban-opt08-strips:p11.pddl
+storage:p13.pddl
+storage:p15.pddl
+termes-opt18-strips:p04.pddl
+termes-opt18-strips:p13.pddl
+tpp:p08.pddl
+tpp:p07.pddl
+visitall-opt11-strips:problem07-full.pddl
+visitall-opt11-strips:problem06-full.pddl
+woodworking-opt11-strips:p16.pddl
+woodworking-opt11-strips:p14.pddl
+zenotravel:p09.pddl
+zenotravel:p11.pddl

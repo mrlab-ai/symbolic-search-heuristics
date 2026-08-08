@@ -17,6 +17,7 @@ class MsLevelSets;
 */
 class SymbolicMsForwardSearch : public SymbolicSearch {
     const int max_states;
+    const int value_cap;
     const bool prune_only;
     const bool align_merge_order;
 

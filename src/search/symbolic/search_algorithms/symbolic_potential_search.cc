@@ -8,6 +8,7 @@
 #include "../../potentials/potential_optimizer.h"
 #include "../../plugins/plugin.h"
 #include "../../utils/system.h"
+#include "../../utils/timer.h"
 #include "../plan_reconstruction/sym_solution_cut.h"
 #include "../plan_selection/plan_selector.h"
 #include "../searches/heuristic_fw_search.h"
@@ -34,6 +35,7 @@ void SymbolicPotentialForwardSearch::initialize() {
     // Compute width-capped integer fact potentials on the (possibly
     // cost-adapted) search task; cost adaptation does not change the variables,
     // so the potentials are consistent with vars' encoding.
+    utils::Timer construction_timer;
     potentials::PotentialOptimizer optimizer(
         search_task, lp_solver_type, static_cast<double>(m),
         /*integer_potentials=*/true);
@@ -57,6 +59,11 @@ void SymbolicPotentialForwardSearch::initialize() {
     }
 
     level_sets = make_shared<PotentialLevelSets>(vars.get(), int_table);
+    auto zero_level = level_sets->get_level_sets().find(0);
+    if (zero_level == level_sets->get_level_sets().end() ||
+        !(mgr->get_goal() * !zero_level->second).IsZero()) {
+        ABORT("Rectified symbolic potential does not map every goal to 0.");
+    }
     utils::g_log << "wbh potential heuristic: m=" << m << ", values="
                  << level_sets->get_level_sets().size()
                  << ", width_upper_bound=" << level_sets->get_width_upper_bound()
@@ -70,6 +77,11 @@ void SymbolicPotentialForwardSearch::initialize() {
     // Potentials never produce infinity, so the dead-end set is empty.
     search_ptr->init(
         mgr, &level_sets->get_level_sets(), vars->zeroBDD(), prune_only);
+    double construction_time = construction_timer();
+    if (sym_params.stats) {
+        sym_params.stats->log_construction(
+            "rectified_potential", construction_time, m, -1, true);
+    }
 
     auto sym_trs = search_ptr->getStateSpaceShared()->get_transition_relations();
     solution_registry->init(

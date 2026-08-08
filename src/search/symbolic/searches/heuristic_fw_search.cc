@@ -38,6 +38,29 @@ bool HeuristicFwSearch::init(
     prune_only = prune_only_;
     stats = sym_params.stats.get();
 
+    // The search relies on the level sets being a total, disjoint partition
+    // of valid states (apart from the explicit dead-end set). Check the exact
+    // symbolic invariant once; sampled construction checks cannot detect a
+    // missing or overlapping region that would silently drop/duplicate states.
+    BDD valid = mgr->getVars()->validStates();
+    BDD seen = mgr->zeroBDD();
+    for (const auto &[value, level] : *level_sets) {
+        (void)value;
+        BDD restricted = level * valid;
+        if (!(seen * restricted).IsZero()) {
+            ABORT("Heuristic finite level sets overlap on valid states.");
+        }
+        seen += restricted;
+    }
+    BDD valid_dead_ends = dead_ends * valid;
+    if (!(seen * valid_dead_ends).IsZero()) {
+        ABORT("Heuristic finite and dead-end level sets overlap.");
+    }
+    BDD covered = seen + valid_dead_ends;
+    if (!(valid * !covered).IsZero()) {
+        ABORT("Heuristic level sets do not cover every valid state.");
+    }
+
     if (prune_only) {
         // Cumulative slices P_t = union_{v <= t} H_v for one-intersection
         // interval pruning.

@@ -8,6 +8,7 @@
 
 #include "../../plugins/plugin.h"
 #include "../../utils/logging.h"
+#include "../../utils/timer.h"
 #include "../plan_reconstruction/sym_solution_cut.h"
 #include "../plan_selection/plan_selector.h"
 #include "../searches/bidirectional_search.h"
@@ -60,12 +61,19 @@ void SymbolicBdPruneSearch::initialize() {
 }
 
 void SymbolicBdPruneSearch::build_and_attach_pruners() {
+    utils::Timer construction_timer;
     build_attempted = true;
     TaskProxy search_task_proxy(*search_task);
     level_sets = make_shared<MsLevelSets>(
         vars.get(), search_task_proxy, max_states, /*shrink_seed=*/2011,
         /*both_directions=*/true, build_time_limit);
+    double construction_time = construction_timer();
     if (level_sets->construction_timed_out()) {
+        if (sym_params.stats) {
+            sym_params.stats->log_construction(
+                "bidirectional_pruning_ms", construction_time, max_states, -1,
+                false);
+        }
         // Fall back to blind bidirectional search: the pruning guarantee then
         // holds including its (bounded) setup cost.
         utils::g_log << "wbh bidirectional M&S pruning: construction budget ("
@@ -82,6 +90,9 @@ void SymbolicBdPruneSearch::build_and_attach_pruners() {
                  << ", bw_values=" << level_sets->get_init_level_sets().size()
                  << endl;
     if (sym_params.stats) {
+        sym_params.stats->log_construction(
+            "bidirectional_pruning_ms", construction_time, max_states, -1,
+            true);
         level_sets->log_heuristic(*sym_params.stats);
     }
     fw_pruner = make_shared<WbhPruner>(

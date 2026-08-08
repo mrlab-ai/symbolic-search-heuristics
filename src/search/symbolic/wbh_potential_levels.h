@@ -26,9 +26,10 @@ class WbhStats;
       ADD with BddInterval(v, v) and intersecting with the valid states
       (paper's product-at-evaluation input for PR3).
 
-  Potentials may be negative; values are kept signed (no shift), so h(goal)=0
-  is preserved and the effort accounting matches paper Def. def-effort
-  directly. The (g, v) open list of the search handles negative v.
+  Raw potentials may be negative. As in Fast Downward's explicit
+  PotentialHeuristic, we use h(s) = max(0, P(s)). This preserves admissibility
+  and consistency, makes every goal state's value exactly 0, and merges all
+  nonpositive raw levels into one symbolic level.
 
   It also computes the statistics of the "heuristic" event: ADD inner-node
   count A, number of distinct values V, per-level inner-node counts, and the

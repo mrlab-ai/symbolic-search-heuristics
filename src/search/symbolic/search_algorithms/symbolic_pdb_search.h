@@ -10,13 +10,14 @@ class HeuristicFwSearch;
 class PdbLevelSets;
 
 /*
-  Symbolic forward search guided by a prefix pattern database heuristic (PR4).
-  Builds the prefix PDB level sets (PdbLevelSets), then runs the (g, v)-keyed
-  BDDA* HeuristicFwSearch (shared with the potential search of PR3), discarding
+  Symbolic forward search guided by a budget-bounded pattern database.
+  Builds the PDB level sets (PdbLevelSets), then runs the (g, v)-keyed BDDA*
+  HeuristicFwSearch (shared with the other heuristic families), discarding
   dead-end abstract states.
 */
 class SymbolicPdbForwardSearch : public SymbolicSearch {
     const int state_budget;
+    const bool goal_directed;
     const bool prune_only;
 
     std::shared_ptr<PdbLevelSets> level_sets;

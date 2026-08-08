@@ -25,10 +25,10 @@ class WbhStats;
   each H_v to form the (g', v') buckets (product at evaluation). The goal test
   is on the selected bucket, matching paper Def. def-effort.
 
-  The level sets are supplied by the caller (potentials in PR3, prefix PDBs in
-  PR4) as a value -> H_v map plus a dead-end set (states with h = infinity,
-  empty for potentials). Dead-end successors are discarded before insertion and
-  counted (paper's pruned_deadends event).
+  The level sets are supplied by the caller (potentials, PDBs, or
+  merge-and-shrink) as a value -> H_v map plus a dead-end set (states with
+  h = infinity, empty for potentials). Dead-end successors are discarded
+  before insertion and counted (paper's pruned_deadends event).
 
   PRUNE-ONLY VARIANT (paper Cor. cor-prune): with prune_only=true the search
   keeps each layer as a single BDD like blind forward search (one image call

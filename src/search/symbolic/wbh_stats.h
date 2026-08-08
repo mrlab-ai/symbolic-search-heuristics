@@ -22,6 +22,8 @@ namespace symbolic {
     heuristic {"event":"heuristic","add_nodes":A,"num_values":V,
                "add_level_nodes":[...],"width_upper_bound":U}  (PR2/PR4)
     pruned    {"event":"pruned_deadends","g":G,"states":S,"bdd_nodes":N} (PR3/PR4)
+    construction {"event":"construction","heuristic":"...", ...}
+    summary   {"event":"summary","expanded_bdd_nodes":N, ...}
     done      {"event":"done","effort":E,"solution_cost":C}
 
   effort is the paper's Def. def-effort: the sum of bdd_nodes over recorded
@@ -38,6 +40,14 @@ class WbhStats {
     };
     std::vector<ExpandRecord> forward_expansions;
     bool done_written = false;
+    long expanded_bdd_nodes = 0;
+    double expanded_states = 0;
+    int bucket_images = 0;
+    double total_image_time = 0;
+    bool summary_written = false;
+    int events_since_flush = 0;
+
+    void flush_periodically();
 
 public:
     explicit WbhStats(const std::string &path);
@@ -57,6 +67,14 @@ public:
         const std::vector<long> &add_level_nodes, long width_upper_bound);
 
     void log_pruned_deadends(int g, double states, long bdd_nodes);
+
+    void log_construction(
+        const std::string &heuristic, double seconds, int size_bound,
+        int value_cap, bool completed);
+
+    // Emits raw totals independently of whether a solution was found. This is
+    // also called by the destructor, so clean failures remain measurable.
+    void log_summary();
 
     // Emits the final "done" line with the effort computed from the recorded
     // forward expansions. Safe to call at most once; later calls are ignored.

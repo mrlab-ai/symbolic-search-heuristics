@@ -2,6 +2,8 @@
 
 #include "wbh_stats.h"
 
+#include <cmath>
+#include <set>
 #include <unordered_set>
 
 using namespace std;
@@ -37,6 +39,26 @@ AddStats compute_add_stats(SymVariables *vars, const ADD &add, int num_values) {
     stats.add_inner_nodes = inner;
     stats.width_upper_bound = stats.add_inner_nodes + stats.num_values;
     return stats;
+}
+
+vector<int> collect_integer_leaf_values(const ADD &add) {
+    set<int> values;
+    unordered_set<DdNode *> visited;
+    vector<DdNode *> stack{Cudd_Regular(add.getNode())};
+    while (!stack.empty()) {
+        DdNode *node = stack.back();
+        stack.pop_back();
+        if (!visited.insert(node).second) {
+            continue;
+        }
+        if (Cudd_IsConstant(node)) {
+            values.insert(static_cast<int>(lround(Cudd_V(node))));
+        } else {
+            stack.push_back(Cudd_Regular(Cudd_T(node)));
+            stack.push_back(Cudd_Regular(Cudd_E(node)));
+        }
+    }
+    return vector<int>(values.begin(), values.end());
 }
 
 void log_heuristic_stats(WbhStats &stats, const AddStats &add_stats) {

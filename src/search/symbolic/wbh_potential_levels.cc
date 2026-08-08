@@ -21,7 +21,8 @@ PotentialLevelSets::PotentialLevelSets(
 
 void PotentialLevelSets::build_add(
     const vector<vector<int>> &fact_potentials) {
-    // h(s) = sum_v P(v, s(v)). Build as an ADD sum of per-fact indicator ADDs.
+    // Build the raw potential P(s) = sum_v P(v, s(v)) as an ADD sum of
+    // per-fact indicator ADDs.
     h_add = vars->constant(0);
     for (size_t var = 0; var < fact_potentials.size(); ++var) {
         ADD var_add = vars->constant(0);
@@ -35,14 +36,18 @@ void PotentialLevelSets::build_add(
         }
         h_add += var_add;
     }
+
+    // Match the semantics of the explicit PotentialHeuristic. Raw potential
+    // functions can be negative (including on concrete goal states), whereas
+    // the symbolic-search theory and Heuristic API use nonnegative heuristics
+    // with h(goal) = 0. The monotone 1-Lipschitz transform max(0, .) preserves
+    // admissibility and consistency and cannot introduce additional values.
+    h_add = h_add.Maximum(vars->constant(0));
 }
 
 void PotentialLevelSets::build_level_sets() {
-    double min_value = Cudd_V(h_add.FindMin().getNode());
-    double max_value = Cudd_V(h_add.FindMax().getNode());
     BDD valid = vars->validStates();
-    for (int v = static_cast<int>(lround(min_value));
-         v <= static_cast<int>(lround(max_value)); ++v) {
+    for (int v : collect_integer_leaf_values(h_add)) {
         BDD level = h_add.BddInterval(v, v) * valid;
         if (!level.IsZero()) {
             level_sets[v] = level;

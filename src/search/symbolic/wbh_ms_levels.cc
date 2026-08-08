@@ -66,7 +66,7 @@ public:
 MsLevelSets::MsLevelSets(
     SymVariables *vars, const TaskProxy &task_proxy, int max_states,
     int shrink_seed, bool both_directions, double max_time,
-    bool align_merge_order)
+    bool align_merge_order, int value_cap)
     : vars(vars), dead_ends(vars->zeroBDD()), init_dead_ends(vars->zeroBDD()) {
     utils::LogProxy log = utils::get_silent_log();
     utils::CountdownTimer budget(max_time);
@@ -134,9 +134,10 @@ MsLevelSets::MsLevelSets(
         if (d == ms::INF) {
             dead_ends += bdd;
         } else {
-            auto it = level_sets.find(d);
+            int value = value_cap >= 0 ? min(d, value_cap) : d;
+            auto it = level_sets.find(value);
             if (it == level_sets.end()) {
-                level_sets[d] = bdd;
+                level_sets[value] = bdd;
             } else {
                 it->second += bdd;
             }
@@ -146,9 +147,10 @@ MsLevelSets::MsLevelSets(
             if (di == ms::INF) {
                 init_dead_ends += bdd;
             } else {
-                auto it = init_level_sets.find(di);
+                int value = value_cap >= 0 ? min(di, value_cap) : di;
+                auto it = init_level_sets.find(value);
                 if (it == init_level_sets.end()) {
-                    init_level_sets[di] = bdd;
+                    init_level_sets[value] = bdd;
                 } else {
                     it->second += bdd;
                 }
@@ -178,7 +180,8 @@ MsLevelSets::MsLevelSets(
                 ABORT("M&S self-check: dead-end state not in dead_ends set.");
             }
         } else {
-            auto it = level_sets.find(d);
+            int expected = value_cap >= 0 ? min(d, value_cap) : d;
+            auto it = level_sets.find(expected);
             if (it == level_sets.end() ||
                 !(state_bdd * !it->second).IsZero()) {
                 ABORT(

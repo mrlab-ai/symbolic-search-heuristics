@@ -46,6 +46,10 @@ WBH_LOG = 'wbh.jsonl'
 # bind first and fail gracefully.
 TETRALITH_EMAIL = os.environ.get("WBH_EMAIL", "jendrik.seipp@liu.se")
 TETRALITH_ACCOUNT = os.environ.get("WBH_ACCOUNT", "naiss2025-5-382")
+TETRALITH_QOS = os.environ.get("WBH_QOS", "normal")
+TETRALITH_TASK_TIME = os.environ.get("WBH_TASK_TIME", "24:00:00")
+TETRALITH_MEMORY_PER_CPU = os.environ.get(
+    "WBH_MEMORY_PER_CPU", "9G")
 
 
 def get_environment():
@@ -53,6 +57,9 @@ def get_environment():
         return LocalEnvironment(processes=4)
     return TetralithEnvironment(
         email=TETRALITH_EMAIL,
+        qos=TETRALITH_QOS,
+        time_limit_per_task=TETRALITH_TASK_TIME,
+        memory_per_cpu=TETRALITH_MEMORY_PER_CPU,
         extra_options=f"#SBATCH --account={TETRALITH_ACCOUNT}",
     )
 
@@ -105,8 +112,13 @@ def add_standard_steps(exp, attributes):
 
 ATTRIBUTES = [
     "coverage", "solution_cost", "total_time", "effort", "peak_bdd_nodes",
-    "frag_ratio_max", "frag_ratio_geomean", "width_upper_bound", "num_values",
-    "add_nodes", "num_pruned_deadends", "error",
+    "expanded_bdd_nodes", "expanded_states", "bucket_images", "image_time",
+    "raw_metrics_complete",
+    "partition_ratio_max", "partition_ratio_geomean", "width_upper_bound",
+    "num_values", "add_nodes", "construction_time", "heuristic_kind",
+    "heuristic_size_bound", "value_cap", "construction_completed",
+    "num_pruned_deadends", "pruned_deadend_states",
+    "pruned_deadend_bdd_nodes", "error",
 ]
 
 

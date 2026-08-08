@@ -18,16 +18,19 @@ namespace symbolic {
 class WbhStats;
 
 /*
-  Prefix pattern database level sets (PR4, paper Prop. prop-pdb).
+  Budget-bounded pattern database level sets.
 
-  Selects the pattern greedily as the first FDR variables of the search's
-  (Gamer) variable order up to an abstract-state budget B, so the pattern is a
-  prefix of the variable order (asserted) and hence width-bounded. Computes the
-  PDB explicitly with Fast Downward's PDB code on the projection, then builds
-  the level-set BDDs H_d by iterating abstract states and, for each, conjoining
-  the pattern facts over its bit block and accumulating per-distance BDDs. Dead
-  ends (h = infinity abstract states) are collected into a separate set that
-  the search discards.
+  Selects variables greedily up to an abstract-state budget B, either from the
+  search's BDD variable order (legacy mode) or from Fast Downward's
+  goal/causal-graph order. The pattern need not be a prefix: under a
+  variable-contiguous bit order, non-pattern variables are skipped by the
+  reduced ADD, so any pattern with at most B abstract states has the same
+  O(dB) width guarantee.
+
+  Computes the PDB explicitly with Fast Downward's PDB code on the projection,
+  then builds level-set BDDs H_d by iterating abstract states and conjoining
+  the selected pattern facts. Dead ends (h = infinity abstract states) are
+  collected into a separate set that the search discards.
 
   The heuristic ADD (sum_d d * H_d) is built only for the "heuristic" log
   statistics; dead ends are excluded from it.
@@ -40,7 +43,6 @@ class PdbLevelSets {
     BDD dead_ends; // states mapping to dead-end abstract states
     AddStats add_stats;
 
-    void assert_pattern_is_prefix() const;
     // Independent check that BDD level-set membership agrees with explicit PDB
     // lookups on sampled abstract states (PR4 acceptance).
     void verify_against_pdb(
@@ -49,7 +51,8 @@ class PdbLevelSets {
 
 public:
     PdbLevelSets(
-        SymVariables *vars, const TaskProxy &task_proxy, int state_budget);
+        SymVariables *vars, const TaskProxy &task_proxy, int state_budget,
+        bool goal_directed = false);
 
     const std::map<int, BDD> &get_level_sets() const {
         return level_sets;

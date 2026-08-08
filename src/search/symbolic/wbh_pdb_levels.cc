@@ -6,6 +6,7 @@
 #include "../pdbs/pattern_database.h"
 #include "../pdbs/pattern_database_factory.h"
 #include "../pdbs/types.h"
+#include "../task_utils/variable_order_finder.h"
 #include "../utils/logging.h"
 #include "../utils/system.h"
 
@@ -16,25 +17,37 @@ using namespace std;
 
 namespace symbolic {
 PdbLevelSets::PdbLevelSets(
-    SymVariables *vars, const TaskProxy &task_proxy, int state_budget)
+    SymVariables *vars, const TaskProxy &task_proxy, int state_budget,
+    bool goal_directed)
     : vars(vars) {
-    // Greedy prefix pattern: first FDR variables in the search variable order
-    // until adding the next would exceed the abstract-state budget B.
+    // Both strategies stop before exceeding the same abstract-state budget.
+    // The goal-directed order is Fast Downward's standard GOAL_CG_LEVEL
+    // greedy pattern order; the legacy strategy follows the BDD variable order.
+    vector<int> variable_order;
+    if (goal_directed) {
+        variable_order_finder::VariableOrderFinder order(
+            task_proxy, variable_order_finder::GOAL_CG_LEVEL);
+        while (!order.done()) {
+            variable_order.push_back(order.next());
+        }
+    } else {
+        variable_order = vars->get_var_order();
+    }
+
     long product = 1;
-    for (int var : vars->get_var_order()) {
+    for (int var : variable_order) {
         long domain_size = task_proxy.get_variables()[var].get_domain_size();
-        if (product * domain_size > state_budget) {
+        if (product > state_budget / domain_size) {
             break;
         }
         product *= domain_size;
         pattern.push_back(var);
     }
     sort(pattern.begin(), pattern.end());
-    assert_pattern_is_prefix();
 
-    utils::g_log << "Prefix PDB pattern (" << pattern.size()
-                 << " vars, <= " << state_budget << " abstract states): "
-                 << pattern << endl;
+    utils::g_log << (goal_directed ? "Goal-directed" : "BDD-order")
+                 << " PDB pattern (" << pattern.size() << " vars, <= "
+                 << state_budget << " abstract states): " << pattern << endl;
 
     shared_ptr<pdbs::PatternDatabase> pdb =
         pdbs::compute_pdb(task_proxy, pattern);
@@ -110,30 +123,6 @@ void PdbLevelSets::verify_against_pdb(
     }
     utils::g_log << "PDB level-set self-check passed (" << checked
                  << " sampled abstract states)." << endl;
-}
-
-void PdbLevelSets::assert_pattern_is_prefix() const {
-    // Every unprimed BDD index of a pattern variable must be below every
-    // unprimed BDD index of a non-pattern variable (paper Prop. prop-pdb
-    // requires the pattern to be a prefix of the variable-contiguous order).
-    int max_pattern_index = -1;
-    int min_other_index = numeric_limits<int>::max();
-    for (int var : vars->get_var_order()) {
-        bool in_pattern =
-            find(pattern.begin(), pattern.end(), var) != pattern.end();
-        for (int index : vars->vars_index_pre(var)) {
-            if (in_pattern) {
-                max_pattern_index = max(max_pattern_index, index);
-            } else {
-                min_other_index = min(min_other_index, index);
-            }
-        }
-    }
-    if (max_pattern_index >= min_other_index) {
-        ABORT(
-            "Prefix PDB pattern is not a prefix of the unprimed variable "
-            "order.");
-    }
 }
 
 void PdbLevelSets::log_heuristic(WbhStats &stats) const {

@@ -69,7 +69,7 @@ public:
         SymVariables *vars, const TaskProxy &task_proxy, int max_states,
         int shrink_seed, bool both_directions = false,
         double max_time = std::numeric_limits<double>::infinity(),
-        bool align_merge_order = false);
+        bool align_merge_order = false, int value_cap = -1);
 
     bool construction_timed_out() const {
         return construction_failed;
