@@ -12,6 +12,13 @@ WbhStats::WbhStats(const string &path) {
     if (!out.is_open()) {
         ABORT("Could not open WBH log file: " + path);
     }
+    out << "{\"event\":\"schema\",\"version\":2,"
+           "\"node_count_convention\":\"inner_nodes_per_piece\","
+           "\"image_count_convention\":"
+           "\"per_piece_attempted_completed\","
+           "\"expansion_count_convention\":"
+           "\"completed_with_attempts\"}\n";
+    out.flush();
 }
 
 WbhStats::~WbhStats() {
@@ -32,13 +39,48 @@ void WbhStats::flush_periodically() {
 }
 
 void WbhStats::log_expand(
-    int g, int h, long bdd_nodes, double states, double image_time) {
-    forward_expansions.push_back({g, h, bdd_nodes});
-    expanded_bdd_nodes += bdd_nodes;
-    expanded_states += states;
-    ++bucket_images;
-    total_image_time += image_time;
+    int g, int h, bool completed, int piece_count, long bdd_nodes,
+    double states, double image_time) {
+    attempted_bdd_nodes += bdd_nodes;
+    attempted_states += states;
+    attempted_bdd_pieces += piece_count;
+    ++bucket_expansion_attempts;
+    if (completed) {
+        forward_expansions.push_back({g, h, bdd_nodes});
+        expanded_bdd_nodes += bdd_nodes;
+        expanded_states += states;
+        expanded_bdd_pieces += piece_count;
+        ++bucket_expansions;
+    }
     out << "{\"event\":\"expand\",\"g\":" << g << ",\"h\":" << h
+        << ",\"completed\":" << (completed ? "true" : "false")
+        << ",\"piece_count\":" << piece_count
+        << ",\"bdd_nodes\":" << bdd_nodes << ",\"states\":" << states
+        << ",\"image_time\":" << image_time << "}\n";
+    flush_periodically();
+}
+
+void WbhStats::log_image(
+    int g, int min_h, int max_h, int source_buckets, int source_pieces,
+    int calls_attempted, int calls_completed, bool zero_cost,
+    long bdd_nodes, double states, double image_time) {
+    ++image_events;
+    bucket_images += calls_completed;
+    image_source_buckets += source_buckets;
+    image_source_pieces += source_pieces;
+    image_calls_attempted += calls_attempted;
+    image_calls_completed += calls_completed;
+    if (source_buckets > 1) {
+        ++batched_images;
+    }
+    total_image_time += image_time;
+    out << "{\"event\":\"image\",\"g\":" << g
+        << ",\"min_h\":" << min_h << ",\"max_h\":" << max_h
+        << ",\"source_buckets\":" << source_buckets
+        << ",\"source_pieces\":" << source_pieces
+        << ",\"calls_attempted\":" << calls_attempted
+        << ",\"calls_completed\":" << calls_completed
+        << ",\"zero_cost\":" << (zero_cost ? "true" : "false")
         << ",\"bdd_nodes\":" << bdd_nodes << ",\"states\":" << states
         << ",\"image_time\":" << image_time << "}\n";
     flush_periodically();
@@ -54,10 +96,12 @@ void WbhStats::log_partition(
 }
 
 void WbhStats::log_heuristic(
-    long add_nodes, int num_values, const vector<long> &add_level_nodes,
-    long width_upper_bound) {
+    long add_nodes, int num_values, int num_terminals,
+    const vector<long> &add_level_nodes, long width_upper_bound) {
     out << "{\"event\":\"heuristic\",\"add_nodes\":" << add_nodes
-        << ",\"num_values\":" << num_values << ",\"add_level_nodes\":[";
+        << ",\"num_values\":" << num_values
+        << ",\"num_terminals\":" << num_terminals
+        << ",\"add_level_nodes\":[";
     for (size_t i = 0; i < add_level_nodes.size(); ++i) {
         if (i > 0) {
             out << ",";
@@ -91,7 +135,19 @@ void WbhStats::log_summary() {
     summary_written = true;
     out << "{\"event\":\"summary\",\"expanded_bdd_nodes\":"
         << expanded_bdd_nodes << ",\"expanded_states\":" << expanded_states
+        << ",\"expanded_bdd_pieces\":" << expanded_bdd_pieces
+        << ",\"attempted_bdd_nodes\":" << attempted_bdd_nodes
+        << ",\"attempted_states\":" << attempted_states
+        << ",\"attempted_bdd_pieces\":" << attempted_bdd_pieces
+        << ",\"bucket_expansions\":" << bucket_expansions
+        << ",\"bucket_expansion_attempts\":" << bucket_expansion_attempts
+        << ",\"image_events\":" << image_events
         << ",\"bucket_images\":" << bucket_images
+        << ",\"image_source_buckets\":" << image_source_buckets
+        << ",\"image_source_pieces\":" << image_source_pieces
+        << ",\"image_calls_attempted\":" << image_calls_attempted
+        << ",\"image_calls_completed\":" << image_calls_completed
+        << ",\"batched_images\":" << batched_images
         << ",\"image_time\":" << total_image_time
         << ",\"solved\":" << (done_written ? "true" : "false") << "}\n";
     out.flush();

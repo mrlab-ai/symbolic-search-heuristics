@@ -18,7 +18,8 @@ namespace symbolic {
 SymbolicPdbForwardSearch::SymbolicPdbForwardSearch(const plugins::Options &opts)
     : SymbolicSearch(opts), state_budget(opts.get<int>("budget")),
       goal_directed(opts.get<bool>("goal_directed")),
-      prune_only(opts.get<bool>("prune_only")) {
+      prune_only(opts.get<bool>("prune_only")),
+      batch_f_window(opts.get<int>("batch_f_window")) {
 }
 
 void SymbolicPdbForwardSearch::initialize() {
@@ -44,7 +45,7 @@ void SymbolicPdbForwardSearch::initialize() {
         unique_ptr<HeuristicFwSearch>(new HeuristicFwSearch(this, sym_params));
     search_ptr->init(
         mgr, &level_sets->get_level_sets(), level_sets->get_dead_ends(),
-        prune_only);
+        prune_only, batch_f_window);
     double construction_time = construction_timer();
     if (sym_params.stats) {
         sym_params.stats->log_construction(
@@ -94,6 +95,14 @@ public:
             "anytime upper bound is known, the g+h >= bound slice); layers "
             "stay whole as in blind search (paper Cor. cor-prune).",
             "false");
+        add_option<int>(
+            "batch_f_window",
+            "Speculatively image fresh (g,h) buckets at the same g and with "
+            "f at most batch_f_window above the selected minimum in one BDD "
+            "union. Logical A* selection, goal tests, and closing remain in "
+            "the legacy order. Requires a consistent heuristic; 0 is exactly "
+            "the legacy product-at-evaluation behavior.",
+            "0", plugins::Bounds("0", "infinity"));
         this->add_option<shared_ptr<symbolic::PlanSelector>>(
             "plan_selection", "plan selection strategy", "top_k(num_plans=1)");
     }

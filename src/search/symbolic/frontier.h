@@ -27,15 +27,24 @@ public:
 class ResultExpansion : public Result {
 public:
     bool step_zero;
+    int image_calls_attempted;
+    int image_calls_completed;
     std::vector<std::map<int, Bucket>> buckets;
     ResultExpansion(
-        bool step_zero_, std::vector<std::map<int, Bucket>> &buckets_, double t)
-        : Result(t), step_zero(step_zero_) {
+        bool step_zero_, std::vector<std::map<int, Bucket>> &buckets_, double t,
+        int image_calls_attempted_, int image_calls_completed_)
+        : Result(t), step_zero(step_zero_),
+          image_calls_attempted(image_calls_attempted_),
+          image_calls_completed(image_calls_completed_) {
         buckets.swap(buckets_);
     }
 
-    ResultExpansion(bool step_zero_, TruncatedReason reason, double t)
-        : Result(reason, t), step_zero(step_zero_) {
+    ResultExpansion(
+        bool step_zero_, TruncatedReason reason, double t,
+        int image_calls_attempted_, int image_calls_completed_)
+        : Result(reason, t), step_zero(step_zero_),
+          image_calls_attempted(image_calls_attempted_),
+          image_calls_completed(image_calls_completed_) {
     }
 };
 

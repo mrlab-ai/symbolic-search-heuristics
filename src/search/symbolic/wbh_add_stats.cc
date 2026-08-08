@@ -27,6 +27,7 @@ AddStats compute_add_stats(SymVariables *vars, const ADD &add, int num_values) {
         }
         visited.insert(node);
         if (Cudd_IsConstant(node)) {
+            ++stats.num_terminals;
             continue;
         }
         int index = Cudd_NodeReadIndex(node);
@@ -37,7 +38,7 @@ AddStats compute_add_stats(SymVariables *vars, const ADD &add, int num_values) {
         stack.push_back(Cudd_Regular(Cudd_E(node)));
     }
     stats.add_inner_nodes = inner;
-    stats.width_upper_bound = stats.add_inner_nodes + stats.num_values;
+    stats.width_upper_bound = stats.add_inner_nodes + stats.num_terminals;
     return stats;
 }
 
@@ -63,7 +64,7 @@ vector<int> collect_integer_leaf_values(const ADD &add) {
 
 void log_heuristic_stats(WbhStats &stats, const AddStats &add_stats) {
     stats.log_heuristic(
-        add_stats.add_inner_nodes, add_stats.num_values,
+        add_stats.add_inner_nodes, add_stats.num_values, add_stats.num_terminals,
         add_stats.add_level_nodes, add_stats.width_upper_bound);
 }
 }

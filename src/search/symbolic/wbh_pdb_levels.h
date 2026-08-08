@@ -32,8 +32,8 @@ class WbhStats;
   the selected pattern facts. Dead ends (h = infinity abstract states) are
   collected into a separate set that the search discards.
 
-  The heuristic ADD (sum_d d * H_d) is built only for the "heuristic" log
-  statistics; dead ends are excluded from it.
+  A total heuristic ADD is built only for the "heuristic" log statistics;
+  dead ends use a fresh numeric sentinel terminal distinct from finite values.
 */
 class PdbLevelSets {
     SymVariables *vars;

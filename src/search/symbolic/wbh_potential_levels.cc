@@ -16,7 +16,7 @@ PotentialLevelSets::PotentialLevelSets(
     build_add(fact_potentials);
     build_level_sets();
     add_stats = compute_add_stats(
-        vars, h_add, static_cast<int>(h_add.CountLeaves()));
+        vars, h_add, static_cast<int>(level_sets.size()));
 }
 
 void PotentialLevelSets::build_add(

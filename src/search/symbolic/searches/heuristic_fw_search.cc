@@ -17,6 +17,12 @@ using namespace std;
 namespace symbolic {
 // Sentinel returned by value_of_state when a state lies in no finite level set.
 static const int NO_FINITE_VALUE = numeric_limits<int>::min();
+namespace {
+long inner_node_count(const BDD &bdd) {
+    return max(0, bdd.nodeCount() - 1);
+}
+}
+
 HeuristicFwSearch::HeuristicFwSearch(
     SymbolicSearch *eng, const SymParameters &params)
     : SymSearch(eng, params),
@@ -24,6 +30,7 @@ HeuristicFwSearch::HeuristicFwSearch(
       level_sets(nullptr),
       stats(nullptr),
       prune_only(false),
+      batch_f_window(0),
       has_current_f(false),
       current_f(0) {
 }
@@ -31,12 +38,21 @@ HeuristicFwSearch::HeuristicFwSearch(
 bool HeuristicFwSearch::init(
     shared_ptr<SymStateSpaceManager> manager,
     const map<int, BDD> *level_sets_, const BDD &dead_ends_,
-    bool prune_only_) {
+    bool prune_only_, int batch_f_window_) {
     mgr = manager;
     level_sets = level_sets_;
     dead_ends = dead_ends_;
     prune_only = prune_only_;
+    batch_f_window = batch_f_window_;
     stats = sym_params.stats.get();
+
+    if (batch_f_window < 0) {
+        ABORT("batch_f_window must be nonnegative.");
+    }
+    if (prune_only && batch_f_window > 0) {
+        ABORT("batch_f_window is only supported for heuristic bucket search, "
+              "not prune_only search.");
+    }
 
     // The search relies on the level sets being a total, disjoint partition
     // of valid states (apart from the explicit dead-end set). Check the exact
@@ -141,25 +157,33 @@ bool HeuristicFwSearch::select_min(pair<int, int> &key) {
     bool found = false;
     int best_f = 0;
     int best_g = 0;
-    for (const auto &entry : open) {
-        int g = entry.first.first;
-        int v = entry.first.second;
-        int f = g + v;
-        if (!found || f < best_f || (f == best_f && g < best_g)) {
-            found = true;
-            best_f = f;
-            best_g = g;
-            key = entry.first;
+    auto consider = [&](const auto &entries) {
+        for (const auto &entry : entries) {
+            int g = entry.first.first;
+            int v = entry.first.second;
+            int f = g + v;
+            if (!found || f < best_f || (f == best_f && g < best_g)) {
+                found = true;
+                best_f = f;
+                best_g = g;
+                key = entry.first;
+            }
         }
-    }
+    };
+    consider(open);
+    consider(preexpanded);
     return found;
 }
 
 int HeuristicFwSearch::min_open_f() const {
     int best = numeric_limits<int>::max();
-    for (const auto &entry : open) {
-        best = min(best, entry.first.first + entry.first.second);
-    }
+    auto consider = [&](const auto &entries) {
+        for (const auto &entry : entries) {
+            best = min(best, entry.first.first + entry.first.second);
+        }
+    };
+    consider(open);
+    consider(preexpanded);
     return best;
 }
 
@@ -170,6 +194,7 @@ void HeuristicFwSearch::step() {
 void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
     pair<int, int> key;
     if (!select_min(key)) {
+        has_current_f = false;
         engine->setLowerBound(numeric_limits<int>::max());
         return;
     }
@@ -179,14 +204,31 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
     has_current_f = true;
     engine->setLowerBound(current_f);
 
-    Bucket bucket = move(open[key]);
-    open.erase(key);
-
-    // Merge the bucket into a single BDD (exact OR, no truncation).
-    BDD states = mgr->zeroBDD();
-    for (const BDD &b : bucket) {
-        states += b;
+    Bucket fresh_bucket;
+    auto fresh_it = open.find(key);
+    if (fresh_it != open.end()) {
+        fresh_bucket = move(fresh_it->second);
+        open.erase(fresh_it);
     }
+    Bucket cached_bucket;
+    auto cached_it = preexpanded.find(key);
+    if (cached_it != preexpanded.end()) {
+        cached_bucket = move(cached_it->second);
+        preexpanded.erase(cached_it);
+    }
+
+    // Keep fresh and speculatively imaged states separate until after
+    // duplicate filtering. A key can receive new states after its first image;
+    // only that fresh remainder needs another image.
+    BDD fresh_states = mgr->zeroBDD();
+    for (const BDD &b : fresh_bucket) {
+        fresh_states += b;
+    }
+    BDD cached_states = mgr->zeroBDD();
+    for (const BDD &b : cached_bucket) {
+        cached_states += b;
+    }
+    BDD states = fresh_states + cached_states;
 
     // Solution detection on the selected bucket (goal test on selected, not
     // generated, buckets), reusing the blind forward cut machinery.
@@ -196,8 +238,12 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
     }
     // Prune states already closed in the opposite (goal) direction, as blind
     // forward search does, and then subtract our own closed list (delayed).
-    states *= perfectHeuristic->notClosed();
-    states *= closed->notClosed();
+    BDD live = perfectHeuristic->notClosed() * closed->notClosed();
+    cached_states *= live;
+    fresh_states *= live;
+    // A state may have been regenerated into the same key after its
+    // speculative image. Do not image that state twice.
+    fresh_states *= !cached_states;
 
     if (engine->solved()) {
         return;
@@ -209,8 +255,10 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
     if (prune_only) {
         int upper_bound = engine->getUpperBound();
         if (upper_bound < numeric_limits<int>::max()) {
-            states *= keep_slice(upper_bound - 1 - g);
+            cached_states *= keep_slice(upper_bound - 1 - g);
+            fresh_states *= keep_slice(upper_bound - 1 - g);
         }
+        states = cached_states + fresh_states;
         if (states.IsZero()) {
             has_current_f = false;
             engine->setLowerBound(min_open_f());
@@ -220,33 +268,137 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
 
     // Mutex filtering (idempotent; same setting as blind search). Reduces to
     // the identical set blind produces for this layer.
-    Bucket filtered{states};
-    mgr->filter_mutex(filtered, true, g == 0);
-    remove_zero(filtered);
-    states = mgr->zeroBDD();
-    for (const BDD &b : filtered) {
-        states += b;
+    Bucket cached_filtered{cached_states};
+    mgr->filter_mutex(cached_filtered, true, g == 0);
+    remove_zero(cached_filtered);
+    cached_states = mgr->zeroBDD();
+    for (const BDD &b : cached_filtered) {
+        cached_states += b;
     }
+    Bucket fresh_filtered{fresh_states};
+    mgr->filter_mutex(fresh_filtered, true, g == 0);
+    remove_zero(fresh_filtered);
+    fresh_states = mgr->zeroBDD();
+    for (const BDD &b : fresh_filtered) {
+        fresh_states += b;
+    }
+    fresh_states *= !cached_states;
+    states = cached_states + fresh_states;
     if (states.IsZero()) {
+        has_current_f = false;
+        engine->setLowerBound(min_open_f());
         return;
     }
 
     // Close the expanded bucket.
     closed->insert(g, states);
 
-    long bdd_nodes = states.nodeCount();
+    long bdd_nodes = inner_node_count(states);
     double num_states = mgr->getVars()->numStates(states);
 
     // Image (cost transitions only; positive-cost assumption checked in init).
+    // With batching, add fresh buckets at the same g whose f lies in the
+    // opt-in lookahead window. Different-g buckets must never be unioned: the
+    // image operation would erase the path-cost label needed for g'. The raw
+    // extra bucket remains in preexpanded so A* lower-bound, goal-test, and
+    // closed-list order are unchanged. Filtering is monotone, so imaging its
+    // currently live subset can only overgenerate relative to its later
+    // logical expansion, never miss a later-live transition.
+    BDD image_source = fresh_states;
+    int image_source_buckets = fresh_states.IsZero() ? 0 : 1;
+    int min_source_h = v;
+    int max_source_h = v;
+    vector<pair<pair<int, int>, BDD>> staged_preexpanded;
+    if (batch_f_window > 0 && !fresh_states.IsZero()) {
+        const long long window_limit =
+            static_cast<long long>(current_f) + batch_f_window;
+        for (const auto &entry : open) {
+            const int extra_g = entry.first.first;
+            const int extra_h = entry.first.second;
+            if (extra_g != g ||
+                static_cast<long long>(extra_g) + extra_h > window_limit) {
+                continue;
+            }
+
+            const pair<int, int> extra_key = entry.first;
+            BDD extra_raw = mgr->zeroBDD();
+            for (const BDD &b : entry.second) {
+                extra_raw += b;
+            }
+            if (extra_raw.IsZero()) {
+                continue;
+            }
+            // Retain raw states for the deferred goal test. In particular,
+            // goal states are excluded from the image but must remain queued.
+            BDD already_preexpanded = mgr->zeroBDD();
+            auto pending_it = preexpanded.find(extra_key);
+            if (pending_it != preexpanded.end()) {
+                for (const BDD &b : pending_it->second) {
+                    already_preexpanded += b;
+                }
+            }
+
+            BDD extra_live = extra_raw * perfectHeuristic->notClosed();
+            extra_live *= closed->notClosed();
+            extra_live *= !already_preexpanded;
+            Bucket extra_filtered{extra_live};
+            mgr->filter_mutex(extra_filtered, true, extra_g == 0);
+            remove_zero(extra_filtered);
+            extra_live = mgr->zeroBDD();
+            for (const BDD &b : extra_filtered) {
+                extra_live += b;
+            }
+            if (!extra_live.IsZero()) {
+                image_source += extra_live;
+                ++image_source_buckets;
+                min_source_h = min(min_source_h, extra_h);
+                max_source_h = max(max_source_h, extra_h);
+            }
+            staged_preexpanded.emplace_back(extra_key, extra_raw);
+        }
+    }
+
     utils::Timer image_timer;
     map<int, Bucket> image;
-    mgr->set_time_limit(maxTime);
-    mgr->cost_image(true, states, image, maxNodes);
-    mgr->unset_time_limit();
-    double image_time = image_timer();
+    if (!image_source.IsZero()) {
+        mgr->set_time_limit(maxTime);
+        try {
+            mgr->cost_image(true, image_source, image, maxNodes);
+            mgr->unset_time_limit();
+        } catch (...) {
+            mgr->unset_time_limit();
+            double failed_image_time = image_timer();
+            if (stats) {
+                stats->log_expand(
+                    g, v, false, 1, bdd_nodes, num_states,
+                    failed_image_time);
+                stats->log_image(
+                    g, min_source_h, max_source_h, image_source_buckets, 1,
+                    1, 0, false, inner_node_count(image_source),
+                    mgr->getVars()->numStates(image_source),
+                    failed_image_time);
+            }
+            throw;
+        }
+    }
+    // Commit speculative queue mutations only after the complete union image
+    // succeeds. On BDDError the open buckets remain untouched; the heuristic
+    // search remains fail-fast, matching its legacy image path.
+    for (const auto &[extra_key, extra_raw] : staged_preexpanded) {
+        open.erase(extra_key);
+        preexpanded[extra_key].push_back(extra_raw);
+    }
+    double image_time = image_source.IsZero() ? 0.0 : image_timer();
 
     if (stats) {
-        stats->log_expand(g, v, bdd_nodes, num_states, image_time);
+        stats->log_expand(
+            g, v, true, 1, bdd_nodes, num_states, image_time);
+        if (!image_source.IsZero()) {
+            stats->log_image(
+                g, min_source_h, max_source_h, image_source_buckets, 1,
+                1, 1, false, inner_node_count(image_source),
+                mgr->getVars()->numStates(image_source), image_time);
+        }
     }
 
     // Partition each successor layer by the heuristic level sets (product at
@@ -270,7 +422,7 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
                 if (stats) {
                     stats->log_pruned_deadends(
                         g2, mgr->getVars()->numStates(pruned),
-                        pruned.nodeCount());
+                        inner_node_count(pruned));
                 }
                 successors *= !dead_ends;
                 if (successors.IsZero()) {
@@ -295,7 +447,7 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
             continue;
         }
 
-        long layer_nodes = successors.nodeCount();
+        long layer_nodes = inner_node_count(successors);
         long sum_bucket_nodes = 0;
         int num_buckets = 0;
         for (const auto &value_and_level : *level_sets) {
@@ -303,7 +455,7 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
             BDD partition = successors * value_and_level.second;
             if (!partition.IsZero()) {
                 insert_open(g2, vv, partition);
-                sum_bucket_nodes += partition.nodeCount();
+                sum_bucket_nodes += inner_node_count(partition);
                 ++num_buckets;
             }
         }

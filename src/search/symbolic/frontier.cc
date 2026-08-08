@@ -105,31 +105,41 @@ ResultExpansion Frontier::expand_zero(int maxTime, int maxNodes, bool fw) {
     utils::Timer image_time;
 
     mgr->set_time_limit(maxTime);
+    int attempted = 0;
+    int completed = 0;
     // Compute image, storing the result on Simg
     try {
         for (size_t i = 0; i < Szero.size(); i++) {
             Simg.push_back(map<int, Bucket>());
+            ++attempted;
             mgr->zero_image(fw, Szero[i], Simg[i][0], maxNodes);
+            ++completed;
         }
         mgr->unset_time_limit();
     } catch (const BDDError &e) {
         mgr->unset_time_limit();
-        return ResultExpansion(true, TruncatedReason::IMAGE_ZERO, image_time());
+        return ResultExpansion(
+            true, TruncatedReason::IMAGE_ZERO, image_time(), attempted,
+            completed);
     }
 
     Bucket().swap(Szero); // Delete Szero because it has been expanded
 
-    return ResultExpansion(true, Simg, image_time());
+    return ResultExpansion(true, Simg, image_time(), attempted, completed);
 }
 
 ResultExpansion Frontier::expand_cost(int maxTime, int maxNodes, bool fw) {
     utils::Timer image_time;
     mgr->set_time_limit(maxTime);
+    int attempted = 0;
+    int completed = 0;
     // cout << maxTime << " + " << maxNodes << endl;
     try {
         for (size_t i = 0; i < S.size(); i++) {
             Simg.push_back(map<int, Bucket>());
+            ++attempted;
             mgr->cost_image(fw, S[i], Simg[i], maxNodes);
+            ++completed;
         }
         mgr->unset_time_limit();
     } catch (const BDDError &e) {
@@ -137,11 +147,12 @@ ResultExpansion Frontier::expand_cost(int maxTime, int maxNodes, bool fw) {
         mgr->unset_time_limit();
 
         return ResultExpansion(
-            false, TruncatedReason::IMAGE_COST, image_time());
+            false, TruncatedReason::IMAGE_COST, image_time(), attempted,
+            completed);
     }
 
     Bucket().swap(S); // Delete Szero because it has been expanded
-    return ResultExpansion(false, Simg, image_time());
+    return ResultExpansion(false, Simg, image_time(), attempted, completed);
 }
 
 ostream &operator<<(ostream &os, const Frontier &frontier) {

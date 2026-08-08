@@ -32,8 +32,9 @@ class WbhStats;
   nonpositive raw levels into one symbolic level.
 
   It also computes the statistics of the "heuristic" event: ADD inner-node
-  count A, number of distinct values V, per-level inner-node counts, and the
-  width upper bound U = A + V (paper Prop. prop-add).
+  count A, number of distinct finite values V, terminal count T, per-level
+  inner-node counts, and the width upper bound U = A + T (paper Prop.
+  prop-add).
 */
 class PotentialLevelSets {
     SymVariables *vars;

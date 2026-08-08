@@ -22,6 +22,7 @@ class PotentialLevelSets;
 class SymbolicPotentialForwardSearch : public SymbolicSearch {
     const int m;
     const bool prune_only;
+    const int batch_f_window;
     const bool objective_all_states;
     const lp::LPSolverType lp_solver_type;
 

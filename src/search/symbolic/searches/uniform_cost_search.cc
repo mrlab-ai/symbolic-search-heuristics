@@ -18,6 +18,12 @@
 using namespace std;
 
 namespace symbolic {
+namespace {
+long inner_node_count(const BDD &bdd) {
+    return max(0, bdd.nodeCount() - 1);
+}
+}
+
 UniformCostSearch::UniformCostSearch(
     SymbolicSearch *eng, const SymParameters &params)
     : SymSearch(eng, params),
@@ -154,19 +160,29 @@ void UniformCostSearch::stepImage(int maxTime, int maxNodes) {
     // Blind search always reports h = 0; the heuristic search (PR3) is a
     // separate algorithm that fills in a real h-value.
     int wbh_g = frontier.g();
-    long wbh_nodes = stepNodes;
+    long wbh_nodes = 0;
+    int wbh_piece_count = 0;
     double wbh_states = 0;
     bool wbh_log_this = sym_params.stats && fw;
     if (wbh_log_this) {
         for (const BDD &b : frontier.prepared_bucket()) {
+            wbh_nodes += inner_node_count(b);
             wbh_states += mgr->getVars()->numStates(b);
+            ++wbh_piece_count;
         }
     }
     utils::Timer wbh_image_timer;
     ResultExpansion res_expansion = frontier.expand(maxTime, maxNodes, fw);
     if (wbh_log_this) {
+        double image_time = wbh_image_timer();
         sym_params.stats->log_expand(
-            wbh_g, 0, wbh_nodes, wbh_states, wbh_image_timer());
+            wbh_g, 0, res_expansion.ok, wbh_piece_count, wbh_nodes,
+            wbh_states, image_time);
+        sym_params.stats->log_image(
+            wbh_g, 0, 0, 1, wbh_piece_count,
+            res_expansion.image_calls_attempted,
+            res_expansion.image_calls_completed, res_expansion.step_zero,
+            wbh_nodes, wbh_states, image_time);
     }
 
     if (res_expansion.ok) {

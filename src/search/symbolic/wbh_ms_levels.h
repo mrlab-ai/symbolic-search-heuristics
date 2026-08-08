@@ -31,10 +31,10 @@ class WbhStats;
   combines |left| x d pairs, keeping the construction polynomial in N and d.
 
   Dead-end abstract states (goal distance infinity) go to a separate set the
-  search discards. Paper Prop. prop-ms bounds the width by d*N when the merge
-  order matches the search variable order; here the merge follows a
-  variable-order-finder order, so the measured width_upper_bound is honest but
-  not necessarily tight (order alignment is a possible refinement).
+  search discards. Paper Prop. prop-ms bounds the width by d*(N+1) when the
+  merge order matches the search variable order; here the merge follows a
+  variable-order-finder order, so the computed ADD-based width_upper_bound is
+  valid but not necessarily tight (order alignment is a possible refinement).
 */
 class MsLevelSets {
     SymVariables *vars;
@@ -63,8 +63,8 @@ public:
     // guarantee then holds including its setup cost).
     // align_merge_order: merge along the search's (Gamer) variable order
     // instead of the causal-graph level order, satisfying the alignment
-    // condition of the paper's Prop. prop-ms so the a-priori dN width bound
-    // applies (not only the measured one).
+    // condition of the paper's Prop. prop-ms so the a-priori d*(N+1) width
+    // bound applies (in addition to the computed ADD-based upper bound).
     MsLevelSets(
         SymVariables *vars, const TaskProxy &task_proxy, int max_states,
         int shrink_seed, bool both_directions = false,

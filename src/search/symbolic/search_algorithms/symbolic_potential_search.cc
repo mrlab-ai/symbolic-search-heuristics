@@ -23,6 +23,7 @@ SymbolicPotentialForwardSearch::SymbolicPotentialForwardSearch(
     : SymbolicSearch(opts),
       m(opts.get<int>("m")),
       prune_only(opts.get<bool>("prune_only")),
+      batch_f_window(opts.get<int>("batch_f_window")),
       objective_all_states(opts.get<bool>("all_states_objective")),
       lp_solver_type(opts.get<lp::LPSolverType>("lpsolver")) {
 }
@@ -76,7 +77,8 @@ void SymbolicPotentialForwardSearch::initialize() {
         unique_ptr<HeuristicFwSearch>(new HeuristicFwSearch(this, sym_params));
     // Potentials never produce infinity, so the dead-end set is empty.
     search_ptr->init(
-        mgr, &level_sets->get_level_sets(), vars->zeroBDD(), prune_only);
+        mgr, &level_sets->get_level_sets(), vars->zeroBDD(), prune_only,
+        batch_f_window);
     double construction_time = construction_timer();
     if (sym_params.stats) {
         sym_params.stats->log_construction(
@@ -119,6 +121,14 @@ public:
             "anytime upper bound is known, the g+h >= bound slice); layers "
             "stay whole as in blind search (paper Cor. cor-prune).",
             "false");
+        add_option<int>(
+            "batch_f_window",
+            "Speculatively image fresh (g,h) buckets at the same g and with "
+            "f at most batch_f_window above the selected minimum in one BDD "
+            "union. Logical A* selection, goal tests, and closing remain in "
+            "the legacy order. Requires a consistent heuristic; 0 is exactly "
+            "the legacy product-at-evaluation behavior.",
+            "0", plugins::Bounds("0", "infinity"));
         add_option<bool>(
             "all_states_objective",
             "Optimize the potentials for the average over all states instead "

@@ -82,10 +82,19 @@ PdbLevelSets::PdbLevelSets(
 
     verify_against_pdb(task_proxy, *pdb, projection, 200);
 
-    // Heuristic ADD for the statistics only (dead ends excluded, i.e. 0 there).
+    // Heuristic ADD for statistics only. The search represents infinity as a
+    // separate BDD; use a fresh numeric terminal so the statistics measure an
+    // isomorphic total ADD, including dead-end pruning.
     ADD h_add = vars->constant(0);
     for (const auto &[distance, level] : level_sets) {
         h_add += level.Add() * vars->constant(distance);
+    }
+    if (!dead_ends.IsZero()) {
+        vector<int> terminals = collect_integer_leaf_values(h_add);
+        double infinity_marker =
+            static_cast<double>(terminals.back()) + 1.0;
+        h_add =
+            dead_ends.Add().Ite(vars->constant(infinity_marker), h_add);
     }
     add_stats = compute_add_stats(
         vars, h_add, static_cast<int>(level_sets.size()));

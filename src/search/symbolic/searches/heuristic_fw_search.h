@@ -47,6 +47,17 @@ class WbhStats;
   Only positive operator costs are supported (the paper's assumption; the
   experiment suite excludes zero-cost operators). Solution detection and plan
   reconstruction reuse the standard forward closed list and cut machinery.
+
+  OPT-IN SAME-g f-WINDOW BATCHING: batch_f_window > 0 speculatively computes
+  one image for the selected fresh bucket and fresh buckets with the same g
+  and f <= selected_f + batch_f_window. Same-g is essential because a BDD
+  union otherwise loses the parent path-cost label. Extra buckets remain
+  pending at their original (g, h): goal tests and closed-list insertion still
+  occur in exact (f, g) order. For a consistent heuristic, successors have
+  f' >= f; with positive costs, equal-f successors have greater g. Hence early
+  successors cannot overtake their pending source. Speculation may overgenerate
+  states later removed as duplicates, but never removes a normally expanded
+  state. The heuristic families wired to this search are consistent.
 */
 class HeuristicFwSearch : public SymSearch {
     std::shared_ptr<ClosedList> closed;
@@ -58,6 +69,7 @@ class HeuristicFwSearch : public SymSearch {
     BDD dead_ends;
     WbhStats *stats;
     bool prune_only;
+    int batch_f_window;
 
     // For prune_only: cumulative level sets P_t = union of H_v for v <= t,
     // sorted by value; used to slice a layer to { s : h(s) <= t } with one
@@ -68,6 +80,13 @@ class HeuristicFwSearch : public SymSearch {
     // Open buckets keyed by (g, v). Each value is a (possibly multi-BDD)
     // bucket; BDDs are merged on selection.
     std::map<std::pair<int, int>, Bucket> open;
+
+    // Buckets whose image was already computed speculatively as part of a
+    // same-g f-window. They remain here, at their original (g, h) key, until
+    // normal A* selection performs the goal test and inserts them into closed.
+    // This is load-bearing: speculative imaging must not advance logical A*
+    // expansion/closing order.
+    std::map<std::pair<int, int>, Bucket> preexpanded;
 
     bool has_current_f;
     int current_f;
@@ -87,7 +106,7 @@ public:
     bool init(
         std::shared_ptr<SymStateSpaceManager> manager,
         const std::map<int, BDD> *level_sets, const BDD &dead_ends,
-        bool prune_only = false);
+        bool prune_only = false, int batch_f_window = 0);
 
     std::shared_ptr<ClosedList> getClosedShared() const {
         return closed;
@@ -105,7 +124,7 @@ public:
     }
 
     bool finished() const override {
-        return open.empty();
+        return open.empty() && preexpanded.empty();
     }
 };
 }

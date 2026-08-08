@@ -12,13 +12,15 @@ class WbhStats;
   Statistics of the reduced ADD of a heuristic over the search variable order,
   shared by the width-bounded heuristic families (potentials, PDBs, and
   merge-and-shrink abstractions).
-  Fields correspond to the PR1 "heuristic" log event; the width upper bound is
-  U = A + V (paper Prop. prop-add), with A the ADD inner-node count and V the
-  number of distinct finite values.
+  Fields correspond to the "heuristic" log event. The width upper bound is
+  U = A + T (paper Prop. prop-add), with A the ADD inner-node count and T the
+  number of terminals in the chosen total extension. num_values separately
+  records the finite level sets that can become search buckets.
 */
 struct AddStats {
     long add_inner_nodes = 0;
     int num_values = 0;
+    int num_terminals = 0;
     std::vector<long> add_level_nodes;
     long width_upper_bound = 0;
 };

@@ -8,10 +8,10 @@ attributes:
   add_nodes, construction_time, expanded_bdd_nodes, bucket_images, image_time,
   num_pruned_deadends, and pruned_deadend_states.
 
-Node counts use CUDD's Cudd_DagSize convention, which includes the constant
-node(s); the width theory counts inner nodes. We do not adjust here -- the
-adjustment (subtracting constants) is documented and, since it is a constant
-offset per BDD, does not affect cross-config comparisons on the same manager.
+Version-2 logs self-identify CUDD inner-node counts (Cudd_DagSize - 1 per
+stored BDD). For blind multi-piece frontiers they are sums over pieces, not
+the size of an exact-union BDD. Logs without a schema event are explicitly
+labeled legacy CUDD DagSize; their blind piece counts are not reconstructible.
 Partition ratios describe each generated image passed to the heuristic
 partitioner; they are not aggregated complete cost layers.
 """
@@ -20,7 +20,9 @@ import math
 
 
 def parse_wbh_log(content, props):
+    schema = None
     expands = []
+    images = []
     partitions = []
     heuristic = None
     construction = None
@@ -40,8 +42,12 @@ def parse_wbh_log(content, props):
             # line; skip malformed lines rather than aborting the whole parse.
             continue
         kind = event.get("event")
-        if kind == "expand":
+        if kind == "schema":
+            schema = event
+        elif kind == "expand":
             expands.append(event)
+        elif kind == "image":
+            images.append(event)
         elif kind == "partition":
             partitions.append(event)
         elif kind == "heuristic":
@@ -57,26 +63,123 @@ def parse_wbh_log(content, props):
             pruned_states += event.get("states", 0)
             pruned_bdd_nodes += event.get("bdd_nodes", 0)
     props["raw_metrics_complete"] = summary is not None
+    if schema is not None:
+        props["wbh_schema_version"] = schema["version"]
+        props["node_count_convention"] = schema["node_count_convention"]
+        props["image_count_convention"] = schema["image_count_convention"]
+        props["expansion_count_convention"] = schema.get(
+            "expansion_count_convention", "missing")
+        required_summary = {
+            "expanded_bdd_pieces", "attempted_bdd_pieces",
+            "bucket_expansions", "bucket_expansion_attempts",
+            "image_source_pieces", "image_calls_attempted",
+            "image_calls_completed",
+        }
+        props["piece_metrics_certified"] = (
+            schema.get("version") == 2
+            and schema.get("node_count_convention")
+            == "inner_nodes_per_piece"
+            and schema.get("image_count_convention")
+            == "per_piece_attempted_completed"
+            and schema.get("expansion_count_convention")
+            == "completed_with_attempts"
+            and all("piece_count" in e and "completed" in e for e in expands)
+            and all(
+                {"source_pieces", "calls_attempted", "calls_completed"}
+                <= set(e) for e in images)
+            and (summary is None or required_summary <= set(summary)))
+    else:
+        # Archives produced before schema v2 logged Cudd_DagSize (including a
+        # terminal per BDD) and did not record blind frontier piece counts.
+        # Do not silently reinterpret those values as inner-node work.
+        props["wbh_schema_version"] = 1
+        props["node_count_convention"] = "legacy_cudd_dag_size"
+        props["image_count_convention"] = "legacy_expand_event_count"
+        props["expansion_count_convention"] = "legacy_attempts_unmarked"
+        props["piece_metrics_certified"] = False
 
     if done is not None:
         props["effort"] = done["effort"]
         props["solution_cost"] = done["solution_cost"]
     if expands:
+        completed_expands = [
+            e for e in expands if e.get("completed", True)]
         props["peak_bdd_nodes"] = max(e["bdd_nodes"] for e in expands)
-        # These raw totals remain available when no solution (and hence no
-        # paper-definition effort event) was produced.
-        props["expanded_bdd_nodes"] = sum(e["bdd_nodes"] for e in expands)
-        props["expanded_states"] = sum(e["states"] for e in expands)
+        props["attempted_bdd_nodes"] = sum(
+            e["bdd_nodes"] for e in expands)
+        props["attempted_states"] = sum(e["states"] for e in expands)
+        props["bucket_expansion_attempts"] = len(expands)
+        if all("piece_count" in e for e in expands):
+            props["attempted_bdd_pieces"] = sum(
+                e["piece_count"] for e in expands)
+        # Paper-defined expansion and effort metrics exclude failed attempts.
+        props["expanded_bdd_nodes"] = sum(
+            e["bdd_nodes"] for e in completed_expands)
+        props["expanded_states"] = sum(
+            e["states"] for e in completed_expands)
+        props["bucket_expansions"] = len(completed_expands)
+        if all("piece_count" in e for e in completed_expands):
+            props["expanded_bdd_pieces"] = sum(
+                e["piece_count"] for e in completed_expands)
         props["bucket_images"] = len(expands)
         props["image_time"] = sum(e["image_time"] for e in expands)
+    if images:
+        props["image_events"] = len(images)
+        props["bucket_images"] = sum(
+            e.get("calls_completed", 1) for e in images)
+        props["image_source_buckets"] = sum(
+            e["source_buckets"] for e in images)
+        props["image_source_pieces"] = sum(
+            e.get("source_pieces", 1) for e in images)
+        props["image_calls_attempted"] = sum(
+            e.get("calls_attempted", 1) for e in images)
+        props["image_calls_completed"] = sum(
+            e.get("calls_completed", 1) for e in images)
+        props["batched_images"] = sum(
+            e["source_buckets"] > 1 for e in images)
+        props["image_time"] = sum(e["image_time"] for e in images)
     if summary is not None:
         props["expanded_bdd_nodes"] = summary["expanded_bdd_nodes"]
         props["expanded_states"] = summary["expanded_states"]
+        if "expanded_bdd_pieces" in summary:
+            props["expanded_bdd_pieces"] = summary["expanded_bdd_pieces"]
+        props["bucket_expansions"] = summary.get(
+            "bucket_expansions", summary["bucket_images"])
+        if "attempted_bdd_nodes" in summary:
+            props["attempted_bdd_nodes"] = summary["attempted_bdd_nodes"]
+            props["attempted_states"] = summary["attempted_states"]
+            props["attempted_bdd_pieces"] = summary[
+                "attempted_bdd_pieces"]
+            props["bucket_expansion_attempts"] = summary[
+                "bucket_expansion_attempts"]
+        props["image_events"] = summary.get(
+            "image_events", summary["bucket_images"])
         props["bucket_images"] = summary["bucket_images"]
+        props["image_source_buckets"] = summary.get(
+            "image_source_buckets", summary["bucket_images"])
+        if "image_source_pieces" in summary:
+            props["image_source_pieces"] = summary["image_source_pieces"]
+        if "image_calls_attempted" in summary:
+            props["image_calls_attempted"] = summary[
+                "image_calls_attempted"]
+        if "image_calls_completed" in summary:
+            props["image_calls_completed"] = summary[
+                "image_calls_completed"]
+        props["batched_images"] = summary.get("batched_images", 0)
         props["image_time"] = summary["image_time"]
+    if (props["piece_metrics_certified"]
+            and "expanded_bdd_pieces" in props
+            and "bucket_expansions" in props):
+        # This certifies when the stored piece-sum equals a single BDD per
+        # logical expansion. It does not claim anything about shared nodes
+        # across different expansions.
+        props["expanded_buckets_single_piece"] = (
+            props["expanded_bdd_pieces"] == props["bucket_expansions"])
     if heuristic is not None:
         props["width_upper_bound"] = heuristic["width_upper_bound"]
         props["num_values"] = heuristic["num_values"]
+        if "num_terminals" in heuristic:
+            props["num_terminals"] = heuristic["num_terminals"]
         props["add_nodes"] = heuristic["add_nodes"]
     if construction is not None:
         props["heuristic_kind"] = construction["heuristic"]

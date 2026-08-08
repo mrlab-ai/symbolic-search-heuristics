@@ -21,6 +21,7 @@ SymbolicMsForwardSearch::SymbolicMsForwardSearch(const plugins::Options &opts)
     : SymbolicSearch(opts), max_states(opts.get<int>("max_states")),
       value_cap(opts.get<int>("value_cap")),
       prune_only(opts.get<bool>("prune_only")),
+      batch_f_window(opts.get<int>("batch_f_window")),
       align_merge_order(opts.get<bool>("align_merge_order")) {
 }
 
@@ -49,7 +50,7 @@ void SymbolicMsForwardSearch::initialize() {
         unique_ptr<HeuristicFwSearch>(new HeuristicFwSearch(this, sym_params));
     search_ptr->init(
         mgr, &level_sets->get_level_sets(), level_sets->get_dead_ends(),
-        prune_only);
+        prune_only, batch_f_window);
     double construction_time = construction_timer();
     if (sym_params.stats) {
         sym_params.stats->log_construction(
@@ -95,7 +96,7 @@ public:
             "align_merge_order",
             "Merge along the search's (Gamer) variable order instead of the "
             "causal-graph level order, satisfying the alignment condition of "
-            "Prop. prop-ms (the a-priori dN width bound then applies).",
+            "Prop. prop-ms (the a-priori d*(N+1) width bound then applies).",
             "false");
         add_option<bool>(
             "prune_only",
@@ -103,6 +104,14 @@ public:
             "anytime upper bound is known, the g+h >= bound slice); layers "
             "stay whole as in blind search (paper Cor. cor-prune).",
             "false");
+        add_option<int>(
+            "batch_f_window",
+            "Speculatively image fresh (g,h) buckets at the same g and with "
+            "f at most batch_f_window above the selected minimum in one BDD "
+            "union. Logical A* selection, goal tests, and closing remain in "
+            "the legacy order. Requires a consistent heuristic; 0 is exactly "
+            "the legacy product-at-evaluation behavior.",
+            "0", plugins::Bounds("0", "infinity"));
         this->add_option<shared_ptr<symbolic::PlanSelector>>(
             "plan_selection", "plan selection strategy", "top_k(num_plans=1)");
     }

@@ -19,6 +19,7 @@ class SymbolicPdbForwardSearch : public SymbolicSearch {
     const int state_budget;
     const bool goal_directed;
     const bool prune_only;
+    const int batch_f_window;
 
     std::shared_ptr<PdbLevelSets> level_sets;
 
