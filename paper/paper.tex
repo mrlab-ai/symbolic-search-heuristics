@@ -1521,13 +1521,14 @@ explicit-state cost-partitioning planner Scorpion
 \texttt{--symba-bw-pot-cfg I}; it is therefore the I/I configuration,
 not A+I. The second CPDDL configuration disables potentials and serves
 as a maintained blind-bidirectional stand-in; it is not an execution of
-the original IPC SymBA\ensuremath{^{*}} planner. The evaluation proceeds in six steps:
+the original IPC SymBA\ensuremath{^{*}} planner. The evaluation proceeds in seven steps:
 how small are the archived successor-batch ratios; how do the families
 compare to blind search and the state of the art; when does $f$-ordering
 beat pruning-only use of the same heuristic; what survives in
 bidirectional search; what does enforcing the merge-order alignment
 condition cost; and does the magnitude cap behave as a usable
-accuracy--overhead knob?
+accuracy--overhead knob; and what does a post-construction terminal cap
+change in a predeclared pilot?
 
 \paragraph{Fragmentation.}
 Across the logged partition events of solved tasks, splitting a
@@ -1716,7 +1717,8 @@ optimum. We report $M=8$ as the main configuration because it has the
 smaller certified magnitude bound with essentially identical observed
 coverage, not because the sweep peaks there. This coefficient magnitude
 bound is distinct from the post-construction terminal cap proposed in
-Section~\ref{sec-synthesis}; the latter must be evaluated separately.
+Section~\ref{sec-synthesis}; the latter is evaluated in the separate
+pilot below.
 
 \begin{table}[t]
 \centering
@@ -1733,6 +1735,31 @@ over blind forward search for raw potential runs with coefficient
 magnitude cap $M$ ($\infty$ denotes an effectively unbounded cap).}
 \label{tab-knob}
 \end{table}
+
+\paragraph{Terminal-cap pilot.}
+A separate predeclared pilot at revision \texttt{ec839925} tested
+post-construction terminal caps
+$K\in\{2,4,8,16,32\}$ on an outcome-enriched set of 50 tasks from 25
+domains, with one run per task at five minutes and 8\,GiB. The frozen
+selection rule maximized solved count, then minimized micro PAR2, then
+preferred the smaller $K$. Solved count alone selected the largest
+tested cap, $K=32$. Against M\&S with exact, uncapped terminal values,
+both configurations solved 42 of 50 tasks, with one discordant win and
+one loss for the cap. On their 41 jointly solved tasks, the
+geometric-mean candidate/reference ratios were
+$0.9315$ for the legacy bucket-image count, but $1.024$ for image time
+and $1.011$ for planner time. Thus the roughly $7\%$ reduction in the
+archive's legacy expansion-event image-count proxy did not yield an
+observed image-cost or common-solve runtime improvement.
+
+This is selection-stage evidence, not a confirmatory estimate: $K=32$
+was selected on this same pilot, whose tasks were enriched using earlier
+30-minute blind/exact coverage outcomes, whereas the pilot used a
+five-minute limit. The ratios are conditional on completed common-solve
+pairs under matching legacy conventions, and there are no repetitions.
+A disjoint, name-selected 92-task, 46-domain positive-cost and axiom-free
+validation set was frozen before inspecting the pilot; its primary
+$K=32$-versus-exact comparison remains pending.
 
 \begin{table}[p]
 \centering
