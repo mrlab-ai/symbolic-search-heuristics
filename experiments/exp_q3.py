@@ -4,19 +4,21 @@
 Winning-M forward search vs
   (a) SymK blind forward       -- sym_fw()
   (b) SymK blind bidirectional -- sym_bd()   (default strong config)
-  (c) Fiser et al. A+I operator potentials   -- EXTERNAL BASELINE (TODO)
-  (d) SymBA*                                  -- see note
+  (c) CPDDL I/I operator potentials           -- external diagnostic
+  (d) CPDDL blind bidirectional               -- SymBA* stand-in only
 
-Success criterion (paper plan): among the domains where A+I loses coverage to
+Success criterion (historical paper plan): among the domains where the
+external potential baseline loses coverage to
 blind bidirectional (~14 expected; recompute from runs (c) vs (b)), the capped
-configuration recovers at least half while retaining >= 80% of A+I's aggregate
-coverage gains elsewhere.
+configuration recovers at least half while retaining >= 80% of its aggregate
+coverage gains elsewhere. The executed CPDDL command used ``I/I``, however,
+not the planned A+I configuration, so do not present this criterion as an A+I
+comparison.
 
-The winning M is read from experiments/WINNING_M (frozen after Q2). The A+I
-baseline (c) requires obtaining and building the Fiser et al. (2024) planner
-(linked from the paper); wire it in as a separate add_algorithm against that
-repo/binary. SymBA* (d): if a SymBA* configuration is available in this SymK
-build, add it here; otherwise document its absence.
+The winning M is read from experiments/WINNING_M (frozen after Q2). The
+external configurations run through CPDDL in ``exp_baselines.py``. Its blind
+configuration is a stand-in, not an execution of the original IPC-2014 SymBA*
+binary.
 
 Do NOT launch the full sweep without sign-off (Oct 25 gate).
 """
@@ -44,9 +46,9 @@ def main():
     C.add_algorithm(exp, f"pot_m{m}", f"sym_fw_pot(m={m})")
     C.add_algorithm(exp, "blind_fw", "sym_fw()")
     C.add_algorithm(exp, "blind_bd", "sym_bd()")
-    # The external baselines (c) A+I and (d) SymBA* run via
-    # experiments/exp_baselines.py (a_plus_i, symba_star), which invokes the
-    # pre-built cpddl planner in ../baselines. Fetch its properties alongside
+    # The external diagnostics (c) CPDDL I/I and (d) CPDDL blind run via
+    # experiments/exp_baselines.py (cpddl_i_i, cpddl_blind_bi), which invokes
+    # the pre-built CPDDL planner in ../baselines. Fetch its properties alongside
     # this experiment's and build a combined per-domain coverage table. They
     # are separate experiments because the baselines are not Fast Downward
     # repositories and were vendored without git history.

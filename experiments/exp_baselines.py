@@ -8,17 +8,20 @@ directly with per-run limits (30 min, 8 GiB), a small parser for coverage and
 plan cost, and an absolute report.
 
 Algorithms:
-  a_plus_i    -- cpddl pddl-symba, bidirectional symbolic search with forward
-                 and backward operator potentials (Fiser et al. AIJ 2024 A+I),
-                 the Q3 (c) baseline.
-  symba_star  -- cpddl pddl-symba, bidirectional symbolic search WITHOUT
-                 potentials, used as the SymBA* baseline (Q3 d). We use cpddl's
-                 symba (the maintained successor of Torralba's SymBA*): the
-                 original IPC-2014 SymBA* in baselines/symba does not link on
-                 this toolchain (old 64-bit Fast Downward preprocessor). See
-                 baselines/README.md.
+  cpddl_i_i       -- CPDDL pddl-symba, bidirectional symbolic search with a
+                     single initial-state-objective potential in each
+                     direction. The command is I/I, not A+I.
+  cpddl_blind_bi  -- CPDDL pddl-symba, bidirectional search without
+                     potentials. This is a stand-in, not the original
+                     IPC-2014 SymBA* binary; that binary in baselines/symba
+                     does not link on this toolchain.
   scorpion    -- Scorpion (flagship optimal cost-partitioning alias), the Q4
                  context baseline.
+
+The checked-in ``exp_baselines-eval`` archive predates these accurate names:
+its ``a_plus_i`` and ``symba_star`` identifiers mean ``cpddl_i_i`` and
+``cpddl_blind_bi``, respectively. Preserve those legacy identifiers when
+reading the archive, but never expand them to the claims their names suggest.
 
 Compare with the SymK configs from exp_q3.py / exp_q1.py by fetching this
 experiment's properties alongside theirs (same attributes: coverage,
@@ -43,19 +46,21 @@ import suite_wbh
 BASELINES = C.REPO / "baselines"
 CPDDL = BASELINES / "cpddl" / "bin" / "pddl-symba"
 SCORPION_FD = BASELINES / "scorpion" / "fast-downward.py"
+CPDDL_REVISION = "2c7de0ec0e7d1d002a08aead4c5c5bbdcf171b89"
+SCORPION_REVISION = "4fd73aea3cfbb159e3ec9e61a8d2e30fb661916c"
 
 TIME_LIMIT = 60 if C.LOCAL else 1800  # seconds
 MEMORY_LIMIT = 4096 if C.LOCAL else 8192  # MiB
 
 
-def a_plus_i_cmd(domain, problem):
+def cpddl_i_i_cmd(domain, problem):
     return [str(CPDDL), "--symba", "bi",
             "--symba-fw-pot", "--symba-fw-pot-cfg", "I",
             "--symba-bw-pot", "--symba-bw-pot-cfg", "I",
             str(domain), str(problem)]
 
 
-def symba_star_cmd(domain, problem):
+def cpddl_blind_bi_cmd(domain, problem):
     return [str(CPDDL), "--symba", "bi", str(domain), str(problem)]
 
 
@@ -65,9 +70,15 @@ def scorpion_cmd(domain, problem):
 
 
 ALGORITHMS = {
-    "a_plus_i": a_plus_i_cmd,
-    "symba_star": symba_star_cmd,
+    "cpddl_i_i": cpddl_i_i_cmd,
+    "cpddl_blind_bi": cpddl_blind_bi_cmd,
     "scorpion": scorpion_cmd,
+}
+
+BASELINE_UPSTREAM_VENDORED_COMMITS = {
+    "cpddl_i_i": CPDDL_REVISION,
+    "cpddl_blind_bi": CPDDL_REVISION,
+    "scorpion": SCORPION_REVISION,
 }
 
 
@@ -104,13 +115,25 @@ def main():
     for domain, problem, df, pf in enumerate_tasks():
         for alg, builder in ALGORITHMS.items():
             run = exp.add_run()
+            command = builder(df, pf)
             run.add_command(
-                "plan", builder(df, pf),
+                "plan", command,
                 time_limit=TIME_LIMIT, memory_limit=MEMORY_LIMIT)
             run.set_property("algorithm", alg)
             run.set_property("domain", domain)
             run.set_property("problem", problem)
             run.set_property("id", [alg, domain, problem])
+            # The commit is contextual upstream-vendoring metadata, not an
+            # attestation of the local source tree or executable. Generic Lab
+            # does not add limit properties automatically, so record those and
+            # the exact command explicitly for future archives.
+            run.set_property(
+                "baseline_upstream_vendored_commit",
+                BASELINE_UPSTREAM_VENDORED_COMMITS[alg])
+            run.set_property("planner_time_limit", TIME_LIMIT)
+            run.set_property("planner_memory_limit", MEMORY_LIMIT)
+            run.set_property("component_options", command)
+            run.set_property("repetitions", 1)
 
     exp.add_parser(get_parser())
     # "build" writes the run directories/scripts (the binaries are prebuilt).
@@ -121,7 +144,11 @@ def main():
 
     from downward.reports.absolute import AbsoluteReport
     exp.add_report(
-        AbsoluteReport(attributes=["coverage", "solution_cost", "total_time"]),
+        AbsoluteReport(attributes=[
+            "coverage", "solution_cost", "total_time",
+            "baseline_upstream_vendored_commit",
+            "planner_time_limit", "planner_memory_limit", "repetitions",
+        ]),
         name="report", outfile="report.html")
 
     exp.run_steps()

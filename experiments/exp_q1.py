@@ -7,6 +7,10 @@ from report.html / the parsed properties). Blind forward is included as the
 width-1 anchor. The Speck et al. (2020) Pi_n family is added as a sanity anchor
 when generated (see misc/gen_pin.py) and WBH_PIN_DIR points at it.
 
+Protocol note: these search strings do not override ``mutex_type``. The
+archived Q1 revision therefore used SymK's default ``MUTEX_EDELETION``, not
+``MUTEX_NOT``; it must not be described as a pruning-disabled replication.
+
 Dry run (acceptance): WBH_LOCAL=1 python3 experiments/exp_q1.py
   -- runs on Gripper + Miconic locally, parses, and writes report.html.
 
@@ -40,6 +44,8 @@ def main():
                 if "domain" not in p.stem
             ])
 
+    # Intentionally records the actual archived protocol: no mutex_type
+    # override on any config, hence MUTEX_EDELETION at the archived revision.
     C.add_algorithm(exp, "blind_fw", "sym_fw()")
     C.add_algorithm(exp, "pot_m8", "sym_fw_pot(m=8)")
     C.add_algorithm(exp, "pdb", "sym_fw_pdb(budget=100000)")

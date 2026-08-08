@@ -1,20 +1,21 @@
-"""Benchmark suite for the width-bounded-heuristics experiments (PR5).
+"""Source universe for the width-bounded-heuristics experiments (PR5).
 
-Optimal-track IPC 1998-2023 STRIPS domains. Following Speck et al. (2020) and
-matching the assumptions of the paper, we exclude:
-  * conditional effects and axioms (not covered by the potential/PDB families
-    here, and changing SymK's default mutex handling);
-  * zero-cost operators (the theory assumes positive costs; the heuristic
-    search asserts this). Zero-cost operators occur inside otherwise-included
-    domains (e.g. openstacks, parcprinter, pegsol, tetris), so they are
-    filtered per task at run time by the heuristic configs (which skip such
-    tasks) rather than per domain. This makes our suite a strict subset of the
-    Fiser et al. (2024) suite -- note this delta in the experiment README.
+The 59 domains below enumerate 1697 optimal-track IPC 1998--2023 tasks used by
+the archived sweeps. They are not all axiom-free after translation: Pathways'
+ADL disjunctions become normalized axioms. The frozen source manifest records
+this separately from operator cost. The common SymK heuristic population is
+the 1377 tasks that are both positive-cost and free of normalized axioms:
+290 zero-cost tasks and 30 Pathways tasks with normalized axioms are excluded.
 
-`suite()` returns the domain list; the dry-run suite is `SMOKE`.
+Prospective held-out screens first filter tasks by that supported population,
+then retain the 46 domains with at least two supported tasks. Eligibility is
+derived from the frozen manifest, not from planner outcomes. `suite()` still
+returns the complete 59-domain source universe so archived and broad-baseline
+protocols remain reproducible;
+the dry-run suite is `SMOKE`.
 """
 
-# Canonical optimal-track STRIPS domains present in aibasel/downward-benchmarks.
+# Canonical optimal-track domains present in aibasel/downward-benchmarks.
 SUITE_OPTIMAL_STRIPS = [
     "airport",
     "barman-opt11-strips", "barman-opt14-strips",

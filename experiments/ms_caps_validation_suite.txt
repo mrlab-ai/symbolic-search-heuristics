@@ -1,0 +1,115 @@
+# Held-out, domain-balanced M&S cap validation set (v2).
+# Frozen 2026-08-08 before inspecting any exp_ms_caps_pilot outcome.
+#
+# Domain eligibility comes only from the frozen pre-outcome source manifest;
+# task selection within each eligible domain uses names only. No performance
+# data were read.
+# Seed: symbolic-search-heuristics/ms-caps-validation/v2
+# For each of the 46 suite domains with at least two supported tasks under the
+# frozen source manifest:
+#   1. Enumerate canonical problem names with downward.suites.build_suite.
+#   2. Retain only source-attested positive-cost, axiom-free tasks.
+#   3. Exclude names in ms_caps_pilot_suite.txt and smoke_suite.txt.
+#   4. Sort remaining names by
+#        SHA256(seed + "\0" + domain + "\0" + problem), then problem name.
+#      Each escaped separator above denotes one 0x00 byte.
+#   5. Freeze the first two names.
+#
+# All 92 selected tasks are disjoint from the cap pilot and from the
+# development/acceptance smoke suite. The domain-level eligibility filter is
+# independent of planner outcomes; unsolvable tasks are not filtered.
+# Normalized domain:problem-newline SHA-256:
+# daca0c3ba0f029d7dc61b342c5ba99cd53c00b1cbfdbe7744d3fca0aa4431161
+# Format: domain:problem.
+airport:p08-airport2-p3.pddl
+airport:p22-airport4halfMUC-p3.pddl
+barman-opt11-strips:pfile05-019.pddl
+barman-opt11-strips:pfile03-010.pddl
+barman-opt14-strips:p739-2.pddl
+barman-opt14-strips:p839-2.pddl
+blocks:probBLOCKS-6-1.pddl
+blocks:probBLOCKS-9-0.pddl
+childsnack-opt14-strips:child-snack_pfile05.pddl
+childsnack-opt14-strips:child-snack_pfile06.pddl
+depot:p21.pddl
+depot:p12.pddl
+driverlog:p17.pddl
+driverlog:p18.pddl
+floortile-opt11-strips:opt-p08-016.pddl
+floortile-opt11-strips:opt-p02-003.pddl
+floortile-opt14-strips:p03-6-5-2.pddl
+floortile-opt14-strips:p01-6-4-2.pddl
+freecell:p01.pddl
+freecell:probfreecell-10-4.pddl
+grid:prob04.pddl
+grid:prob01.pddl
+gripper:prob07.pddl
+gripper:prob06.pddl
+hiking-opt14-strips:ptesting-1-2-8.pddl
+hiking-opt14-strips:ptesting-2-4-3.pddl
+logistics00:probLOGISTICS-13-0.pddl
+logistics00:probLOGISTICS-8-1.pddl
+logistics98:prob03.pddl
+logistics98:prob25.pddl
+miconic:s1-4.pddl
+miconic:s22-2.pddl
+movie:prob16.pddl
+movie:prob04.pddl
+mprime:prob15.pddl
+mprime:prob05.pddl
+mystery:prob16.pddl
+mystery:prob21.pddl
+nomystery-opt11-strips:p06.pddl
+nomystery-opt11-strips:p11.pddl
+organic-synthesis-opt18-strips:p10.pddl
+organic-synthesis-opt18-strips:p09.pddl
+parking-opt11-strips:pfile08-030.pddl
+parking-opt11-strips:pfile07-027.pddl
+parking-opt14-strips:p_20_11-01.pddl
+parking-opt14-strips:p_20_11-02.pddl
+pipesworld-notankage:p45-net5-b26-g4.pddl
+pipesworld-notankage:p02-net1-b6-g4.pddl
+pipesworld-tankage:p34-net4-b16-g6-t60.pddl
+pipesworld-tankage:p50-net5-b30-g8-t50.pddl
+psr-small:p34-s55-n4-l3-f70.pddl
+psr-small:p22-s37-n3-l3-f30.pddl
+rovers:p19.pddl
+rovers:p24.pddl
+satellite:p24-HC-pfile4.pddl
+satellite:p07-pfile7.pddl
+scanalyzer-08-strips:p23.pddl
+scanalyzer-08-strips:p21.pddl
+scanalyzer-opt11-strips:p20.pddl
+scanalyzer-opt11-strips:p10.pddl
+snake-opt18-strips:p10.pddl
+snake-opt18-strips:p16.pddl
+storage:p14.pddl
+storage:p21.pddl
+termes-opt18-strips:p12.pddl
+termes-opt18-strips:p07.pddl
+tetris-opt14-strips:p01-8.pddl
+tetris-opt14-strips:p01-6.pddl
+tidybot-opt11-strips:p19.pddl
+tidybot-opt11-strips:p13.pddl
+tidybot-opt14-strips:p03.pddl
+tidybot-opt14-strips:p05.pddl
+tpp:p29.pddl
+tpp:p19.pddl
+transport-opt08-strips:p12.pddl
+transport-opt08-strips:p08.pddl
+transport-opt11-strips:p13.pddl
+transport-opt11-strips:p07.pddl
+transport-opt14-strips:p14.pddl
+transport-opt14-strips:p01.pddl
+trucks-strips:p21.pddl
+trucks-strips:p01.pddl
+visitall-opt11-strips:problem04-half.pddl
+visitall-opt11-strips:problem03-half.pddl
+visitall-opt14-strips:p-05-6.pddl
+visitall-opt14-strips:p-1-13.pddl
+woodworking-opt08-strips:p17.pddl
+woodworking-opt08-strips:p26.pddl
+woodworking-opt11-strips:p06.pddl
+woodworking-opt11-strips:p04.pddl
+zenotravel:p13.pddl
+zenotravel:p05.pddl

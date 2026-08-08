@@ -1,0 +1,115 @@
+# Prospective domain-balanced validation set for heuristic finalists.
+# Frozen 2026-08-08 before inspecting any new cap or candidate outcome.
+#
+# Domain eligibility comes only from the frozen pre-outcome source manifest;
+# task selection within each eligible domain uses names only. No performance
+# data were read.
+# Seed: symbolic-search-heuristics/heuristic-finalists-validation/v1
+# For each of the 46 suite domains with at least two supported tasks under the
+# frozen source manifest:
+#   1. Enumerate canonical problem names with downward.suites.build_suite.
+#   2. Retain only source-attested positive-cost, axiom-free tasks.
+#   3. Exclude names in ms_caps_pilot_suite.txt, smoke_suite.txt, and
+#      ms_caps_validation_suite.txt.
+#   4. Sort remaining names by
+#        SHA256(seed + "\0" + domain + "\0" + problem), then problem name.
+#   5. Freeze the first two names.
+#
+# The 92 tasks are disjoint from all development, acceptance, cap-pilot, and
+# cap-validation tasks above. The domain-level eligibility filter is
+# independent of planner outcomes; unsolvable tasks are not filtered.
+# Normalized domain:problem-newline SHA-256:
+# fc63d4eed62816a2e065cb89f89483999a7b51067b7077969d10b2a338f19760
+# Format: domain:problem.
+airport:p05-airport2-p1.pddl
+airport:p41-airport5MUC-p4.pddl
+barman-opt11-strips:pfile04-016.pddl
+barman-opt11-strips:pfile01-001.pddl
+barman-opt14-strips:p536-3.pddl
+barman-opt14-strips:p638-3.pddl
+blocks:probBLOCKS-12-0.pddl
+blocks:probBLOCKS-17-0.pddl
+childsnack-opt14-strips:child-snack_pfile08-2.pddl
+childsnack-opt14-strips:child-snack_pfile09-2.pddl
+depot:p17.pddl
+depot:p14.pddl
+driverlog:p05.pddl
+driverlog:p04.pddl
+floortile-opt11-strips:opt-p03-006.pddl
+floortile-opt11-strips:opt-p07-014.pddl
+floortile-opt14-strips:p02-5-4-2.pddl
+floortile-opt14-strips:p03-4-4-2.pddl
+freecell:probfreecell-9-5.pddl
+freecell:probfreecell-4-4.pddl
+grid:prob05.pddl
+grid:prob02.pddl
+gripper:prob15.pddl
+gripper:prob08.pddl
+hiking-opt14-strips:ptesting-1-2-3.pddl
+hiking-opt14-strips:ptesting-2-3-4.pddl
+logistics00:probLOGISTICS-15-1.pddl
+logistics00:probLOGISTICS-12-1.pddl
+logistics98:prob27.pddl
+logistics98:prob19.pddl
+miconic:s11-4.pddl
+miconic:s30-0.pddl
+movie:prob13.pddl
+movie:prob15.pddl
+mprime:prob16.pddl
+mprime:prob13.pddl
+mystery:prob15.pddl
+mystery:prob05.pddl
+nomystery-opt11-strips:p15.pddl
+nomystery-opt11-strips:p12.pddl
+organic-synthesis-opt18-strips:p03.pddl
+organic-synthesis-opt18-strips:p08.pddl
+parking-opt11-strips:pfile05-018.pddl
+parking-opt11-strips:pfile06-022.pddl
+parking-opt14-strips:p_18_10-04.pddl
+parking-opt14-strips:p_14_8-01.pddl
+pipesworld-notankage:p49-net5-b30-g6.pddl
+pipesworld-notankage:p43-net5-b24-g3.pddl
+pipesworld-tankage:p39-net4-b22-g7-t50.pddl
+pipesworld-tankage:p03-net1-b8-g3-t80.pddl
+psr-small:p10-s17-n2-l2-f30.pddl
+psr-small:p15-s24-n2-l4-f10.pddl
+rovers:p16.pddl
+rovers:p38.pddl
+satellite:p18-pfile18.pddl
+satellite:p17-pfile17.pddl
+scanalyzer-08-strips:p28.pddl
+scanalyzer-08-strips:p01.pddl
+scanalyzer-opt11-strips:p19.pddl
+scanalyzer-opt11-strips:p18.pddl
+snake-opt18-strips:p05.pddl
+snake-opt18-strips:p18.pddl
+storage:p05.pddl
+storage:p03.pddl
+termes-opt18-strips:p16.pddl
+termes-opt18-strips:p18.pddl
+tetris-opt14-strips:p02-8.pddl
+tetris-opt14-strips:p02-4.pddl
+tidybot-opt11-strips:p04.pddl
+tidybot-opt11-strips:p14.pddl
+tidybot-opt14-strips:p04.pddl
+tidybot-opt14-strips:p12.pddl
+tpp:p24.pddl
+tpp:p06.pddl
+transport-opt08-strips:p16.pddl
+transport-opt08-strips:p06.pddl
+transport-opt11-strips:p15.pddl
+transport-opt11-strips:p03.pddl
+transport-opt14-strips:p10.pddl
+transport-opt14-strips:p11.pddl
+trucks-strips:p27.pddl
+trucks-strips:p12.pddl
+visitall-opt11-strips:problem10-half.pddl
+visitall-opt11-strips:problem11-half.pddl
+visitall-opt14-strips:p-05-10.pddl
+visitall-opt14-strips:p-05-7.pddl
+woodworking-opt08-strips:p13.pddl
+woodworking-opt08-strips:p23.pddl
+woodworking-opt11-strips:p08.pddl
+woodworking-opt11-strips:p09.pddl
+zenotravel:p07.pddl
+zenotravel:p14.pddl

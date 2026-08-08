@@ -4,7 +4,7 @@
 Head-to-head: linear M&S BDDA* with the default causal-graph level merge
 order (ms) vs the same configuration merging along the search's Gamer
 variable order (ms_aligned), which satisfies the alignment condition so the
-a-priori dN width bound applies. Questions: does alignment change the
+a-priori d*(N+1) width bound applies. Questions: does alignment change the
 measured width (in the search order) and coverage?
 
 Sweep: python3 experiments/exp_ms_aligned.py   (Tetralith)
