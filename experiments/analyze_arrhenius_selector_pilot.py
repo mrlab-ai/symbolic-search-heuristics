@@ -7,10 +7,12 @@ by :mod:`exp_arrhenius_selector_pilot`. Every expected algorithm-task cell has a
 well-formed, explained Fast Downward outcome, and solved costs must agree within
 each task.
 
-The predeclared selection rule is applied globally to all 20 configurations:
-maximize coverage, minimize micro-PAR2 (600 seconds for every unsolved cell),
-then minimize total image time only if every one of the 1000 cells has complete
-schema-v2 certified metrics, then use the configuration label.
+The predeclared selection rule orders all 20 configurations: maximize coverage,
+minimize micro-PAR2 (600 seconds for every unsolved cell), then minimize total
+image time only if every one of the 1000 cells has complete schema-v2 certified
+metrics, then use the configuration label. Artifact v2 records both the global
+winner and the first selector in this same frozen order. It also derives the
+prospective held-out configuration matrix without inspecting held-out outcomes.
 
 ``--emit-selection-artifact`` prints deterministic JSON to stdout and never
 writes a file. The planner revision, launch-protocol revision, and cached
@@ -128,13 +130,82 @@ MEMORY_LIMIT_MIB = 8192.0
 BLIND = "blind_fw"
 MS_EXACT = "ms_exact"
 ARTIFACT_SCHEMA = (
-    "symbolic-search-heuristics/arrhenius-selector-screen-selection/v1"
+    "symbolic-search-heuristics/arrhenius-selector-screen-selection/v2"
 )
 
 CONFIGS = tuple(runner.CONTROL_CONFIGS) + tuple(runner.SELECTOR_CONFIGS)
 LABELS = tuple(label for label, _ in CONFIGS)
 SEARCHES = dict(CONFIGS)
 SELECTOR_LABELS = tuple(label for label, _ in runner.SELECTOR_CONFIGS)
+
+# Prospective held-out validation was frozen before inspecting this screen.
+# The task digest hashes the normalized ``domain:problem\n`` sequence; the
+# source digest hashes the corresponding canonical records in the separately
+# frozen positive-cost/axiom-free source manifest.
+VALIDATION_PROTOCOL = "arrhenius-selector-heldout-validation-v1"
+VALIDATION_MANIFEST = "heuristic_finalists_validation_suite.txt"
+VALIDATION_MANIFEST_SHA256 = (
+    "fc63d4eed62816a2e065cb89f89483999a7b51067b7077969d10b2a338f19760"
+)
+VALIDATION_TASK_SOURCES_SHA256 = (
+    "14202b66a4ed4ea7afa9f204d15cbfe8857b061a644661fc9d68b3624523fdf4"
+)
+VALIDATION_TASKS = 92
+VALIDATION_DOMAINS = 46
+VALIDATION_ANALYSIS_PROTOCOL = (
+    "paired-domain-macro-coverage-sha256-bootstrap-v1"
+)
+VALIDATION_BOOTSTRAP_SEED = (
+    "symbolic-search-heuristics/arrhenius-selector-heldout-bootstrap/v1"
+)
+VALIDATION_BOOTSTRAP_REPLICATES = 100000
+
+SELECTOR_ELIGIBILITY_SHA256 = (
+    "51dc9a5392f021c921d1dcc2636eb7c2d5955a363ff9df7e44ec871f9afc2aa3"
+)
+MS_CAP32_BUILD60_LABEL = "ms_cap32_build60"
+MS_CAP32_BUILD60_SEARCH = (
+    "sym_fw_ms(max_states=10000,value_cap=32,align_merge_order=false,"
+    "build_time_limit=60)"
+)
+
+# These configurations are included independently of all pilot outcomes.  The
+# build-budget configuration tests the implemented safe fallback and is not a
+# member of the 20-way screening matrix.
+FIXED_VALIDATION_CONFIGS = (
+    ("blind_fw", SEARCHES["blind_fw"], "fixed-blind-control"),
+    ("ms_exact", SEARCHES["ms_exact"], "fixed-ms-exact-control"),
+    ("ms_cap32", SEARCHES["ms_cap32"], "fixed-ms-cap32-control"),
+    (
+        "pdb_goal_fill_b100k",
+        SEARCHES["pdb_goal_fill_b100k"],
+        "fixed-pdb-goal-fill-control",
+    ),
+    (
+        "pdb_cegar_b100k",
+        SEARCHES["pdb_cegar_b100k"],
+        "fixed-pdb-cegar-control",
+    ),
+    (
+        MS_CAP32_BUILD60_LABEL,
+        MS_CAP32_BUILD60_SEARCH,
+        "predeclared-ms-build-budget-safeguard",
+    ),
+)
+FIXED_VALIDATION_CONFIGS_SHA256 = (
+    "c4cc5f5560a7b8b0d6bc28210c64ab603b75e01df1f40a0e9c4cb22fb02f557d"
+)
+
+# A batched selector winner gets the exact same-K, otherwise identical,
+# unbatched selector as a deterministic held-out ablation.  An unbatched
+# winner is already its own base and adds no duplicate validation cell.
+BATCHED_SELECTOR_BASE = {
+    "pdb_selector_k32_adapt_w64_r1_n1m": "pdb_selector_k32",
+    "pdb_selector_k64_adapt_w64_r1_n1m": "pdb_selector_k64",
+    "pdb_selector_k128_adapt_w64_r1_n1m": "pdb_selector_k128",
+    "pdb_selector_kinf_adapt_w64_r1_n1m": "pdb_selector_kinf",
+    "pdb_selector_k32_w16": "pdb_selector_k32",
+}
 
 SCHEMA_V2_CONVENTIONS = {
     "wbh_schema_version": 2,
@@ -278,6 +349,376 @@ def logical_properties_sha256(records):
         )
     )
     return sha256_json(normalized)
+
+
+def _validation_option_records(configs):
+    return [
+        {"label": config["label"], "search": config["search"]}
+        for config in configs
+    ]
+
+
+def _fixed_validation_records():
+    return [
+        {"label": label, "search": search, "role": role}
+        for label, search, role in FIXED_VALIDATION_CONFIGS
+    ]
+
+
+def heldout_validation_metadata():
+    """Validate and describe the prospective 92-task held-out population."""
+    path = SCRIPT_DIR / VALIDATION_MANIFEST
+    try:
+        raw_lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as err:
+        raise AnalysisError(
+            "cannot read held-out manifest {}: {}".format(path, err)
+        ) from err
+
+    labels = []
+    for lineno, raw_line in enumerate(raw_lines, 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split(":")
+        if len(fields) != 2 or not all(fields):
+            raise AnalysisError(
+                "{}:{} is not an exact DOMAIN:PROBLEM entry".format(
+                    path, lineno
+                )
+            )
+        labels.append(line)
+
+    digest = hashlib.sha256(
+        "".join("{}\n".format(label) for label in labels).encode("utf-8")
+    ).hexdigest()
+    if digest != VALIDATION_MANIFEST_SHA256:
+        raise AnalysisError(
+            "held-out manifest digest changed: {} != {}".format(
+                digest, VALIDATION_MANIFEST_SHA256
+            )
+        )
+    tasks = [tuple(label.split(":", 1)) for label in labels]
+    domain_counts = defaultdict(int)
+    for domain, _ in tasks:
+        domain_counts[domain] += 1
+    if (
+        len(tasks) != VALIDATION_TASKS
+        or len(set(tasks)) != VALIDATION_TASKS
+        or len(domain_counts) != VALIDATION_DOMAINS
+        or set(domain_counts.values()) != {2}
+    ):
+        raise AnalysisError(
+            "held-out manifest must contain 92 unique tasks, two in each of "
+            "46 domains"
+        )
+
+    supported = suite_cost_manifest.supported_tasks()
+    unsupported = sorted(set(tasks) - supported)
+    if unsupported:
+        raise AnalysisError(
+            "held-out manifest contains unsupported tasks: {}".format(
+                ", ".join(
+                    analyzer_utils.task_label(task) for task in unsupported
+                )
+            )
+        )
+    pilot_tasks = {
+        tuple(label.split(":", 1)) for label in runner.read_manifest()
+    }
+    overlap = sorted(set(tasks) & pilot_tasks)
+    if overlap:
+        raise AnalysisError(
+            "held-out manifest overlaps selector pilot: {}".format(
+                ", ".join(analyzer_utils.task_label(task) for task in overlap)
+            )
+        )
+
+    cost_data = suite_cost_manifest.load_manifest()
+    records_by_task = {
+        (record["domain"], record["problem"]): record
+        for record in cost_data["tasks"]
+    }
+    try:
+        selected_records = [records_by_task[task] for task in sorted(tasks)]
+    except KeyError as err:
+        raise AnalysisError(
+            "held-out task is absent from frozen source manifest: {}".format(
+                err.args[0]
+            )
+        ) from err
+    source_digest = hashlib.sha256(
+        suite_cost_manifest.canonical_records_bytes(selected_records)
+    ).hexdigest()
+    if source_digest != VALIDATION_TASK_SOURCES_SHA256:
+        raise AnalysisError(
+            "held-out task-source digest changed: {} != {}".format(
+                source_digest, VALIDATION_TASK_SOURCES_SHA256
+            )
+        )
+    if (
+        suite_cost_manifest.sha256_file(suite_cost_manifest.MANIFEST_PATH)
+        != EXPECTED_SOURCE_MANIFEST_SHA256
+    ):
+        raise AnalysisError("frozen source-manifest bytes changed")
+    return {
+        "task_manifest": VALIDATION_MANIFEST,
+        "task_manifest_sha256": VALIDATION_MANIFEST_SHA256,
+        "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256,
+        "task_sources_sha256": VALIDATION_TASK_SOURCES_SHA256,
+        "task_count": VALIDATION_TASKS,
+        "domain_count": VALIDATION_DOMAINS,
+    }
+
+
+def _derive_artifact_winners(scores):
+    ranking = scores.get("ranking") if isinstance(scores, dict) else None
+    if not isinstance(ranking, list) or len(ranking) != EXPECTED_CONFIGS:
+        raise AnalysisError("artifact ranking must contain exactly 20 scores")
+    labels = [score.get("label") for score in ranking]
+    if len(set(labels)) != EXPECTED_CONFIGS or set(labels) != set(LABELS):
+        raise AnalysisError("artifact ranking labels differ from frozen matrix")
+    if [score.get("rank") for score in ranking] != list(
+        range(1, EXPECTED_CONFIGS + 1)
+    ):
+        raise AnalysisError("artifact ranking ranks/order are inconsistent")
+    for score in ranking:
+        label = score["label"]
+        if score.get("search") != SEARCHES[label]:
+            raise AnalysisError(
+                "artifact ranking search changed for {}".format(label)
+            )
+    if any(
+        ranking[index]["_key"] > ranking[index + 1]["_key"]
+        for index in range(len(ranking) - 1)
+    ):
+        raise AnalysisError("artifact ranking is not in exact score order")
+
+    global_winner = ranking[0]
+    selected = scores.get("selected")
+    if not isinstance(selected, dict) or canonical_json(
+        _public_score(selected)
+    ) != canonical_json(_public_score(global_winner)):
+        raise AnalysisError("global winner differs from first ranked score")
+    selector_winner = next(
+        score for score in ranking if score["label"] in SELECTOR_LABELS
+    )
+    return global_winner, selector_winner
+
+
+def _validation_comparisons(global_label, selector_label, matched_label):
+    comparisons = []
+
+    def add(name, candidate, reference, role):
+        if candidate == reference:
+            return
+        for comparison in comparisons:
+            if (
+                comparison["candidate"] == candidate
+                and comparison["reference"] == reference
+            ):
+                comparison["roles"].append(role)
+                return
+        comparisons.append(
+            {
+                "name": name,
+                "candidate": candidate,
+                "reference": reference,
+                "roles": [role],
+            }
+        )
+
+    add(
+        "selector-vs-pdb-cegar",
+        selector_label,
+        "pdb_cegar_b100k",
+        "primary-selector-contrast",
+    )
+    add(
+        "selector-vs-pdb-goal-fill",
+        selector_label,
+        "pdb_goal_fill_b100k",
+        "secondary-matched-pdb-contrast",
+    )
+    add(
+        "ms-cap32-build60-vs-unbounded-build",
+        MS_CAP32_BUILD60_LABEL,
+        "ms_cap32",
+        "primary-setup-safeguard-contrast",
+    )
+    if matched_label is not None:
+        add(
+            "selector-batching-vs-same-k-unbatched",
+            selector_label,
+            matched_label,
+            "conditional-batching-ablation",
+        )
+    add(
+        "global-winner-vs-blind-forward",
+        global_label,
+        BLIND,
+        "heldout-global-winner-context",
+    )
+    add(
+        "global-winner-vs-ms-exact",
+        global_label,
+        MS_EXACT,
+        "heldout-global-winner-context",
+    )
+    for reference in (BLIND, MS_EXACT, "ms_cap32"):
+        add(
+            "selector-vs-{}".format(reference.replace("_", "-")),
+            selector_label,
+            reference,
+            "heldout-selector-context",
+        )
+    return comparisons
+
+
+def _build_validation_contract(global_winner, selector_winner):
+    fixed_digest = sha256_json(_fixed_validation_records())
+    if fixed_digest != FIXED_VALIDATION_CONFIGS_SHA256:
+        raise AnalysisError(
+            "fixed validation configurations changed: {} != {}".format(
+                fixed_digest, FIXED_VALIDATION_CONFIGS_SHA256
+            )
+        )
+    eligibility_digest = sha256_json(list(SELECTOR_LABELS))
+    if eligibility_digest != SELECTOR_ELIGIBILITY_SHA256:
+        raise AnalysisError("selector eligibility labels changed")
+    batched_labels = {
+        label
+        for label in SELECTOR_LABELS
+        if "batch_f_window=" in SEARCHES[label]
+    }
+    if set(BATCHED_SELECTOR_BASE) != batched_labels:
+        raise AnalysisError(
+            "same-K ablation mapping does not cover exactly the batched selectors"
+        )
+    for batched_label, base_label in BATCHED_SELECTOR_BASE.items():
+        if (
+            base_label not in SELECTOR_LABELS
+            or "batch_f_window=" in SEARCHES[base_label]
+            or _expected_selector_budget(batched_label)
+            != _expected_selector_budget(base_label)
+        ):
+            raise AnalysisError(
+                "invalid same-K unbatched mapping {} -> {}".format(
+                    batched_label, base_label
+                )
+            )
+
+    configs = []
+
+    def add_config(label, search, role):
+        same_label = [config for config in configs if config["label"] == label]
+        same_search = [config for config in configs if config["search"] == search]
+        if same_label or same_search:
+            if (
+                len(same_label) != 1
+                or len(same_search) != 1
+                or same_label[0] is not same_search[0]
+            ):
+                raise AnalysisError(
+                    "validation config label/search alias collision for {}".format(
+                        label
+                    )
+                )
+            if role not in same_label[0]["roles"]:
+                same_label[0]["roles"].append(role)
+            return
+        configs.append({"label": label, "search": search, "roles": [role]})
+
+    for label, search, role in FIXED_VALIDATION_CONFIGS:
+        add_config(label, search, role)
+
+    selector_label = selector_winner["label"]
+    if selector_label not in SELECTOR_LABELS:
+        raise AnalysisError("selector-family winner is not selector-eligible")
+    add_config(
+        selector_label,
+        SEARCHES[selector_label],
+        "pilot-selector-family-winner",
+    )
+
+    matched_label = BATCHED_SELECTOR_BASE.get(selector_label)
+    if matched_label is not None:
+        add_config(
+            matched_label,
+            SEARCHES[matched_label],
+            "matched-same-k-unbatched-ablation",
+        )
+
+    global_label = global_winner["label"]
+    matching_global = [
+        config for config in configs if config["label"] == global_label
+    ]
+    if len(matching_global) != 1:
+        raise AnalysisError(
+            "pilot global winner is not represented exactly once in validation"
+        )
+    add_config(
+        global_label,
+        SEARCHES[global_label],
+        "pilot-global-winner",
+    )
+
+    expected_configs = 8 if matched_label is not None else 7
+    if len(configs) != expected_configs:
+        raise AnalysisError(
+            "validation matrix has {} configs; expected {}".format(
+                len(configs), expected_configs
+            )
+        )
+    labels = [config["label"] for config in configs]
+    searches = [config["search"] for config in configs]
+    if len(set(labels)) != len(configs) or len(set(searches)) != len(configs):
+        raise AnalysisError("validation matrix is not label/search deduplicated")
+
+    options = _validation_option_records(configs)
+    option_digest = sha256_json(options)
+    run_count = VALIDATION_TASKS * len(configs)
+    if run_count not in (644, 736):
+        raise AnalysisError(
+            "validation run count must be 644 or 736; got {}".format(run_count)
+        )
+    layout = common.validate_run_layout(
+        run_count, require_one_run_per_array_task=True
+    )
+    if layout != {
+        "raw_runs": run_count,
+        "array_tasks": run_count,
+        "runs_per_array_task": 1,
+        "scheduler_time_limit_seconds": 600,
+    }:
+        raise AnalysisError("validation Arrhenius array layout changed")
+
+    comparisons = _validation_comparisons(
+        global_label, selector_label, matched_label
+    )
+    represented = set(labels)
+    if any(
+        comparison["candidate"] not in represented
+        or comparison["reference"] not in represented
+        for comparison in comparisons
+    ):
+        raise AnalysisError("validation comparison refers to an absent config")
+    return {
+        "fixed_configs_sha256": fixed_digest,
+        "roles": {
+            "global_winner": global_label,
+            "selector_family_winner": selector_label,
+            "ms_build_budget_safeguard": MS_CAP32_BUILD60_LABEL,
+            "matched_same_k_unbatched": matched_label,
+        },
+        "configs": configs,
+        "option_matrix_sha256": option_digest,
+        "comparisons": comparisons,
+        "comparisons_sha256": sha256_json(comparisons),
+        "config_count": len(configs),
+        "expected_run_count": run_count,
+        "array_layout": layout,
+    }
 
 
 def parse_args(argv=None):
@@ -1896,18 +2337,47 @@ def make_selection_artifact(
     protocol_revision,
     binary_sha256,
 ):
-    validation_configs = [
-        {"role": "control", "label": BLIND, "search": SEARCHES[BLIND]},
-        {"role": "control", "label": MS_EXACT, "search": SEARCHES[MS_EXACT]},
-    ]
-    if scores["selected"]["label"] not in (BLIND, MS_EXACT):
-        validation_configs.append(
-            {
-                "role": "pilot-selected",
-                "label": scores["selected"]["label"],
-                "search": scores["selected"]["search"],
-            }
-        )
+    global_winner, selector_winner = _derive_artifact_winners(scores)
+    validation = heldout_validation_metadata()
+    validation.update(
+        _build_validation_contract(global_winner, selector_winner)
+    )
+    validation.update(
+        {
+            "protocol": VALIDATION_PROTOCOL,
+            "requires_disjoint_tasks": True,
+            "selection_artifact_schema": ARTIFACT_SCHEMA,
+            "selection_rule": runner.SELECTION_RULE,
+            "selector_eligibility_labels": list(SELECTOR_LABELS),
+            "selector_eligibility_sha256": SELECTOR_ELIGIBILITY_SHA256,
+            "selector_configs_sha256": EXPECTED_SELECTOR_SHA256,
+            "time_limit_seconds": int(TIME_LIMIT_SECONDS),
+            "memory_limit_mib": int(MEMORY_LIMIT_MIB),
+            "par2_unsolved_seconds": int(PAR2_UNSOLVED_SECONDS),
+            "analysis": {
+                "protocol": VALIDATION_ANALYSIS_PROTOCOL,
+                "primary_comparison": "selector-vs-pdb-cegar",
+                "primary_estimand": (
+                    "selector-minus-cegar-equally-weighted-domain-macro-"
+                    "coverage/v1"
+                ),
+                "resampling_unit": "domain",
+                "bootstrap_method": "sha256-counter-domain-resampling/v1",
+                "bootstrap_seed": VALIDATION_BOOTSTRAP_SEED,
+                "bootstrap_replicates": VALIDATION_BOOTSTRAP_REPLICATES,
+                "confidence_level": 0.95,
+                "rerank_on_validation": False,
+                "secondary_descriptive": [
+                    "suite-micro-coverage",
+                    "micro-par2-600s",
+                    "discordant-wins-losses",
+                    "jointly-solved-runtime-ratio",
+                    "certified-width-image-and-effort-metrics",
+                    "ms-build-budget-fallback-incidence",
+                ],
+            },
+        }
+    )
     return {
         "schema": ARTIFACT_SCHEMA,
         "pilot": {
@@ -1944,22 +2414,14 @@ def make_selection_artifact(
         },
         "selection": {
             "image_time_tiebreak_used": scores["image_time_tiebreak_available"],
-            "selected": _public_score(scores["selected"]),
+            "global_winner": _public_score(global_winner),
+            "selector_family_winner": _public_score(selector_winner),
+            "selector_eligibility_labels": list(SELECTOR_LABELS),
+            "selector_eligibility_sha256": SELECTOR_ELIGIBILITY_SHA256,
             "ranking": [_public_score(score) for score in scores["ranking"]],
         },
         "paired_deltas": paired,
-        "validation": {
-            "requires_disjoint_tasks": True,
-            "configs": validation_configs,
-            "selected_config": {
-                "label": scores["selected"]["label"],
-                "search": scores["selected"]["search"],
-            },
-            "controls": [
-                {"label": BLIND, "search": SEARCHES[BLIND]},
-                {"label": MS_EXACT, "search": SEARCHES[MS_EXACT]},
-            ],
-        },
+        "validation": validation,
     }
 
 
@@ -2439,7 +2901,27 @@ def self_test():
         protocol_revision,
         binary_sha256,
     )
-    assert artifact["selection"]["selected"]["label"] == "pdb_selector_k32"
+    assert artifact["schema"] == ARTIFACT_SCHEMA
+    assert "selection_artifact_sha256" not in artifact
+    assert all(
+        "selection_artifact_sha256" not in section
+        for section in artifact.values()
+        if isinstance(section, dict)
+    )
+    assert (
+        artifact["selection"]["global_winner"]["label"]
+        == "pdb_selector_k32"
+    )
+    assert (
+        artifact["selection"]["selector_family_winner"]["label"]
+        == "pdb_selector_k32"
+    )
+    assert len(artifact["selection"]["ranking"]) == EXPECTED_CONFIGS
+    assert artifact["selection"]["image_time_tiebreak_used"] is True
+    assert (
+        artifact["selection"]["selector_eligibility_sha256"]
+        == SELECTOR_ELIGIBILITY_SHA256
+    )
     assert (
         artifact["pilot"]["planner_preprocess_sha256"]
         == EXPECTED_CACHE_PREPROCESS_SHA256
@@ -2448,11 +2930,87 @@ def self_test():
         artifact["pilot"]["metrics_validation_protocol"]
         == EXPECTED_METRICS_VALIDATION_PROTOCOL
     )
+    assert artifact["validation"]["task_manifest"] == VALIDATION_MANIFEST
+    assert (
+        artifact["validation"]["task_manifest_sha256"]
+        == VALIDATION_MANIFEST_SHA256
+    )
+    assert (
+        artifact["validation"]["task_sources_sha256"]
+        == VALIDATION_TASK_SOURCES_SHA256
+    )
+    assert artifact["validation"]["task_count"] == VALIDATION_TASKS
+    assert artifact["validation"]["domain_count"] == VALIDATION_DOMAINS
+    assert artifact["validation"]["analysis"] == {
+        "protocol": VALIDATION_ANALYSIS_PROTOCOL,
+        "primary_comparison": "selector-vs-pdb-cegar",
+        "primary_estimand": (
+            "selector-minus-cegar-equally-weighted-domain-macro-coverage/v1"
+        ),
+        "resampling_unit": "domain",
+        "bootstrap_method": "sha256-counter-domain-resampling/v1",
+        "bootstrap_seed": VALIDATION_BOOTSTRAP_SEED,
+        "bootstrap_replicates": VALIDATION_BOOTSTRAP_REPLICATES,
+        "confidence_level": 0.95,
+        "rerank_on_validation": False,
+        "secondary_descriptive": [
+            "suite-micro-coverage",
+            "micro-par2-600s",
+            "discordant-wins-losses",
+            "jointly-solved-runtime-ratio",
+            "certified-width-image-and-effort-metrics",
+            "ms-build-budget-fallback-incidence",
+        ],
+    }
     assert [item["label"] for item in artifact["validation"]["configs"]] == [
         BLIND,
         MS_EXACT,
+        "ms_cap32",
+        "pdb_goal_fill_b100k",
+        "pdb_cegar_b100k",
+        MS_CAP32_BUILD60_LABEL,
         "pdb_selector_k32",
     ]
+    assert artifact["validation"]["config_count"] == 7
+    assert artifact["validation"]["expected_run_count"] == 644
+    assert artifact["validation"]["array_layout"] == {
+        "raw_runs": 644,
+        "array_tasks": 644,
+        "runs_per_array_task": 1,
+        "scheduler_time_limit_seconds": 600,
+    }
+    assert (
+        artifact["validation"]["option_matrix_sha256"]
+        == "6ee8bda1adbd64924936d5b91de9a0ad2bc3b0828671729eefc5990c3bddcb39"
+    )
+    assert artifact["validation"]["roles"] == {
+        "global_winner": "pdb_selector_k32",
+        "selector_family_winner": "pdb_selector_k32",
+        "ms_build_budget_safeguard": MS_CAP32_BUILD60_LABEL,
+        "matched_same_k_unbatched": None,
+    }
+    assert "pilot-global-winner" in artifact["validation"]["configs"][-1][
+        "roles"
+    ]
+    validation_options = _validation_option_records(
+        artifact["validation"]["configs"]
+    )
+    assert len({item["label"] for item in validation_options}) == 7
+    assert len({item["search"] for item in validation_options}) == 7
+    assert (
+        sha256_json(validation_options)
+        == artifact["validation"]["option_matrix_sha256"]
+    )
+    tampered_options = copy.deepcopy(validation_options)
+    tampered_options[0]["search"] = "sym_fw(max_time=1)"
+    assert (
+        sha256_json(tampered_options)
+        != artifact["validation"]["option_matrix_sha256"]
+    )
+    assert (
+        sha256_json(artifact["validation"]["comparisons"])
+        == artifact["validation"]["comparisons_sha256"]
+    )
     assert canonical_json(artifact) == canonical_json(
         make_selection_artifact(
             list(reversed(records)),
@@ -2462,6 +3020,116 @@ def self_test():
             protocol_revision,
             binary_sha256,
         )
+    )
+
+    # If a fixed control wins globally, it receives an alias role on its
+    # existing cell; the independently derived selector-family winner remains
+    # present and the matrix stays at seven unique configurations.
+    control_matrix = copy.deepcopy(matrix)
+    for task in tasks:
+        control_matrix[("ms_cap32", task)]["planner_time"] = 1.0
+    control_scores = analyze_scores(control_matrix, tasks)
+    assert control_scores["selected"]["label"] == "ms_cap32"
+    control_records = [
+        control_matrix[(label, task)] for label in LABELS for task in tasks
+    ]
+    control_artifact = make_selection_artifact(
+        control_records,
+        control_scores,
+        all_paired_deltas(
+            control_matrix,
+            tasks,
+            control_scores["image_time_tiebreak_available"],
+        ),
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+    )
+    assert control_artifact["selection"]["global_winner"]["label"] == (
+        "ms_cap32"
+    )
+    assert (
+        control_artifact["selection"]["selector_family_winner"]["label"]
+        == "pdb_selector_k32"
+    )
+    assert control_artifact["validation"]["config_count"] == 7
+    assert control_artifact["validation"]["expected_run_count"] == 644
+    control_config = next(
+        config
+        for config in control_artifact["validation"]["configs"]
+        if config["label"] == "ms_cap32"
+    )
+    assert "pilot-global-winner" in control_config["roles"]
+    assert [
+        config["label"]
+        for config in control_artifact["validation"]["configs"]
+    ].count("ms_cap32") == 1
+
+    # A batched selector-family winner deterministically adds the exact
+    # same-K unbatched selector, without duplicating labels or searches.
+    batched_label = "pdb_selector_k64_adapt_w64_r1_n1m"
+    batched_matrix = copy.deepcopy(matrix)
+    for task in tasks:
+        batched_matrix[(batched_label, task)]["planner_time"] = 1.0
+    batched_scores = analyze_scores(batched_matrix, tasks)
+    assert batched_scores["selected"]["label"] == batched_label
+    batched_records = [
+        batched_matrix[(label, task)] for label in LABELS for task in tasks
+    ]
+    batched_paired = all_paired_deltas(
+        batched_matrix,
+        tasks,
+        batched_scores["image_time_tiebreak_available"],
+    )
+    batched_artifact = make_selection_artifact(
+        batched_records,
+        batched_scores,
+        batched_paired,
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+    )
+    assert (
+        batched_artifact["selection"]["global_winner"]["label"]
+        == batched_label
+    )
+    assert (
+        batched_artifact["selection"]["selector_family_winner"]["label"]
+        == batched_label
+    )
+    batched_validation = batched_artifact["validation"]
+    assert [item["label"] for item in batched_validation["configs"]] == [
+        BLIND,
+        MS_EXACT,
+        "ms_cap32",
+        "pdb_goal_fill_b100k",
+        "pdb_cegar_b100k",
+        MS_CAP32_BUILD60_LABEL,
+        batched_label,
+        "pdb_selector_k64",
+    ]
+    assert batched_validation["config_count"] == 8
+    assert batched_validation["expected_run_count"] == 736
+    assert batched_validation["roles"]["matched_same_k_unbatched"] == (
+        "pdb_selector_k64"
+    )
+    assert (
+        batched_validation["option_matrix_sha256"]
+        == "d92ce204fbe10081b602808e4f43c9da0ca699f1337d1d1748a68bda71ac3b3d"
+    )
+    batched_options = _validation_option_records(
+        batched_validation["configs"]
+    )
+    assert len({item["label"] for item in batched_options}) == 8
+    assert len({item["search"] for item in batched_options}) == 8
+    assert sha256_json(batched_options) == batched_validation[
+        "option_matrix_sha256"
+    ]
+    assert any(
+        comparison["name"] == "selector-batching-vs-same-k-unbatched"
+        and comparison["candidate"] == batched_label
+        and comparison["reference"] == "pdb_selector_k64"
+        for comparison in batched_validation["comparisons"]
     )
 
     target = _synthetic_target(records, "pdb_selector_k32", tasks[0])
@@ -2895,7 +3563,8 @@ def self_test():
 
     print(
         "synthetic Arrhenius selector analyzer tests: PASS "
-        "(1000 cells; exact pool/score/final/provenance; ranking/censoring/artifact)"
+        "(1000 cells; exact pool/score/final/provenance; ranking/censoring; "
+        "artifact-v2 heldout matrices 644/736)"
     )
 
 
