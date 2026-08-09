@@ -945,6 +945,157 @@ def reject_unsafe_combined_steps(args=None):
         )
 
 
+def experiment_output_paths(experiment_path):
+    """Return the exact Lab grid, submission, and evaluation paths."""
+    grid_path = Path(experiment_path)
+    return (
+        grid_path,
+        grid_path.parent / "{}-grid-steps".format(grid_path.name),
+        Path(str(grid_path) + "-eval"),
+    )
+
+
+def require_fresh_experiment_build(experiment_path):
+    """Refuse Lab's destructive rebuild path, including dangling symlinks."""
+    for path in experiment_output_paths(experiment_path):
+        if path.exists() or path.is_symlink():
+            raise RuntimeError(
+                "refusing build because an experiment output path already "
+                "exists: {}".format(path)
+            )
+
+
+def strip_copied_python_bytecode(experiment_path):
+    """Remove only generated Python bytecode from one newly built Lab grid.
+
+    Revision caches can contain timestamp-valid bytecode generated while the
+    cache was inspected.  Lab copies it into the experiment grid, where it can
+    take precedence over the source files attested before submission.  This
+    post-build normalization is deliberately narrow: it operates on exactly
+    one regular ``code-*`` directory, removes only regular ``.pyc``/``.pyo``
+    files, and removes ``__pycache__`` directories only after they are empty.
+    """
+    grid_path = Path(experiment_path)
+    if grid_path.is_symlink() or not grid_path.is_dir():
+        raise RuntimeError(
+            "bytecode cleanup requires a regular built experiment grid: {}".
+            format(grid_path)
+        )
+    code_entries = sorted(
+        path for path in grid_path.iterdir() if path.name.startswith("code-")
+    )
+    if len(code_entries) != 1:
+        raise RuntimeError(
+            "bytecode cleanup requires exactly one code-* directory; got {}".
+            format([path.name for path in code_entries])
+        )
+    code_dir = code_entries[0]
+    if code_dir.is_symlink() or not code_dir.is_dir():
+        raise RuntimeError(
+            "bytecode cleanup requires a regular code directory: {}".format(
+                code_dir
+            )
+        )
+
+    bytecode_files = []
+    cache_directories = []
+    try:
+        entries = list(code_dir.rglob("*"))
+    except OSError as err:
+        raise RuntimeError(
+            "cannot enumerate copied runtime tree {}: {}".format(code_dir, err)
+        ) from err
+    for path in entries:
+        if path.name == "__pycache__":
+            if path.is_symlink() or not path.is_dir():
+                raise RuntimeError(
+                    "copied __pycache__ entry is not a regular directory: {}".
+                    format(path)
+                )
+            cache_directories.append(path)
+        if path.suffix.lower() in {".pyc", ".pyo"}:
+            if path.is_symlink() or not path.is_file():
+                raise RuntimeError(
+                    "copied bytecode entry is not a regular file: {}".format(
+                        path
+                    )
+                )
+            bytecode_files.append(path)
+
+    bytecode_set = set(bytecode_files)
+    cache_set = set(cache_directories)
+    for path in cache_directories:
+        unexpected = sorted(
+            child.name
+            for child in path.iterdir()
+            if child not in bytecode_set and child not in cache_set
+        )
+        if unexpected:
+            raise RuntimeError(
+                "refusing to clean copied __pycache__ directory {} with "
+                "unexpected entries: {}".format(path, unexpected)
+            )
+
+    for path in bytecode_files:
+        path.unlink()
+    for path in sorted(
+        cache_directories, key=lambda item: len(item.parts), reverse=True
+    ):
+        remaining = list(path.iterdir())
+        if remaining:
+            raise RuntimeError(
+                "refusing to remove nonempty copied __pycache__ directory {}: "
+                "{}".format(path, sorted(item.name for item in remaining))
+            )
+        path.rmdir()
+    return {
+        "code_directory": str(code_dir),
+        "removed_bytecode_files": len(bytecode_files),
+        "removed_cache_directories": len(cache_directories),
+    }
+
+
+def reject_unattested_python_runtime_artifacts(code_dir):
+    """Reject alternate Python code paths in a copied planner tree."""
+    code_dir = Path(code_dir)
+    if code_dir.is_symlink() or not code_dir.is_dir():
+        raise RuntimeError(
+            "copied runtime tree must be a regular directory: {}".format(
+                code_dir
+            )
+        )
+    try:
+        entries = list(code_dir.rglob("*"))
+    except OSError as err:
+        raise RuntimeError(
+            "cannot enumerate copied runtime tree {}: {}".format(code_dir, err)
+        ) from err
+    for path in entries:
+        relative = path.relative_to(code_dir).as_posix()
+        if path.is_symlink():
+            raise RuntimeError(
+                "copied runtime tree contains a symlink: {}".format(relative)
+            )
+        if path.name == "__pycache__":
+            raise RuntimeError(
+                "copied runtime tree contains __pycache__: {}".format(relative)
+            )
+        lower_name = path.name.lower()
+        if path.is_file() and (
+            path.suffix.lower() in {".pyc", ".pyo"}
+            or lower_name.endswith((".so", ".pyd", ".dylib"))
+        ):
+            raise RuntimeError(
+                "copied runtime tree contains unattested importable code: {}".
+                format(relative)
+            )
+        if not path.is_file() and not path.is_dir():
+            raise RuntimeError(
+                "copied runtime tree contains a special filesystem entry: {}".
+                format(relative)
+            )
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -1360,6 +1511,10 @@ class ProtocolFastDownwardExperiment(FastDownwardExperiment):
                 format(prefix)
             )
         algorithm.driver_options = algorithm.driver_options[1:]
+
+    def _remove_experiment_dir(self):
+        """Replace Lab's prompt-and-delete rebuild path with a hard gate."""
+        require_fresh_experiment_build(self.path)
 
     def _add_runs(self):
         first_new_run = len(self.runs)

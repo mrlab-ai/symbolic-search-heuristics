@@ -63,6 +63,8 @@ PROTOCOL_FILES = (
     Path(__file__).with_name("wbh_parser.py").resolve(),
     Path(__file__).with_name("validate_wbh_log.py").resolve(),
     Path(__file__).with_name("selector_pilot_suite.txt").resolve(),
+    Path(suite_cost_manifest.__file__).resolve(),
+    Path(__file__).with_name("suite_wbh_operator_costs.json").resolve(),
 )
 
 MANIFEST = Path(__file__).with_name("selector_pilot_suite.txt")
@@ -909,6 +911,7 @@ def _git_blob(revision: str, relative: str) -> bytes:
 
 def _attest_runtime_tree(code_dir: Path) -> None:
     """Bind all Python runtime components to the planner Git revision."""
+    C.reject_unattested_python_runtime_artifacts(code_dir)
     reviewed_root_files = ("fast-downward.py", "build_configs.py")
     for relative in reviewed_root_files:
         actual_path = code_dir / relative
@@ -970,6 +973,28 @@ def _attest_runtime_tree(code_dir: Path) -> None:
             raise ProtocolError(
                 "copied translator source differs from {}: {}".format(
                     PLANNER_REVISION, source_relative
+                )
+            )
+
+    built_translator_prefix = (
+        Path("builds") / C.CACHE_BUILD_NAME / "bin" / "translate"
+    )
+    for actual_path in sorted(code_dir.rglob("*.py")):
+        copied_relative = actual_path.relative_to(code_dir)
+        if copied_relative.is_relative_to(built_translator_prefix):
+            source_relative = (
+                Path("src/translate")
+                / copied_relative.relative_to(built_translator_prefix)
+            )
+        else:
+            source_relative = copied_relative
+        source_name = source_relative.as_posix()
+        if actual_path.read_bytes() != _git_blob(
+            PLANNER_REVISION, source_name
+        ):
+            raise ProtocolError(
+                "copied Python source differs from {}: {}".format(
+                    PLANNER_REVISION, copied_relative.as_posix()
                 )
             )
 
@@ -1269,7 +1294,7 @@ def inspect_launch_blockers():
 def _expect_protocol_error(function, expected_fragment: str) -> None:
     try:
         function()
-    except ProtocolError as err:
+    except (ProtocolError, RuntimeError) as err:
         if expected_fragment not in str(err):
             raise AssertionError(
                 "expected protocol error containing {!r}, got {!r}".format(
@@ -1379,6 +1404,111 @@ def self_test_start_preflight_helpers() -> None:
             lambda: _require_pristine_run_directory(pristine_run, 1),
             "is not pristine",
         )
+
+        fresh_build = temporary_root / "fresh-build"
+        C.require_fresh_experiment_build(fresh_build)
+        C.ProtocolFastDownwardExperiment._remove_experiment_dir(
+            SimpleNamespace(path=str(fresh_build))
+        )
+        fresh_build.mkdir()
+        _expect_protocol_error(
+            lambda: C.require_fresh_experiment_build(fresh_build),
+            "experiment output path already exists",
+        )
+        _expect_protocol_error(
+            lambda: C.ProtocolFastDownwardExperiment._remove_experiment_dir(
+                SimpleNamespace(path=str(fresh_build))
+            ),
+            "experiment output path already exists",
+        )
+        dangling_build = temporary_root / "dangling-build"
+        dangling_build.symlink_to(temporary_root / "missing-target")
+        _expect_protocol_error(
+            lambda: C.require_fresh_experiment_build(dangling_build),
+            "experiment output path already exists",
+        )
+        sibling_build = temporary_root / "sibling-build"
+        sibling_build.parent.joinpath("sibling-build-grid-steps").mkdir()
+        _expect_protocol_error(
+            lambda: C.require_fresh_experiment_build(sibling_build),
+            "experiment output path already exists",
+        )
+        evaluated_build = temporary_root / "evaluated-build"
+        Path(str(evaluated_build) + "-eval").mkdir()
+        _expect_protocol_error(
+            lambda: C.require_fresh_experiment_build(evaluated_build),
+            "experiment output path already exists",
+        )
+
+        bytecode_grid = temporary_root / "bytecode-grid"
+        copied_code = bytecode_grid / "code-fixture"
+        copied_cache = copied_code / "driver" / "__pycache__"
+        copied_cache.mkdir(parents=True)
+        (copied_code / "driver" / "module.py").write_bytes(b"x = 1\n")
+        (copied_cache / "module.cpython-39.pyc").write_bytes(b"bytecode")
+        cleanup = C.strip_copied_python_bytecode(bytecode_grid)
+        if cleanup != {
+            "code_directory": str(copied_code),
+            "removed_bytecode_files": 1,
+            "removed_cache_directories": 1,
+        }:
+            raise AssertionError("copied-bytecode cleanup summary changed")
+        unsafe_grid = temporary_root / "unsafe-bytecode-grid"
+        unsafe_cache = (
+            unsafe_grid / "code-fixture" / "driver" / "__pycache__"
+        )
+        unsafe_cache.mkdir(parents=True)
+        unsafe_bytecode = unsafe_cache / "module.cpython-39.pyc"
+        unsafe_bytecode.write_bytes(b"bytecode")
+        (unsafe_cache / "unexpected.txt").write_bytes(b"preserve")
+        _expect_protocol_error(
+            lambda: C.strip_copied_python_bytecode(unsafe_grid),
+            "unexpected entries",
+        )
+        if not unsafe_bytecode.is_file():
+            raise AssertionError("failed bytecode cleanup was not fail-closed")
+        C.reject_unattested_python_runtime_artifacts(copied_code)
+        (copied_code / "sitecustomize.cpython-39-x86_64-linux-gnu.so").write_bytes(
+            b"native shadow"
+        )
+        _expect_protocol_error(
+            lambda: C.reject_unattested_python_runtime_artifacts(copied_code),
+            "unattested importable code",
+        )
+        (copied_code / "sitecustomize.cpython-39-x86_64-linux-gnu.so").unlink()
+        runtime_link = copied_code / "driver-link"
+        runtime_link.symlink_to(copied_code / "driver", target_is_directory=True)
+        _expect_protocol_error(
+            lambda: C.reject_unattested_python_runtime_artifacts(copied_code),
+            "contains a symlink",
+        )
+
+        reviewed_code = temporary_root / "reviewed-code"
+        (reviewed_code / "driver").mkdir(parents=True)
+        for relative in ("fast-downward.py", "build_configs.py"):
+            (reviewed_code / relative).write_bytes(b"reviewed source\n")
+        (reviewed_code / "sitecustomize.py").write_bytes(b"shadow source\n")
+        original_tree = _git_tree_python_files
+        original_blob = _git_blob
+
+        def synthetic_tree(revision, prefix):
+            return []
+
+        def synthetic_blob(revision, relative):
+            if relative in {"fast-downward.py", "build_configs.py"}:
+                return b"reviewed source\n"
+            raise ProtocolError("synthetic unreviewed source: {}".format(relative))
+
+        globals()["_git_tree_python_files"] = synthetic_tree
+        globals()["_git_blob"] = synthetic_blob
+        try:
+            _expect_protocol_error(
+                lambda: _attest_runtime_tree(reviewed_code),
+                "synthetic unreviewed source: sitecustomize.py",
+            )
+        finally:
+            globals()["_git_tree_python_files"] = original_tree
+            globals()["_git_blob"] = original_blob
 
     unsupported = SimpleNamespace(
         domain="definitely-not-a-suite-domain",
@@ -1594,6 +1724,8 @@ def main(argv=None):
     metadata = make_protocol_metadata(
         matrix, benchmark_root, source_attestation
     )
+    if "build" in args.steps:
+        C.require_fresh_experiment_build(EXPERIMENT_DATA_PATH)
     if "start" in args.steps:
         attestation = attest_existing_start_grid(
             metadata, benchmark_root, tasks, matrix
@@ -1623,6 +1755,20 @@ def main(argv=None):
     C.add_standard_steps(experiment)
     sys.argv = [sys.argv[0]] + args.steps
     experiment.run_steps()
+    if "build" in args.steps:
+        cleanup = C.strip_copied_python_bytecode(EXPERIMENT_DATA_PATH)
+        attestation = attest_existing_start_grid(
+            metadata, benchmark_root, tasks, matrix
+        )
+        print(
+            "built grid normalization/attestation: PASS "
+            "({} bytecode files; {} cache directories removed; job {})".
+            format(
+                cleanup["removed_bytecode_files"],
+                cleanup["removed_cache_directories"],
+                attestation["job_sha256"],
+            )
+        )
     return 0
 
 
