@@ -9,6 +9,10 @@ piece-metric certified.
 """
 import json
 import math
+import re
+from pathlib import Path
+
+from lab.parser import Parser
 
 try:
     from validate_wbh_log import load_json_line, validate_v2_events
@@ -17,7 +21,13 @@ except ImportError:
     from experiments.validate_wbh_log import load_json_line, validate_v2_events
 
 
-METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v2"
+METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v3"
+
+
+_PLAN_COST_LINE_RE = re.compile(
+    r"^\[t=\d+\.\d{6}s, \d+ KB\] Plan cost: (0|[1-9][0-9]*)$",
+    re.MULTILINE,
+)
 
 
 _METRIC_KEYS = (
@@ -141,6 +151,12 @@ def _parse_v2(events, parse_errors, props):
     outcome_errors = []
     coverage = props.get("coverage")
     summary = report["summary"]
+    props["wbh_summary_solved"] = (
+        summary["solved"] if summary is not None else None
+    )
+    props["wbh_done_solution_cost"] = (
+        done["solution_cost"] if done is not None else None
+    )
     if (summary is not None and coverage in (0, 1)
             and bool(coverage) != summary["solved"]):
         outcome_errors.append(
@@ -167,6 +183,13 @@ def _parse_v2(events, parse_errors, props):
     props["raw_metrics_complete"] = (
         report["summary_present"] and not errors)
     props["piece_metrics_certified"] = not errors
+    props["wbh_solved_summary_certified"] = bool(
+        report["summary_present"]
+        and summary is not None
+        and summary["solved"] is True
+        and done is not None
+        and not errors
+    )
     if errors:
         _append_validation_error(props, " | ".join(errors))
 
@@ -328,12 +351,89 @@ def parse_wbh_log(content, props):
 
 
 def parse_coverage(content, props):
-    props["coverage"] = 1 if "Solution found" in content else 0
+    """Preserve Lab's coverage while requiring exact unique plan evidence.
+
+    A direct symbolic search can save and print a complete plan immediately
+    before a resource-limit exit.  Such a run has a canonical ``Plan cost``
+    line but never reaches the later ``Solution found`` message, so that
+    message cannot define coverage.  The standard single-search parser runs
+    first and derives coverage from its parsed cost; this function verifies
+    that result against the stricter run-log grammar instead of overwriting it.
+    """
+    plan_cost_mentions = [
+        line for line in content.splitlines() if "Plan cost:" in line
+    ]
+    matches = list(_PLAN_COST_LINE_RE.finditer(content))
+    errors = []
+    if not plan_cost_mentions:
+        derived_coverage = 0
+    elif len(plan_cost_mentions) == 1 and len(matches) == 1:
+        derived_coverage = 1
+        exact_cost = int(matches[0].group(1))
+        parsed_cost = props.get("solution_cost")
+        if type(parsed_cost) is not int or parsed_cost != exact_cost:
+            errors.append(
+                "exact run-log Plan cost {} disagrees with parsed solution_cost "
+                "{!r}".format(exact_cost, parsed_cost)
+            )
+    else:
+        derived_coverage = None
+        errors.append(
+            "expected zero or one exact timestamped Plan cost line; got {} "
+            "mentions and {} exact matches".format(
+                len(plan_cost_mentions), len(matches)
+            )
+        )
+
+    existing_coverage = props.get("coverage")
+    if type(existing_coverage) is int and existing_coverage in (0, 1):
+        if (derived_coverage is not None
+                and existing_coverage != derived_coverage):
+            errors.append(
+                "single-search coverage {} disagrees with exact Plan cost "
+                "coverage {}".format(existing_coverage, derived_coverage)
+            )
+    elif existing_coverage is not None:
+        errors.append(
+            "single-search coverage is not the integer 0 or 1: {!r}".format(
+                existing_coverage
+            )
+        )
+
+    if errors:
+        props["coverage"] = None
+        message = "run-log coverage validation failed: " + " | ".join(errors)
+        add_error = getattr(props, "add_unexplained_error", None)
+        if callable(add_error):
+            add_error(message)
+        else:
+            props.setdefault("unexplained_errors", []).append(message)
+    else:
+        props["coverage"] = derived_coverage
+
+
+class WbhParser(Parser):
+    """Lab parser that materializes the exact missing/empty WBH convention."""
+
+    def parse(self, run_dir, props):
+        super().parse(run_dir, props)
+        # Lab deliberately skips functions for missing and zero-byte files.
+        # Those are meaningful pre-search outcomes in this protocol, so emit
+        # the same explicit empty-log properties as parse_wbh_log("").  The
+        # second read also handles a file that appeared after Lab's first read.
+        # metrics_validation_protocol is also a static run property, so the
+        # parser-owned presence marker is the only reliable completion flag.
+        if "wbh_log_nonempty" not in props:
+            path = Path(run_dir).resolve() / "wbh.jsonl"
+            try:
+                content = path.read_text()
+            except FileNotFoundError:
+                content = ""
+            parse_wbh_log(content, props)
 
 
 def get_parser():
-    from lab.parser import Parser
-    parser = Parser()
+    parser = WbhParser()
     parser.add_pattern(
         "solution_cost", r"Plan cost: (\d+)", type=int, required=False)
     parser.add_pattern(

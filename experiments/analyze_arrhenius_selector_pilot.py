@@ -10,7 +10,7 @@ each task.
 The predeclared selection rule orders all 20 configurations: maximize coverage,
 minimize micro-PAR2 (600 seconds for every unsolved cell), then minimize total
 image time only if every one of the 1000 cells has complete schema-v2 certified
-metrics, then use the configuration label. Artifact v2 records both the global
+metrics, then use the configuration label. Artifact v3 records both the global
 winner and the first selector in this same frozen order. It also derives the
 prospective held-out configuration matrix without inspecting held-out outcomes.
 
@@ -57,16 +57,16 @@ class AnalysisError(RuntimeError):
 # The cached planner is intentionally older than the protocol commit: the
 # runner pins this exact source commit while recording its clean launch HEAD in
 # the separate ``protocol_revision`` property.  This avoids cache self-reference.
-EXPECTED_PLANNER_REVISION = "8e56de8862c9449246596e779177cc9e6a7bcf8e"
+EXPECTED_PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
 
 # Exact clean launch worktree revision. The analyzer lives in a descendant
 # commit so this pin does not create a commit-hash self-reference.
-EXPECTED_PROTOCOL_REVISION = "4d86669eaf11830ca551ae102994d035f422c2df"
+EXPECTED_PROTOCOL_REVISION = None
 EXPECTED_CACHE_BINARY_SHA256 = (
-    "21ea6aff991b4f8196ee8642ff0534bebae67ee3d13f3bd9c7f6f9b3b1fe8cb9"
+    "59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511"
 )
 EXPECTED_CACHE_PREPROCESS_SHA256 = (
-    "c62df391a1e760aa3c2f353056d1f63c8a9958d93c7f1dc4c12f98cc57e5f987"
+    "acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c"
 )
 
 EXPECTED_PYTHON_VERSION = "3.9.25"
@@ -82,6 +82,15 @@ EXPECTED_TASK_SOURCES_SHA256 = (
 EXPECTED_SOURCE_MANIFEST_SHA256 = (
     "7b4f5934752f41792e3debd0a269286d28d7ee9f1242b87a4bc92b7066822168"
 )
+EXPECTED_MATERIALIZED_PDDL_PROTOCOL = (
+    "per-cell-independent-manual-byte-copy-temp-digest-atomic-replace-"
+    "readonly/v1"
+)
+EXPECTED_MATERIALIZED_PDDL_FILES = 2000
+EXPECTED_MATERIALIZED_PDDL_BYTES = 50354240
+EXPECTED_PDDL_BYTES_PER_CONFIG = 2517712
+EXPECTED_UNIQUE_PDDL_SOURCE_FILES = 77
+EXPECTED_UNIQUE_PDDL_SOURCE_BYTES = 2451625
 EXPECTED_MATRIX_SHA256 = (
     "e16f6e34af5101a3549bfbf98ebaba23371c645f9166c884bfdf07b3b65e7442"
 )
@@ -95,7 +104,10 @@ EXPECTED_SELECTOR_PARSER_PROTOCOL = (
     "run.log/pdb-final-and-width-selector-v1-whole-trace/v3"
 )
 EXPECTED_SELECTOR_POOL_PROTOCOL = "fixed_pool_v1"
-EXPECTED_METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v2"
+EXPECTED_METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v3"
+EXPECTED_OUTCOME_RECONCILIATION_PROTOCOL = (
+    "direct-search-raw-effective-plan-reconciliation/v1"
+)
 EXPECTED_SELECTOR_SCORE_VERSION = (
     "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1"
 )
@@ -133,13 +145,13 @@ MEMORY_LIMIT_MIB = 8192.0
 BLIND = "blind_fw"
 MS_EXACT = "ms_exact"
 ARTIFACT_SCHEMA = (
-    "symbolic-search-heuristics/arrhenius-selector-screen-selection/v2"
+    "symbolic-search-heuristics/arrhenius-selector-screen-selection/v3"
 )
 REPORTING_SCHEMA = (
-    "symbolic-search-heuristics/arrhenius-selector-screen-report/v1"
+    "symbolic-search-heuristics/arrhenius-selector-screen-report/v2"
 )
 REPORTING_ANALYSIS_PROTOCOL = (
-    "arrhenius-selector-screen-certified-descriptive-census/v1"
+    "arrhenius-selector-screen-certified-descriptive-census/v2"
 )
 
 CONFIGS = tuple(runner.CONTROL_CONFIGS) + tuple(runner.SELECTOR_CONFIGS)
@@ -151,7 +163,7 @@ SELECTOR_LABELS = tuple(label for label, _ in runner.SELECTOR_CONFIGS)
 # The task digest hashes the normalized ``domain:problem\n`` sequence; the
 # source digest hashes the corresponding canonical records in the separately
 # frozen positive-cost/axiom-free source manifest.
-VALIDATION_PROTOCOL = "arrhenius-selector-heldout-validation-v1"
+VALIDATION_PROTOCOL = "arrhenius-selector-heldout-validation-v2"
 VALIDATION_MANIFEST = "heuristic_finalists_validation_suite.txt"
 VALIDATION_MANIFEST_SHA256 = (
     "fc63d4eed62816a2e065cb89f89483999a7b51067b7077969d10b2a338f19760"
@@ -161,6 +173,11 @@ VALIDATION_TASK_SOURCES_SHA256 = (
 )
 VALIDATION_TASKS = 92
 VALIDATION_DOMAINS = 46
+VALIDATION_MATERIALIZED_PDDL_FILES = {644: 1288, 736: 1472}
+VALIDATION_MATERIALIZED_PDDL_BYTES = {644: 72541896, 736: 82905024}
+VALIDATION_PDDL_BYTES_PER_CONFIG = 10363128
+VALIDATION_UNIQUE_PDDL_SOURCE_FILES = 142
+VALIDATION_UNIQUE_PDDL_SOURCE_BYTES = 10195682
 VALIDATION_ANALYSIS_PROTOCOL = (
     "paired-domain-macro-coverage-sha256-bootstrap-v1"
 )
@@ -735,6 +752,16 @@ def _build_validation_contract(global_winner, selector_winner):
         "config_count": len(configs),
         "expected_run_count": run_count,
         "array_layout": layout,
+        "materialized_pddl_protocol": EXPECTED_MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": VALIDATION_MATERIALIZED_PDDL_FILES[
+            run_count
+        ],
+        "materialized_pddl_bytes": VALIDATION_MATERIALIZED_PDDL_BYTES[
+            run_count
+        ],
+        "pddl_bytes_per_config": VALIDATION_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": VALIDATION_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": VALIDATION_UNIQUE_PDDL_SOURCE_BYTES,
     }
 
 
@@ -798,14 +825,36 @@ def _reviewed_hex(value, digits, name):
     return value
 
 
-def require_reviewed_pins(protocol_revision=None, binary_sha256=None):
-    planner_revision = _reviewed_hex(
-        EXPECTED_PLANNER_REVISION, 40, "EXPECTED_PLANNER_REVISION"
-    )
+def require_reviewed_pins(
+    protocol_revision=None,
+    binary_sha256=None,
+    planner_revision=None,
+    preprocess_sha256=None,
+    cache_name_suffix=None,
+):
+    if planner_revision is None:
+        planner_revision = EXPECTED_PLANNER_REVISION
     if protocol_revision is None:
         protocol_revision = EXPECTED_PROTOCOL_REVISION
     if binary_sha256 is None:
         binary_sha256 = EXPECTED_CACHE_BINARY_SHA256
+    if preprocess_sha256 is None:
+        preprocess_sha256 = EXPECTED_CACHE_PREPROCESS_SHA256
+    if cache_name_suffix is None:
+        cache_name_suffix = EXPECTED_CACHE_NAME_SUFFIX
+    planner_revision = _reviewed_hex(
+        planner_revision, 40, "EXPECTED_PLANNER_REVISION"
+    )
+    _reviewed_hex(
+        preprocess_sha256, 64, "EXPECTED_CACHE_PREPROCESS_SHA256"
+    )
+    if (
+        not isinstance(cache_name_suffix, str)
+        or not re.fullmatch(r"_[0-9a-f]{8}", cache_name_suffix)
+    ):
+        raise AnalysisError(
+            "EXPECTED_CACHE_NAME_SUFFIX is unset; pin the reviewed cache suffix"
+        )
     return (
         planner_revision,
         _reviewed_hex(protocol_revision, 40, "EXPECTED_PROTOCOL_REVISION"),
@@ -823,7 +872,7 @@ def validate_runner_contract(check_cache_pin=True, expected_cache_hash=None):
         ),
         "protocol": (
             runner.PROTOCOL,
-            "arrhenius-exact-width-selector-screening-v1",
+            "arrhenius-exact-width-selector-screening-v2",
         ),
         "selection rule": (
             runner.SELECTION_RULE,
@@ -871,6 +920,10 @@ def validate_runner_contract(check_cache_pin=True, expected_cache_hash=None):
             wbh_parser.METRICS_VALIDATION_PROTOCOL,
             EXPECTED_METRICS_VALIDATION_PROTOCOL,
         ),
+        "outcome reconciliation protocol": (
+            common.OUTCOME_RECONCILIATION_PROTOCOL,
+            EXPECTED_OUTCOME_RECONCILIATION_PROTOCOL,
+        ),
         "control digest": (
             runner.CONTROL_CONFIGS_DIGEST,
             EXPECTED_CONTROL_SHA256,
@@ -886,6 +939,30 @@ def validate_runner_contract(check_cache_pin=True, expected_cache_hash=None):
         "benchmark repository": (
             runner.BENCHMARK_REPOSITORY,
             suite_cost_manifest.EXPECTED_BENCHMARK_REPOSITORY,
+        ),
+        "materialized PDDL protocol": (
+            runner.MATERIALIZED_PDDL_PROTOCOL,
+            EXPECTED_MATERIALIZED_PDDL_PROTOCOL,
+        ),
+        "materialized PDDL files": (
+            runner.EXPECTED_MATERIALIZED_PDDL_FILES,
+            EXPECTED_MATERIALIZED_PDDL_FILES,
+        ),
+        "materialized PDDL bytes": (
+            runner.EXPECTED_MATERIALIZED_PDDL_BYTES,
+            EXPECTED_MATERIALIZED_PDDL_BYTES,
+        ),
+        "PDDL bytes per config": (
+            runner.EXPECTED_PDDL_BYTES_PER_CONFIG,
+            EXPECTED_PDDL_BYTES_PER_CONFIG,
+        ),
+        "unique PDDL source files": (
+            runner.EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+            EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+        ),
+        "unique PDDL source bytes": (
+            runner.EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
+            EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
         ),
     }
     for name, (actual, expected) in exact.items():
@@ -944,12 +1021,21 @@ def expected_protocol_metadata(planner_revision, protocol_revision, binary_sha25
         "planner_preprocess_sha256": EXPECTED_CACHE_PREPROCESS_SHA256,
         "planner_revision_cache_name": (
             planner_revision + EXPECTED_CACHE_NAME_SUFFIX
+            if isinstance(EXPECTED_CACHE_NAME_SUFFIX, str)
+            else None
         ),
         "external_plan_validation": False,
         "plan_validation_protocol": (
-            "no-external-val;require-plan-file-and-cross-config-cost-agreement/v1"
+            "no-external-val;canonical-plan-log-wbh-cost-and-raw-exit-"
+            "reconciliation/v2"
         ),
-        "plan_file_parser_protocol": "sas_plan/exact-single-cost-footer/v1",
+        "plan_file_parser_protocol": (
+            "sas_plan/exact-zero-or-single-stable-single-link-regular-"
+            "nonsymlink-cost-footer/v2"
+        ),
+        "outcome_reconciliation_protocol": (
+            EXPECTED_OUTCOME_RECONCILIATION_PROTOCOL
+        ),
         "cofactor_width_property": "cofactor_width",
         "cofactor_width_parser_protocol": (
             "run.log/unique-wbh-heuristic-cofactor-width/v1"
@@ -1014,6 +1100,12 @@ def expected_protocol_metadata(planner_revision, protocol_revision, binary_sha25
         "benchmark_repository": suite_cost_manifest.EXPECTED_BENCHMARK_REPOSITORY,
         "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256,
         "task_sources_sha256": EXPECTED_TASK_SOURCES_SHA256,
+        "materialized_pddl_protocol": EXPECTED_MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": EXPECTED_MATERIALIZED_PDDL_FILES,
+        "materialized_pddl_bytes": EXPECTED_MATERIALIZED_PDDL_BYTES,
+        "pddl_bytes_per_config": EXPECTED_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
     }
 
 
@@ -1046,6 +1138,19 @@ def _validate_outcome(record, prefix, errors):
         return
 
     exit_code = record.get("planner_exit_code")
+    if record.get("outcome_reconciliation_protocol") != (
+        EXPECTED_OUTCOME_RECONCILIATION_PROTOCOL
+    ):
+        _append(
+            errors,
+            prefix,
+            "outcome reconciliation protocol is missing or changed",
+        )
+    if record.get("outcome_reconciliation_certified") is not True:
+        _append(errors, prefix, "outcome reconciliation is not certified")
+    if record.get("outcome_reconciliation_error") is not None:
+        _append(errors, prefix, "outcome reconciliation carries diagnostics")
+
     if type(exit_code) is not int or exit_code not in EXPLAINED_OUTCOMES:
         _append(
             errors,
@@ -1082,14 +1187,59 @@ def _validate_outcome(record, prefix, errors):
                 ),
             )
 
+    raw_exit = record.get("search_raw_exit_code")
+    effective_exit = record.get("search_effective_exit_code")
+    if exit_code in PRESEARCH_EXIT_CODES:
+        if raw_exit is not None or effective_exit is not None:
+            _append(errors, prefix, "pre-search outcome has search exit codes")
+    else:
+        if type(raw_exit) is not int:
+            _append(errors, prefix, "search_raw_exit_code must be an integer")
+        if type(effective_exit) is not int:
+            _append(errors, prefix, "search_effective_exit_code must be an integer")
+        elif effective_exit != exit_code:
+            _append(
+                errors,
+                prefix,
+                "search_effective_exit_code {} != planner_exit_code {}".format(
+                    effective_exit, exit_code
+                ),
+            )
+        if exit_code in (1, 2, 3):
+            expected_raw = {1: 22, 2: 23, 3: 24}[exit_code]
+            if raw_exit != expected_raw:
+                _append(
+                    errors,
+                    prefix,
+                    "mapped success {} needs raw resource exit {}".format(
+                        exit_code, expected_raw
+                    ),
+                )
+        elif raw_exit != effective_exit:
+            _append(
+                errors,
+                prefix,
+                "non-mapped outcome requires identical raw/effective exits",
+            )
+
     unexplained = record.get("unexplained_errors")
     if unexplained not in (None, []):
         _append(errors, prefix, "contains unexplained_errors={!r}".format(unexplained))
 
     cost = record.get("solution_cost")
     plan_present = record.get("plan_file_present")
+    plan_candidate_count = record.get("plan_file_candidate_count")
+    plan_canonical = record.get("plan_file_canonical")
     if type(plan_present) is not bool:
         _append(errors, prefix, "plan_file_present must be boolean")
+    if type(plan_candidate_count) is not int or plan_candidate_count < 0:
+        _append(
+            errors,
+            prefix,
+            "plan_file_candidate_count must be a nonnegative integer",
+        )
+    if type(plan_canonical) is not bool:
+        _append(errors, prefix, "plan_file_canonical must be boolean")
     planner_time = _json_number(record.get("planner_time"))
     if coverage == 1:
         if type(cost) is not int or cost < 0:
@@ -1098,6 +1248,10 @@ def _validate_outcome(record, prefix, errors):
             _append(errors, prefix, "solved outcome needs finite nonnegative planner_time")
         if plan_present is not True:
             _append(errors, prefix, "solved outcome needs an emitted plan file")
+        if plan_candidate_count != 1:
+            _append(errors, prefix, "solved outcome needs exactly one plan candidate")
+        if plan_canonical is not True:
+            _append(errors, prefix, "solved outcome needs canonical plan certification")
         if record.get("plan_file_cost") != cost:
             _append(
                 errors,
@@ -1106,6 +1260,30 @@ def _validate_outcome(record, prefix, errors):
                     record.get("plan_file_cost"), cost
                 ),
             )
+        for field in ("run_log_plan_cost", "wbh_done_solution_cost"):
+            if record.get(field) != cost or type(record.get(field)) is not int:
+                _append(
+                    errors,
+                    prefix,
+                    "{}={!r} disagrees with solution_cost={!r}".format(
+                        field, record.get(field), cost
+                    ),
+                )
+        for field, expected in (
+            ("wbh_schema_version", 2),
+            ("raw_metrics_complete", True),
+            ("piece_metrics_certified", True),
+            ("wbh_summary_solved", True),
+            ("wbh_solved_summary_certified", True),
+        ):
+            if not _same_json_scalar(record.get(field), expected):
+                _append(
+                    errors,
+                    prefix,
+                    "solved outcome requires {}={!r}".format(field, expected),
+                )
+        if record.get("metrics_validation_error") is not None:
+            _append(errors, prefix, "solved WBH summary has parser diagnostics")
     else:
         if cost is not None:
             _append(errors, prefix, "unsolved outcome must not contain solution_cost")
@@ -1113,6 +1291,41 @@ def _validate_outcome(record, prefix, errors):
             _append(errors, prefix, "planner_time is malformed")
         if plan_present is not False or "plan_file_cost" in record:
             _append(errors, prefix, "unsolved outcome unexpectedly has a plan file")
+        if plan_candidate_count != 0:
+            _append(errors, prefix, "unsolved outcome needs zero plan candidates")
+        if plan_canonical is not False:
+            _append(errors, prefix, "unsolved outcome has canonical plan certification")
+        if any(
+            record.get(field) is not None
+            for field in ("run_log_plan_cost", "wbh_done_solution_cost")
+        ):
+            _append(errors, prefix, "unsolved outcome has solved cost evidence")
+        if record.get("wbh_schema_version") == 2:
+            if (
+                "wbh_solved_summary_certified" not in record
+                or record.get("wbh_solved_summary_certified") is not False
+            ):
+                _append(
+                    errors,
+                    prefix,
+                    "unsolved schema-v2 outcome requires "
+                    "wbh_solved_summary_certified=False",
+                )
+            raw_complete = record.get("raw_metrics_complete")
+            expected_summary = False if raw_complete is True else None
+            if (
+                "wbh_summary_solved" not in record
+                or not _same_json_scalar(
+                    record.get("wbh_summary_solved"), expected_summary
+                )
+            ):
+                _append(
+                    errors,
+                    prefix,
+                    "unsolved schema-v2 outcome requires "
+                    "wbh_summary_solved={!r} when raw_metrics_complete={!r}".
+                    format(expected_summary, raw_complete),
+                )
 
 
 def _validate_metrics(record, prefix, errors):
@@ -2431,11 +2644,22 @@ def make_selection_artifact(
             "task_manifest_sha256": EXPECTED_TASK_MANIFEST_SHA256,
             "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256,
             "task_sources_sha256": EXPECTED_TASK_SOURCES_SHA256,
+            "materialized_pddl_protocol": (
+                EXPECTED_MATERIALIZED_PDDL_PROTOCOL
+            ),
+            "materialized_pddl_files": EXPECTED_MATERIALIZED_PDDL_FILES,
+            "materialized_pddl_bytes": EXPECTED_MATERIALIZED_PDDL_BYTES,
+            "pddl_bytes_per_config": EXPECTED_PDDL_BYTES_PER_CONFIG,
+            "unique_pddl_source_files": EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+            "unique_pddl_source_bytes": EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
             "option_matrix_sha256": EXPECTED_MATRIX_SHA256,
             "control_configs_sha256": EXPECTED_CONTROL_SHA256,
             "selector_configs_sha256": EXPECTED_SELECTOR_SHA256,
             "pdb_selector_parser_protocol": EXPECTED_SELECTOR_PARSER_PROTOCOL,
             "metrics_validation_protocol": EXPECTED_METRICS_VALIDATION_PROTOCOL,
+            "outcome_reconciliation_protocol": (
+                EXPECTED_OUTCOME_RECONCILIATION_PROTOCOL
+            ),
             "selector_pool_protocol": EXPECTED_SELECTOR_POOL_PROTOCOL,
             "selector_score_version": EXPECTED_SELECTOR_SCORE_VERSION,
             "selector_source_order": list(EXPECTED_SELECTOR_SOURCES),
@@ -2647,7 +2871,7 @@ def reporting_batching_pair_summary(matrix, tasks, score_by_label, candidate, re
 
 def make_reporting_artifact(records, matrix, tasks, selection_artifact):
     if selection_artifact.get("schema") != ARTIFACT_SCHEMA:
-        raise AnalysisError("reporting input is not the exact selection artifact v2")
+        raise AnalysisError("reporting input is not the exact selection artifact v3")
     pilot = selection_artifact.get("pilot")
     if (
         type(pilot) is not dict
@@ -2703,7 +2927,7 @@ def make_reporting_artifact(records, matrix, tasks, selection_artifact):
                 (canonical_json(selection_artifact) + "\n").encode("ascii")
             ).hexdigest(),
         },
-        # These are the exact public objects carried by selection artifact v2.
+        # These are the exact public objects carried by selection artifact v3.
         "selection": selection,
         "paired_deltas": paired,
         "configs": config_reports,
@@ -2993,9 +3217,17 @@ def synthetic_record(
         "problem": problem,
         "coverage": 1 if solved else 0,
         "planner_exit_code": 0 if solved else 23,
+        "search_raw_exit_code": 0 if solved else 23,
+        "search_effective_exit_code": 0 if solved else 23,
+        "outcome_reconciliation_protocol": (
+            EXPECTED_OUTCOME_RECONCILIATION_PROTOCOL
+        ),
+        "outcome_reconciliation_certified": True,
         "error": "success" if solved else "search-out-of-time",
         "unsolvable": 0,
         "plan_file_present": solved,
+        "plan_file_candidate_count": 1 if solved else 0,
+        "plan_file_canonical": solved,
         "component_options": expected_component_options(search),
         "driver_options": [
             "--overall-time-limit",
@@ -3018,6 +3250,9 @@ def synthetic_record(
         "wbh_log_nonempty": True,
         "raw_metrics_complete": True,
         "piece_metrics_certified": True,
+        "wbh_summary_solved": solved,
+        "wbh_done_solution_cost": cost if solved else None,
+        "wbh_solved_summary_certified": solved,
         "expanded_bdd_nodes": 40,
         "expanded_states": 100.0,
         "expanded_bdd_pieces": 10,
@@ -3044,6 +3279,7 @@ def synthetic_record(
     if solved:
         record["solution_cost"] = cost
         record["plan_file_cost"] = cost
+        record["run_log_plan_cost"] = cost
         record["planner_time"] = planner_time
     if label == BLIND:
         return record
@@ -3121,25 +3357,42 @@ def _synthetic_target(records, label, task):
 
 
 def self_test():
-    planner_revision = EXPECTED_PLANNER_REVISION
+    planner_revision = "89abcdef0123456789abcdef0123456789abcdef"
     protocol_revision = "0123456789abcdef0123456789abcdef01234567"
-    binary_sha256 = EXPECTED_CACHE_BINARY_SHA256
-    assert require_reviewed_pins(protocol_revision, binary_sha256) == (
+    binary_sha256 = hashlib.sha256(b"synthetic P4 planner").hexdigest()
+    preprocess_sha256 = hashlib.sha256(b"synthetic P4 preprocess").hexdigest()
+    cache_name_suffix = "_1234abcd"
+    assert require_reviewed_pins(
+        protocol_revision,
+        binary_sha256,
+        planner_revision,
+        preprocess_sha256,
+        cache_name_suffix,
+    ) == (
         planner_revision,
         protocol_revision,
         binary_sha256,
     )
-    assert require_reviewed_pins() == (
-        planner_revision,
-        EXPECTED_PROTOCOL_REVISION,
-        binary_sha256,
-    )
+    if EXPECTED_PROTOCOL_REVISION is None:
+        try:
+            require_reviewed_pins()
+        except AnalysisError as err:
+            assert "EXPECTED_PROTOCOL_REVISION is unset" in str(err)
+        else:
+            raise AssertionError("unset prospective P4 protocol pin was accepted")
+    else:
+        assert require_reviewed_pins() == (
+            EXPECTED_PLANNER_REVISION,
+            EXPECTED_PROTOCOL_REVISION,
+            EXPECTED_CACHE_BINARY_SHA256,
+        )
 
     validate_runner_contract(
-        check_cache_pin=True, expected_cache_hash=binary_sha256
+        check_cache_pin=False
     )
     common.self_test_cofactor_width_parser()
     common.self_test_pdb_selector_parser()
+    common.self_test_outcome_reconciliation_parser()
     tasks = load_manifest(runner.MANIFEST)
     if [analyzer_utils.task_label(task) for task in tasks] != runner.read_manifest():
         raise AssertionError("runner/analyzer task order differs")
@@ -3172,6 +3425,94 @@ def self_test():
         records, tasks, planner_revision, protocol_revision, binary_sha256
     )
     assert not errors, errors[:12]
+
+    mapped = copy.deepcopy(records[0])
+    mapped.update(
+        planner_exit_code=2,
+        search_raw_exit_code=23,
+        search_effective_exit_code=2,
+        error="search-plan-found-and-out-of-time",
+    )
+    mapped_errors = []
+    _validate_outcome(mapped, "synthetic mapped", mapped_errors)
+    assert not mapped_errors, mapped_errors
+    mapped_mutations = (
+        ("search_raw_exit_code", 22, "needs raw resource exit 23"),
+        ("outcome_reconciliation_certified", False, "is not certified"),
+        ("plan_file_candidate_count", 2, "exactly one plan candidate"),
+        ("plan_file_canonical", False, "canonical plan certification"),
+        ("run_log_plan_cost", mapped["solution_cost"] + 1, "disagrees"),
+        ("wbh_done_solution_cost", mapped["solution_cost"] + 1, "disagrees"),
+        ("wbh_solved_summary_certified", False, "requires"),
+        ("raw_metrics_complete", False, "requires"),
+        ("planner_time", float("inf"), "finite nonnegative"),
+    )
+    for field, value, fragment in mapped_mutations:
+        adversarial = copy.deepcopy(mapped)
+        adversarial[field] = value
+        adversarial_errors = []
+        _validate_outcome(
+            adversarial, "synthetic mapped", adversarial_errors
+        )
+        if not any(fragment in error for error in adversarial_errors):
+            raise AssertionError(
+                "mapped-success mutation {}={!r} was accepted: {!r}".format(
+                    field, value, adversarial_errors
+                )
+            )
+    unsolved = _synthetic_target(
+        records, "pdb_goal_fill_b100k", tasks[0]
+    )
+    unsolved_mutations = (
+        (
+            "wbh_summary_solved",
+            True,
+            "wbh_summary_solved=False",
+        ),
+        (
+            "wbh_summary_solved",
+            None,
+            "wbh_summary_solved=False",
+        ),
+        (
+            "wbh_solved_summary_certified",
+            None,
+            "wbh_solved_summary_certified=False",
+        ),
+        (
+            "wbh_solved_summary_certified",
+            "false",
+            "wbh_solved_summary_certified=False",
+        ),
+    )
+    for field, value, fragment in unsolved_mutations:
+        adversarial = copy.deepcopy(unsolved)
+        adversarial[field] = value
+        adversarial_errors = []
+        _validate_outcome(
+            adversarial, "synthetic unsolved", adversarial_errors
+        )
+        if not any(fragment in error for error in adversarial_errors):
+            raise AssertionError(
+                "unsolved mutation {}={!r} was accepted: {!r}".format(
+                    field, value, adversarial_errors
+                )
+            )
+    for missing_field in (
+        "wbh_summary_solved", "wbh_solved_summary_certified"
+    ):
+        adversarial = copy.deepcopy(unsolved)
+        adversarial.pop(missing_field)
+        adversarial_errors = []
+        _validate_outcome(
+            adversarial, "synthetic unsolved", adversarial_errors
+        )
+        if not any(missing_field in error for error in adversarial_errors):
+            raise AssertionError(
+                "missing unsolved field {} was accepted: {!r}".format(
+                    missing_field, adversarial_errors
+                )
+            )
     # Lab writes fetched properties with recursive sort_keys=True. Raw selector
     # key order is certified by the parser before this serialization boundary.
     lab_roundtrip = json.loads(json.dumps(records, sort_keys=True))
@@ -3236,6 +3577,8 @@ def self_test():
         artifact["pilot"]["metrics_validation_protocol"]
         == EXPECTED_METRICS_VALIDATION_PROTOCOL
     )
+    assert artifact["pilot"]["materialized_pddl_files"] == 2000
+    assert artifact["pilot"]["materialized_pddl_bytes"] == 50354240
     assert artifact["validation"]["task_manifest"] == VALIDATION_MANIFEST
     assert (
         artifact["validation"]["task_manifest_sha256"]
@@ -3247,6 +3590,8 @@ def self_test():
     )
     assert artifact["validation"]["task_count"] == VALIDATION_TASKS
     assert artifact["validation"]["domain_count"] == VALIDATION_DOMAINS
+    assert artifact["validation"]["materialized_pddl_files"] == 1288
+    assert artifact["validation"]["materialized_pddl_bytes"] == 72541896
     assert artifact["validation"]["analysis"] == {
         "protocol": VALIDATION_ANALYSIS_PROTOCOL,
         "primary_comparison": "selector-vs-pdb-cegar",
@@ -3330,19 +3675,23 @@ def self_test():
 
     # Reporting is a separate artifact: it reuses the exact public selection
     # objects, binds itself to the raw selection-artifact line, and cannot
-    # mutate or extend selection artifact v2.
+    # mutate or extend selection artifact v3.
     selection_bytes = (canonical_json(artifact) + "\n").encode("ascii")
-    assert hashlib.sha256(selection_bytes).hexdigest() == (
-        "81ed28e79bfcd776a74bba11efc7cd9e3a55596c50f6f91121e3a002737c44cc"
-    )
+    selection_sha256 = hashlib.sha256(selection_bytes).hexdigest()
+    assert selection_sha256 == (
+        "dd3662e47d99b33deb150335b942c4c7c71035236cca91c09e7068cedc312337"
+    ), selection_sha256
     import exp_arrhenius_selector_validation as heldout_runner
 
     # Synthetic cells deliberately exercise an explicit protocol-pin override.
     # Restore the reviewed launch pin before asking the independent held-out
     # runner to validate the otherwise unchanged artifact schema/content.
     heldout_artifact = copy.deepcopy(artifact)
-    heldout_artifact["pilot"]["protocol_revision"] = (
-        heldout_runner.PILOT_PROTOCOL_REVISION
+    heldout_artifact["pilot"].update(
+        planner_revision=heldout_runner.PLANNER_REVISION,
+        protocol_revision=heldout_runner.PILOT_PROTOCOL_REVISION,
+        planner_binary_sha256=heldout_runner.CACHE_BINARY_SHA256,
+        planner_preprocess_sha256=heldout_runner.CACHE_PREPROCESS_SHA256,
     )
     heldout_before = heldout_runner.validate_selection_artifact(
         copy.deepcopy(heldout_artifact)
@@ -3364,9 +3713,10 @@ def self_test():
     report_json = canonical_json(report)
     assert report_json.isascii() and "\n" not in report_json
     reporting_bytes = (report_json + "\n").encode("ascii")
-    assert hashlib.sha256(reporting_bytes).hexdigest() == (
-        "b069bc28c7e3a15bc1c37c99bdb288986ad099a7097912f839335296bd8691a4"
-    )
+    reporting_sha256 = hashlib.sha256(reporting_bytes).hexdigest()
+    assert reporting_sha256 == (
+        "1536e64be7ef2118bf866645cf940d2d2bf4c6d6ab8e392ca3db422a69efaf22"
+    ), reporting_sha256
     assert [item["label"] for item in report["configs"]] == list(LABELS)
     assert report["identity"]["config_label_order"] == list(LABELS)
     assert report["identity"]["config_label_order_sha256"] == sha256_json(
@@ -3773,14 +4123,23 @@ def self_test():
         {
             "coverage": 0,
             "planner_exit_code": 23,
+            "search_raw_exit_code": 23,
+            "search_effective_exit_code": 23,
             "error": "search-out-of-time",
             "unsolvable": 0,
             "plan_file_present": False,
+            "plan_file_candidate_count": 0,
+            "plan_file_canonical": False,
+            "raw_metrics_complete": False,
+            "wbh_summary_solved": None,
+            "wbh_done_solution_cost": None,
+            "wbh_solved_summary_certified": False,
         }
     )
     for field in (
         "solution_cost",
         "plan_file_cost",
+        "run_log_plan_cost",
         "planner_time",
         "construction_completed",
         "construction_time",
@@ -3851,6 +4210,8 @@ def self_test():
     )
     merged_skip["sources"] = ["empty"]
     interrupted["planner_exit_code"] = 11
+    interrupted["search_raw_exit_code"] = 11
+    interrupted["search_effective_exit_code"] = 11
     interrupted["error"] = "search-unsolvable"
     interrupted["unsolvable"] = 1
     _expect_error(
@@ -3866,6 +4227,8 @@ def self_test():
     # semantically checkable prefix: all candidates/provenance and the winner
     # must already be complete and exact.
     interrupted["planner_exit_code"] = 23
+    interrupted["search_raw_exit_code"] = 23
+    interrupted["search_effective_exit_code"] = 23
     interrupted["error"] = "search-out-of-time"
     interrupted["unsolvable"] = 0
     interrupted[common.PDB_SELECTOR_CANDIDATES_PROPERTY] = copy.deepcopy(
@@ -3906,14 +4269,23 @@ def self_test():
         {
             "coverage": 0,
             "planner_exit_code": 23,
+            "search_raw_exit_code": 23,
+            "search_effective_exit_code": 23,
             "error": "search-out-of-time",
             "unsolvable": 0,
             "plan_file_present": False,
+            "plan_file_candidate_count": 0,
+            "plan_file_canonical": False,
+            "raw_metrics_complete": False,
+            "wbh_summary_solved": None,
+            "wbh_done_solution_cost": None,
+            "wbh_solved_summary_certified": False,
         }
     )
     for field in (
         "solution_cost",
         "plan_file_cost",
+        "run_log_plan_cost",
         "planner_time",
         "construction_completed",
         "construction_time",
@@ -3936,6 +4308,8 @@ def self_test():
     assert not errors, errors[:12]
     interrupted.update(saved_wbh_fields)
     interrupted["planner_exit_code"] = 11
+    interrupted["search_raw_exit_code"] = 11
+    interrupted["search_effective_exit_code"] = 11
     interrupted["error"] = "search-unsolvable"
     interrupted["unsolvable"] = 1
     _expect_error(
@@ -3950,13 +4324,19 @@ def self_test():
     interrupted.update(saved_interrupted)
 
     target["raw_metrics_complete"] = False
-    matrix, errors = validate_records(
-        records, tasks, planner_revision, protocol_revision, binary_sha256
+    _expect_error(
+        records,
+        tasks,
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+        "solved outcome requires raw_metrics_complete=True",
     )
-    assert not errors, errors[:12]
-    assert analyze_scores(matrix, tasks)["image_time_tiebreak_available"] is False
     incomplete_image = reporting_image_metrics_summary(
-        [matrix[("pdb_selector_k32", task)] for task in tasks]
+        [
+            _synthetic_target(records, "pdb_selector_k32", task)
+            for task in tasks
+        ]
     )
     assert incomplete_image["piece_certified_prefix_cells"] == EXPECTED_TASKS
     assert incomplete_image["raw_complete_certified_cells"] == EXPECTED_TASKS - 1
@@ -3973,12 +4353,19 @@ def self_test():
     }
     target["piece_metrics_certified"] = False
     target["metrics_validation_error"] = "synthetic uncertified piece prefix"
-    matrix, errors = validate_records(
-        records, tasks, planner_revision, protocol_revision, binary_sha256
+    _expect_error(
+        records,
+        tasks,
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+        "solved outcome requires piece_metrics_certified=True",
     )
-    assert not errors, errors[:12]
     censored_prefix = reporting_image_metrics_summary(
-        [matrix[("pdb_selector_k32", task)] for task in tasks]
+        [
+            _synthetic_target(records, "pdb_selector_k32", task)
+            for task in tasks
+        ]
     )
     assert censored_prefix["piece_certified_prefix_cells"] == EXPECTED_TASKS - 1
     assert censored_prefix["piece_censored_or_uncertified_cells"] == 1
@@ -3996,12 +4383,19 @@ def self_test():
             "unsolvable": 0,
             "coverage": 0,
             "plan_file_present": False,
+            "plan_file_candidate_count": 0,
+            "plan_file_canonical": False,
         }
     )
     presearch.update(EMPTY_LEGACY_CONVENTIONS)
     presearch["wbh_log_nonempty"] = False
     presearch["raw_metrics_complete"] = False
     presearch["piece_metrics_certified"] = False
+    presearch.pop("search_raw_exit_code", None)
+    presearch.pop("search_effective_exit_code", None)
+    presearch.pop("wbh_summary_solved", None)
+    presearch.pop("wbh_done_solution_cost", None)
+    presearch.pop("wbh_solved_summary_certified", None)
     for field in (
         SCHEMA_V2_INTEGER_METRICS
         + SCHEMA_V2_REAL_METRICS
@@ -4173,10 +4567,14 @@ def self_test():
     unsolved = _synthetic_target(records, "pdb_goal_fill_b100k", tasks[0])
     old_outcome = (
         unsolved["planner_exit_code"],
+        unsolved["search_raw_exit_code"],
+        unsolved["search_effective_exit_code"],
         unsolved["error"],
         unsolved["unsolvable"],
     )
     unsolved["planner_exit_code"] = 11
+    unsolved["search_raw_exit_code"] = 11
+    unsolved["search_effective_exit_code"] = 11
     unsolved["error"] = "search-unsolvable"
     unsolved["unsolvable"] = 1
     _expect_error(
@@ -4185,6 +4583,8 @@ def self_test():
     )
     (
         unsolved["planner_exit_code"],
+        unsolved["search_raw_exit_code"],
+        unsolved["search_effective_exit_code"],
         unsolved["error"],
         unsolved["unsolvable"],
     ) = old_outcome
@@ -4192,7 +4592,7 @@ def self_test():
     print(
         "synthetic Arrhenius selector analyzer tests: PASS "
         "(1000 cells; exact pool/score/final/provenance; ranking/censoring; "
-        "artifact-v2 heldout matrices 644/736)"
+        "artifact-v3 heldout matrices 644/736; mapped-success adversaries)"
     )
 
 

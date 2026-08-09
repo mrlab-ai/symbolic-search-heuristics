@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed held-out validation of the Arrhenius selector screen.
 
-The runner consumes the exact v2 artifact emitted by
+The runner consumes the exact v3 artifact emitted by
 ``analyze_arrhenius_selector_pilot.py``.  It independently reconstructs every
 pilot and held-out invariant.  Launch is intentionally impossible until the
 raw artifact SHA-256 below is reviewed and pinned.
@@ -50,14 +50,14 @@ class ProtocolError(RuntimeError):
     pass
 
 
-PROTOCOL = "arrhenius-selector-heldout-validation-v1"
+PROTOCOL = "arrhenius-selector-heldout-validation-v2"
 ANALYSIS_PROTOCOL = "paired-domain-macro-coverage-sha256-bootstrap-v1"
 ANALYSIS_BOOTSTRAP_SEED = (
     "symbolic-search-heuristics/arrhenius-selector-heldout-bootstrap/v1"
 )
 ANALYSIS_BOOTSTRAP_REPLICATES = 100000
 ARTIFACT_SCHEMA = (
-    "symbolic-search-heuristics/arrhenius-selector-screen-selection/v2"
+    "symbolic-search-heuristics/arrhenius-selector-screen-selection/v3"
 )
 EXPECTED_SELECTION_ARTIFACT_SHA256 = None
 
@@ -82,6 +82,8 @@ PROTOCOL_FILES = (
     *(path.resolve() for path in DEVELOPMENT_MANIFESTS),
     Path(suite_cost_manifest.__file__).resolve(),
     Path(__file__).with_name("suite_wbh_operator_costs.json").resolve(),
+    Path(__file__).with_name("suite_wbh_operator_costs.json.sha256").resolve(),
+    Path(__file__).with_name("requirements.txt").resolve(),
 )
 
 MANIFEST_DIGEST = (
@@ -95,19 +97,25 @@ EXPECTED_SOURCE_MANIFEST_SHA256 = (
 )
 EXPECTED_TASKS = 92
 EXPECTED_DOMAINS = 46
+EXPECTED_MATERIALIZED_PDDL_FILES = {644: 1288, 736: 1472}
+EXPECTED_MATERIALIZED_PDDL_BYTES = {644: 72541896, 736: 82905024}
+EXPECTED_PDDL_BYTES_PER_CONFIG = 10363128
+EXPECTED_UNIQUE_PDDL_SOURCE_FILES = 142
+EXPECTED_UNIQUE_PDDL_SOURCE_BYTES = 10195682
+MATERIALIZED_PDDL_PROTOCOL = C.PDDL_MATERIALIZATION_PROTOCOL
 
 BENCHMARK_REVISION = "48d6a00d482de2384a9e751f9343df58bf5582be"
 BENCHMARK_REPOSITORY = "https://github.com/aibasel/downward-benchmarks.git"
-PLANNER_REVISION = "8e56de8862c9449246596e779177cc9e6a7bcf8e"
-PILOT_PROTOCOL_REVISION = "4d86669eaf11830ca551ae102994d035f422c2df"
+PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
+PILOT_PROTOCOL_REVISION = None
 CACHE_BINARY_SHA256 = (
-    "21ea6aff991b4f8196ee8642ff0534bebae67ee3d13f3bd9c7f6f9b3b1fe8cb9"
+    "59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511"
 )
 CACHE_PREPROCESS_SHA256 = (
-    "c62df391a1e760aa3c2f353056d1f63c8a9958d93c7f1dc4c12f98cc57e5f987"
+    "acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c"
 )
 
-PILOT_PROTOCOL = "arrhenius-exact-width-selector-screening-v1"
+PILOT_PROTOCOL = "arrhenius-exact-width-selector-screening-v2"
 PILOT_SELECTION_RULE = (
     "valid-costs-max-coverage-min-micro-par2-"
     "min-certified-image-time-label/v1"
@@ -134,7 +142,10 @@ SELECTOR_ELIGIBILITY_SHA256 = (
 PDB_SELECTOR_PARSER_PROTOCOL = (
     "run.log/pdb-final-and-width-selector-v1-whole-trace/v3"
 )
-METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v2"
+METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v3"
+OUTCOME_RECONCILIATION_PROTOCOL = (
+    "direct-search-raw-effective-plan-reconciliation/v1"
+)
 SELECTOR_POOL_PROTOCOL = "fixed_pool_v1"
 SELECTOR_SCORE_VERSION = (
     "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1"
@@ -153,6 +164,11 @@ PAR2_UNSOLVED_SECONDS = 600
 PILOT_TASKS = 50
 PILOT_CONFIGS = 20
 PILOT_CELLS = 1000
+PILOT_MATERIALIZED_PDDL_FILES = 2000
+PILOT_MATERIALIZED_PDDL_BYTES = 50354240
+PILOT_PDDL_BYTES_PER_CONFIG = 2517712
+PILOT_UNIQUE_PDDL_SOURCE_FILES = 77
+PILOT_UNIQUE_PDDL_SOURCE_BYTES = 2451625
 
 CONTROL_CONFIGS = (
     ("blind_fw", "sym_fw()"),
@@ -260,7 +276,7 @@ FIXED_ENVIRONMENT = {
     "scheduler_cpu_model": "AMD EPYC 9755 128-Core Processor",
     "scheduler_partition": "cpu",
     "scheduler_qos": "normal",
-    "scheduler_account": "naiss2025-5-382-cpu",
+    "scheduler_account": "naiss2025-5-561-cpu",
     "scheduler_time_limit": "00:10:00",
     "scheduler_memory_per_cpu": "9G",
     "scheduler_cpus_per_task": 1,
@@ -627,11 +643,18 @@ PILOT_KEYS = {
     "task_manifest_sha256",
     "source_manifest_sha256",
     "task_sources_sha256",
+    "materialized_pddl_protocol",
+    "materialized_pddl_files",
+    "materialized_pddl_bytes",
+    "pddl_bytes_per_config",
+    "unique_pddl_source_files",
+    "unique_pddl_source_bytes",
     "option_matrix_sha256",
     "control_configs_sha256",
     "selector_configs_sha256",
     "pdb_selector_parser_protocol",
     "metrics_validation_protocol",
+    "outcome_reconciliation_protocol",
     "selector_pool_protocol",
     "selector_score_version",
     "selector_source_order",
@@ -663,11 +686,18 @@ def _validate_pilot(pilot):
         "task_manifest_sha256": PILOT_MANIFEST_SHA256,
         "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256,
         "task_sources_sha256": PILOT_TASK_SOURCES_SHA256,
+        "materialized_pddl_protocol": MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": PILOT_MATERIALIZED_PDDL_FILES,
+        "materialized_pddl_bytes": PILOT_MATERIALIZED_PDDL_BYTES,
+        "pddl_bytes_per_config": PILOT_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": PILOT_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": PILOT_UNIQUE_PDDL_SOURCE_BYTES,
         "option_matrix_sha256": PILOT_OPTION_MATRIX_SHA256,
         "control_configs_sha256": PILOT_CONTROL_CONFIGS_SHA256,
         "selector_configs_sha256": PILOT_SELECTOR_CONFIGS_SHA256,
         "pdb_selector_parser_protocol": PDB_SELECTOR_PARSER_PROTOCOL,
         "metrics_validation_protocol": METRICS_VALIDATION_PROTOCOL,
+        "outcome_reconciliation_protocol": OUTCOME_RECONCILIATION_PROTOCOL,
         "selector_pool_protocol": SELECTOR_POOL_PROTOCOL,
         "selector_score_version": SELECTOR_SCORE_VERSION,
         "selector_source_order": list(SELECTOR_SOURCES),
@@ -934,6 +964,16 @@ def _expected_validation_contract(global_label, selector_label):
         "config_count": count,
         "expected_run_count": run_count,
         "array_layout": layout,
+        "materialized_pddl_protocol": MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": EXPECTED_MATERIALIZED_PDDL_FILES[
+            run_count
+        ],
+        "materialized_pddl_bytes": EXPECTED_MATERIALIZED_PDDL_BYTES[
+            run_count
+        ],
+        "pddl_bytes_per_config": EXPECTED_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
         "protocol": PROTOCOL,
         "requires_disjoint_tasks": True,
         "selection_artifact_schema": ARTIFACT_SCHEMA,
@@ -1040,6 +1080,24 @@ def validate_selection_artifact(artifact):
         "properties_digest": artifact["pilot"][
             "properties_canonical_sha256"
         ],
+        "materialized_pddl_protocol": expected_validation[
+            "materialized_pddl_protocol"
+        ],
+        "materialized_pddl_files": expected_validation[
+            "materialized_pddl_files"
+        ],
+        "materialized_pddl_bytes": expected_validation[
+            "materialized_pddl_bytes"
+        ],
+        "pddl_bytes_per_config": expected_validation[
+            "pddl_bytes_per_config"
+        ],
+        "unique_pddl_source_files": expected_validation[
+            "unique_pddl_source_files"
+        ],
+        "unique_pddl_source_bytes": expected_validation[
+            "unique_pddl_source_bytes"
+        ],
     }
 
 
@@ -1054,7 +1112,7 @@ def require_selection_artifact_hash(
         if required:
             raise ProtocolError(
                 "EXPECTED_SELECTION_ARTIFACT_SHA256 is unset; review the exact "
-                "v2 artifact bytes and pin their raw SHA-256 before build/start"
+                "v3 artifact bytes and pin their raw SHA-256 before build/start"
             )
         return False
     _require_sha256(expected_sha256, "expected selection artifact SHA-256")
@@ -1106,7 +1164,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--selection",
         type=Path,
-        help="Exact analyzer v2 selection artifact.",
+        help="Exact analyzer v3 selection artifact.",
     )
     parser.add_argument(
         "--check",
@@ -1455,13 +1513,105 @@ def attest_task_sources(benchmark_root, descriptions):
     )
     if source_digest != EXPECTED_SOURCE_MANIFEST_SHA256:
         raise ProtocolError("frozen support-manifest bytes changed")
+    all_sources = [
+        source
+        for task in ordered
+        for source in (
+            Path(task.domain_file).resolve(),
+            Path(task.problem_file).resolve(),
+        )
+    ]
+    bytes_per_config = sum(path.stat().st_size for path in all_sources)
+    unique_sources = set(all_sources)
+    unique_source_bytes = sum(path.stat().st_size for path in unique_sources)
+    if (
+        bytes_per_config != EXPECTED_PDDL_BYTES_PER_CONFIG
+        or len(unique_sources) != EXPECTED_UNIQUE_PDDL_SOURCE_FILES
+        or unique_source_bytes != EXPECTED_UNIQUE_PDDL_SOURCE_BYTES
+    ):
+        raise ProtocolError(
+            "held-out PDDL source file/byte totals changed: per_config={}, "
+            "unique_files={}, unique_bytes={}".format(
+                bytes_per_config, len(unique_sources), unique_source_bytes
+            )
+        )
     return {
         "task_sources_sha256": digest,
         "source_manifest_sha256": source_digest,
+        "pddl_bytes_per_config": bytes_per_config,
+        "unique_pddl_source_files": len(unique_sources),
+        "unique_pddl_source_bytes": unique_source_bytes,
     }
 
 
+def _heldout_source_records(descriptions):
+    records = {
+        (record["domain"], record["problem"]): record
+        for record in suite_cost_manifest.load_manifest()["tasks"]
+    }
+    expected = {tuple(item.split(":", 1)) for item in descriptions}
+    if len(expected) != EXPECTED_TASKS or not expected <= set(records):
+        raise ProtocolError("support manifest lacks exact held-out source records")
+    return {key: records[key] for key in expected}
+
+
+def materialize_grid_pddl_inputs(
+    benchmark_root, task_descriptions, matrix
+):
+    """Materialize every cell input only after Lab finishes fresh build."""
+    grid_path = EXPERIMENT_DATA_PATH
+    if grid_path.is_symlink() or not grid_path.is_dir():
+        raise ProtocolError("materialization requires the newly built held-out grid")
+    ordered_tasks = _resolve_ordered_tasks(benchmark_root, task_descriptions)
+    records = _heldout_source_records(task_descriptions)
+    copied_files = 0
+    copied_bytes = 0
+    for config_index, _ in enumerate(matrix["configs"]):
+        for task_index, task in enumerate(ordered_tasks):
+            run_id = config_index * len(ordered_tasks) + task_index + 1
+            run_dir = grid_path / _run_relative_path(run_id)
+            _require_pristine_run_directory(run_dir, run_id)
+            record = records[(task.domain, task.problem)]
+            for link_name, source, hash_field in (
+                (
+                    "domain.pddl",
+                    Path(task.domain_file).resolve(),
+                    "domain_sha256",
+                ),
+                (
+                    "problem.pddl",
+                    Path(task.problem_file).resolve(),
+                    "problem_sha256",
+                ),
+            ):
+                copied_bytes += C.materialize_pddl_link(
+                    run_dir / link_name,
+                    source,
+                    record[hash_field],
+                    "run {} {}".format(run_id, link_name),
+                )
+                copied_files += 1
+    expected_files = EXPECTED_MATERIALIZED_PDDL_FILES[matrix["run_count"]]
+    expected_bytes = EXPECTED_MATERIALIZED_PDDL_BYTES[matrix["run_count"]]
+    if copied_files != expected_files or copied_bytes != expected_bytes:
+        raise ProtocolError(
+            "materialized held-out PDDL totals changed: files={}/{}, "
+            "bytes={}/{}".format(
+                copied_files, expected_files, copied_bytes, expected_bytes
+            )
+        )
+    return {"files": copied_files, "bytes": copied_bytes}
+
+
 def validate_cache_pins():
+    if not isinstance(PLANNER_REVISION, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", PLANNER_REVISION
+    ):
+        raise ProtocolError("P4 planner revision is unset")
+    if not isinstance(PILOT_PROTOCOL_REVISION, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", PILOT_PROTOCOL_REVISION
+    ):
+        raise ProtocolError("P4 screen protocol revision is unset")
     _require_sha256(CACHE_BINARY_SHA256, "cached planner SHA-256")
     _require_sha256(CACHE_PREPROCESS_SHA256, "cached preprocess SHA-256")
 
@@ -1518,10 +1668,17 @@ def require_validation_revision_cache():
 
 
 def make_protocol_metadata(
-    matrix, artifact_sha256, benchmark_root, source_attestation
+    matrix,
+    artifact_sha256,
+    benchmark_root,
+    source_attestation,
+    *,
+    planner_revision=PLANNER_REVISION,
+    cache_binary_sha256=CACHE_BINARY_SHA256,
+    cache_preprocess_sha256=CACHE_PREPROCESS_SHA256,
 ):
     metadata = C.common_protocol_metadata(
-        PLANNER_REVISION, CACHE_BINARY_SHA256, matrix["run_count"]
+        planner_revision, cache_binary_sha256, matrix["run_count"]
     )
     additions = {
         "protocol": PROTOCOL,
@@ -1548,6 +1705,16 @@ def make_protocol_metadata(
         "domain_count": EXPECTED_DOMAINS,
         "source_manifest_sha256": source_attestation["source_manifest_sha256"],
         "task_sources_sha256": source_attestation["task_sources_sha256"],
+        "materialized_pddl_protocol": MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": EXPECTED_MATERIALIZED_PDDL_FILES[
+            matrix["run_count"]
+        ],
+        "materialized_pddl_bytes": EXPECTED_MATERIALIZED_PDDL_BYTES[
+            matrix["run_count"]
+        ],
+        "pddl_bytes_per_config": EXPECTED_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
         "fixed_configs_sha256": FIXED_VALIDATION_CONFIGS_SHA256,
         "config_count": len(matrix["configs"]),
         "option_matrix_sha256": matrix["matrix_digest"],
@@ -1560,7 +1727,7 @@ def make_protocol_metadata(
                 matrix["selector_winner"]["label"],
             )["analysis"]
         ),
-        "planner_preprocess_sha256": CACHE_PREPROCESS_SHA256,
+        "planner_preprocess_sha256": cache_preprocess_sha256,
         "experiment_data_directory": "data/{}".format(Path(__file__).stem),
         "benchmark_revision": BENCHMARK_REVISION,
         "benchmark_repository": BENCHMARK_REPOSITORY,
@@ -1965,6 +2132,9 @@ def attest_existing_start_grid(
     _attest_runtime_tree(code_dir)
 
     ordered_tasks = _resolve_ordered_tasks(benchmark_root, task_descriptions)
+    source_records = _heldout_source_records(task_descriptions)
+    materialized_files = 0
+    materialized_bytes = 0
     expected_run_groups = {
         _run_relative_path(run_id).parent.name
         for run_id in range(1, matrix["run_count"] + 1)
@@ -2025,23 +2195,26 @@ def attest_existing_start_grid(
                 )
             seen_ids.add(cell_id)
 
-            for link_name, source in (
-                ("domain.pddl", Path(task.domain_file).resolve()),
-                ("problem.pddl", Path(task.problem_file).resolve()),
+            record = source_records[(task.domain, task.problem)]
+            for link_name, source, hash_field in (
+                (
+                    "domain.pddl",
+                    Path(task.domain_file).resolve(),
+                    "domain_sha256",
+                ),
+                (
+                    "problem.pddl",
+                    Path(task.problem_file).resolve(),
+                    "problem_sha256",
+                ),
             ):
-                link = run_dir / link_name
-                if not link.is_symlink() or not link.exists():
-                    raise ProtocolError(
-                        "run {} {} must be a live PDDL symlink".format(
-                            run_id, link_name
-                        )
-                    )
-                if link.resolve() != source or not link.samefile(source):
-                    raise ProtocolError(
-                        "run {} {} targets {}, expected {}".format(
-                            run_id, link_name, link.resolve(), source
-                        )
-                    )
+                materialized_bytes += C.require_materialized_pddl(
+                    run_dir / link_name,
+                    record[hash_field],
+                    "run {} {}".format(run_id, link_name),
+                    source,
+                )
+                materialized_files += 1
 
             argv = [
                 sys.executable,
@@ -2071,6 +2244,13 @@ def attest_existing_start_grid(
                 len(seen_ids), matrix["run_count"]
             )
         )
+    expected_files = EXPECTED_MATERIALIZED_PDDL_FILES[matrix["run_count"]]
+    expected_bytes = EXPECTED_MATERIALIZED_PDDL_BYTES[matrix["run_count"]]
+    if materialized_files != expected_files or materialized_bytes != expected_bytes:
+        raise ProtocolError(
+            "attested materialized held-out PDDL totals changed: files={}, "
+            "bytes={}".format(materialized_files, materialized_bytes)
+        )
     for group_name in sorted(expected_run_groups):
         group = grid_path / group_name
         if group.is_symlink() or not group.is_dir():
@@ -2095,6 +2275,8 @@ def attest_existing_start_grid(
         "code_directory": expected_code_name,
         "binary_sha256": binary_sha256,
         "preprocess_sha256": preprocess_sha256,
+        "materialized_pddl_files": materialized_files,
+        "materialized_pddl_bytes": materialized_bytes,
         "job_sha256": expected_job_sha256,
     }
 
@@ -2108,6 +2290,7 @@ def inspect_launch_blockers(artifact_sha256):
                 artifact_sha256, required=True
             ),
         ),
+        ("reviewed P4 planner/screen/cache pins", validate_cache_pins),
         (
             "committed planner/protocol revision",
             lambda: C.require_clean_committed_revision(
@@ -2219,11 +2402,18 @@ def _synthetic_artifact(global_label, selector_label):
         "task_manifest_sha256": PILOT_MANIFEST_SHA256,
         "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256,
         "task_sources_sha256": PILOT_TASK_SOURCES_SHA256,
+        "materialized_pddl_protocol": MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": PILOT_MATERIALIZED_PDDL_FILES,
+        "materialized_pddl_bytes": PILOT_MATERIALIZED_PDDL_BYTES,
+        "pddl_bytes_per_config": PILOT_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": PILOT_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": PILOT_UNIQUE_PDDL_SOURCE_BYTES,
         "option_matrix_sha256": PILOT_OPTION_MATRIX_SHA256,
         "control_configs_sha256": PILOT_CONTROL_CONFIGS_SHA256,
         "selector_configs_sha256": PILOT_SELECTOR_CONFIGS_SHA256,
         "pdb_selector_parser_protocol": PDB_SELECTOR_PARSER_PROTOCOL,
         "metrics_validation_protocol": METRICS_VALIDATION_PROTOCOL,
+        "outcome_reconciliation_protocol": OUTCOME_RECONCILIATION_PROTOCOL,
         "selector_pool_protocol": SELECTOR_POOL_PROTOCOL,
         "selector_score_version": SELECTOR_SCORE_VERSION,
         "selector_source_order": list(SELECTOR_SOURCES),
@@ -2459,9 +2649,13 @@ def self_test():
     C.self_test_cofactor_width_parser()
     C.self_test_pdb_selector_parser()
     C.self_test_plan_file_parser()
+    C.self_test_outcome_reconciliation_parser()
+    C.self_test_pddl_materialization()
     _validate_frozen_constants()
     validate_fixed_environment()
-    validate_cache_pins()
+    _expect_protocol_error(
+        validate_cache_pins, "P4 screen protocol revision is unset"
+    )
     tasks = read_manifest()
     source_attestation = validate_manifest_record_pins(tasks)
 
@@ -2472,6 +2666,8 @@ def self_test():
         len(unbatched_matrix["configs"]) != 7
         or unbatched_matrix["run_count"] != 644
         or unbatched_matrix["matched_unbatched"] is not None
+        or unbatched_matrix["materialized_pddl_files"] != 1288
+        or unbatched_matrix["materialized_pddl_bytes"] != 72541896
     ):
         raise AssertionError("synthetic unbatched 7x92 contract changed")
     if [item["label"] for item in unbatched_matrix["config_records"]] != [
@@ -2496,6 +2692,8 @@ def self_test():
         len(batched_matrix["configs"]) != 8
         or batched_matrix["run_count"] != 736
         or batched_matrix["matched_unbatched"] != "pdb_selector_k64"
+        or batched_matrix["materialized_pddl_files"] != 1472
+        or batched_matrix["materialized_pddl_bytes"] != 82905024
     ):
         raise AssertionError("synthetic batched 8x92 contract changed")
     if [item["label"] for item in batched_matrix["config_records"]][-2:] != [
@@ -2508,7 +2706,7 @@ def self_test():
     if any("selection_artifact_sha256" in value for value in unbatched):
         raise AssertionError("selection artifact contains a forbidden self hash")
 
-    with tempfile.TemporaryDirectory(prefix="selector-artifact-v2-") as raw:
+    with tempfile.TemporaryDirectory(prefix="selector-artifact-v3-") as raw:
         artifact_path = Path(raw) / "selection.json"
         artifact_bytes = (canonical_json(unbatched) + "\n").encode("ascii")
         artifact_path.write_bytes(artifact_bytes)
@@ -2617,12 +2815,24 @@ def self_test():
 
     synthetic_sha = hashlib.sha256(canonical_json(unbatched).encode("ascii")).hexdigest()
     metadata = make_protocol_metadata(
-        unbatched_matrix, synthetic_sha, C.REPO, source_attestation
+        unbatched_matrix,
+        synthetic_sha,
+        C.REPO,
+        source_attestation,
+        planner_revision=C.REV,
+        cache_binary_sha256=hashlib.sha256(
+            b"synthetic heldout binary"
+        ).hexdigest(),
+        cache_preprocess_sha256=hashlib.sha256(
+            b"synthetic heldout preprocess"
+        ).hexdigest(),
     )
     if (
         metadata["selection_artifact_sha256"] != synthetic_sha
         or metadata["analysis_protocol"] != ANALYSIS_PROTOCOL
         or metadata["declared_run_count"] != 644
+        or metadata["materialized_pddl_files"] != 1288
+        or metadata["materialized_pddl_bytes"] != 72541896
     ):
         raise AssertionError("prospective protocol metadata changed")
     expected_selector_metadata = {
@@ -2647,7 +2857,7 @@ def self_test():
                 )
     print(
         "Arrhenius selector held-out runner self-test: PASS "
-        "(artifact v2; tampering; 7/8-config dedup; 644/736 arrays; fresh start)"
+        "(artifact v3; tampering; 7/8-config dedup; 644/736 arrays; fresh start)"
     )
     if EXPECTED_SELECTION_ARTIFACT_SHA256 is None:
         print("launch gate: BLOCKED (EXPECTED_SELECTION_ARTIFACT_SHA256 is unset)")
@@ -2659,17 +2869,23 @@ def check_protocol(
     tasks, matrix, artifact_sha256, artifact_path, benchmark_root,
     source_attestation
 ):
-    cache_info = C.inspect_revision_cache(PLANNER_REVISION)
+    cache_info = (
+        C.inspect_revision_cache(PLANNER_REVISION)
+        if isinstance(PLANNER_REVISION, str)
+        else None
+    )
     cached_preprocessor = (
         Path(cache_info["path"])
         / "builds"
         / C.CACHE_BUILD_NAME
         / "bin"
         / "preprocess"
+        if cache_info is not None
+        else None
     )
     cached_preprocess_sha256 = (
         _sha256_file(cached_preprocessor)
-        if cached_preprocessor.is_file()
+        if cached_preprocessor is not None and cached_preprocessor.is_file()
         else None
     )
     blockers = inspect_launch_blockers(artifact_sha256)
@@ -2699,8 +2915,12 @@ def check_protocol(
     print("benchmark revision/worktree: {} {}".format(
         BENCHMARK_REVISION, benchmark_root
     ))
-    print("revision cache: {}".format(cache_info["path"]))
-    print("cached binary SHA-256: {}".format(cache_info["binary_sha256"]))
+    print("revision cache: {}".format(
+        cache_info["path"] if cache_info is not None else "UNSET"
+    ))
+    print("cached binary SHA-256: {}".format(
+        cache_info["binary_sha256"] if cache_info is not None else "UNSET"
+    ))
     print("cached preprocess SHA-256: {}".format(cached_preprocess_sha256))
     print("launch gate: {}".format("BLOCKED" if blockers else "READY"))
     for blocker in blockers:
@@ -2733,7 +2953,6 @@ def main(argv=None):
     tasks = read_manifest()
     validate_manifest_record_pins(tasks)
     validate_matrix(tasks, matrix)
-    validate_cache_pins()
     benchmark_root = require_pinned_benchmark_worktree()
     source_attestation = attest_task_sources(benchmark_root, tasks)
 
@@ -2748,6 +2967,7 @@ def main(argv=None):
         )
         return 0
 
+    validate_cache_pins()
     cache_info = C.require_launch_prerequisites(
         PLANNER_REVISION,
         CACHE_BINARY_SHA256,
@@ -2768,9 +2988,11 @@ def main(argv=None):
             metadata, benchmark_root, tasks, matrix
         )
         print(
-            "start grid attestation: PASS ({} runs; binary {}; preprocess {}; "
-            "job {})".format(
+            "start grid attestation: PASS ({} runs; {} PDDL files/{} bytes; "
+            "binary {}; preprocess {}; job {})".format(
                 attestation["run_count"],
+                attestation["materialized_pddl_files"],
+                attestation["materialized_pddl_bytes"],
                 attestation["binary_sha256"],
                 attestation["preprocess_sha256"],
                 attestation["job_sha256"],
@@ -2792,14 +3014,20 @@ def main(argv=None):
     sys.argv = [sys.argv[0]] + args.steps
     experiment.run_steps()
     if "build" in args.steps:
+        materialized = materialize_grid_pddl_inputs(
+            benchmark_root, tasks, matrix
+        )
         cleanup = C.strip_copied_python_bytecode(EXPERIMENT_DATA_PATH)
         attestation = attest_existing_start_grid(
             metadata, benchmark_root, tasks, matrix
         )
         print(
             "built grid normalization/attestation: PASS "
-            "({} bytecode files; {} cache directories removed; job {})".
+            "({} PDDL files/{} bytes materialized; {} bytecode files; {} "
+            "cache directories removed; job {})".
             format(
+                materialized["files"],
+                materialized["bytes"],
                 cleanup["removed_bytecode_files"],
                 cleanup["removed_cache_directories"],
                 attestation["job_sha256"],

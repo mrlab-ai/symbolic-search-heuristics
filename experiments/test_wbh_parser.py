@@ -2,7 +2,11 @@
 """Focused synthetic acceptance and fail-closed tests for wbh_parser."""
 import copy
 import json
+import tempfile
 import unittest
+from pathlib import Path
+
+from downward.parsers.single_search_parser import SingleSearchParser
 
 import wbh_parser
 
@@ -149,6 +153,9 @@ class WbhParserTest(unittest.TestCase):
         self.assertIs(props["wbh_log_nonempty"], True)
         self.assertIs(props["raw_metrics_complete"], True)
         self.assertIs(props["piece_metrics_certified"], True)
+        self.assertIs(props["wbh_summary_solved"], False)
+        self.assertIsNone(props["wbh_done_solution_cost"])
+        self.assertIs(props["wbh_solved_summary_certified"], False)
         self.assertEqual(
             props["metrics_validation_protocol"],
             wbh_parser.METRICS_VALIDATION_PROTOCOL)
@@ -165,6 +172,141 @@ class WbhParserTest(unittest.TestCase):
     def test_records_exact_empty_log_presence(self):
         self.assertIs(parse([])["wbh_log_nonempty"], False)
         self.assertIs(parse([{}])["wbh_log_nonempty"], True)
+
+    def test_actual_parser_stack_preserves_plan_coverage_without_success_marker(self):
+        import exp_arrhenius_common as common
+
+        events = base_events()
+        summary = events.pop()
+        events.append({"event": "done", "effort": 5, "solution_cost": 5})
+        summary["solved"] = True
+        events.append(summary)
+        run_log = (
+            "[t=0.352273s, 557192 KB] Plan cost: 5\n"
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n"
+        )
+        self.assertNotIn("Solution found", run_log)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "run.log").write_text(run_log, encoding="utf-8")
+            (root / "wbh.jsonl").write_text(
+                "".join(json.dumps(item) + "\n" for item in events),
+                encoding="utf-8",
+            )
+            (root / "sas_plan").write_text(
+                "(move a b)\n; cost = 5 (unit cost)\n", encoding="utf-8"
+            )
+            props = FakeProperties(
+                unsolvable=0,
+                limit_search_time=300,
+                limit_search_memory=8192,
+                planner_exit_code=2,
+                planner_time=1.25,
+            )
+            SingleSearchParser().parse(root, props)
+            self.assertEqual(props["coverage"], 1)
+            wbh_parser.get_parser().parse(root, props)
+            common.get_run_log_plan_cost_parser().parse(root, props)
+            common.get_plan_file_parser().parse(root, props)
+            common.get_outcome_reconciliation_parser().parse(root, props)
+
+        self.assertEqual(props["coverage"], 1)
+        self.assertEqual(props["solution_cost"], 5)
+        self.assertIs(props["raw_metrics_complete"], True)
+        self.assertIs(props["piece_metrics_certified"], True)
+        self.assertIs(props["wbh_summary_solved"], True)
+        self.assertEqual(props["wbh_done_solution_cost"], 5)
+        self.assertIs(props["wbh_solved_summary_certified"], True)
+        self.assertIs(props["plan_file_canonical"], True)
+        self.assertEqual(props["plan_file_candidate_count"], 1)
+        self.assertEqual(props["plan_file_cost"], 5)
+        self.assertEqual(props["run_log_plan_cost"], 5)
+        self.assertIs(props["outcome_reconciliation_certified"], True)
+        self.assertNotIn("metrics_validation_error", props)
+        self.assertNotIn("unexplained_errors", props)
+
+    def test_actual_parser_stack_materializes_missing_and_empty_wbh(self):
+        import exp_arrhenius_common as common
+
+        for state in ("missing", "empty"):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "run.log").write_text(
+                    "translate exit code: 20\nplanner exit code: 20\n",
+                    encoding="utf-8",
+                )
+                if state == "empty":
+                    (root / "wbh.jsonl").write_text("", encoding="utf-8")
+                props = FakeProperties(
+                    unsolvable=0,
+                    limit_search_time=300,
+                    limit_search_memory=8192,
+                    planner_exit_code=20,
+                    # Real experiment runs already carry this static protocol
+                    # property before parser functions execute.
+                    metrics_validation_protocol=(
+                        wbh_parser.METRICS_VALIDATION_PROTOCOL
+                    ),
+                )
+                SingleSearchParser().parse(root, props)
+                wbh_parser.get_parser().parse(root, props)
+                common.get_run_log_plan_cost_parser().parse(root, props)
+                common.get_plan_file_parser().parse(root, props)
+                common.get_outcome_reconciliation_parser().parse(root, props)
+
+                self.assertEqual(props["coverage"], 0)
+                self.assertEqual(
+                    props["metrics_validation_protocol"],
+                    wbh_parser.METRICS_VALIDATION_PROTOCOL,
+                )
+                self.assertIs(props["wbh_log_nonempty"], False)
+                self.assertEqual(props["wbh_schema_version"], 1)
+                self.assertEqual(
+                    props["node_count_convention"], "legacy_cudd_dag_size"
+                )
+                self.assertEqual(
+                    props["image_count_convention"],
+                    "legacy_expand_event_count",
+                )
+                self.assertEqual(
+                    props["expansion_count_convention"],
+                    "legacy_attempts_unmarked",
+                )
+                self.assertIs(props["raw_metrics_complete"], False)
+                self.assertIs(props["piece_metrics_certified"], False)
+                self.assertIs(props["plan_file_present"], False)
+                self.assertEqual(props["plan_file_candidate_count"], 0)
+                self.assertIs(props["outcome_reconciliation_certified"], True)
+                self.assertNotIn("metrics_validation_error", props)
+                self.assertNotIn("unexplained_errors", props)
+
+    def test_exact_plan_cost_coverage_rejects_ambiguous_evidence(self):
+        exact = "[t=0.352273s, 557192 KB] Plan cost: 5\n"
+        cases = (
+            ("malformed", "Plan cost: 5\n", 1),
+            ("duplicate", exact + exact, 1),
+            ("cost-with-coverage-zero", exact, 0),
+            ("no-cost-with-coverage-one", "search started\n", 1),
+        )
+        for label, run_log, initial_coverage in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "run.log").write_text(run_log, encoding="utf-8")
+                props = FakeProperties(coverage=initial_coverage)
+                wbh_parser.get_parser().parse(root, props)
+                self.assertIsNone(props["coverage"])
+                self.assertIn(
+                    "run-log coverage validation failed",
+                    props["unexplained_errors"][0],
+                )
+
+        marker_only = FakeProperties(coverage=0)
+        wbh_parser.parse_coverage("Solution found.\n", marker_only)
+        self.assertEqual(marker_only["coverage"], 0)
+        self.assertNotIn("unexplained_errors", marker_only)
 
     def test_partial_stream_is_not_complete(self):
         events = base_events()[:-1]
@@ -215,6 +357,9 @@ class WbhParserTest(unittest.TestCase):
         self.assertEqual(props["coverage"], 1)
         self.assertEqual(props["effort"], 5)
         self.assertEqual(props["solution_cost"], 5)
+        self.assertIs(props["wbh_summary_solved"], True)
+        self.assertEqual(props["wbh_done_solution_cost"], 5)
+        self.assertIs(props["wbh_solved_summary_certified"], True)
 
     def test_rejects_done_effort_mismatch(self):
         events = base_events()
@@ -234,6 +379,7 @@ class WbhParserTest(unittest.TestCase):
             events, initial=FakeProperties(coverage=1, solution_cost=6))
         self.assertIs(props["raw_metrics_complete"], False)
         self.assertIs(props["piece_metrics_certified"], False)
+        self.assertIs(props["wbh_solved_summary_certified"], False)
         self.assertIsNone(props["coverage"])
         self.assertEqual(props["solution_cost"], 6)
         self.assertNotIn("effort", props)

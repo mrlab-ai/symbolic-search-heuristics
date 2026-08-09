@@ -22,8 +22,10 @@ import math
 import os
 import platform
 import re
+import stat
 import subprocess
 import sys
+import tempfile
 from fractions import Fraction
 from pathlib import Path
 
@@ -70,9 +72,19 @@ LAB_DEFAULT_DRIVER_PREFIX = [
     "3584M",
 ]
 PLAN_VALIDATION_PROTOCOL = (
-    "no-external-val;require-plan-file-and-cross-config-cost-agreement/v1"
+    "no-external-val;canonical-plan-log-wbh-cost-and-raw-exit-reconciliation/v2"
 )
-PLAN_FILE_PARSER_PROTOCOL = "sas_plan/exact-single-cost-footer/v1"
+PLAN_FILE_PARSER_PROTOCOL = (
+    "sas_plan/exact-zero-or-single-stable-single-link-regular-"
+    "nonsymlink-cost-footer/v2"
+)
+OUTCOME_RECONCILIATION_PROTOCOL = (
+    "direct-search-raw-effective-plan-reconciliation/v1"
+)
+PDDL_MATERIALIZATION_PROTOCOL = (
+    "per-cell-independent-manual-byte-copy-temp-digest-atomic-replace-"
+    "readonly/v1"
+)
 
 # Arrhenius CPU nodes are homogeneous AMD EPYC 9755 nodes.  MAX_TASKS follows
 # Slurm's MaxArraySize=1001: Lab uses one-based array indices, hence at most
@@ -162,9 +174,27 @@ _COFACTOR_WIDTH_FIELD_RE = re.compile(
     r"(?:^|, )cofactor_width=(\d+)(?=, |$)"
 )
 _PLAN_COST_RE = re.compile(
-    r"^; cost = (\d+) \((?:unit|general) cost\)$", re.MULTILINE
+    r"^; cost = (0|[1-9][0-9]*) \((?:unit|general) cost\)$",
+    re.MULTILINE,
 )
+_CANONICAL_SIGNED_INT_RE = r"(0|[1-9][0-9]*|-[1-9][0-9]*)"
+_SEARCH_RAW_EXIT_RE = re.compile(
+    r"^search raw exit code: " + _CANONICAL_SIGNED_INT_RE + r"$"
+)
+_SEARCH_EFFECTIVE_EXIT_RE = re.compile(
+    r"^search exit code: " + _CANONICAL_SIGNED_INT_RE + r"$"
+)
+_SEARCH_RECONCILIATION_RE = re.compile(
+    r"^search resource-limit exit with complete plan: "
+    r"raw_exit_code=" + _CANONICAL_SIGNED_INT_RE
+    + r" effective_exit_code=" + _CANONICAL_SIGNED_INT_RE + r"$"
+)
+_MAPPED_RESOURCE_EXITS = {22: 1, 23: 2, 24: 3}
+_PRESEARCH_EXIT_CODES = frozenset((10, 20, 21))
 _LOG_PREFIX = r"\[t=\d+\.\d{6}s, \d+ KB\] "
+_RUN_LOG_PLAN_COST_RE = re.compile(
+    r"^" + _LOG_PREFIX + r"Plan cost: (0|[1-9][0-9]*)$", re.MULTILINE
+)
 _PDB_FINAL_MARKER = "wbh PDB heuristic:"
 _PDB_SELECTOR_CANDIDATE_MARKER = "PDB width-selector v1 candidate:"
 _PDB_SELECTOR_SELECTED_MARKER = "PDB width-selector v1 selected:"
@@ -855,37 +885,408 @@ def get_pdb_selector_parser() -> Parser:
 
 
 def parse_plan_file(content, props) -> None:
-    """Require exactly one canonical cost footer in every emitted plan."""
+    """Require exactly one canonical final cost footer in an emitted plan."""
     if not content.strip():
         props["plan_file_present"] = False
+        props["plan_file_candidate_count"] = 0
+        props["plan_file_canonical"] = False
         return
     props["plan_file_present"] = True
+    props["plan_file_candidate_count"] = 1
+    props["plan_file_canonical"] = False
     costs = _PLAN_COST_RE.findall(content)
-    if len(costs) != 1:
+    lines = content.splitlines()
+    final = _PLAN_COST_RE.fullmatch(lines[-1]) if lines else None
+    if len(costs) != 1 or final is None or not content.endswith("\n"):
         tools.add_unexplained_error(
             props,
-            "plan parser expected one canonical cost footer; got {}".format(
-                len(costs)
-            ),
+            "plan parser expected one canonical final cost footer; got {}".
+            format(len(costs)),
         )
         return
-    props["plan_file_cost"] = int(costs[0])
+    props["plan_file_cost"] = int(final.group(1))
+    props["plan_file_canonical"] = True
+
+
+def _is_plan_candidate_name(name: str) -> bool:
+    numbered_prefix = "sas_plan."
+    return name == "sas_plan" or (
+        name.startswith(numbered_prefix)
+        and name[len(numbered_prefix):].isdigit()
+    )
+
+
+def _plan_entry_fingerprint(status):
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_mode,
+        status.st_nlink,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def _read_stable_plan_file(path: Path, initial_status):
+    """Read one immutable-identity, single-link regular plan path."""
+    expected = _plan_entry_fingerprint(initial_status)
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or _plan_entry_fingerprint(opened) != expected
+        ):
+            raise OSError("canonical sas_plan identity changed before read")
+        with os.fdopen(descriptor, encoding="utf-8") as stream:
+            descriptor = -1
+            content = stream.read()
+            after_read = os.fstat(stream.fileno())
+            if _plan_entry_fingerprint(after_read) != expected:
+                raise OSError("canonical sas_plan changed while being read")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    after_path = path.lstat()
+    if _plan_entry_fingerprint(after_path) != expected:
+        raise OSError("canonical sas_plan path identity changed after read")
+    return content
 
 
 class PlanFileParser(Parser):
-    """Parser that records absence as well as contents of ``sas_plan``."""
+    """Certify the exact canonical plan-file inventory and footer."""
 
     def parse(self, run_dir, props):
-        path = Path(run_dir).resolve() / "sas_plan"
+        root = Path(run_dir).resolve()
+        entries = list(root.iterdir())
+        candidates = [
+            path for path in entries
+            if _is_plan_candidate_name(path.name)
+        ]
+        props["plan_file_candidate_count"] = len(candidates)
+        path = root / "sas_plan"
+        canonical_entry = next(
+            (candidate for candidate in candidates if candidate.name == "sas_plan"),
+            None,
+        )
+        if canonical_entry is None:
+            props["plan_file_present"] = False
+            props["plan_file_canonical"] = False
+            if candidates:
+                tools.add_unexplained_error(
+                    props,
+                    "plan parser found plan artifacts without canonical sas_plan",
+                )
+            return
+        props["plan_file_present"] = True
+        props["plan_file_canonical"] = False
+        statuses = {}
+        invalid_entries = []
+        for candidate in candidates:
+            try:
+                status = candidate.lstat()
+            except OSError:
+                invalid_entries.append(candidate.name)
+                continue
+            statuses[candidate] = status
+            if not stat.S_ISREG(status.st_mode) or status.st_nlink != 1:
+                invalid_entries.append(candidate.name)
+        if invalid_entries:
+            tools.add_unexplained_error(
+                props,
+                "plan parser requires single-link regular non-symlink "
+                "candidates: {}".
+                format(", ".join(sorted(invalid_entries))),
+            )
+        if len(candidates) != 1:
+            tools.add_unexplained_error(
+                props,
+                "plan parser expected exactly one canonical plan artifact; "
+                "got {} candidates".format(len(candidates)),
+            )
+        initial_status = statuses.get(canonical_entry)
+        if (
+            initial_status is None
+            or not stat.S_ISREG(initial_status.st_mode)
+            or initial_status.st_nlink != 1
+        ):
+            return
         try:
-            content = path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            content = ""
+            content = _read_stable_plan_file(path, initial_status)
+        except (OSError, UnicodeError) as err:
+            tools.add_unexplained_error(
+                props, "plan parser could not read canonical sas_plan: {}".format(err)
+            )
+            return
         parse_plan_file(content, props)
+        props["plan_file_candidate_count"] = len(candidates)
+        if not content.strip():
+            tools.add_unexplained_error(
+                props, "plan parser found an empty canonical sas_plan"
+            )
+        if len(candidates) != 1 or invalid_entries:
+            props["plan_file_canonical"] = False
 
 
 def get_plan_file_parser() -> Parser:
     return PlanFileParser()
+
+
+def parse_run_log_plan_cost(content, props) -> None:
+    """Preserve the one canonical plan cost printed by search."""
+    matching_lines = [
+        line for line in content.splitlines() if "Plan cost:" in line
+    ]
+    costs = _RUN_LOG_PLAN_COST_RE.findall(content)
+    if not matching_lines:
+        return
+    if len(matching_lines) != 1 or len(costs) != 1:
+        tools.add_unexplained_error(
+            props,
+            "run-log plan-cost parser expected one canonical line; got {}".
+            format(len(matching_lines)),
+        )
+        return
+    props["run_log_plan_cost"] = int(costs[0])
+
+
+def get_run_log_plan_cost_parser() -> Parser:
+    parser = Parser()
+    parser.add_function(parse_run_log_plan_cost, file="run.log")
+    return parser
+
+
+def _finite_nonnegative_number(value) -> bool:
+    if type(value) not in (int, float):
+        return False
+    try:
+        return value >= 0 and math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def parse_outcome_reconciliation(content, props) -> None:
+    """Certify direct-search raw/effective outcomes against solved evidence.
+
+    A resource-limit code is promoted to a solved effective code only for the
+    exact 22->1, 23->2, or 24->3 mapping emitted by the reviewed direct driver.
+    The mapped outcome is not certified merely because a plan exists: the
+    canonical plan file, search log, and WBH done event must agree on cost and
+    the schema-v2 solved summary must be complete and certified.
+    """
+    props["outcome_reconciliation_protocol"] = OUTCOME_RECONCILIATION_PROTOCOL
+    errors = []
+    lines = content.splitlines()
+    raw_matches = []
+    effective_matches = []
+    reconciliation_matches = []
+    raw_mentions = []
+    effective_mentions = []
+    reconciliation_mentions = []
+    for index, line in enumerate(lines):
+        raw = _SEARCH_RAW_EXIT_RE.fullmatch(line)
+        effective = _SEARCH_EFFECTIVE_EXIT_RE.fullmatch(line)
+        reconciliation = _SEARCH_RECONCILIATION_RE.fullmatch(line)
+        if raw:
+            raw_matches.append((index, int(raw.group(1))))
+        if effective:
+            effective_matches.append((index, int(effective.group(1))))
+        if reconciliation:
+            reconciliation_matches.append(
+                (index, int(reconciliation.group(1)), int(reconciliation.group(2)))
+            )
+        if "search raw exit code:" in line:
+            raw_mentions.append(index)
+        if "search exit code:" in line:
+            effective_mentions.append(index)
+        if "search resource-limit exit with complete plan:" in line:
+            reconciliation_mentions.append(index)
+
+    planner_exit = props.get("planner_exit_code")
+    presearch = planner_exit in _PRESEARCH_EXIT_CODES
+    if presearch:
+        if raw_mentions or effective_mentions or reconciliation_mentions:
+            errors.append("pre-search outcome unexpectedly contains search exit lines")
+        if props.get("coverage") != 0:
+            errors.append("pre-search outcome must remain unsolved")
+        if props.get("plan_file_present") is not False:
+            errors.append("pre-search outcome unexpectedly has a plan")
+        if props.get("plan_file_candidate_count") != 0:
+            errors.append("pre-search outcome must have zero plan candidates")
+        if props.get("plan_file_canonical") is not False:
+            errors.append("pre-search outcome has canonical plan certification")
+    else:
+        if len(raw_mentions) != 1 or len(raw_matches) != 1:
+            errors.append("expected exactly one canonical search raw exit-code line")
+        if len(effective_mentions) != 1 or len(effective_matches) != 1:
+            errors.append("expected exactly one canonical search effective exit-code line")
+
+    raw_exit = raw_matches[0][1] if len(raw_matches) == 1 else None
+    effective_exit = (
+        effective_matches[0][1] if len(effective_matches) == 1 else None
+    )
+    if raw_exit is not None:
+        props["search_raw_exit_code"] = raw_exit
+    if effective_exit is not None:
+        props["search_effective_exit_code"] = effective_exit
+
+    if not presearch and raw_exit is not None and effective_exit is not None:
+        if raw_matches[0][0] >= effective_matches[0][0]:
+            errors.append("search raw exit-code line must precede effective line")
+        if planner_exit != effective_exit:
+            errors.append(
+                "planner_exit_code={!r} != search effective exit code {}".
+                format(planner_exit, effective_exit)
+            )
+        mapped_effective = _MAPPED_RESOURCE_EXITS.get(raw_exit)
+        mapped = raw_exit != effective_exit
+        if mapped:
+            if mapped_effective != effective_exit:
+                errors.append(
+                    "unsupported raw/effective search mapping {}->{}".
+                    format(raw_exit, effective_exit)
+                )
+            if (
+                len(reconciliation_mentions) != 1
+                or len(reconciliation_matches) != 1
+            ):
+                errors.append(
+                    "mapped outcome needs exactly one canonical reconciliation line"
+                )
+            else:
+                marker_index, marker_raw, marker_effective = (
+                    reconciliation_matches[0]
+                )
+                if (marker_raw, marker_effective) != (raw_exit, effective_exit):
+                    errors.append("reconciliation line disagrees with exit-code lines")
+                if not (
+                    raw_matches[0][0] < marker_index < effective_matches[0][0]
+                ):
+                    errors.append(
+                        "reconciliation line must occur between raw and effective lines"
+                    )
+        elif reconciliation_mentions:
+            errors.append("identity outcome unexpectedly contains reconciliation line")
+
+        solved = effective_exit in (0, 1, 2, 3)
+        if solved:
+            costs = {
+                "planner": props.get("solution_cost"),
+                "plan": props.get("plan_file_cost"),
+                "run-log": props.get("run_log_plan_cost"),
+                "WBH-done": props.get("wbh_done_solution_cost"),
+            }
+            if props.get("coverage") != 1:
+                errors.append("solved effective outcome requires coverage=1")
+            if props.get("plan_file_present") is not True:
+                errors.append("solved effective outcome requires one canonical plan")
+            if props.get("plan_file_candidate_count") != 1:
+                errors.append("solved effective outcome requires exactly one plan candidate")
+            if props.get("plan_file_canonical") is not True:
+                errors.append("solved effective outcome requires canonical plan certification")
+            if any(type(value) is not int or value < 0 for value in costs.values()):
+                errors.append("solved cost evidence is missing or noncanonical")
+            elif len(set(costs.values())) != 1:
+                errors.append(
+                    "plan/log/WBH done costs disagree: {}".format(
+                        ", ".join(
+                            "{}={}".format(name, value)
+                            for name, value in costs.items()
+                        )
+                    )
+                )
+            if props.get("wbh_schema_version") != 2:
+                errors.append("solved outcome requires WBH schema v2")
+            if props.get("raw_metrics_complete") is not True:
+                errors.append("solved outcome requires a complete WBH summary")
+            if props.get("piece_metrics_certified") is not True:
+                errors.append("solved outcome requires certified WBH metrics")
+            if props.get("wbh_summary_solved") is not True:
+                errors.append("solved outcome requires summary.solved=true")
+            if props.get("wbh_solved_summary_certified") is not True:
+                errors.append("solved WBH summary is not certified")
+            if props.get("metrics_validation_error") is not None:
+                errors.append("solved WBH stream has parser diagnostics")
+            if not _finite_nonnegative_number(props.get("planner_time")):
+                errors.append("solved outcome requires finite nonnegative planner_time")
+        else:
+            # Every identity non-success, including an unchanged resource
+            # limit, remains an unsolved/censored result with no plan.
+            if props.get("coverage") != 0:
+                errors.append("identity non-success exit must remain unsolved")
+            if props.get("plan_file_present") is not False:
+                errors.append("identity non-success exit unexpectedly has a plan")
+            if props.get("plan_file_candidate_count") != 0:
+                errors.append("identity non-success exit must have zero plan candidates")
+            if props.get("plan_file_canonical") is not False:
+                errors.append("identity non-success exit has canonical plan certification")
+            if any(
+                props.get(name) is not None
+                for name in (
+                    "solution_cost",
+                    "plan_file_cost",
+                    "run_log_plan_cost",
+                    "wbh_done_solution_cost",
+                )
+            ):
+                errors.append("identity non-success exit has solved cost evidence")
+            if props.get("wbh_schema_version") == 2:
+                raw_complete = props.get("raw_metrics_complete")
+                summary_solved = props.get("wbh_summary_solved")
+                if props.get("wbh_solved_summary_certified") is not False:
+                    errors.append(
+                        "unsolved schema-v2 outcome requires exact false solved-"
+                        "summary certification"
+                    )
+                if raw_complete is True:
+                    if summary_solved is not False:
+                        errors.append(
+                            "complete unsolved schema-v2 outcome requires "
+                            "summary.solved=false"
+                        )
+                elif raw_complete is False:
+                    if summary_solved is not None:
+                        errors.append(
+                            "incomplete unsolved schema-v2 outcome requires no "
+                            "summary.solved value"
+                        )
+                else:
+                    errors.append(
+                        "unsolved schema-v2 outcome requires boolean raw metrics "
+                        "completeness"
+                    )
+
+        if effective_exit in (1, 2, 3) and (
+            _MAPPED_RESOURCE_EXITS.get(raw_exit) != effective_exit
+        ):
+            errors.append(
+                "effective mapped-success code requires exact resource mapping"
+            )
+
+    existing_unexplained = props.get("unexplained_errors")
+    if existing_unexplained not in (None, []):
+        errors.append("earlier parser reported unexplained errors")
+
+    errors = list(dict.fromkeys(errors))
+    props["outcome_reconciliation_certified"] = not errors
+    if errors:
+        props["outcome_reconciliation_error"] = " | ".join(errors)
+        tools.add_unexplained_error(
+            props,
+            "outcome reconciliation failed: " + props[
+                "outcome_reconciliation_error"
+            ],
+        )
+
+
+def get_outcome_reconciliation_parser() -> Parser:
+    parser = Parser()
+    parser.add_function(parse_outcome_reconciliation, file="run.log")
+    return parser
 
 
 def _required_lab_version() -> str:
@@ -1102,6 +1503,121 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def require_materialized_pddl(
+    path: Path,
+    expected_sha256: str,
+    label: str,
+    source: Path | None = None,
+) -> int:
+    """Certify one independent, read-only PDDL input copy."""
+    path = Path(path)
+    try:
+        info = path.lstat()
+    except OSError as err:
+        raise RuntimeError(
+            "cannot stat {} {}: {}".format(label, path, err)
+        ) from err
+    if path.is_symlink() or not stat.S_ISREG(info.st_mode):
+        raise RuntimeError(
+            "{} must be a regular non-symlink materialized file: {}".format(
+                label, path
+            )
+        )
+    if info.st_nlink != 1:
+        raise RuntimeError("{} must not be a hardlink: {}".format(label, path))
+    if info.st_mode & 0o222:
+        raise RuntimeError("{} must be read-only: {}".format(label, path))
+    if source is not None:
+        source = Path(source)
+        try:
+            if path.samefile(source):
+                raise RuntimeError(
+                    "{} aliases its benchmark source: {}".format(label, path)
+                )
+        except OSError as err:
+            raise RuntimeError(
+                "cannot compare {} with benchmark source: {}".format(
+                    label, err
+                )
+            ) from err
+    actual_sha256 = _sha256_file(path)
+    if actual_sha256 != expected_sha256:
+        raise RuntimeError(
+            "{} SHA-256 changed: expected {}, got {} ({})".format(
+                label, expected_sha256, actual_sha256, path
+            )
+        )
+    return info.st_size
+
+
+def materialize_pddl_link(
+    link: Path,
+    source: Path,
+    expected_sha256: str,
+    label: str,
+) -> int:
+    """Atomically replace one exact Lab PDDL link with an independent copy."""
+    link = Path(link)
+    source = Path(source).resolve()
+    if (
+        not link.is_symlink()
+        or not link.exists()
+        or link.resolve() != source
+        or not link.samefile(source)
+    ):
+        raise RuntimeError(
+            "{} must begin as the exact live Lab source symlink: {}".format(
+                label, link
+            )
+        )
+    try:
+        source_info = source.lstat()
+    except OSError as err:
+        raise RuntimeError(
+            "cannot stat benchmark PDDL source {}: {}".format(source, err)
+        ) from err
+    if source.is_symlink() or not stat.S_ISREG(source_info.st_mode):
+        raise RuntimeError(
+            "benchmark PDDL source must be a regular non-symlink file: {}".
+            format(source)
+        )
+    if _sha256_file(source) != expected_sha256:
+        raise RuntimeError("{} benchmark source digest changed".format(label))
+
+    descriptor, temporary_raw = tempfile.mkstemp(
+        prefix=".{}-materializing-".format(link.name), dir=str(link.parent)
+    )
+    temporary = Path(temporary_raw)
+    try:
+        digest = hashlib.sha256()
+        destination_stream = os.fdopen(descriptor, "wb")
+        descriptor = -1
+        with source.open("rb") as source_stream, destination_stream:
+            while True:
+                chunk = source_stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                destination_stream.write(chunk)
+                digest.update(chunk)
+            destination_stream.flush()
+            os.fsync(destination_stream.fileno())
+        if digest.hexdigest() != expected_sha256:
+            raise RuntimeError("{} copied digest changed".format(label))
+        temporary.chmod(0o444)
+        require_materialized_pddl(
+            temporary, expected_sha256, "staged " + label, source
+        )
+        os.replace(temporary, link)
+        return require_materialized_pddl(
+            link, expected_sha256, label, source
+        )
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary.exists() or temporary.is_symlink():
+            temporary.unlink()
 
 
 def _git_output(*args: str) -> str:
@@ -1543,6 +2059,7 @@ def common_protocol_metadata(
         "external_plan_validation": False,
         "plan_validation_protocol": PLAN_VALIDATION_PROTOCOL,
         "plan_file_parser_protocol": PLAN_FILE_PARSER_PROTOCOL,
+        "outcome_reconciliation_protocol": OUTCOME_RECONCILIATION_PROTOCOL,
         "cofactor_width_property": COFACTOR_WIDTH_PROPERTY,
         "cofactor_width_parser_protocol": COFACTOR_WIDTH_PARSER_PROTOCOL,
         "metrics_validation_protocol": wbh_parser.METRICS_VALIDATION_PROTOCOL,
@@ -1621,7 +2138,9 @@ def new_experiment(protocol_metadata: dict) -> ProtocolFastDownwardExperiment:
     experiment.add_parser(wbh_parser.get_parser())
     experiment.add_parser(get_cofactor_width_parser())
     experiment.add_parser(get_pdb_selector_parser())
+    experiment.add_parser(get_run_log_plan_cost_parser())
     experiment.add_parser(get_plan_file_parser())
+    experiment.add_parser(get_outcome_reconciliation_parser())
     return experiment
 
 
@@ -1676,7 +2195,11 @@ def add_suite(experiment, benchmarks: Path, suite) -> None:
 
 ATTRIBUTES = [
     "coverage", "solution_cost", "planner_time", "total_time", "effort",
-    "plan_file_present", "plan_file_cost",
+    "plan_file_present", "plan_file_candidate_count", "plan_file_canonical",
+    "plan_file_cost", "run_log_plan_cost",
+    "search_raw_exit_code", "search_effective_exit_code",
+    "outcome_reconciliation_protocol", "outcome_reconciliation_certified",
+    "outcome_reconciliation_error",
     "cofactor_width",
     "pdb_final_format", "pdb_pattern_size", "pdb_final_num_values",
     "pdb_final_cofactor_width", "pdb_final_width_upper_bound",
@@ -1694,6 +2217,8 @@ ATTRIBUTES = [
     "image_events", "bucket_images", "image_source_buckets",
     "image_source_pieces", "image_calls_attempted", "image_calls_completed",
     "batched_images", "image_time", "raw_metrics_complete",
+    "wbh_summary_solved", "wbh_done_solution_cost",
+    "wbh_solved_summary_certified",
     "wbh_log_nonempty", "wbh_schema_version", "node_count_convention",
     "image_count_convention",
     "expansion_count_convention", "piece_metrics_certified",
@@ -2385,21 +2910,614 @@ def self_test_plan_file_parser():
     for footer in ("unit cost", "general cost"):
         props = {}
         parse_plan_file("(move a b)\n; cost = 17 ({})\n".format(footer), props)
-        if props != {"plan_file_present": True, "plan_file_cost": 17}:
+        if props != {
+            "plan_file_present": True,
+            "plan_file_candidate_count": 1,
+            "plan_file_canonical": True,
+            "plan_file_cost": 17,
+        }:
             raise AssertionError("wrong plan-file parse: {!r}".format(props))
     empty = {}
     parse_plan_file("", empty)
-    if empty != {"plan_file_present": False}:
+    if empty != {
+        "plan_file_present": False,
+        "plan_file_candidate_count": 0,
+        "plan_file_canonical": False,
+    }:
         raise AssertionError("missing plan file was not recorded exactly")
-    malformed = {}
-    parse_plan_file("(move a b)\n", malformed)
-    if malformed.get("plan_file_present") is not True or not malformed.get(
-        "unexplained_errors"
+    for label, content in (
+        ("missing footer", "(move a b)\n"),
+        (
+            "non-final footer",
+            "(move a b)\n; cost = 17 (unit cost)\ntrailing text\n",
+        ),
+        (
+            "duplicate footer",
+            "; cost = 17 (unit cost)\n; cost = 17 (unit cost)\n",
+        ),
+        (
+            "footer without terminal newline",
+            "(move a b)\n; cost = 17 (unit cost)",
+        ),
+        (
+            "noncanonical footer integer",
+            "(move a b)\n; cost = 017 (unit cost)\n",
+        ),
     ):
-        raise AssertionError("malformed plan footer was accepted")
+        malformed = {}
+        parse_plan_file(content, malformed)
+        if (
+            malformed.get("plan_file_present") is not True
+            or malformed.get("plan_file_candidate_count") != 1
+            or malformed.get("plan_file_canonical") is not False
+            or not malformed.get("unexplained_errors")
+        ):
+            raise AssertionError("{} was accepted".format(label))
+
+    canonical_plan = "(move a b)\n; cost = 17 (unit cost)\n"
+
+    def parse_inventory(setup):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            setup(root)
+            props = {}
+            get_plan_file_parser().parse(root, props)
+            return props
+
+    inventory = parse_inventory(
+        lambda root: (root / "sas_plan").write_text(
+            canonical_plan, encoding="utf-8"
+        )
+    )
+    if inventory != {
+        "plan_file_present": True,
+        "plan_file_candidate_count": 1,
+        "plan_file_canonical": True,
+        "plan_file_cost": 17,
+    }:
+        raise AssertionError("canonical inventory was not accepted: {!r}".format(
+            inventory
+        ))
+
+    def canonical_plus_numeric(root):
+        (root / "sas_plan").write_text(canonical_plan, encoding="utf-8")
+        (root / "sas_plan.1").write_text(canonical_plan, encoding="utf-8")
+        (root / "sas_plan.\u0661").write_text(canonical_plan, encoding="utf-8")
+
+    inventory = parse_inventory(canonical_plus_numeric)
+    if (
+        inventory.get("plan_file_candidate_count") != 3
+        or inventory.get("plan_file_canonical") is not False
+        or not inventory.get("unexplained_errors")
+    ):
+        raise AssertionError("numeric side plan was not rejected: {!r}".format(
+            inventory
+        ))
+
+    inventory = parse_inventory(
+        lambda root: (root / "sas_plan.7").write_text(
+            canonical_plan, encoding="utf-8"
+        )
+    )
+    if (
+        inventory.get("plan_file_present") is not False
+        or inventory.get("plan_file_candidate_count") != 1
+        or inventory.get("plan_file_canonical") is not False
+        or not inventory.get("unexplained_errors")
+    ):
+        raise AssertionError("numeric-only inventory was accepted: {!r}".format(
+            inventory
+        ))
+
+    def canonical_symlink(root):
+        (root / "real_plan").write_text(canonical_plan, encoding="utf-8")
+        (root / "sas_plan").symlink_to("real_plan")
+
+    inventory = parse_inventory(canonical_symlink)
+    if (
+        inventory.get("plan_file_candidate_count") != 1
+        or inventory.get("plan_file_canonical") is not False
+        or not inventory.get("unexplained_errors")
+    ):
+        raise AssertionError("canonical symlink was accepted: {!r}".format(
+            inventory
+        ))
+
+    def canonical_hardlink(root):
+        (root / "plan_source").write_text(canonical_plan, encoding="utf-8")
+        os.link(root / "plan_source", root / "sas_plan")
+
+    inventory = parse_inventory(canonical_hardlink)
+    if (
+        inventory.get("plan_file_candidate_count") != 1
+        or inventory.get("plan_file_canonical") is not False
+        or not inventory.get("unexplained_errors")
+    ):
+        raise AssertionError("canonical hardlink was accepted: {!r}".format(
+            inventory
+        ))
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        path = root / "sas_plan"
+        path.write_text(canonical_plan, encoding="utf-8")
+        initial_status = path.lstat()
+        replacement = root / "replacement"
+        replacement.write_text(canonical_plan, encoding="utf-8")
+        os.replace(replacement, path)
+        try:
+            _read_stable_plan_file(path, initial_status)
+        except OSError:
+            pass
+        else:
+            raise AssertionError("replaced canonical plan identity was accepted")
+
+    def broken_numeric_symlink(root):
+        (root / "sas_plan").write_text(canonical_plan, encoding="utf-8")
+        (root / "sas_plan.2").symlink_to("missing-target")
+
+    inventory = parse_inventory(broken_numeric_symlink)
+    if (
+        inventory.get("plan_file_candidate_count") != 2
+        or inventory.get("plan_file_canonical") is not False
+        or not inventory.get("unexplained_errors")
+    ):
+        raise AssertionError("broken numeric symlink was not inventoried: {!r}".
+                             format(inventory))
+
+    inventory = parse_inventory(lambda root: (root / "sas_plan").mkdir())
+    if (
+        inventory.get("plan_file_candidate_count") != 1
+        or inventory.get("plan_file_canonical") is not False
+        or not inventory.get("unexplained_errors")
+    ):
+        raise AssertionError("nonregular canonical plan was accepted: {!r}".format(
+            inventory
+        ))
+
+    inventory = parse_inventory(
+        lambda root: (root / "sas_plan").write_text("", encoding="utf-8")
+    )
+    if (
+        inventory.get("plan_file_candidate_count") != 1
+        or inventory.get("plan_file_canonical") is not False
+        or not inventory.get("unexplained_errors")
+    ):
+        raise AssertionError("empty canonical plan was accepted: {!r}".format(
+            inventory
+        ))
+
+    inventory = parse_inventory(lambda root: None)
+    if inventory != {
+        "plan_file_candidate_count": 0,
+        "plan_file_present": False,
+        "plan_file_canonical": False,
+    }:
+        raise AssertionError("empty inventory was not exact: {!r}".format(inventory))
     if not isinstance(get_plan_file_parser(), PlanFileParser):
         raise AssertionError("plan-file parser type changed")
-    print("plan-file parser self-tests: PASS (missing/unit/general/malformed)")
+    print(
+        "plan-file parser self-tests: PASS "
+        "(exact stable single-link inventory/footer; "
+        "numeric/symlink/hardlink/replacement/nonregular adversaries)"
+    )
+
+
+def _synthetic_solved_outcome_props(exit_code):
+    return {
+        "planner_exit_code": exit_code,
+        "coverage": 1,
+        "solution_cost": 17,
+        "plan_file_present": True,
+        "plan_file_candidate_count": 1,
+        "plan_file_canonical": True,
+        "plan_file_cost": 17,
+        "run_log_plan_cost": 17,
+        "wbh_schema_version": 2,
+        "raw_metrics_complete": True,
+        "piece_metrics_certified": True,
+        "wbh_summary_solved": True,
+        "wbh_done_solution_cost": 17,
+        "wbh_solved_summary_certified": True,
+        "planner_time": 1.25,
+    }
+
+
+def self_test_outcome_reconciliation_parser():
+    identity = _synthetic_solved_outcome_props(0)
+    parse_outcome_reconciliation(
+        "search raw exit code: 0\nsearch exit code: 0\n", identity
+    )
+    if (
+        identity.get("search_raw_exit_code") != 0
+        or identity.get("search_effective_exit_code") != 0
+        or identity.get("outcome_reconciliation_certified") is not True
+    ):
+        raise AssertionError("identity solved outcome was not certified")
+
+    for raw, effective in sorted(_MAPPED_RESOURCE_EXITS.items()):
+        props = _synthetic_solved_outcome_props(effective)
+        log = (
+            "search raw exit code: {raw}\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code={raw} effective_exit_code={effective}\n"
+            "search exit code: {effective}\n"
+        ).format(raw=raw, effective=effective)
+        parse_outcome_reconciliation(log, props)
+        if props.get("outcome_reconciliation_certified") is not True:
+            raise AssertionError(
+                "exact mapping {}->{} was not certified: {!r}".format(
+                    raw, effective, props
+                )
+            )
+
+    resource_base = {
+        "planner_exit_code": 23,
+        "coverage": 0,
+        "plan_file_present": False,
+        "plan_file_candidate_count": 0,
+        "plan_file_canonical": False,
+        "wbh_schema_version": 2,
+        "raw_metrics_complete": False,
+        "piece_metrics_certified": True,
+        "wbh_summary_solved": None,
+        "wbh_done_solution_cost": None,
+        "wbh_solved_summary_certified": False,
+    }
+    resource = copy.deepcopy(resource_base)
+    parse_outcome_reconciliation(
+        "search raw exit code: 23\nsearch exit code: 23\n", resource
+    )
+    if resource.get("outcome_reconciliation_certified") is not True:
+        raise AssertionError("ordinary resource exit was not preserved as unsolved")
+
+    unsolved_wbh_mutations = (
+        (
+            "incomplete summary claims solved",
+            {"wbh_summary_solved": True},
+        ),
+        (
+            "missing exact false certification",
+            {"wbh_solved_summary_certified": None},
+        ),
+        (
+            "string false certification",
+            {"wbh_solved_summary_certified": "false"},
+        ),
+        (
+            "complete summary omits solved=false",
+            {"raw_metrics_complete": True, "wbh_summary_solved": None},
+        ),
+        (
+            "complete summary claims solved",
+            {"raw_metrics_complete": True, "wbh_summary_solved": True},
+        ),
+    )
+    for label, updates in unsolved_wbh_mutations:
+        props = copy.deepcopy(resource_base)
+        props.update(updates)
+        parse_outcome_reconciliation(
+            "search raw exit code: 23\nsearch exit code: 23\n", props
+        )
+        if props.get("outcome_reconciliation_certified") is not False:
+            raise AssertionError("{} was accepted".format(label))
+        if not props.get("outcome_reconciliation_error"):
+            raise AssertionError("{} lacks a diagnostic".format(label))
+
+    mutations = (
+        (
+            "missing marker",
+            "search raw exit code: 23\nsearch exit code: 2\n",
+            lambda props: None,
+        ),
+        (
+            "wrong mapping",
+            "search raw exit code: 22\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=22 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: None,
+        ),
+        (
+            "duplicate raw",
+            "search raw exit code: 23\nsearch raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: None,
+        ),
+        (
+            "noncanonical plan",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(plan_file_canonical=False),
+        ),
+        (
+            "multiple plan candidates",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(plan_file_candidate_count=2),
+        ),
+        (
+            "cost disagreement",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(wbh_done_solution_cost=18),
+        ),
+        (
+            "run-log cost disagreement",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(run_log_plan_cost=18),
+        ),
+        (
+            "plan-file cost disagreement",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(plan_file_cost=18),
+        ),
+        (
+            "incomplete summary",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(
+                raw_metrics_complete=False,
+                wbh_solved_summary_certified=False,
+            ),
+        ),
+        (
+            "parser error",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(unexplained_errors=["synthetic"]),
+        ),
+        (
+            "WBH parser error",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(
+                metrics_validation_error="synthetic corruption",
+                piece_metrics_certified=False,
+                wbh_solved_summary_certified=False,
+            ),
+        ),
+        (
+            "mapped coverage zero",
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: props.update(coverage=0),
+        ),
+        (
+            "noncanonical integer",
+            "search raw exit code: 023\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n",
+            lambda props: None,
+        ),
+        (
+            "resource plan without mapping",
+            "search raw exit code: 23\nsearch exit code: 23\n",
+            lambda props: props.update(
+                planner_exit_code=23,
+                coverage=1,
+            ),
+        ),
+        (
+            "identity mapped code",
+            "search raw exit code: 2\nsearch exit code: 2\n",
+            lambda props: None,
+        ),
+    )
+    for label, log, mutate in mutations:
+        props = _synthetic_solved_outcome_props(2)
+        mutate(props)
+        parse_outcome_reconciliation(log, props)
+        if props.get("outcome_reconciliation_certified") is not False:
+            raise AssertionError("{} was not rejected".format(label))
+        if not props.get("outcome_reconciliation_error"):
+            raise AssertionError("{} lacks a diagnostic".format(label))
+
+    run_log = {}
+    parse_run_log_plan_cost("[t=0.352273s, 557192 KB] Plan cost: 17\n", run_log)
+    if run_log != {"run_log_plan_cost": 17}:
+        raise AssertionError("canonical run-log cost was not preserved")
+    duplicate = {}
+    parse_run_log_plan_cost(
+        "[t=0.352273s, 557192 KB] Plan cost: 17\n"
+        "[t=0.352274s, 557192 KB] Plan cost: 17\n",
+        duplicate,
+    )
+    if not duplicate.get("unexplained_errors"):
+        raise AssertionError("duplicate run-log plan costs were accepted")
+    for malformed_log in (
+        "Plan cost: 17\n",
+        "[t=.352273s, 557192 KB] Plan cost: 17\n",
+        "[t=0.352273s, 557192 KB] Plan cost: 017\n",
+    ):
+        malformed_cost = {}
+        parse_run_log_plan_cost(malformed_log, malformed_cost)
+        if not malformed_cost.get("unexplained_errors"):
+            raise AssertionError(
+                "malformed run-log plan cost was accepted: {!r}".format(
+                    malformed_log
+                )
+            )
+    presearch = {
+        "planner_exit_code": 20,
+        "coverage": 0,
+        "plan_file_present": False,
+        "plan_file_candidate_count": 0,
+        "plan_file_canonical": False,
+    }
+    parse_outcome_reconciliation(
+        "translate exit code: 20\nplanner exit code: 20\n", presearch
+    )
+    if presearch.get("outcome_reconciliation_certified") is not True:
+        raise AssertionError("exact pre-search outcome was not certified")
+    malformed_presearch = {
+        "planner_exit_code": 20,
+        "coverage": 0,
+        "plan_file_present": False,
+        "plan_file_candidate_count": 0,
+        "plan_file_canonical": False,
+    }
+    parse_outcome_reconciliation(
+        "search raw exit code: 20\nsearch exit code: 20\n",
+        malformed_presearch,
+    )
+    if malformed_presearch.get("outcome_reconciliation_certified") is not False:
+        raise AssertionError("pre-search outcome with search lines was accepted")
+    for parser, filename in (
+        (get_run_log_plan_cost_parser(), "run.log"),
+        (get_outcome_reconciliation_parser(), "run.log"),
+    ):
+        if len(parser.functions) != 1 or parser.functions[0].filename != filename:
+            raise AssertionError("outcome parser is not bound to {}".format(filename))
+    print(
+        "outcome reconciliation parser self-tests: PASS "
+        "(identity; 3 mappings; resource; adversarial evidence)"
+    )
+
+
+def self_test_pddl_materialization():
+    canonical_bytes = b"(define (problem materialized-input))\n"
+    expected_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
+    with tempfile.TemporaryDirectory(prefix="arrhenius-pddl-materialization-") as raw:
+        root = Path(raw)
+        source = root / "source.pddl"
+        source.write_bytes(canonical_bytes)
+        link = root / "problem.pddl"
+        link.symlink_to(source)
+        copied_bytes = materialize_pddl_link(
+            link, source, expected_sha256, "synthetic PDDL"
+        )
+        if (
+            copied_bytes != len(canonical_bytes)
+            or link.is_symlink()
+            or link.read_bytes() != canonical_bytes
+            or link.stat().st_ino == source.stat().st_ino
+            or link.stat().st_nlink != 1
+            or link.stat().st_mode & 0o222
+        ):
+            raise AssertionError("independent PDDL materialization changed")
+        if require_materialized_pddl(
+            link, expected_sha256, "synthetic PDDL", source
+        ) != len(canonical_bytes):
+            raise AssertionError("materialized PDDL byte count changed")
+
+        link.chmod(0o644)
+        try:
+            require_materialized_pddl(
+                link, expected_sha256, "writable synthetic PDDL", source
+            )
+        except RuntimeError as err:
+            if "must be read-only" not in str(err):
+                raise
+        else:
+            raise AssertionError("writable materialized PDDL was accepted")
+        link.chmod(0o444)
+
+        link.chmod(0o644)
+        link.write_bytes(b"changed bytes")
+        link.chmod(0o444)
+        try:
+            require_materialized_pddl(
+                link, expected_sha256, "tampered synthetic PDDL", source
+            )
+        except RuntimeError as err:
+            if "SHA-256 changed" not in str(err):
+                raise
+        else:
+            raise AssertionError("tampered materialized PDDL was accepted")
+
+        link.chmod(0o644)
+        link.unlink()
+        link.symlink_to(source)
+        try:
+            require_materialized_pddl(
+                link, expected_sha256, "symlink synthetic PDDL", source
+            )
+        except RuntimeError as err:
+            if "regular non-symlink" not in str(err):
+                raise
+        else:
+            raise AssertionError("materialized PDDL symlink was accepted")
+
+        link.unlink()
+        os.link(source, link)
+        try:
+            require_materialized_pddl(
+                link, expected_sha256, "hardlink synthetic PDDL", source
+            )
+        except RuntimeError as err:
+            if "must not be a hardlink" not in str(err):
+                raise
+        else:
+            raise AssertionError("materialized PDDL hardlink was accepted")
+
+        link.unlink()
+        link.write_bytes(canonical_bytes)
+        try:
+            materialize_pddl_link(
+                link, source, expected_sha256, "non-link synthetic PDDL"
+            )
+        except RuntimeError as err:
+            if "must begin as the exact live Lab source symlink" not in str(err):
+                raise
+        else:
+            raise AssertionError("PDDL materialization accepted a non-link input")
+
+        wrong_source = root / "wrong-source.pddl"
+        wrong_source.write_bytes(b"(define (problem wrong-source))\n")
+        wrong_link = root / "wrong-link.pddl"
+        wrong_link.symlink_to(wrong_source)
+        try:
+            materialize_pddl_link(
+                wrong_link, source, expected_sha256, "wrong-link synthetic PDDL"
+            )
+        except RuntimeError as err:
+            if "must begin as the exact live Lab source symlink" not in str(err):
+                raise
+        else:
+            raise AssertionError("PDDL materialization accepted the wrong source link")
+
+        wrong_hash_link = root / "wrong-hash.pddl"
+        wrong_hash_link.symlink_to(source)
+        try:
+            materialize_pddl_link(
+                wrong_hash_link,
+                source,
+                hashlib.sha256(b"wrong digest authority").hexdigest(),
+                "wrong-hash synthetic PDDL",
+            )
+        except RuntimeError as err:
+            if "benchmark source digest changed" not in str(err):
+                raise
+        else:
+            raise AssertionError("PDDL materialization accepted the wrong digest")
+    print(
+        "PDDL materialization self-tests: PASS "
+        "(atomic independent read-only copy; writable/tamper/link/hash gates)"
+    )
 
 
 if __name__ == "__main__":
@@ -2407,3 +3525,5 @@ if __name__ == "__main__":
     self_test_cofactor_width_parser()
     self_test_pdb_selector_parser()
     self_test_plan_file_parser()
+    self_test_outcome_reconciliation_parser()
+    self_test_pddl_materialization()

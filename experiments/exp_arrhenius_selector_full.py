@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed full-population evaluation of the selected heuristic matrix.
 
-This prospective runner consumes only the exact selector-screen artifact v2.
+This prospective runner consumes only the exact selector-screen artifact v3.
 It independently reconstructs the held-out 7/8-configuration contract and
 carries that matrix forward unchanged to every frozen supported task.  It does
 not read, rank, or otherwise consume held-out outcomes.
@@ -48,7 +48,7 @@ class ProtocolError(RuntimeError):
     pass
 
 
-PROTOCOL = "arrhenius-selector-full-population-v1"
+PROTOCOL = "arrhenius-selector-full-population-v2"
 FULL_ANALYSIS_PROTOCOL = "full-supported-population-census-v1"
 FULL_COMPLETION_MARKER = ".arrhenius-full-run-complete-v1"
 FULL_COMPLETION_MARKER_SCHEMA = (
@@ -58,7 +58,7 @@ FULL_COMPLETION_MARKER_PROTOCOL = (
     "canonical-four-line-marker-atomic-after-python-wrapper-zero-exit/v1"
 )
 MATRIX_CARRY_FORWARD_PROTOCOL = (
-    "screen-artifact-v2-to-heldout-contract-to-full-unchanged/v1"
+    "screen-artifact-v3-to-heldout-v2-contract-to-full-unchanged/v2"
 )
 TASK_SELECTION_PROTOCOL = (
     "suite-cost-manifest-v2-positive-cost-normalized-axiom-free/v1"
@@ -161,12 +161,8 @@ EXPECTED_FINAL_LOGICAL_GROUP_SLURM_ID = {
     EXPECTED_BATCHED_RUNS: 871,
 }
 EXPECTED_PROSPECTIVE_JOB_SHA256 = {
-    EXPECTED_UNBATCHED_RUNS: (
-        "f8bbd5a4fa8999e91d9657a0b8f1777da993a68c327539653864cb18f7f6675a"
-    ),
-    EXPECTED_BATCHED_RUNS: (
-        "a3f3f493f352816b11397e2b85558d1c49615c0744dd43589fbbd1a9cd2980c2"
-    ),
+    EXPECTED_UNBATCHED_RUNS: None,
+    EXPECTED_BATCHED_RUNS: None,
 }
 
 FULL_COMPLETION_POLICY = {
@@ -371,7 +367,7 @@ FULL_FIXED_ENVIRONMENT = {
     "scheduler_cpu_model": "AMD EPYC 9755 128-Core Processor",
     "scheduler_partition": "cpu",
     "scheduler_qos": "normal",
-    "scheduler_account": "naiss2025-5-382-cpu",
+    "scheduler_account": "naiss2025-5-561-cpu",
     "scheduler_time_limits": dict(FULL_SCHEDULER_TIME_LIMITS),
     "scheduler_memory_per_cpu": "9G",
     "scheduler_cpus_per_task": 1,
@@ -563,7 +559,7 @@ def attest_exact_array_assignment(num_runs):
 
 
 def validate_selection_artifact(artifact):
-    """Validate v2, then independently reconstruct the carried matrix."""
+    """Validate v3, then independently reconstruct the carried matrix."""
     heldout = V.validate_selection_artifact(artifact)
     global_label = heldout["global_winner"]["label"]
     selector_label = heldout["selector_winner"]["label"]
@@ -600,6 +596,23 @@ def validate_selection_artifact(artifact):
         736,
     ):
         raise ProtocolError("held-out 7/8 contract changed before carry-forward")
+    heldout_materialization = {
+        "materialized_pddl_protocol": V.MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": V.EXPECTED_MATERIALIZED_PDDL_FILES[
+            heldout_run_count
+        ],
+        "materialized_pddl_bytes": V.EXPECTED_MATERIALIZED_PDDL_BYTES[
+            heldout_run_count
+        ],
+        "pddl_bytes_per_config": V.EXPECTED_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": V.EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": V.EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
+    }
+    for key, expected in heldout_materialization.items():
+        if heldout.get(key) != expected or artifact["validation"].get(key) != expected:
+            raise ProtocolError(
+                "held-out materialized PDDL contract changed at {}".format(key)
+            )
     run_count = EXPECTED_TASKS * config_count
     layout = validate_full_layout(run_count)
     return {
@@ -614,6 +627,24 @@ def validate_selection_artifact(artifact):
         "pilot_properties_digest": heldout["properties_digest"],
         "heldout_run_count": heldout_run_count,
         "heldout_layout": copy.deepcopy(heldout["layout"]),
+        "heldout_materialized_pddl_protocol": heldout_materialization[
+            "materialized_pddl_protocol"
+        ],
+        "heldout_materialized_pddl_files": heldout_materialization[
+            "materialized_pddl_files"
+        ],
+        "heldout_materialized_pddl_bytes": heldout_materialization[
+            "materialized_pddl_bytes"
+        ],
+        "heldout_pddl_bytes_per_config": heldout_materialization[
+            "pddl_bytes_per_config"
+        ],
+        "heldout_unique_pddl_source_files": heldout_materialization[
+            "unique_pddl_source_files"
+        ],
+        "heldout_unique_pddl_source_bytes": heldout_materialization[
+            "unique_pddl_source_bytes"
+        ],
         "run_count": run_count,
         "layout": layout,
     }
@@ -872,7 +903,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--selection",
         type=Path,
-        help="Exact analyzer v2 screen-selection artifact.",
+        help="Exact analyzer v3 screen-selection artifact.",
     )
     parser.add_argument(
         "--check",
@@ -1321,35 +1352,54 @@ def validate_matrix(tasks, matrix):
 
 
 def validate_cache_pins():
+    if not isinstance(PLANNER_REVISION, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", PLANNER_REVISION
+    ):
+        raise ProtocolError("P4 planner revision is unset")
+    if not isinstance(PILOT_PROTOCOL_REVISION, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", PILOT_PROTOCOL_REVISION
+    ):
+        raise ProtocolError("P4 screen protocol revision is unset")
     _require_sha256(CACHE_BINARY_SHA256, "cached planner SHA-256")
     _require_sha256(CACHE_PREPROCESS_SHA256, "cached preprocess SHA-256")
+    for run_count, digest in EXPECTED_PROSPECTIVE_JOB_SHA256.items():
+        _require_sha256(
+            digest,
+            "reviewed full job SHA-256 for {} runs".format(run_count),
+        )
     if (
         PLANNER_REVISION != V.PLANNER_REVISION
         or CACHE_BINARY_SHA256 != V.CACHE_BINARY_SHA256
         or CACHE_PREPROCESS_SHA256 != V.CACHE_PREPROCESS_SHA256
     ):
-        raise ProtocolError("full runner differs from P2 planner/cache pins")
+        raise ProtocolError("full runner differs from P4 planner/cache pins")
 
 
 def require_full_revision_cache():
     return V.require_validation_revision_cache()
 
 
-def _full_common_protocol_metadata(num_runs):
+def _full_common_protocol_metadata(
+    num_runs,
+    *,
+    planner_revision=PLANNER_REVISION,
+    cache_binary_sha256=CACHE_BINARY_SHA256,
+):
     layout = validate_full_layout(num_runs)
-    protocol_revision = C.require_revision_ancestor_of_head(PLANNER_REVISION)
-    cache = C.cached_revision(PLANNER_REVISION)
+    protocol_revision = C.require_revision_ancestor_of_head(planner_revision)
+    cache = C.cached_revision(planner_revision)
     return {
-        "planner_revision": PLANNER_REVISION,
+        "planner_revision": planner_revision,
         "protocol_revision": protocol_revision,
         "planner_revision_is_protocol_ancestor": True,
         "planner_build_options": list(C.BUILD_OPTIONS),
         "planner_build_config": C.CACHE_BUILD_NAME,
-        "planner_binary_sha256": CACHE_BINARY_SHA256,
+        "planner_binary_sha256": cache_binary_sha256,
         "planner_revision_cache_name": cache.name,
         "external_plan_validation": False,
         "plan_validation_protocol": C.PLAN_VALIDATION_PROTOCOL,
         "plan_file_parser_protocol": C.PLAN_FILE_PARSER_PROTOCOL,
+        "outcome_reconciliation_protocol": C.OUTCOME_RECONCILIATION_PROTOCOL,
         "cofactor_width_property": C.COFACTOR_WIDTH_PROPERTY,
         "cofactor_width_parser_protocol": C.COFACTOR_WIDTH_PARSER_PROTOCOL,
         "metrics_validation_protocol": C.wbh_parser.METRICS_VALIDATION_PROTOCOL,
@@ -1388,7 +1438,11 @@ def _full_common_protocol_metadata(num_runs):
 
 
 def validate_full_common_protocol_metadata(metadata):
-    expected = _full_common_protocol_metadata(metadata["declared_run_count"])
+    expected = _full_common_protocol_metadata(
+        metadata["declared_run_count"],
+        planner_revision=metadata["planner_revision"],
+        cache_binary_sha256=metadata["planner_binary_sha256"],
+    )
     mismatches = {
         key: (metadata.get(key), value)
         for key, value in expected.items()
@@ -1406,9 +1460,20 @@ def validate_full_common_protocol_metadata(metadata):
 
 
 def make_protocol_metadata(
-    matrix, artifact_sha256, benchmark_root, source_attestation
+    matrix,
+    artifact_sha256,
+    benchmark_root,
+    source_attestation,
+    *,
+    planner_revision=PLANNER_REVISION,
+    cache_binary_sha256=CACHE_BINARY_SHA256,
+    cache_preprocess_sha256=CACHE_PREPROCESS_SHA256,
 ):
-    metadata = _full_common_protocol_metadata(matrix["run_count"])
+    metadata = _full_common_protocol_metadata(
+        matrix["run_count"],
+        planner_revision=planner_revision,
+        cache_binary_sha256=cache_binary_sha256,
+    )
     additions = {
         "protocol": PROTOCOL,
         "analysis_protocol": FULL_ANALYSIS_PROTOCOL,
@@ -1437,6 +1502,24 @@ def make_protocol_metadata(
         "heldout_task_count": V.EXPECTED_TASKS,
         "heldout_run_count": matrix["heldout_run_count"],
         "heldout_array_layout": copy.deepcopy(matrix["heldout_layout"]),
+        "heldout_materialized_pddl_protocol": matrix[
+            "heldout_materialized_pddl_protocol"
+        ],
+        "heldout_materialized_pddl_files": matrix[
+            "heldout_materialized_pddl_files"
+        ],
+        "heldout_materialized_pddl_bytes": matrix[
+            "heldout_materialized_pddl_bytes"
+        ],
+        "heldout_pddl_bytes_per_config": matrix[
+            "heldout_pddl_bytes_per_config"
+        ],
+        "heldout_unique_pddl_source_files": matrix[
+            "heldout_unique_pddl_source_files"
+        ],
+        "heldout_unique_pddl_source_bytes": matrix[
+            "heldout_unique_pddl_source_bytes"
+        ],
         "task_selection_protocol": TASK_SELECTION_PROTOCOL,
         "task_manifest": "suite_wbh_operator_costs.json#supported",
         "task_manifest_sha256": EXPECTED_TASK_MANIFEST_SHA256,
@@ -1492,7 +1575,7 @@ def make_protocol_metadata(
         "prospective_start_job_sha256": EXPECTED_PROSPECTIVE_JOB_SHA256[
             matrix["run_count"]
         ],
-        "planner_preprocess_sha256": CACHE_PREPROCESS_SHA256,
+        "planner_preprocess_sha256": cache_preprocess_sha256,
         "experiment_data_directory": "data/{}".format(Path(__file__).stem),
         "benchmark_revision": BENCHMARK_REVISION,
         "benchmark_repository": BENCHMARK_REPOSITORY,
@@ -1701,9 +1784,74 @@ def new_full_experiment(protocol_metadata):
     experiment.add_parser(C.wbh_parser.get_parser())
     experiment.add_parser(C.get_cofactor_width_parser())
     experiment.add_parser(C.get_pdb_selector_parser())
+    experiment.add_parser(C.get_run_log_plan_cost_parser())
     experiment.add_parser(C.get_plan_file_parser())
     experiment.add_parser(get_full_completion_parser())
+    experiment.add_parser(C.get_outcome_reconciliation_parser())
     return experiment
+
+
+def self_test_full_parser_registration():
+    """Freeze the full runner's parser inventory and evidence ordering."""
+
+    class FakeExperiment:
+        EXITCODE_PARSER = object()
+        TRANSLATOR_PARSER = object()
+        SINGLE_SEARCH_PARSER = object()
+        PLANNER_PARSER = object()
+
+        def __init__(self, **kwargs):
+            self.protocol_run_properties = {}
+            self.parsers = []
+
+        def add_parser(self, parser):
+            self.parsers.append(parser)
+
+    original_experiment = C.ProtocolFastDownwardExperiment
+    original_validator = globals()["validate_full_common_protocol_metadata"]
+    try:
+        C.ProtocolFastDownwardExperiment = FakeExperiment
+        globals()["validate_full_common_protocol_metadata"] = lambda metadata: None
+        experiment = new_full_experiment(
+            {
+                "synthetic": True,
+                "declared_run_count": EXPECTED_UNBATCHED_RUNS,
+            }
+        )
+    finally:
+        C.ProtocolFastDownwardExperiment = original_experiment
+        globals()["validate_full_common_protocol_metadata"] = original_validator
+
+    parsers = experiment.parsers
+    if parsers[:4] != [
+        experiment.EXITCODE_PARSER,
+        experiment.TRANSLATOR_PARSER,
+        experiment.SINGLE_SEARCH_PARSER,
+        experiment.PLANNER_PARSER,
+    ]:
+        raise AssertionError("standard full parser order changed")
+
+    def function_names(parser):
+        return [item.function.__name__ for item in parser.functions]
+
+    expected = [
+        ["parse_coverage", "parse_wbh_log"],
+        ["parse_cofactor_width"],
+        ["parse_pdb_selector_log"],
+        ["parse_run_log_plan_cost"],
+        [],
+        [],
+        ["parse_outcome_reconciliation"],
+    ]
+    actual = [function_names(parser) for parser in parsers[4:]]
+    if actual != expected:
+        raise AssertionError(
+            "full evidence parser order changed: {!r}".format(actual)
+        )
+    if not isinstance(parsers[8], C.PlanFileParser):
+        raise AssertionError("full plan inventory parser is missing")
+    if not isinstance(parsers[9], FullCompletionParser):
+        raise AssertionError("full completion parser is missing")
 
 
 def exact_header_assertions(job, num_runs):
@@ -2021,6 +2169,7 @@ def inspect_launch_blockers(artifact_sha256):
                 artifact_sha256, required=True
             ),
         ),
+        ("reviewed P4 planner/screen/cache/job pins", validate_cache_pins),
         (
             "committed planner/full protocol revision",
             lambda: C.require_clean_committed_revision(
@@ -2028,7 +2177,7 @@ def inspect_launch_blockers(artifact_sha256):
             ),
         ),
         ("requirements Lab version", C.require_pinned_lab_version),
-        ("release_no_lp P2 revision cache", require_full_revision_cache),
+        ("release_no_lp P4 revision cache", require_full_revision_cache),
     )
     blockers = []
     for label, check in checks:
@@ -2259,7 +2408,10 @@ def self_test_preflight_helpers():
 
 def self_test():
     validate_fixed_environment()
-    validate_cache_pins()
+    self_test_full_parser_registration()
+    _expect_protocol_error(
+        validate_cache_pins, "P4 screen protocol revision is unset"
+    )
     tasks, records = read_full_tasks()
     if (
         records["task_manifest_sha256"] != EXPECTED_TASK_MANIFEST_SHA256
@@ -2343,6 +2495,13 @@ def self_test():
             "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256,
             "task_sources_sha256": EXPECTED_TASK_SOURCES_SHA256,
         },
+        planner_revision=C.REV,
+        cache_binary_sha256=hashlib.sha256(
+            b"synthetic full binary"
+        ).hexdigest(),
+        cache_preprocess_sha256=hashlib.sha256(
+            b"synthetic full preprocess"
+        ).hexdigest(),
     )
     required_full_metadata = {
         "analysis_protocol": FULL_ANALYSIS_PROTOCOL,
@@ -2419,10 +2578,10 @@ def self_test():
         production_digest = hashlib.sha256(
             production_job.encode("utf-8")
         ).hexdigest()
-        if production_digest != EXPECTED_PROSPECTIVE_JOB_SHA256[
-            matrix["run_count"]
-        ]:
-            raise AssertionError("production full job byte pin changed")
+        if not re.fullmatch(r"[0-9a-f]{64}", production_digest):
+            raise AssertionError("synthetic production full job digest malformed")
+        if EXPECTED_PROSPECTIVE_JOB_SHA256[matrix["run_count"]] is not None:
+            raise AssertionError("prospective P4 full job pin must remain unset")
     self_test_preflight_helpers()
     print(
         "Arrhenius selector full runner self-test: PASS "
@@ -2443,17 +2602,23 @@ def check_protocol(
     benchmark_root,
     source_attestation,
 ):
-    cache_info = C.inspect_revision_cache(PLANNER_REVISION)
+    cache_info = (
+        C.inspect_revision_cache(PLANNER_REVISION)
+        if isinstance(PLANNER_REVISION, str)
+        else None
+    )
     cached_preprocessor = (
         Path(cache_info["path"])
         / "builds"
         / C.CACHE_BUILD_NAME
         / "bin"
         / "preprocess"
+        if cache_info is not None
+        else None
     )
     preprocess_sha256 = (
         V._sha256_file(cached_preprocessor)
-        if cached_preprocessor.is_file()
+        if cached_preprocessor is not None and cached_preprocessor.is_file()
         else None
     )
     blockers = inspect_launch_blockers(artifact_sha256)
@@ -2496,8 +2661,12 @@ def check_protocol(
     print("benchmark revision/worktree: {} {}".format(
         BENCHMARK_REVISION, benchmark_root
     ))
-    print("revision cache: {}".format(cache_info["path"]))
-    print("cached binary SHA-256: {}".format(cache_info["binary_sha256"]))
+    print("revision cache: {}".format(
+        cache_info["path"] if cache_info is not None else "UNSET"
+    ))
+    print("cached binary SHA-256: {}".format(
+        cache_info["binary_sha256"] if cache_info is not None else "UNSET"
+    ))
     print("cached preprocess SHA-256: {}".format(preprocess_sha256))
     print("launch gate: {}".format("BLOCKED" if blockers else "READY"))
     for blocker in blockers:
@@ -2529,7 +2698,6 @@ def main(argv=None):
     )
     tasks, record_attestation = read_full_tasks()
     validate_matrix(tasks, matrix)
-    validate_cache_pins()
     benchmark_root = require_pinned_benchmark_worktree()
     source_attestation = attest_task_sources(benchmark_root, tasks)
     if (
@@ -2551,6 +2719,7 @@ def main(argv=None):
         )
         return 0
 
+    validate_cache_pins()
     cache_info = C.require_launch_prerequisites(
         PLANNER_REVISION,
         CACHE_BINARY_SHA256,

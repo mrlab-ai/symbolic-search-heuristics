@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed analysis of the frozen Arrhenius selector validation.
 
-The analyzer consumes two inputs: the exact selection artifact v2 emitted by
+The analyzer consumes two inputs: the exact selection artifact v3 emitted by
 ``analyze_arrhenius_selector_pilot.py`` and one Lab properties JSON/evaluation
 directory/tar archive emitted by ``exp_arrhenius_selector_validation.py``.
 It never writes files and prints one canonical JSON object to stdout.
@@ -63,12 +63,12 @@ class AnalysisError(RuntimeError):
 
 
 ANALYSIS_SCHEMA = (
-    "symbolic-search-heuristics/arrhenius-selector-heldout-analysis/v1"
+    "symbolic-search-heuristics/arrhenius-selector-heldout-analysis/v2"
 )
 ARTIFACT_SCHEMA = (
-    "symbolic-search-heuristics/arrhenius-selector-screen-selection/v2"
+    "symbolic-search-heuristics/arrhenius-selector-screen-selection/v3"
 )
-VALIDATION_PROTOCOL = "arrhenius-selector-heldout-validation-v1"
+VALIDATION_PROTOCOL = "arrhenius-selector-heldout-validation-v2"
 ANALYSIS_PROTOCOL = "paired-domain-macro-coverage-sha256-bootstrap-v1"
 PRIMARY_COMPARISON = "selector-vs-pdb-cegar"
 PRIMARY_ESTIMAND = (
@@ -97,13 +97,13 @@ SYNTHETIC_BOOTSTRAP_SHA256 = (
 EXPECTED_SELECTION_ARTIFACT_SHA256 = None
 EXPECTED_VALIDATION_PROTOCOL_REVISION = None
 
-PLANNER_REVISION = "8e56de8862c9449246596e779177cc9e6a7bcf8e"
-PILOT_PROTOCOL_REVISION = "4d86669eaf11830ca551ae102994d035f422c2df"
+PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
+PILOT_PROTOCOL_REVISION = None
 CACHE_BINARY_SHA256 = (
-    "21ea6aff991b4f8196ee8642ff0534bebae67ee3d13f3bd9c7f6f9b3b1fe8cb9"
+    "59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511"
 )
 CACHE_PREPROCESS_SHA256 = (
-    "c62df391a1e760aa3c2f353056d1f63c8a9958d93c7f1dc4c12f98cc57e5f987"
+    "acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c"
 )
 CACHE_NAME_SUFFIX = "_61a748e5"
 BENCHMARK_REVISION = "48d6a00d482de2384a9e751f9343df58bf5582be"
@@ -122,6 +122,15 @@ TASK_SOURCES_SHA256 = (
 SOURCE_MANIFEST_SHA256 = (
     "7b4f5934752f41792e3debd0a269286d28d7ee9f1242b87a4bc92b7066822168"
 )
+MATERIALIZED_PDDL_PROTOCOL = (
+    "per-cell-independent-manual-byte-copy-temp-digest-atomic-replace-"
+    "readonly/v1"
+)
+EXPECTED_MATERIALIZED_PDDL_FILES = {644: 1288, 736: 1472}
+EXPECTED_MATERIALIZED_PDDL_BYTES = {644: 72541896, 736: 82905024}
+EXPECTED_PDDL_BYTES_PER_CONFIG = 10363128
+EXPECTED_UNIQUE_PDDL_SOURCE_FILES = 142
+EXPECTED_UNIQUE_PDDL_SOURCE_BYTES = 10195682
 PILOT_MANIFEST_NAME = "selector_pilot_suite.txt"
 PILOT_MANIFEST_SHA256 = (
     "3195dac7e62a34e5ac4cbeb715ab7f9b99e2ee64341082dd7d718ea2820751ca"
@@ -129,6 +138,11 @@ PILOT_MANIFEST_SHA256 = (
 PILOT_TASK_SOURCES_SHA256 = (
     "dbb7730c257472c07f7946f0434949449169e06d1faa2174a92a6d13c48cb8ba"
 )
+PILOT_MATERIALIZED_PDDL_FILES = 2000
+PILOT_MATERIALIZED_PDDL_BYTES = 50354240
+PILOT_PDDL_BYTES_PER_CONFIG = 2517712
+PILOT_UNIQUE_PDDL_SOURCE_FILES = 77
+PILOT_UNIQUE_PDDL_SOURCE_BYTES = 2451625
 
 EXPECTED_TASKS = 92
 EXPECTED_DOMAINS = 46
@@ -139,7 +153,7 @@ BLIND = "blind_fw"
 CEGAR = "pdb_cegar_b100k"
 MS_CAP32_BUILD60 = "ms_cap32_build60"
 
-PILOT_PROTOCOL = "arrhenius-exact-width-selector-screening-v1"
+PILOT_PROTOCOL = "arrhenius-exact-width-selector-screening-v2"
 SELECTION_RULE = (
     "valid-costs-max-coverage-min-micro-par2-"
     "min-certified-image-time-label/v1"
@@ -162,7 +176,10 @@ FIXED_VALIDATION_CONFIGS_SHA256 = (
 SELECTOR_PARSER_PROTOCOL = (
     "run.log/pdb-final-and-width-selector-v1-whole-trace/v3"
 )
-METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v2"
+METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v3"
+OUTCOME_RECONCILIATION_PROTOCOL = (
+    "direct-search-raw-effective-plan-reconciliation/v1"
+)
 SELECTOR_POOL_PROTOCOL = "fixed_pool_v1"
 SELECTOR_SCORE_VERSION = (
     "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1"
@@ -326,7 +343,7 @@ SCHEMA_V2_REAL_METRICS = (
     "image_time",
 )
 ALL_SCHEMA_V2_METRICS = SCHEMA_V2_INTEGER_METRICS + SCHEMA_V2_REAL_METRICS
-RESOURCE_EXIT_CODES = frozenset((1, 2, 3, 22, 23, 24))
+RESOURCE_EXIT_CODES = frozenset((22, 23, 24))
 PRESEARCH_EXIT_CODES = frozenset((10, 20, 21))
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -762,11 +779,18 @@ def validate_selection_artifact(artifact):
         "task_manifest_sha256": PILOT_MANIFEST_SHA256,
         "source_manifest_sha256": SOURCE_MANIFEST_SHA256,
         "task_sources_sha256": PILOT_TASK_SOURCES_SHA256,
+        "materialized_pddl_protocol": MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": PILOT_MATERIALIZED_PDDL_FILES,
+        "materialized_pddl_bytes": PILOT_MATERIALIZED_PDDL_BYTES,
+        "pddl_bytes_per_config": PILOT_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": PILOT_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": PILOT_UNIQUE_PDDL_SOURCE_BYTES,
         "option_matrix_sha256": PILOT_OPTION_MATRIX_SHA256,
         "control_configs_sha256": PILOT_CONTROL_CONFIGS_SHA256,
         "selector_configs_sha256": PILOT_SELECTOR_CONFIGS_SHA256,
         "pdb_selector_parser_protocol": SELECTOR_PARSER_PROTOCOL,
         "metrics_validation_protocol": METRICS_VALIDATION_PROTOCOL,
+        "outcome_reconciliation_protocol": OUTCOME_RECONCILIATION_PROTOCOL,
         "selector_pool_protocol": SELECTOR_POOL_PROTOCOL,
         "selector_score_version": SELECTOR_SCORE_VERSION,
         "selector_source_order": list(SELECTOR_SOURCES),
@@ -832,6 +856,16 @@ def validate_selection_artifact(artifact):
             "runs_per_array_task": 1,
             "scheduler_time_limit_seconds": 600,
         },
+        "materialized_pddl_protocol": MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": EXPECTED_MATERIALIZED_PDDL_FILES[
+            run_count
+        ],
+        "materialized_pddl_bytes": EXPECTED_MATERIALIZED_PDDL_BYTES[
+            run_count
+        ],
+        "pddl_bytes_per_config": EXPECTED_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
         "protocol": VALIDATION_PROTOCOL,
         "requires_disjoint_tasks": True,
         "selection_artifact_schema": ARTIFACT_SCHEMA,
@@ -866,6 +900,24 @@ def validate_selection_artifact(artifact):
         "comparisons_sha256": expected_validation["comparisons_sha256"],
         "run_count": run_count,
         "pilot_properties_sha256": pilot["properties_canonical_sha256"],
+        "materialized_pddl_protocol": expected_validation[
+            "materialized_pddl_protocol"
+        ],
+        "materialized_pddl_files": expected_validation[
+            "materialized_pddl_files"
+        ],
+        "materialized_pddl_bytes": expected_validation[
+            "materialized_pddl_bytes"
+        ],
+        "pddl_bytes_per_config": expected_validation[
+            "pddl_bytes_per_config"
+        ],
+        "unique_pddl_source_files": expected_validation[
+            "unique_pddl_source_files"
+        ],
+        "unique_pddl_source_bytes": expected_validation[
+            "unique_pddl_source_bytes"
+        ],
     }
 
 
@@ -907,6 +959,14 @@ def validate_runner_contract(expected_artifact_sha256=None):
             wbh_parser.METRICS_VALIDATION_PROTOCOL,
             METRICS_VALIDATION_PROTOCOL,
         ),
+        "outcome reconciliation protocol": (
+            common.OUTCOME_RECONCILIATION_PROTOCOL,
+            OUTCOME_RECONCILIATION_PROTOCOL,
+        ),
+        "runner outcome reconciliation protocol": (
+            runner.OUTCOME_RECONCILIATION_PROTOCOL,
+            OUTCOME_RECONCILIATION_PROTOCOL,
+        ),
         "common selector parser protocol": (
             common.PDB_SELECTOR_PARSER_PROTOCOL,
             SELECTOR_PARSER_PROTOCOL,
@@ -935,6 +995,30 @@ def validate_runner_contract(expected_artifact_sha256=None):
             runner.SELECTOR_ELIGIBILITY_SHA256,
             SELECTOR_ELIGIBILITY_SHA256,
         ),
+        "materialized PDDL protocol": (
+            runner.MATERIALIZED_PDDL_PROTOCOL,
+            MATERIALIZED_PDDL_PROTOCOL,
+        ),
+        "materialized PDDL files": (
+            runner.EXPECTED_MATERIALIZED_PDDL_FILES,
+            EXPECTED_MATERIALIZED_PDDL_FILES,
+        ),
+        "materialized PDDL bytes": (
+            runner.EXPECTED_MATERIALIZED_PDDL_BYTES,
+            EXPECTED_MATERIALIZED_PDDL_BYTES,
+        ),
+        "PDDL bytes per config": (
+            runner.EXPECTED_PDDL_BYTES_PER_CONFIG,
+            EXPECTED_PDDL_BYTES_PER_CONFIG,
+        ),
+        "unique PDDL source files": (
+            runner.EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+            EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+        ),
+        "unique PDDL source bytes": (
+            runner.EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
+            EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
+        ),
     }
     errors = []
     for label, (actual, expected) in exact.items():
@@ -958,6 +1042,12 @@ def validate_runner_contract(expected_artifact_sha256=None):
         "selector_pool_protocol",
         "selector_score_version",
         "selector_source_order",
+        "materialized_pddl_protocol",
+        "materialized_pddl_files",
+        "materialized_pddl_bytes",
+        "pddl_bytes_per_config",
+        "unique_pddl_source_files",
+        "unique_pddl_source_bytes",
     ):
         if repr(key) not in metadata_source and '"{}"'.format(key) not in metadata_source:
             errors.append("runner static metadata omits {}".format(key))
@@ -979,6 +1069,11 @@ def require_reviewed_pins(
     *,
     expected_artifact_sha256=EXPECTED_SELECTION_ARTIFACT_SHA256,
     protocol_revision=EXPECTED_VALIDATION_PROTOCOL_REVISION,
+    planner_revision=PLANNER_REVISION,
+    pilot_protocol_revision=PILOT_PROTOCOL_REVISION,
+    binary_sha256=CACHE_BINARY_SHA256,
+    preprocess_sha256=CACHE_PREPROCESS_SHA256,
+    cache_name_suffix=CACHE_NAME_SUFFIX,
 ):
     _require_sha256(artifact_sha256, "selection artifact raw digest")
     if expected_artifact_sha256 is None:
@@ -999,6 +1094,15 @@ def require_reviewed_pins(
             "held-out launch revision before ordinary analysis"
         )
     _require_revision(protocol_revision, "held-out protocol revision")
+    _require_revision(planner_revision, "P4 planner revision")
+    _require_revision(pilot_protocol_revision, "P4 screen protocol revision")
+    _require_sha256(binary_sha256, "P4 cached planner digest")
+    _require_sha256(preprocess_sha256, "P4 cached preprocess digest")
+    if (
+        not isinstance(cache_name_suffix, str)
+        or not re.fullmatch(r"_[0-9a-f]{8}", cache_name_suffix)
+    ):
+        raise AnalysisError("P4 cache-name suffix is unset")
     return protocol_revision
 
 
@@ -1016,12 +1120,22 @@ def expected_protocol_metadata(contract, artifact_sha256, protocol_revision):
         "planner_build_config": "release_no_lp",
         "planner_binary_sha256": CACHE_BINARY_SHA256,
         "planner_preprocess_sha256": CACHE_PREPROCESS_SHA256,
-        "planner_revision_cache_name": PLANNER_REVISION + CACHE_NAME_SUFFIX,
+        "planner_revision_cache_name": (
+            PLANNER_REVISION + CACHE_NAME_SUFFIX
+            if isinstance(PLANNER_REVISION, str)
+            and isinstance(CACHE_NAME_SUFFIX, str)
+            else None
+        ),
         "external_plan_validation": False,
         "plan_validation_protocol": (
-            "no-external-val;require-plan-file-and-cross-config-cost-agreement/v1"
+            "no-external-val;canonical-plan-log-wbh-cost-and-raw-exit-"
+            "reconciliation/v2"
         ),
-        "plan_file_parser_protocol": "sas_plan/exact-single-cost-footer/v1",
+        "plan_file_parser_protocol": (
+            "sas_plan/exact-zero-or-single-stable-single-link-regular-"
+            "nonsymlink-cost-footer/v2"
+        ),
+        "outcome_reconciliation_protocol": OUTCOME_RECONCILIATION_PROTOCOL,
         "cofactor_width_property": "cofactor_width",
         "cofactor_width_parser_protocol": (
             "run.log/unique-wbh-heuristic-cofactor-width/v1"
@@ -1048,7 +1162,7 @@ def expected_protocol_metadata(contract, artifact_sha256, protocol_revision):
         "scheduler_cpu_model": "AMD EPYC 9755 128-Core Processor",
         "scheduler_partition": "cpu",
         "scheduler_qos": "normal",
-        "scheduler_account": "naiss2025-5-382-cpu",
+        "scheduler_account": "naiss2025-5-561-cpu",
         "scheduler_time_limit_per_task": "00:10:00",
         "scheduler_memory_per_cpu": "9G",
         "scheduler_cpus_per_task": 1,
@@ -1080,6 +1194,16 @@ def expected_protocol_metadata(contract, artifact_sha256, protocol_revision):
         "domain_count": EXPECTED_DOMAINS,
         "source_manifest_sha256": SOURCE_MANIFEST_SHA256,
         "task_sources_sha256": TASK_SOURCES_SHA256,
+        "materialized_pddl_protocol": MATERIALIZED_PDDL_PROTOCOL,
+        "materialized_pddl_files": EXPECTED_MATERIALIZED_PDDL_FILES[
+            run_count
+        ],
+        "materialized_pddl_bytes": EXPECTED_MATERIALIZED_PDDL_BYTES[
+            run_count
+        ],
+        "pddl_bytes_per_config": EXPECTED_PDDL_BYTES_PER_CONFIG,
+        "unique_pddl_source_files": EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
+        "unique_pddl_source_bytes": EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
         "fixed_configs_sha256": FIXED_VALIDATION_CONFIGS_SHA256,
         "config_count": len(contract["configs"]),
         "option_matrix_sha256": contract["option_matrix_sha256"],
@@ -1890,11 +2014,16 @@ def analyze(records, tasks, contract, artifact_sha256, protocol_revision):
             "domain_count": EXPECTED_DOMAINS,
             "config_count": len(contract["configs"]),
             "cell_count": contract["run_count"],
+            "materialized_pddl_protocol": contract[
+                "materialized_pddl_protocol"
+            ],
+            "materialized_pddl_files": contract["materialized_pddl_files"],
+            "materialized_pddl_bytes": contract["materialized_pddl_bytes"],
         },
         "decision_policy": {
             "rerank_on_validation": False,
-            "configuration_order_source": "selection-artifact-v2",
-            "comparisons_source": "selection-artifact-v2",
+            "configuration_order_source": "selection-artifact-v3",
+            "comparisons_source": "selection-artifact-v3",
         },
         "primary": primary,
         "secondary": {
@@ -1955,9 +2084,15 @@ def _synthetic_record(
         "problem": problem,
         "coverage": int(solved),
         "planner_exit_code": 0 if solved else 23,
+        "search_raw_exit_code": 0 if solved else 23,
+        "search_effective_exit_code": 0 if solved else 23,
+        "outcome_reconciliation_protocol": OUTCOME_RECONCILIATION_PROTOCOL,
+        "outcome_reconciliation_certified": True,
         "error": "success" if solved else "search-out-of-time",
         "unsolvable": 0,
         "plan_file_present": bool(solved),
+        "plan_file_candidate_count": 1 if solved else 0,
+        "plan_file_canonical": bool(solved),
         "component_options": expected_component_options(search),
         "driver_options": [
             "--overall-time-limit",
@@ -1980,6 +2115,9 @@ def _synthetic_record(
         "wbh_log_nonempty": True,
         "raw_metrics_complete": True,
         "piece_metrics_certified": True,
+        "wbh_summary_solved": bool(solved),
+        "wbh_done_solution_cost": cost if solved else None,
+        "wbh_solved_summary_certified": bool(solved),
         "expanded_bdd_nodes": 40,
         "expanded_states": 100.0,
         "expanded_bdd_pieces": 10,
@@ -2004,6 +2142,7 @@ def _synthetic_record(
             {
                 "solution_cost": cost,
                 "plan_file_cost": cost,
+                "run_log_plan_cost": cost,
                 "planner_time": planner_time,
                 "effort": 17,
             }
@@ -2116,6 +2255,7 @@ def self_test():
     with contextlib.redirect_stdout(io.StringIO()):
         common.self_test_cofactor_width_parser()
         common.self_test_pdb_selector_parser()
+        common.self_test_pddl_materialization()
     if _parse_json_bytes(b'{"a":1}', "synthetic") != {"a": 1}:
         raise AssertionError("strict JSON parser changed")
     _expect_error(
@@ -2158,6 +2298,17 @@ def self_test():
         artifact, digest, contract, tasks, revision, records = case
         if contract["run_count"] != expected_runs or len(records) != expected_runs:
             raise AssertionError("synthetic 644/736 layout changed")
+        if (
+            contract["materialized_pddl_protocol"]
+            != MATERIALIZED_PDDL_PROTOCOL
+            or contract["materialized_pddl_files"]
+            != EXPECTED_MATERIALIZED_PDDL_FILES[expected_runs]
+            or contract["materialized_pddl_bytes"]
+            != EXPECTED_MATERIALIZED_PDDL_BYTES[expected_runs]
+            or contract["pddl_bytes_per_config"]
+            != EXPECTED_PDDL_BYTES_PER_CONFIG
+        ):
+            raise AssertionError("synthetic materialized PDDL contract changed")
         result = analyze(records, tasks, contract, digest, revision)
         if result["decision_policy"]["rerank_on_validation"] is not False:
             raise AssertionError("held-out analyzer reranked configurations")
@@ -2204,6 +2355,15 @@ def self_test():
 
     case, _ = cases[0]
     artifact, digest, contract, tasks, revision, records = case
+    synthetic_identity_pins = {
+        "planner_revision": "89abcdef0123456789abcdef0123456789abcdef",
+        "pilot_protocol_revision": "fedcba9876543210fedcba9876543210fedcba98",
+        "binary_sha256": hashlib.sha256(b"synthetic heldout binary").hexdigest(),
+        "preprocess_sha256": hashlib.sha256(
+            b"synthetic heldout preprocess"
+        ).hexdigest(),
+        "cache_name_suffix": "_1234abcd",
+    }
 
     changed_artifact = copy.deepcopy(artifact)
     changed_artifact["validation"]["analysis"]["rerank_on_validation"] = True
@@ -2216,6 +2376,7 @@ def self_test():
             digest,
             expected_artifact_sha256="abcdef" * 10 + "abcd",
             protocol_revision=revision,
+            **synthetic_identity_pins,
         ),
         "changed",
     )
@@ -2223,6 +2384,7 @@ def self_test():
         digest,
         expected_artifact_sha256=digest,
         protocol_revision=revision,
+        **synthetic_identity_pins,
     ) != revision:
         raise AssertionError("reviewed-pin override changed")
 
@@ -2241,6 +2403,7 @@ def self_test():
         if item["algorithm"] == BLIND and item["coverage"] == 0
     )
     resource_target["raw_metrics_complete"] = False
+    resource_target["wbh_summary_solved"] = None
     validate_records(resource_prefix, tasks, contract, digest, revision)
 
     presearch = copy.deepcopy(records)
@@ -2254,6 +2417,11 @@ def self_test():
         *SCHEMA_V2_CONVENTIONS,
         *CONSTRUCTION_FIELDS,
         *HEURISTIC_FIELDS,
+        "search_raw_exit_code",
+        "search_effective_exit_code",
+        "wbh_summary_solved",
+        "wbh_done_solution_cost",
+        "wbh_solved_summary_certified",
     ):
         presearch_target.pop(field, None)
     presearch_target.update(
@@ -2327,6 +2495,39 @@ def self_test():
     solved_index = next(
         index for index, record in enumerate(records) if record["coverage"] == 1
     )
+    mapped = copy.deepcopy(records[solved_index])
+    mapped.update(
+        planner_exit_code=2,
+        search_raw_exit_code=23,
+        search_effective_exit_code=2,
+        error="search-plan-found-and-out-of-time",
+    )
+    mapped_errors = []
+    pilot_analyzer._validate_outcome(mapped, "heldout mapped", mapped_errors)
+    if mapped_errors:
+        raise AssertionError("valid mapped held-out outcome failed: {!r}".format(
+            mapped_errors
+        ))
+    for field, value, fragment in (
+        ("search_raw_exit_code", 24, "raw resource exit 23"),
+        ("outcome_reconciliation_certified", False, "not certified"),
+        ("plan_file_candidate_count", 2, "exactly one plan candidate"),
+        ("plan_file_canonical", False, "canonical plan certification"),
+        ("run_log_plan_cost", mapped["solution_cost"] + 1, "disagrees"),
+        ("wbh_solved_summary_certified", False, "requires"),
+    ):
+        changed = copy.deepcopy(mapped)
+        changed[field] = value
+        changed_errors = []
+        pilot_analyzer._validate_outcome(
+            changed, "heldout mapped", changed_errors
+        )
+        if not any(fragment in error for error in changed_errors):
+            raise AssertionError(
+                "held-out mapped mutation {} was accepted: {!r}".format(
+                    field, changed_errors
+                )
+            )
     _expect_error(
         lambda: validate_mutation(
             lambda values: values[solved_index].update(
@@ -2452,7 +2653,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--selection",
         type=Path,
-        help="Exact selection artifact v2 used to launch held-out validation.",
+        help="Exact selection artifact v3 used to launch held-out validation.",
     )
     parser.add_argument(
         "--self-test",
