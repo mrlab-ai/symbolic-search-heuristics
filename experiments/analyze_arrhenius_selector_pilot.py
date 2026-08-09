@@ -56,7 +56,7 @@ EXPECTED_PLANNER_REVISION = "8e56de8862c9449246596e779177cc9e6a7bcf8e"
 
 # Exact clean launch worktree revision. The analyzer lives in a descendant
 # commit so this pin does not create a commit-hash self-reference.
-EXPECTED_PROTOCOL_REVISION = None
+EXPECTED_PROTOCOL_REVISION = "d3049f8f0c4022e8bed4b9a564131262a7f810b6"
 EXPECTED_CACHE_BINARY_SHA256 = (
     "21ea6aff991b4f8196ee8642ff0534bebae67ee3d13f3bd9c7f6f9b3b1fe8cb9"
 )
@@ -2361,12 +2361,11 @@ def self_test():
         protocol_revision,
         binary_sha256,
     )
-    try:
-        require_reviewed_pins()
-    except AnalysisError as err:
-        assert "EXPECTED_PROTOCOL_REVISION" in str(err)
-    else:
-        raise AssertionError("unset analyzer protocol revision gate was accepted")
+    assert require_reviewed_pins() == (
+        planner_revision,
+        EXPECTED_PROTOCOL_REVISION,
+        binary_sha256,
+    )
 
     validate_runner_contract(
         check_cache_pin=True, expected_cache_hash=binary_sha256
