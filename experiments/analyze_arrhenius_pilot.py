@@ -53,7 +53,7 @@ EXPECTED_PLANNER_REVISION = "d889d1f73876592e1c91b7781a58affac6bf22f2"
 
 # Exact clean launch worktree revision. The analyzer lives in a descendant
 # commit so this pin does not create a commit-hash self-reference.
-EXPECTED_PROTOCOL_REVISION = "e7b0e4495d6722fdbae9461ea0be24e5484f1a5b"
+EXPECTED_PROTOCOL_REVISION = "4959b75669a3b92ede84c99772e30f1436cd12ea"
 EXPECTED_CACHE_BINARY_SHA256 = (
     "b0dac83910508b1089979ca7a16463cf2f3de72f30590af1c5e3c43dd4805d9e"
 )
@@ -252,7 +252,7 @@ def validate_runner_contract(check_cache_pin=True, expected_cache_hash=None):
             runner.PLANNER_REVISION,
             EXPECTED_PLANNER_REVISION,
         ),
-        "protocol": (runner.PROTOCOL, "arrhenius-current-no-lp-pilot-v1"),
+        "protocol": (runner.PROTOCOL, "arrhenius-current-no-lp-pilot-v2"),
         "selection rule": (
             runner.SELECTION_RULE,
             "valid-costs-max-coverage-min-micro-par2-"
@@ -775,6 +775,8 @@ def validate_records(
                 "30m",
                 "--overall-memory-limit",
                 "3584M",
+                "--build",
+                "release_no_lp",
                 "--overall-time-limit",
                 "300s",
                 "--overall-memory-limit",
@@ -1243,6 +1245,8 @@ def synthetic_record(
             "30m",
             "--overall-memory-limit",
             "3584M",
+            "--build",
+            "release_no_lp",
             "--overall-time-limit",
             "300s",
             "--overall-memory-limit",
