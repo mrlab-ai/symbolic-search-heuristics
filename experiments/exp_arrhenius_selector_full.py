@@ -1351,7 +1351,7 @@ def validate_matrix(tasks, matrix):
     return matrix
 
 
-def validate_cache_pins():
+def validate_cache_pins(*, require_job_hashes=True):
     if not isinstance(PLANNER_REVISION, str) or not re.fullmatch(
         r"[0-9a-f]{40}", PLANNER_REVISION
     ):
@@ -1362,11 +1362,22 @@ def validate_cache_pins():
         raise ProtocolError("P4 screen protocol revision is unset")
     _require_sha256(CACHE_BINARY_SHA256, "cached planner SHA-256")
     _require_sha256(CACHE_PREPROCESS_SHA256, "cached preprocess SHA-256")
-    for run_count, digest in EXPECTED_PROSPECTIVE_JOB_SHA256.items():
-        _require_sha256(
-            digest,
-            "reviewed full job SHA-256 for {} runs".format(run_count),
+    pinned_job_hashes = {
+        run_count: digest is not None
+        for run_count, digest in EXPECTED_PROSPECTIVE_JOB_SHA256.items()
+    }
+    if any(pinned_job_hashes.values()) and not all(pinned_job_hashes.values()):
+        raise ProtocolError(
+            "reviewed full job SHA-256 pins must be either all set or all unset"
         )
+    if require_job_hashes and not all(pinned_job_hashes.values()):
+        raise ProtocolError("reviewed full job SHA-256 pins are unset")
+    for run_count, digest in EXPECTED_PROSPECTIVE_JOB_SHA256.items():
+        if digest is not None:
+            _require_sha256(
+                digest,
+                "reviewed full job SHA-256 for {} runs".format(run_count),
+            )
     if (
         PLANNER_REVISION != V.PLANNER_REVISION
         or CACHE_BINARY_SHA256 != V.CACHE_BINARY_SHA256
@@ -2409,9 +2420,23 @@ def self_test_preflight_helpers():
 def self_test():
     validate_fixed_environment()
     self_test_full_parser_registration()
-    _expect_protocol_error(
-        validate_cache_pins, "P4 screen protocol revision is unset"
-    )
+    validate_cache_pins(require_job_hashes=False)
+    original_job_hashes = dict(EXPECTED_PROSPECTIVE_JOB_SHA256)
+    run_counts = sorted(EXPECTED_PROSPECTIVE_JOB_SHA256)
+    try:
+        EXPECTED_PROSPECTIVE_JOB_SHA256[run_counts[0]] = "0" * 64
+        EXPECTED_PROSPECTIVE_JOB_SHA256[run_counts[1]] = None
+        _expect_protocol_error(
+            lambda: validate_cache_pins(require_job_hashes=False),
+            "either all set or all unset",
+        )
+    finally:
+        EXPECTED_PROSPECTIVE_JOB_SHA256.clear()
+        EXPECTED_PROSPECTIVE_JOB_SHA256.update(original_job_hashes)
+    if not any(original_job_hashes.values()):
+        _expect_protocol_error(
+            validate_cache_pins, "reviewed full job SHA-256 pins are unset"
+        )
     tasks, records = read_full_tasks()
     if (
         records["task_manifest_sha256"] != EXPECTED_TASK_MANIFEST_SHA256
@@ -2580,8 +2605,13 @@ def self_test():
         ).hexdigest()
         if not re.fullmatch(r"[0-9a-f]{64}", production_digest):
             raise AssertionError("synthetic production full job digest malformed")
-        if EXPECTED_PROSPECTIVE_JOB_SHA256[matrix["run_count"]] is not None:
-            raise AssertionError("prospective P4 full job pin must remain unset")
+        expected_digest = EXPECTED_PROSPECTIVE_JOB_SHA256[matrix["run_count"]]
+        if expected_digest is not None and production_digest != expected_digest:
+            raise AssertionError(
+                "pinned prospective full job digest changed: {} != {}".format(
+                    production_digest, expected_digest
+                )
+            )
     self_test_preflight_helpers()
     print(
         "Arrhenius selector full runner self-test: PASS "

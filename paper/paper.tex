@@ -1620,11 +1620,12 @@ and therefore charged to that configuration. These envelopes are conservative
 requests, not per-cell wall-clock guarantees: the wrapper has no separate wall
 watchdog, and an outer scheduler timeout invalidates the census.
 
-The full-suite job requests scheduler requeue for node failure or preemption.
-After grid construction, it replaces every benchmark symlink with an
+After grid construction, every stage replaces each benchmark symlink with an
 independent read-only copy, verifies each copy against the frozen per-source
 digest, and reattests all cells immediately before submission; later changes
-to the benchmark worktree therefore cannot change queued inputs.
+to the benchmark worktree therefore cannot change queued inputs. The
+full-suite job additionally requests scheduler requeue for node failure or
+preemption.
 On restart it skips only cells bearing an exact, atomically written
 wrapper-completion marker and archives all dynamic state of an unmarked cell
 before trying that cell again. The marker records a zero exit from the Python
@@ -1660,24 +1661,33 @@ level, and exact width. Selector logs are checked as a whole trace: source
 order, deduplication, candidate feasibility, score recomputation, selected
 winner, and final heuristic hashes must agree. This prevents a favorable
 summary from being accepted if the pool or selection process drifted.
-Selection and description are emitted separately. The version-2 selection
+Selection and description are emitted separately. The version-3 selection
 artifact carries the frozen ranking and downstream matrix. A canonical
-\texttt{arrhenius-selector-screen-certified-descriptive-census/v1} report
+\texttt{arrhenius-selector-screen-certified-descriptive-census/v2} report
 reuses those exact public selection objects and adds certified pattern-size
 and source counts plus image and batching totals only over explicitly counted
 complete cells. Adaptive-gate acceptance and rejection summaries remain only
 in console logs, so we do not report them as fetched protocol data.
 
+The driver records both the raw search-process exit and the effective planner
+exit. A raw resource-limit exit is promoted to a ``plan found plus resource
+limit'' outcome only when that invocation created exactly one stable,
+single-link, canonical plan. The independent parser then requires the exact
+raw-to-effective mapping, agreement of plan-file, run-log, and metric-stream
+costs, and a complete solved metric summary. Thus a CPU-limit signal during
+successful teardown cannot silently turn a durable plan into either an
+ordinary timeout or an uncertified success.
+
 The source and execution identities are frozen independently. The planner
 implementation is revision
-\texttt{8e56de8862c9449246596e779177cc9e6a7bcf8e}; the benchmark repository is
+\texttt{58a3f742d7ac63f391d06c237573f14ad590c187}; the benchmark repository is
 revision \texttt{48d6a00d482de2384a9e751f9343df58bf5582be}; and the clean screening
 protocol is revision
-\texttt{4d86669eaf11830ca551ae102994d035f422c2df}. The stripped cached planner
+\texttt{d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf}. The stripped cached planner
 binary has SHA-256
-\texttt{21ea6aff991b4f8196ee8642ff0534bebae67ee3d13f3bd9c7f6f9b3b1fe8cb9}.
+\texttt{59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511}.
 Its copied preprocessor has SHA-256
-\texttt{c62df391a1e760aa3c2f353056d1f63c8a9958d93c7f1dc4c12f98cc57e5f987}.
+\texttt{acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c}.
 The normalized noncomment task sequence, selected task-source records, and
 complete option matrix have SHA-256 digests
 \texttt{3195dac7e62a34e5ac4cbeb715ab7f9b99e2ee64341082dd7d718ea2820751ca},
@@ -1687,12 +1697,14 @@ and
 respectively. The runner attests the copied code, PDDL inputs, run scripts,
 static properties, job header and array body before submission. The read-only
 analyzer pins these identities. The named protocols are
-\texttt{arrhenius-exact-width-selector-screening-v1} for the experiment,
+\texttt{arrhenius-exact-width-selector-screening-v2} for the experiment,
 \texttt{fixed\_pool\_v1} for the selector pool,
 \texttt{init\_dead\_init\_h\_mean\_dead\_fraction\_width\_states\_pattern\_v1}
 for candidate scoring,
 \texttt{run.log/pdb-final-and-width-selector-v1-whole-trace/v3} for its log
-parser, and \texttt{wbh-exact-schema-semantic-v2} for metric validation.
+parser, \texttt{wbh-exact-schema-semantic-v3} for metric validation, and
+\texttt{direct-search-raw-effective-plan-reconciliation/v1} for outcome
+certification.
 
 \subsection{Results}
 

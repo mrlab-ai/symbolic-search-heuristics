@@ -107,7 +107,7 @@ MATERIALIZED_PDDL_PROTOCOL = C.PDDL_MATERIALIZATION_PROTOCOL
 BENCHMARK_REVISION = "48d6a00d482de2384a9e751f9343df58bf5582be"
 BENCHMARK_REPOSITORY = "https://github.com/aibasel/downward-benchmarks.git"
 PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
-PILOT_PROTOCOL_REVISION = None
+PILOT_PROTOCOL_REVISION = "d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf"
 CACHE_BINARY_SHA256 = (
     "59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511"
 )
@@ -2653,9 +2653,7 @@ def self_test():
     C.self_test_pddl_materialization()
     _validate_frozen_constants()
     validate_fixed_environment()
-    _expect_protocol_error(
-        validate_cache_pins, "P4 screen protocol revision is unset"
-    )
+    validate_cache_pins()
     tasks = read_manifest()
     source_attestation = validate_manifest_record_pins(tasks)
 

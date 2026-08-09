@@ -61,7 +61,7 @@ EXPECTED_PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
 
 # Exact clean launch worktree revision. The analyzer lives in a descendant
 # commit so this pin does not create a commit-hash self-reference.
-EXPECTED_PROTOCOL_REVISION = None
+EXPECTED_PROTOCOL_REVISION = "d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf"
 EXPECTED_CACHE_BINARY_SHA256 = (
     "59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511"
 )
