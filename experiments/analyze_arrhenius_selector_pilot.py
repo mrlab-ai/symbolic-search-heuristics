@@ -61,7 +61,7 @@ EXPECTED_PLANNER_REVISION = "8e56de8862c9449246596e779177cc9e6a7bcf8e"
 
 # Exact clean launch worktree revision. The analyzer lives in a descendant
 # commit so this pin does not create a commit-hash self-reference.
-EXPECTED_PROTOCOL_REVISION = "45316335e78e7c9fa2a59c3462fcffbe15a16f80"
+EXPECTED_PROTOCOL_REVISION = "4d86669eaf11830ca551ae102994d035f422c2df"
 EXPECTED_CACHE_BINARY_SHA256 = (
     "21ea6aff991b4f8196ee8642ff0534bebae67ee3d13f3bd9c7f6f9b3b1fe8cb9"
 )
@@ -973,7 +973,7 @@ def expected_protocol_metadata(planner_revision, protocol_revision, binary_sha25
         "scheduler_cpu_model": "AMD EPYC 9755 128-Core Processor",
         "scheduler_partition": "cpu",
         "scheduler_qos": "normal",
-        "scheduler_account": "naiss2025-5-382-cpu",
+        "scheduler_account": "naiss2025-5-561-cpu",
         "scheduler_time_limit_per_task": "00:10:00",
         "scheduler_memory_per_cpu": "9G",
         "scheduler_cpus_per_task": 1,
@@ -3333,7 +3333,7 @@ def self_test():
     # mutate or extend selection artifact v2.
     selection_bytes = (canonical_json(artifact) + "\n").encode("ascii")
     assert hashlib.sha256(selection_bytes).hexdigest() == (
-        "d9a23a7b727037ef653ddc24e4d9da53684a125743a3a289870f80c614b25812"
+        "81ed28e79bfcd776a74bba11efc7cd9e3a55596c50f6f91121e3a002737c44cc"
     )
     import exp_arrhenius_selector_validation as heldout_runner
 
@@ -3365,7 +3365,7 @@ def self_test():
     assert report_json.isascii() and "\n" not in report_json
     reporting_bytes = (report_json + "\n").encode("ascii")
     assert hashlib.sha256(reporting_bytes).hexdigest() == (
-        "246d30a3039f5409be73cff29697cd9d701d1a0b443f9adc721d493575a534b0"
+        "b069bc28c7e3a15bc1c37c99bdb288986ad099a7097912f839335296bd8691a4"
     )
     assert [item["label"] for item in report["configs"]] == list(LABELS)
     assert report["identity"]["config_label_order"] == list(LABELS)
