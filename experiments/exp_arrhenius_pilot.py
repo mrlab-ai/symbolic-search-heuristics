@@ -46,7 +46,7 @@ class ProtocolError(RuntimeError):
     pass
 
 
-PROTOCOL = "arrhenius-current-no-lp-pilot-v1"
+PROTOCOL = "arrhenius-current-no-lp-pilot-v2"
 SELECTION_RULE = (
     "valid-costs-max-coverage-min-micro-par2-"
     "min-certified-image-time-label/v1"

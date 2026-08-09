@@ -750,6 +750,8 @@ def add_algorithm(
         ["--search", search_config(search_expr)],
         build_options=list(BUILD_OPTIONS),
         driver_options=[
+            "--build",
+            CACHE_BUILD_NAME,
             "--overall-time-limit",
             TIME_LIMIT,
             "--overall-memory-limit",
@@ -906,6 +908,10 @@ def self_test_scheduler_headers():
     args, kwargs = fake_experiment.call
     if args[2] != REV or kwargs.get("build_options") != BUILD_OPTIONS:
         raise AssertionError("explicit algorithm revision/build was not retained")
+    if kwargs.get("driver_options", [])[:2] != [
+        "--build", CACHE_BUILD_NAME
+    ]:
+        raise AssertionError("cached build was not selected in driver options")
 
     print(
         "Arrhenius scheduler self-tests: PASS "
