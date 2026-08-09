@@ -46,7 +46,7 @@ class ProtocolError(RuntimeError):
     pass
 
 
-PROTOCOL = "arrhenius-current-no-lp-pilot-v2"
+PROTOCOL = "arrhenius-current-no-lp-pilot-v3"
 SELECTION_RULE = (
     "valid-costs-max-coverage-min-micro-par2-"
     "min-certified-image-time-label/v1"
@@ -530,6 +530,7 @@ def inspect_launch_blockers():
 def self_test():
     C.self_test_scheduler_headers()
     C.self_test_cofactor_width_parser()
+    C.self_test_plan_file_parser()
     tasks = read_manifest()
     C.require_revision_ancestor_of_head(PLANNER_REVISION)
     matrix = validate_config_matrix(tasks)

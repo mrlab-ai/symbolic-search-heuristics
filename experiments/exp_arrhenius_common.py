@@ -59,6 +59,17 @@ CACHE_BUILD_NAME = "release_no_lp"
 CACHE_SENTINEL_SHA256 = (
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 )
+LAB_DEFAULT_DRIVER_PREFIX = [
+    "--validate",
+    "--overall-time-limit",
+    "30m",
+    "--overall-memory-limit",
+    "3584M",
+]
+PLAN_VALIDATION_PROTOCOL = (
+    "no-external-val;require-plan-file-and-cross-config-cost-agreement/v1"
+)
+PLAN_FILE_PARSER_PROTOCOL = "sas_plan/exact-single-cost-footer/v1"
 
 # Arrhenius CPU nodes are homogeneous AMD EPYC 9755 nodes.  MAX_TASKS follows
 # Slurm's MaxArraySize=1001: Lab uses one-based array indices, hence at most
@@ -107,6 +118,9 @@ _ANY_WBH_HEURISTIC_LINE_RE = re.compile(
 _COFACTOR_WIDTH_FIELD_RE = re.compile(
     r"(?:^|, )cofactor_width=(\d+)(?=, |$)"
 )
+_PLAN_COST_RE = re.compile(
+    r"^; cost = (\d+) \((?:unit|general) cost\)$", re.MULTILINE
+)
 
 
 def parse_cofactor_width(content, props) -> None:
@@ -150,6 +164,40 @@ def get_cofactor_width_parser() -> Parser:
     parser = Parser()
     parser.add_function(parse_cofactor_width, file="run.log")
     return parser
+
+
+def parse_plan_file(content, props) -> None:
+    """Require exactly one canonical cost footer in every emitted plan."""
+    if not content.strip():
+        props["plan_file_present"] = False
+        return
+    props["plan_file_present"] = True
+    costs = _PLAN_COST_RE.findall(content)
+    if len(costs) != 1:
+        tools.add_unexplained_error(
+            props,
+            "plan parser expected one canonical cost footer; got {}".format(
+                len(costs)
+            ),
+        )
+        return
+    props["plan_file_cost"] = int(costs[0])
+
+
+class PlanFileParser(Parser):
+    """Parser that records absence as well as contents of ``sas_plan``."""
+
+    def parse(self, run_dir, props):
+        path = Path(run_dir).resolve() / "sas_plan"
+        try:
+            content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            content = ""
+        parse_plan_file(content, props)
+
+
+def get_plan_file_parser() -> Parser:
+    return PlanFileParser()
 
 
 def _required_lab_version() -> str:
@@ -612,6 +660,19 @@ class ProtocolFastDownwardExperiment(FastDownwardExperiment):
         super().__init__(*args, **kwargs)
         self.protocol_run_properties = {}
 
+    def add_algorithm(self, *args, **kwargs):
+        """Add an algorithm after removing only Lab's unavailable VAL flag."""
+        super().add_algorithm(*args, **kwargs)
+        name = args[0] if args else kwargs.get("name")
+        algorithm = self._algorithms[name]
+        prefix = algorithm.driver_options[:len(LAB_DEFAULT_DRIVER_PREFIX)]
+        if prefix != LAB_DEFAULT_DRIVER_PREFIX:
+            raise RuntimeError(
+                "Lab default driver options changed; review VAL handling: {}".
+                format(prefix)
+            )
+        algorithm.driver_options = algorithm.driver_options[1:]
+
     def _add_runs(self):
         first_new_run = len(self.runs)
         super()._add_runs()
@@ -636,6 +697,9 @@ def common_protocol_metadata(
         "planner_build_config": CACHE_BUILD_NAME,
         "planner_binary_sha256": cache_binary_sha256,
         "planner_revision_cache_name": cache.name,
+        "external_plan_validation": False,
+        "plan_validation_protocol": PLAN_VALIDATION_PROTOCOL,
+        "plan_file_parser_protocol": PLAN_FILE_PARSER_PROTOCOL,
         "cofactor_width_property": COFACTOR_WIDTH_PROPERTY,
         "cofactor_width_parser_protocol": COFACTOR_WIDTH_PARSER_PROTOCOL,
         "python_version": platform.python_version(),
@@ -712,6 +776,7 @@ def new_experiment(protocol_metadata: dict) -> ProtocolFastDownwardExperiment:
     experiment.add_parser(experiment.PLANNER_PARSER)
     experiment.add_parser(wbh_parser.get_parser())
     experiment.add_parser(get_cofactor_width_parser())
+    experiment.add_parser(get_plan_file_parser())
     return experiment
 
 
@@ -766,6 +831,7 @@ def add_suite(experiment, benchmarks: Path, suite) -> None:
 
 ATTRIBUTES = [
     "coverage", "solution_cost", "planner_time", "total_time", "effort",
+    "plan_file_present", "plan_file_cost",
     "cofactor_width",
     "peak_bdd_nodes", "expanded_bdd_nodes", "expanded_states",
     "expanded_bdd_pieces", "attempted_bdd_nodes", "attempted_states",
@@ -912,6 +978,11 @@ def self_test_scheduler_headers():
         "--build", CACHE_BUILD_NAME
     ]:
         raise AssertionError("cached build was not selected in driver options")
+    if LAB_DEFAULT_DRIVER_PREFIX != [
+        "--validate", "--overall-time-limit", "30m",
+        "--overall-memory-limit", "3584M",
+    ]:
+        raise AssertionError("Lab default driver prefix contract changed")
 
     print(
         "Arrhenius scheduler self-tests: PASS "
@@ -1049,6 +1120,28 @@ def self_test_cofactor_width_parser():
     )
 
 
+def self_test_plan_file_parser():
+    for footer in ("unit cost", "general cost"):
+        props = {}
+        parse_plan_file("(move a b)\n; cost = 17 ({})\n".format(footer), props)
+        if props != {"plan_file_present": True, "plan_file_cost": 17}:
+            raise AssertionError("wrong plan-file parse: {!r}".format(props))
+    empty = {}
+    parse_plan_file("", empty)
+    if empty != {"plan_file_present": False}:
+        raise AssertionError("missing plan file was not recorded exactly")
+    malformed = {}
+    parse_plan_file("(move a b)\n", malformed)
+    if malformed.get("plan_file_present") is not True or not malformed.get(
+        "unexplained_errors"
+    ):
+        raise AssertionError("malformed plan footer was accepted")
+    if not isinstance(get_plan_file_parser(), PlanFileParser):
+        raise AssertionError("plan-file parser type changed")
+    print("plan-file parser self-tests: PASS (missing/unit/general/malformed)")
+
+
 if __name__ == "__main__":
     self_test_scheduler_headers()
     self_test_cofactor_width_parser()
+    self_test_plan_file_parser()
