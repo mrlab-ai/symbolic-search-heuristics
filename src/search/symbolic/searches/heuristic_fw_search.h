@@ -57,7 +57,11 @@ class WbhStats;
   f' >= f; with positive costs, equal-f successors have greater g. Hence early
   successors cannot overtake their pending source. Speculation may overgenerate
   states later removed as duplicates, but never removes a normally expanded
-  state. The heuristic families wired to this search are consistent.
+  state. The heuristic families wired to this search are consistent. The
+  global symbolic options batch_max_union_nodes and batch_max_union_ratio can
+  additionally reject an eligible extra bucket when its candidate image-source
+  union is too large. Both default to 0 (disabled), which exactly preserves the
+  fixed-window policy.
 */
 class HeuristicFwSearch : public SymSearch {
     std::shared_ptr<ClosedList> closed;
@@ -91,6 +95,18 @@ class HeuristicFwSearch : public SymSearch {
     bool has_current_f;
     int current_f;
 
+    // Aggregate diagnostics for the optional adaptive batching gate. Keeping
+    // these here avoids per-image log traffic that would perturb the timings
+    // being measured. They remain untouched when both gates are disabled.
+    long long batch_eligible_extras = 0;
+    long long batch_accepted_extras = 0;
+    long long batch_rejected_node_limit = 0;
+    long long batch_rejected_node_ratio = 0;
+    long batch_max_candidate_union_nodes = 0;
+    long batch_max_final_union_nodes = 0;
+    double batch_max_candidate_union_ratio = 0.0;
+    double batch_max_final_union_ratio = 0.0;
+
     void insert_open(int g, int v, const BDD &bdd);
     bool select_min(std::pair<int, int> &key);
     int min_open_f() const;
@@ -98,6 +114,7 @@ class HeuristicFwSearch : public SymSearch {
 
 public:
     HeuristicFwSearch(SymbolicSearch *eng, const SymParameters &params);
+    virtual ~HeuristicFwSearch() override;
 
     // level_sets maps each finite heuristic value v to H_v; dead_ends is the
     // set of states with h = infinity (empty BDD if none). Both must outlive

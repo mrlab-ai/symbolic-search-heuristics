@@ -18,23 +18,28 @@ namespace symbolic {
 SymbolicPdbForwardSearch::SymbolicPdbForwardSearch(const plugins::Options &opts)
     : SymbolicSearch(opts), state_budget(opts.get<int>("budget")),
       goal_directed(opts.get<bool>("goal_directed")),
+      pattern_selection(opts.get<PdbPatternSelection>("pattern_selection")),
+      cegar_max_time(opts.get<double>("cegar_max_time")),
+      cegar_seed(opts.get<int>("cegar_seed")),
       prune_only(opts.get<bool>("prune_only")),
       batch_f_window(opts.get<int>("batch_f_window")) {
 }
 
 void SymbolicPdbForwardSearch::initialize() {
     SymbolicSearch::initialize();
+    verify_heuristic_positive_costs();
     mgr =
         make_shared<SymStateSpaceManager>(vars.get(), sym_params, search_task);
 
-    TaskProxy search_task_proxy(*search_task);
     utils::Timer construction_timer;
     level_sets =
         make_shared<PdbLevelSets>(
-            vars.get(), search_task_proxy, state_budget, goal_directed);
+            vars.get(), search_task, state_budget, pattern_selection,
+            goal_directed, cegar_max_time, cegar_seed);
     utils::g_log << "wbh PDB heuristic: pattern_size="
                  << level_sets->get_pattern().size()
                  << ", values=" << level_sets->get_level_sets().size()
+                 << ", cofactor_width=" << level_sets->get_cofactor_width()
                  << ", width_upper_bound=" << level_sets->get_width_upper_bound()
                  << endl;
     if (sym_params.stats) {
@@ -49,7 +54,7 @@ void SymbolicPdbForwardSearch::initialize() {
     double construction_time = construction_timer();
     if (sym_params.stats) {
         sym_params.stats->log_construction(
-            goal_directed ? "pdb_goal_directed" : "pdb_bdd_order",
+            "pdb_" + level_sets->get_selection_name(),
             construction_time, state_budget, -1, true);
     }
 
@@ -85,10 +90,26 @@ public:
             "100000", plugins::Bounds("1", "infinity"));
         add_option<bool>(
             "goal_directed",
-            "Choose variables with Fast Downward's goal/causal-graph order "
-            "instead of the legacy BDD-order prefix. Arbitrary patterns retain "
-            "the same state-budget width bound.",
+            "Legacy compatibility switch, used only when pattern_selection="
+            "legacy. True selects the historical goal/causal-graph prefix; "
+            "false selects the historical BDD-order prefix.",
             "false");
+        add_option<PdbPatternSelection>(
+            "pattern_selection",
+            "Pattern strategy. legacy preserves goal_directed behavior; "
+            "goal_fill skips variables that do not fit instead of wasting the "
+            "remaining budget; cegar uses counterexample-guided refinement.",
+            "legacy");
+        add_option<double>(
+            "cegar_max_time",
+            "Maximum CEGAR pattern-generation time in seconds (used only for "
+            "pattern_selection=cegar).",
+            "10.0", plugins::Bounds("0.0", "infinity"));
+        add_option<int>(
+            "cegar_seed",
+            "Deterministic CEGAR random seed (used only for "
+            "pattern_selection=cegar).",
+            "2011", plugins::Bounds("0", "infinity"));
         add_option<bool>(
             "prune_only",
             "Use the heuristic only for pruning (dead ends and, once an "
@@ -117,4 +138,12 @@ public:
 };
 
 static plugins::FeaturePlugin<SymbolicPdbForwardSearchFeature> _plugin;
+
+static plugins::TypedEnumPlugin<PdbPatternSelection>
+    _pdb_pattern_selection_enum_plugin(
+        {{"legacy", "preserve the historical goal_directed switch"},
+         {"bdd_prefix", "greedy prefix of the BDD variable order"},
+         {"goal_prefix", "greedy prefix of the goal/causal-graph order"},
+         {"goal_fill", "goal/causal order, skipping variables that do not fit"},
+         {"cegar", "counterexample-guided pattern refinement"}});
 }

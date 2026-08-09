@@ -13,11 +13,14 @@ class MsLevelSets;
   Symbolic forward search guided by a linear merge-and-shrink heuristic (paper
   Prop. prop-ms, third width-bounded family). Builds the M&S level sets
   (MsLevelSets, shrink limit = the width knob N) and runs the shared
-  (g, v)-keyed BDDA* HeuristicFwSearch, discarding dead ends.
+  (g, v)-keyed BDDA* HeuristicFwSearch, discarding dead ends. A finite
+  build_time_limit bounds construction; on expiry the wrapper safely continues
+  as ordinary blind forward symbolic search.
 */
 class SymbolicMsForwardSearch : public SymbolicSearch {
     const int max_states;
     const int value_cap;
+    const double build_time_limit;
     const bool prune_only;
     const int batch_f_window;
     const bool align_merge_order;

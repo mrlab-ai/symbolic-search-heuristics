@@ -55,6 +55,11 @@ protected:
 
     virtual void initialize() override;
 
+    // Product-at-evaluation heuristic searches rely on strictly positive
+    // transition costs. Call this immediately after initialize(), before
+    // constructing an expensive PDB, M&S abstraction, or potential MIP.
+    void verify_heuristic_positive_costs() const;
+
     virtual SearchStatus step() override;
 
 public:

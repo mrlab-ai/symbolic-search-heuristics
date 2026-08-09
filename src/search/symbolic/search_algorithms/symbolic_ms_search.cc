@@ -11,8 +11,7 @@
 #include "../plan_reconstruction/sym_solution_cut.h"
 #include "../plan_selection/plan_selector.h"
 #include "../searches/heuristic_fw_search.h"
-
-#include <limits>
+#include "../searches/uniform_cost_search.h"
 
 using namespace std;
 
@@ -20,6 +19,7 @@ namespace symbolic {
 SymbolicMsForwardSearch::SymbolicMsForwardSearch(const plugins::Options &opts)
     : SymbolicSearch(opts), max_states(opts.get<int>("max_states")),
       value_cap(opts.get<int>("value_cap")),
+      build_time_limit(opts.get<double>("build_time_limit")),
       prune_only(opts.get<bool>("prune_only")),
       batch_f_window(opts.get<int>("batch_f_window")),
       align_merge_order(opts.get<bool>("align_merge_order")) {
@@ -27,6 +27,7 @@ SymbolicMsForwardSearch::SymbolicMsForwardSearch(const plugins::Options &opts)
 
 void SymbolicMsForwardSearch::initialize() {
     SymbolicSearch::initialize();
+    verify_heuristic_positive_costs();
     mgr =
         make_shared<SymStateSpaceManager>(vars.get(), sym_params, search_task);
 
@@ -34,12 +35,36 @@ void SymbolicMsForwardSearch::initialize() {
     utils::Timer construction_timer;
     level_sets = make_shared<MsLevelSets>(
         vars.get(), search_task_proxy, max_states, /*shrink_seed=*/2011,
-        /*both_directions=*/false,
-        numeric_limits<double>::infinity(), align_merge_order, value_cap);
+        /*both_directions=*/false, build_time_limit, align_merge_order,
+        value_cap);
+    if (level_sets->construction_timed_out()) {
+        double construction_time = construction_timer();
+        if (sym_params.stats) {
+            sym_params.stats->log_construction(
+                "merge_and_shrink", construction_time, max_states, value_cap,
+                false);
+        }
+        utils::g_log << "wbh forward M&S construction budget ("
+                     << build_time_limit
+                     << "s) exceeded; running blind forward search." << endl;
+        level_sets = nullptr;
+
+        auto blind_search = unique_ptr<UniformCostSearch>(
+            new UniformCostSearch(this, sym_params));
+        blind_search->init(mgr, true, nullptr);
+        auto sym_trs =
+            blind_search->getStateSpaceShared()->get_transition_relations();
+        solution_registry->init(
+            vars, blind_search->getClosedShared(), nullptr, sym_trs,
+            plan_data_base, true, simple);
+        search = move(blind_search);
+        return;
+    }
     utils::g_log << "wbh linear M&S heuristic: max_states=" << max_states
                  << ", value_cap=" << value_cap
                  << ", abstract_states=" << level_sets->get_num_abstract_states()
                  << ", values=" << level_sets->get_level_sets().size()
+                 << ", cofactor_width=" << level_sets->get_cofactor_width()
                  << ", width_upper_bound=" << level_sets->get_width_upper_bound()
                  << endl;
     if (sym_params.stats) {
@@ -92,6 +117,13 @@ public:
             "sets. K >= 0 yields the admissible and consistent heuristic "
             "min(h_MS, K) with at most K+1 values; -1 keeps exact distances.",
             "-1", plugins::Bounds("-1", "infinity"));
+        add_option<double>(
+            "build_time_limit",
+            "Time budget in seconds for constructing the M&S abstraction and "
+            "its symbolic level sets. If the budget expires, continue with "
+            "blind forward symbolic search. The default infinity preserves "
+            "legacy unbounded construction.",
+            "infinity", plugins::Bounds("0.0", "infinity"));
         add_option<bool>(
             "align_merge_order",
             "Merge along the search's (Gamer) variable order instead of the "

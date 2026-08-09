@@ -7,7 +7,11 @@
 #include "../task_proxy.h"
 
 #include <map>
+#include <memory>
+#include <string>
 #include <vector>
+
+class AbstractTask;
 
 namespace pdbs {
 class PatternDatabase;
@@ -17,15 +21,22 @@ class Projection;
 namespace symbolic {
 class WbhStats;
 
+enum class PdbPatternSelection {
+    LEGACY,
+    BDD_PREFIX,
+    GOAL_PREFIX,
+    GOAL_FILL,
+    CEGAR,
+};
+
 /*
   Budget-bounded pattern database level sets.
 
-  Selects variables greedily up to an abstract-state budget B, either from the
-  search's BDD variable order (legacy mode) or from Fast Downward's
-  goal/causal-graph order. The pattern need not be a prefix: under a
-  variable-contiguous bit order, non-pattern variables are skipped by the
-  reduced ADD, so any pattern with at most B abstract states has the same
-  O(dB) width guarantee.
+  Selects a pattern up to an abstract-state budget B using a legacy prefix,
+  a budget-filling goal/causal order, or Fast Downward's CEGAR generator. The
+  pattern need not be a prefix: under a variable-contiguous bit order,
+  non-pattern variables are skipped by the reduced ADD, so any pattern with
+  at most B abstract states has the same O(dB) width guarantee.
 
   Computes the PDB explicitly with Fast Downward's PDB code on the projection,
   then builds level-set BDDs H_d by iterating abstract states and conjoining
@@ -42,6 +53,7 @@ class PdbLevelSets {
     std::map<int, BDD> level_sets; // distance d -> H_d (valid states)
     BDD dead_ends; // states mapping to dead-end abstract states
     AddStats add_stats;
+    std::string selection_name;
 
     // Independent check that BDD level-set membership agrees with explicit PDB
     // lookups on sampled abstract states (PR4 acceptance).
@@ -51,8 +63,9 @@ class PdbLevelSets {
 
 public:
     PdbLevelSets(
-        SymVariables *vars, const TaskProxy &task_proxy, int state_budget,
-        bool goal_directed = false);
+        SymVariables *vars, const std::shared_ptr<AbstractTask> &task,
+        int state_budget, PdbPatternSelection pattern_selection,
+        bool legacy_goal_directed, double cegar_max_time, int cegar_seed);
 
     const std::map<int, BDD> &get_level_sets() const {
         return level_sets;
@@ -66,10 +79,18 @@ public:
         return pattern;
     }
 
+    const std::string &get_selection_name() const {
+        return selection_name;
+    }
+
     void log_heuristic(WbhStats &stats) const;
 
     long get_width_upper_bound() const {
         return add_stats.width_upper_bound;
+    }
+
+    long get_cofactor_width() const {
+        return add_stats.cofactor_width;
     }
 };
 }

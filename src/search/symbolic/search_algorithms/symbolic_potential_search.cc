@@ -30,6 +30,7 @@ SymbolicPotentialForwardSearch::SymbolicPotentialForwardSearch(
 
 void SymbolicPotentialForwardSearch::initialize() {
     SymbolicSearch::initialize();
+    verify_heuristic_positive_costs();
     mgr =
         make_shared<SymStateSpaceManager>(vars.get(), sym_params, search_task);
 
@@ -67,6 +68,7 @@ void SymbolicPotentialForwardSearch::initialize() {
     }
     utils::g_log << "wbh potential heuristic: m=" << m << ", values="
                  << level_sets->get_level_sets().size()
+                 << ", cofactor_width=" << level_sets->get_cofactor_width()
                  << ", width_upper_bound=" << level_sets->get_width_upper_bound()
                  << endl;
     if (sym_params.stats) {

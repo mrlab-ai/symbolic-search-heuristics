@@ -5,6 +5,8 @@
 
 #include "../pdbs/pattern_database.h"
 #include "../pdbs/pattern_database_factory.h"
+#include "../pdbs/pattern_generator_cegar.h"
+#include "../pdbs/pattern_information.h"
 #include "../pdbs/types.h"
 #include "../task_utils/variable_order_finder.h"
 #include "../utils/logging.h"
@@ -17,40 +19,122 @@ using namespace std;
 
 namespace symbolic {
 PdbLevelSets::PdbLevelSets(
-    SymVariables *vars, const TaskProxy &task_proxy, int state_budget,
-    bool goal_directed)
+    SymVariables *vars, const shared_ptr<AbstractTask> &task, int state_budget,
+    PdbPatternSelection pattern_selection, bool legacy_goal_directed,
+    double cegar_max_time, int cegar_seed)
     : vars(vars) {
-    // Both strategies stop before exceeding the same abstract-state budget.
-    // The goal-directed order is Fast Downward's standard GOAL_CG_LEVEL
-    // greedy pattern order; the legacy strategy follows the BDD variable order.
-    vector<int> variable_order;
-    if (goal_directed) {
-        variable_order_finder::VariableOrderFinder order(
-            task_proxy, variable_order_finder::GOAL_CG_LEVEL);
-        while (!order.done()) {
-            variable_order.push_back(order.next());
-        }
-    } else {
-        variable_order = vars->get_var_order();
+    TaskProxy task_proxy(*task);
+
+    // LEGACY exactly preserves the two historical modes, including stopping
+    // at the first oversized variable. Explicit GOAL_FILL fixes that greedy
+    // prefix pathology by trying all later variables. CEGAR reuses Fast
+    // Downward's counterexample-guided pattern generator under the same PDB
+    // state budget.
+    bool goal_order = false;
+    bool skip_oversized = false;
+    bool use_cegar = false;
+    switch (pattern_selection) {
+    case PdbPatternSelection::LEGACY:
+        goal_order = legacy_goal_directed;
+        selection_name =
+            legacy_goal_directed ? "goal_directed" : "bdd_order";
+        break;
+    case PdbPatternSelection::BDD_PREFIX:
+        selection_name = "bdd_prefix";
+        break;
+    case PdbPatternSelection::GOAL_PREFIX:
+        goal_order = true;
+        selection_name = "goal_prefix";
+        break;
+    case PdbPatternSelection::GOAL_FILL:
+        goal_order = true;
+        skip_oversized = true;
+        selection_name = "goal_fill";
+        break;
+    case PdbPatternSelection::CEGAR:
+        use_cegar = true;
+        selection_name = "cegar";
+        break;
     }
 
-    long product = 1;
-    for (int var : variable_order) {
-        long domain_size = task_proxy.get_variables()[var].get_domain_size();
-        if (product > state_budget / domain_size) {
-            break;
+    shared_ptr<pdbs::PatternDatabase> pdb;
+    vector<int> variable_order;
+    if (use_cegar && task_proxy.get_goals().size() > 0) {
+        pdbs::PatternGeneratorCEGAR generator(
+            state_budget, cegar_max_time, /*use_wildcard_plans=*/true,
+            cegar_seed, utils::Verbosity::NORMAL);
+        pdbs::PatternInformation info = generator.generate(task);
+        pattern = info.get_pattern();
+
+        // CEGAR deliberately permits an oversized singleton goal pattern.
+        // That exception is inappropriate for a hard representation budget,
+        // so fail over to the bounded fill strategy instead.
+        long product = 1;
+        bool within_budget = true;
+        for (int var : pattern) {
+            long domain_size =
+                task_proxy.get_variables()[var].get_domain_size();
+            if (product > state_budget / domain_size) {
+                within_budget = false;
+                break;
+            }
+            product *= domain_size;
         }
-        product *= domain_size;
-        pattern.push_back(var);
+        if (within_budget) {
+            pdb = info.get_pdb();
+        } else {
+            utils::g_log
+                << "CEGAR singleton exceeds the hard PDB state budget; "
+                   "falling back to goal_fill."
+                << endl;
+            pattern.clear();
+            use_cegar = false;
+            goal_order = true;
+            skip_oversized = true;
+            selection_name = "cegar_fallback_goal_fill";
+        }
+    } else if (use_cegar) {
+        // An empty goal needs no refinement; the empty PDB is exact.
+        pattern.clear();
+    }
+
+    if (!use_cegar) {
+        if (goal_order) {
+            variable_order_finder::VariableOrderFinder order(
+                task_proxy, variable_order_finder::GOAL_CG_LEVEL);
+            while (!order.done()) {
+                variable_order.push_back(order.next());
+            }
+        } else {
+            variable_order = vars->get_var_order();
+        }
+    }
+
+    if (!use_cegar) {
+        long product = 1;
+        for (int var : variable_order) {
+            long domain_size =
+                task_proxy.get_variables()[var].get_domain_size();
+            if (product > state_budget / domain_size) {
+                if (skip_oversized) {
+                    continue;
+                }
+                break;
+            }
+            product *= domain_size;
+            pattern.push_back(var);
+        }
     }
     sort(pattern.begin(), pattern.end());
 
-    utils::g_log << (goal_directed ? "Goal-directed" : "BDD-order")
-                 << " PDB pattern (" << pattern.size() << " vars, <= "
-                 << state_budget << " abstract states): " << pattern << endl;
+    utils::g_log << "PDB pattern selection=" << selection_name << " ("
+                 << pattern.size() << " vars, <= " << state_budget
+                 << " abstract states): " << pattern << endl;
 
-    shared_ptr<pdbs::PatternDatabase> pdb =
-        pdbs::compute_pdb(task_proxy, pattern);
+    if (!pdb) {
+        pdb = pdbs::compute_pdb(task_proxy, pattern);
+    }
+
     pdbs::Projection projection(task_proxy, pattern);
     int num_abstract_states = projection.get_num_abstract_states();
     int num_vars = task_proxy.get_variables().size();

@@ -31,6 +31,11 @@ struct SymParameters {
     double ratio_alloted_time,
         ratio_alloted_nodes; // factor to multiply the estimation
 
+    // Optional node-cost gates for same-g heuristic contour batching. A zero
+    // value disables the corresponding gate, preserving fixed-window behavior.
+    int batch_max_union_nodes;
+    double batch_max_union_ratio;
+
     bool non_stop;
 
     bool print_symbolic_task_size;

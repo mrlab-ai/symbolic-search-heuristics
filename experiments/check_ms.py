@@ -7,6 +7,7 @@ abstraction lookups. Finite caps must also bound every expanded h value.
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -22,10 +23,13 @@ VALUE_CAPS = [4, 16, -1]
 
 
 def run(domain, problem, search, timeout):
-    cmd = [sys.executable, str(FD), str(resolve_domain(domain, problem)),
+    build = os.environ.get("DOWNWARD_BUILD", "release")
+    cmd = [sys.executable, str(FD), "--build", build,
+           str(resolve_domain(domain, problem)),
            str(BENCHMARKS / domain / problem), "--search", search]
-    return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout).stdout
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout)
+    return result.stdout + result.stderr
 
 
 def run_logged(domain, problem, search, timeout):

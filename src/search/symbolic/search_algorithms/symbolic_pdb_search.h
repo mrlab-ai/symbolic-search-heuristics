@@ -8,6 +8,7 @@
 namespace symbolic {
 class HeuristicFwSearch;
 class PdbLevelSets;
+enum class PdbPatternSelection;
 
 /*
   Symbolic forward search guided by a budget-bounded pattern database.
@@ -18,6 +19,9 @@ class PdbLevelSets;
 class SymbolicPdbForwardSearch : public SymbolicSearch {
     const int state_budget;
     const bool goal_directed;
+    const PdbPatternSelection pattern_selection;
+    const double cegar_max_time;
+    const int cegar_seed;
     const bool prune_only;
     const int batch_f_window;
 

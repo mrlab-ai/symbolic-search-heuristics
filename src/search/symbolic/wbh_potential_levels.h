@@ -64,6 +64,10 @@ public:
     long get_width_upper_bound() const {
         return add_stats.width_upper_bound;
     }
+
+    long get_cofactor_width() const {
+        return add_stats.cofactor_width;
+    }
 };
 }
 

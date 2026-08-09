@@ -35,6 +35,29 @@ HeuristicFwSearch::HeuristicFwSearch(
       current_f(0) {
 }
 
+HeuristicFwSearch::~HeuristicFwSearch() {
+    if (sym_params.batch_max_union_nodes == 0 &&
+        sym_params.batch_max_union_ratio == 0.0) {
+        return;
+    }
+    utils::g_log << "WBH adaptive batch summary: max_union_nodes_limit="
+                 << sym_params.batch_max_union_nodes
+                 << ", max_union_ratio_limit="
+                 << sym_params.batch_max_union_ratio
+                 << ", eligible_extras=" << batch_eligible_extras
+                 << ", accepted_extras=" << batch_accepted_extras
+                 << ", rejected_node_limit=" << batch_rejected_node_limit
+                 << ", rejected_node_ratio=" << batch_rejected_node_ratio
+                 << ", max_candidate_union_inner_nodes="
+                 << batch_max_candidate_union_nodes
+                 << ", max_final_union_inner_nodes="
+                 << batch_max_final_union_nodes
+                 << ", max_candidate_union_ratio="
+                 << batch_max_candidate_union_ratio
+                 << ", max_final_union_ratio="
+                 << batch_max_final_union_ratio << endl;
+}
+
 bool HeuristicFwSearch::init(
     shared_ptr<SymStateSpaceManager> manager,
     const map<int, BDD> *level_sets_, const BDD &dead_ends_,
@@ -309,6 +332,22 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
     int min_source_h = v;
     int max_source_h = v;
     vector<pair<pair<int, int>, BDD>> staged_preexpanded;
+    const bool adaptive_batch_gate =
+        sym_params.batch_max_union_nodes > 0 ||
+        sym_params.batch_max_union_ratio > 0.0;
+    int batch_eligible_extras = 0;
+    int batch_accepted_extras = 0;
+    int batch_rejected_node_limit = 0;
+    int batch_rejected_node_ratio = 0;
+    long batch_separate_nodes = 0;
+    long batch_union_nodes = 0;
+    long batch_max_candidate_nodes = 0;
+    double batch_max_candidate_ratio = 0.0;
+    if (adaptive_batch_gate) {
+        batch_separate_nodes = inner_node_count(image_source);
+        batch_union_nodes = batch_separate_nodes;
+        batch_max_candidate_nodes = batch_union_nodes;
+    }
     if (batch_f_window > 0 && !fresh_states.IsZero()) {
         const long long window_limit =
             static_cast<long long>(current_f) + batch_f_window;
@@ -349,13 +388,75 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
                 extra_live += b;
             }
             if (!extra_live.IsZero()) {
-                image_source += extra_live;
-                ++image_source_buckets;
-                min_source_h = min(min_source_h, extra_h);
-                max_source_h = max(max_source_h, extra_h);
+                if (!adaptive_batch_gate) {
+                    // Exact legacy behavior: no diagnostic node queries and no
+                    // gate bookkeeping when both new options retain defaults.
+                    image_source += extra_live;
+                    ++image_source_buckets;
+                    min_source_h = min(min_source_h, extra_h);
+                    max_source_h = max(max_source_h, extra_h);
+                } else {
+                    ++batch_eligible_extras;
+                    BDD candidate_union = image_source + extra_live;
+                    const long candidate_nodes =
+                        inner_node_count(candidate_union);
+                    const long candidate_separate_nodes =
+                        batch_separate_nodes + inner_node_count(extra_live);
+                    const double candidate_ratio =
+                        candidate_separate_nodes == 0
+                            ? (candidate_nodes == 0
+                                   ? 0.0
+                                   : numeric_limits<double>::infinity())
+                            : static_cast<double>(candidate_nodes) /
+                                  candidate_separate_nodes;
+                    batch_max_candidate_nodes =
+                        max(batch_max_candidate_nodes, candidate_nodes);
+                    batch_max_candidate_ratio =
+                        max(batch_max_candidate_ratio, candidate_ratio);
+
+                    if (sym_params.batch_max_union_nodes > 0 &&
+                        candidate_nodes > sym_params.batch_max_union_nodes) {
+                        ++batch_rejected_node_limit;
+                        continue;
+                    }
+                    if (sym_params.batch_max_union_ratio > 0.0 &&
+                        candidate_ratio > sym_params.batch_max_union_ratio) {
+                        ++batch_rejected_node_ratio;
+                        continue;
+                    }
+
+                    image_source = candidate_union;
+                    batch_separate_nodes = candidate_separate_nodes;
+                    batch_union_nodes = candidate_nodes;
+                    ++batch_accepted_extras;
+                    ++image_source_buckets;
+                    min_source_h = min(min_source_h, extra_h);
+                    max_source_h = max(max_source_h, extra_h);
+                }
             }
             staged_preexpanded.emplace_back(extra_key, extra_raw);
         }
+    }
+    if (adaptive_batch_gate && batch_eligible_extras > 0) {
+        const double final_union_ratio =
+            batch_separate_nodes == 0
+                ? (batch_union_nodes == 0
+                       ? 0.0
+                       : numeric_limits<double>::infinity())
+                : static_cast<double>(batch_union_nodes) /
+                      batch_separate_nodes;
+        this->batch_eligible_extras += batch_eligible_extras;
+        this->batch_accepted_extras += batch_accepted_extras;
+        this->batch_rejected_node_limit += batch_rejected_node_limit;
+        this->batch_rejected_node_ratio += batch_rejected_node_ratio;
+        batch_max_candidate_union_nodes = max(
+            batch_max_candidate_union_nodes, batch_max_candidate_nodes);
+        batch_max_final_union_nodes =
+            max(batch_max_final_union_nodes, batch_union_nodes);
+        batch_max_candidate_union_ratio = max(
+            batch_max_candidate_union_ratio, batch_max_candidate_ratio);
+        batch_max_final_union_ratio =
+            max(batch_max_final_union_ratio, final_union_ratio);
     }
 
     utils::Timer image_timer;

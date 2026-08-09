@@ -25,6 +25,8 @@ SymParameters::SymParameters(
       max_alloted_nodes(opts.get<int>("max_alloted_nodes")),
       ratio_alloted_time(opts.get<double>("ratio_alloted_time")),
       ratio_alloted_nodes(opts.get<double>("ratio_alloted_nodes")),
+      batch_max_union_nodes(opts.get<int>("batch_max_union_nodes")),
+      batch_max_union_ratio(opts.get<double>("batch_max_union_ratio")),
       non_stop(opts.get<bool>("non_stop")),
       print_symbolic_task_size(opts.get<bool>("print_symbolic_task_size")) {
     // Don't use edeletion with conditional effects
@@ -109,6 +111,21 @@ void SymParameters::add_options_to_feature(plugins::Feature &feature) {
     feature.add_option<double>(
         "ratio_alloted_nodes", "multiplier to decide alloted nodes for a step",
         "2.0");
+    feature.add_option<int>(
+        "batch_max_union_nodes",
+        "Absolute inner-node cap for a candidate same-g batching union. An "
+        "eligible extra heuristic bucket is accepted only if the resulting "
+        "image-source BDD has at most this many inner nodes. 0 disables this "
+        "gate and preserves fixed-window batching.",
+        "0", plugins::Bounds("0", "infinity"));
+    feature.add_option<double>(
+        "batch_max_union_ratio",
+        "Multiplicative node-cost proxy for same-g batching. An eligible extra "
+        "bucket is accepted only if candidate-union inner nodes divided by the "
+        "sum of the current accepted-source and candidate-bucket inner nodes is "
+        "at most this ratio. 0 disables this gate and preserves fixed-window "
+        "batching.",
+        "0.0", plugins::Bounds("0.0", "infinity"));
     feature.add_option<bool>(
         "non_stop",
         "Removes initial state from closed to avoid backward search to stop.",

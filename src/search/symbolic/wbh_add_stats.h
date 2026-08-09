@@ -16,6 +16,13 @@ class WbhStats;
   U = A + T (paper Prop. prop-add), with A the ADD inner-node count and T the
   number of terminals in the chosen total extension. num_values separately
   records the finite level sets that can become search buckets.
+
+  cofactor_width is the exact width from paper Def. def-width. It is computed
+  by advancing the set of distinct ADD residuals across every CUDD variable
+  level, explicitly retaining a residual when the reduced ADD skips a level.
+  This is intentionally different from the number of displayed reduced ADD
+  nodes at a level. cofactor_counts contains the exact count before reading
+  any bit and after each manager level, so its maximum is cofactor_width.
 */
 struct AddStats {
     long add_inner_nodes = 0;
@@ -23,9 +30,12 @@ struct AddStats {
     int num_terminals = 0;
     std::vector<long> add_level_nodes;
     long width_upper_bound = 0;
+    long cofactor_width = 0;
+    std::vector<long> cofactor_counts;
 };
 
-// Single DFS over the ADD, counting inner nodes per CUDD level.
+// Traverse the ADD once for node statistics and once level-by-level for the
+// exact residual/cofactor frontier.
 AddStats compute_add_stats(SymVariables *vars, const ADD &add, int num_values);
 
 // Return the sorted distinct integer terminal values attained by an ADD.

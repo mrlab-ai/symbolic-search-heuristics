@@ -6,6 +6,7 @@
 
 #include "../../task_utils/task_properties.h"
 #include "../../tasks/cost_adapted_task.h"
+#include "../../utils/system.h"
 #include "../plan_selection/plan_selector.h"
 #include "../searches/bidirectional_search.h"
 #include "../searches/top_k_uniform_cost_search.h"
@@ -68,6 +69,16 @@ void SymbolicSearch::initialize() {
     }
 
     plan_data_base->init(vars, search_task, get_plan_manager());
+}
+
+void SymbolicSearch::verify_heuristic_positive_costs() const {
+    if (task_properties::has_zero_cost_operator(TaskProxy(*search_task))) {
+        utils::g_log << "Heuristic symbolic forward search requires positive "
+                        "operator costs; task has zero-cost operators "
+                        "(unsupported)."
+                     << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_UNSUPPORTED);
+    }
 }
 
 SearchStatus SymbolicSearch::step() {
