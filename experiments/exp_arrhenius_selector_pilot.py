@@ -219,7 +219,7 @@ FIXED_ENVIRONMENT = {
     "scheduler_cpu_model": "AMD EPYC 9755 128-Core Processor",
     "scheduler_partition": "cpu",
     "scheduler_qos": "normal",
-    "scheduler_account": "naiss2025-5-382-cpu",
+    "scheduler_account": "naiss2025-5-561-cpu",
     "scheduler_time_limit": "00:10:00",
     "scheduler_memory_per_cpu": "9G",
     "scheduler_cpus_per_task": 1,
