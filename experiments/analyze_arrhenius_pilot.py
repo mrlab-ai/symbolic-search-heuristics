@@ -13,10 +13,9 @@ then minimize total image time only if every one of the 1000 cells has complete
 schema-v2 certified metrics, then use the configuration label.
 
 ``--emit-selection-artifact`` prints deterministic JSON to stdout and never
-writes a file. The planner revision and cached-binary hash are fixed
-independently; the exact launch protocol revision below must be filled in a
-later analyzer-only commit. Ordinary analysis remains blocked until that pin
-is set. ``--self-test`` injects synthetic values.
+writes a file. The planner revision, launch-protocol revision, and cached
+binary hash are pinned independently below. ``--self-test`` injects synthetic
+values.
 """
 
 from __future__ import annotations
@@ -52,11 +51,9 @@ class AnalysisError(RuntimeError):
 # the separate ``protocol_revision`` property.  This avoids cache self-reference.
 EXPECTED_PLANNER_REVISION = "d889d1f73876592e1c91b7781a58affac6bf22f2"
 
-# REVIEW GATE: replace the remaining None after the protocol commit is
-# launched. The protocol revision is the exact clean HEAD recorded in those
-# runs; the binary hash below is the reviewed stripped release_no_lp cache.
-# Ordinary analysis intentionally fails while the protocol pin is unset.
-EXPECTED_PROTOCOL_REVISION = None
+# Exact clean launch worktree revision. The analyzer lives in a descendant
+# commit so this pin does not create a commit-hash self-reference.
+EXPECTED_PROTOCOL_REVISION = "e7b0e4495d6722fdbae9461ea0be24e5484f1a5b"
 EXPECTED_CACHE_BINARY_SHA256 = (
     "b0dac83910508b1089979ca7a16463cf2f3de72f30590af1c5e3c43dd4805d9e"
 )
@@ -773,6 +770,11 @@ def validate_records(
                     ),
                 )
             expected_driver = [
+                "--validate",
+                "--overall-time-limit",
+                "30m",
+                "--overall-memory-limit",
+                "3584M",
                 "--overall-time-limit",
                 "300s",
                 "--overall-memory-limit",
@@ -1236,6 +1238,11 @@ def synthetic_record(
         "unsolvable": 0,
         "component_options": expected_component_options(search),
         "driver_options": [
+            "--validate",
+            "--overall-time-limit",
+            "30m",
+            "--overall-memory-limit",
+            "3584M",
             "--overall-time-limit",
             "300s",
             "--overall-memory-limit",
@@ -1688,12 +1695,11 @@ def self_test():
     )
     completed_heuristic["cofactor_width"] = saved_width
 
-    try:
-        require_reviewed_pins(None, None)
-    except AnalysisError:
-        pass
-    else:
-        raise AssertionError("ordinary analysis accepted unset review pins")
+    assert require_reviewed_pins() == (
+        EXPECTED_PLANNER_REVISION,
+        EXPECTED_PROTOCOL_REVISION,
+        EXPECTED_CACHE_BINARY_SHA256,
+    )
 
     print(
         "synthetic Arrhenius analyzer tests: PASS "
