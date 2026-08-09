@@ -53,7 +53,7 @@ EXPECTED_PLANNER_REVISION = "d889d1f73876592e1c91b7781a58affac6bf22f2"
 
 # Exact clean launch worktree revision. The analyzer lives in a descendant
 # commit so this pin does not create a commit-hash self-reference.
-EXPECTED_PROTOCOL_REVISION = "4959b75669a3b92ede84c99772e30f1436cd12ea"
+EXPECTED_PROTOCOL_REVISION = "f69cd5c818f19414a80e15f4ef8e5232b16f559f"
 EXPECTED_CACHE_BINARY_SHA256 = (
     "b0dac83910508b1089979ca7a16463cf2f3de72f30590af1c5e3c43dd4805d9e"
 )
@@ -252,7 +252,7 @@ def validate_runner_contract(check_cache_pin=True, expected_cache_hash=None):
             runner.PLANNER_REVISION,
             EXPECTED_PLANNER_REVISION,
         ),
-        "protocol": (runner.PROTOCOL, "arrhenius-current-no-lp-pilot-v2"),
+        "protocol": (runner.PROTOCOL, "arrhenius-current-no-lp-pilot-v3"),
         "selection rule": (
             runner.SELECTION_RULE,
             "valid-costs-max-coverage-min-micro-par2-"
@@ -329,6 +329,11 @@ def expected_protocol_metadata(planner_revision, protocol_revision, binary_sha25
         "planner_revision_cache_name": (
             planner_revision + EXPECTED_CACHE_NAME_SUFFIX
         ),
+        "external_plan_validation": False,
+        "plan_validation_protocol": (
+            "no-external-val;require-plan-file-and-cross-config-cost-agreement/v1"
+        ),
+        "plan_file_parser_protocol": "sas_plan/exact-single-cost-footer/v1",
         "cofactor_width_property": "cofactor_width",
         "cofactor_width_parser_protocol": (
             "run.log/unique-wbh-heuristic-cofactor-width/v1"
@@ -449,17 +454,32 @@ def _validate_outcome(record, prefix, errors):
         _append(errors, prefix, "contains unexplained_errors={!r}".format(unexplained))
 
     cost = record.get("solution_cost")
+    plan_present = record.get("plan_file_present")
+    if type(plan_present) is not bool:
+        _append(errors, prefix, "plan_file_present must be boolean")
     planner_time = _json_number(record.get("planner_time"))
     if coverage == 1:
         if type(cost) is not int or cost < 0:
             _append(errors, prefix, "solved outcome needs a nonnegative integer cost")
         if planner_time is None or planner_time < 0:
             _append(errors, prefix, "solved outcome needs finite nonnegative planner_time")
+        if plan_present is not True:
+            _append(errors, prefix, "solved outcome needs an emitted plan file")
+        if record.get("plan_file_cost") != cost:
+            _append(
+                errors,
+                prefix,
+                "plan_file_cost={!r} disagrees with solution_cost={!r}".format(
+                    record.get("plan_file_cost"), cost
+                ),
+            )
     else:
         if cost is not None:
             _append(errors, prefix, "unsolved outcome must not contain solution_cost")
         if "planner_time" in record and (planner_time is None or planner_time < 0):
             _append(errors, prefix, "planner_time is malformed")
+        if plan_present is not False or "plan_file_cost" in record:
+            _append(errors, prefix, "unsolved outcome unexpectedly has a plan file")
 
 
 def _validate_metrics(record, prefix, errors):
@@ -770,7 +790,6 @@ def validate_records(
                     ),
                 )
             expected_driver = [
-                "--validate",
                 "--overall-time-limit",
                 "30m",
                 "--overall-memory-limit",
@@ -1238,9 +1257,9 @@ def synthetic_record(
         "planner_exit_code": 0 if solved else 23,
         "error": "success" if solved else "search-out-of-time",
         "unsolvable": 0,
+        "plan_file_present": solved,
         "component_options": expected_component_options(search),
         "driver_options": [
-            "--validate",
             "--overall-time-limit",
             "30m",
             "--overall-memory-limit",
@@ -1285,6 +1304,7 @@ def synthetic_record(
     record.update(SCHEMA_V2_CONVENTIONS)
     if solved:
         record["solution_cost"] = cost
+        record["plan_file_cost"] = cost
         record["planner_time"] = planner_time
     if label != BLIND:
         if label.startswith("ms_"):
