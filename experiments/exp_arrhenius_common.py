@@ -14,14 +14,17 @@ The tests write no experiment files and submit no jobs.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib.metadata
+import json
 import math
 import os
 import platform
 import re
 import subprocess
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 from downward.cached_revision import CachedFastDownwardRevision
@@ -98,6 +101,46 @@ COFACTOR_WIDTH_PROPERTY = "cofactor_width"
 COFACTOR_WIDTH_PARSER_PROTOCOL = (
     "run.log/unique-wbh-heuristic-cofactor-width/v1"
 )
+PDB_SELECTOR_PARSER_PROTOCOL = (
+    "run.log/pdb-final-and-width-selector-v1-whole-trace/v3"
+)
+PDB_SELECTOR_CANDIDATES_PROPERTY = "pdb_selector_candidates"
+PDB_SELECTOR_SELECTED_PROPERTY = "pdb_selector_selected"
+PDB_SELECTOR_FINAL_PROPERTY = "pdb_selector_final"
+PDB_SELECTOR_TRACE_COMPLETE_PROPERTY = "pdb_selector_trace_complete"
+PDB_SELECTOR_TRACE_CERTIFIED_PROPERTY = "pdb_selector_trace_certified"
+PDB_SELECTOR_VALIDATION_ERROR_PROPERTY = "pdb_selector_validation_error"
+PDB_SELECTOR_TRACE_SHA256_PROPERTY = "pdb_selector_trace_sha256"
+PDB_SELECTOR_POOL_SHA256_PROPERTY = "pdb_selector_pool_sha256"
+
+PDB_SELECTOR_RECORD_KEYS = (
+    "protocol",
+    "score_version",
+    "sources",
+    "pattern",
+    "abstract_states",
+    "initial_dead_end",
+    "initial_h",
+    "finite_sum",
+    "finite_count",
+    "dead_count",
+    "cofactor_width",
+    "width_upper_bound",
+    "cofactor_width_budget",
+    "feasible",
+    "rejection_reason",
+)
+PDB_SELECTOR_SOURCES = (
+    "empty",
+    "bdd_prefix",
+    "goal_prefix",
+    "goal_fill",
+    "cegar",
+)
+PDB_SELECTOR_POOL_PROTOCOL = "fixed_pool_v1"
+PDB_SELECTOR_SCORE_VERSION = (
+    "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1"
+)
 
 _SLURM_ARRAY_DIRECTIVE = "#SBATCH --array="
 _RANDOM_RUN_LOOP = (
@@ -120,6 +163,26 @@ _COFACTOR_WIDTH_FIELD_RE = re.compile(
 )
 _PLAN_COST_RE = re.compile(
     r"^; cost = (\d+) \((?:unit|general) cost\)$", re.MULTILINE
+)
+_LOG_PREFIX = r"\[t=\d+\.\d{6}s, \d+ KB\] "
+_PDB_FINAL_MARKER = "wbh PDB heuristic:"
+_PDB_SELECTOR_CANDIDATE_MARKER = "PDB width-selector v1 candidate:"
+_PDB_SELECTOR_SELECTED_MARKER = "PDB width-selector v1 selected:"
+_PDB_LEGACY_FINAL_RE = re.compile(
+    "^" + _LOG_PREFIX
+    + r"wbh PDB heuristic: pattern_size=(\d+), values=(\d+), "
+      r"cofactor_width=(\d+), width_upper_bound=(\d+)$"
+)
+_PDB_SELECTOR_FINAL_RE = re.compile(
+    "^" + _LOG_PREFIX
+    + r"wbh PDB heuristic: pattern_size=(\d+), "
+      r"selected_source=([a-z_]+), abstract_states=(\d+), "
+      r"cofactor_width_budget=(\d+), values=(\d+), "
+      r"cofactor_width=(\d+), width_upper_bound=(\d+)$"
+)
+_PDB_SELECTOR_LOG_RE = re.compile(
+    "^" + _LOG_PREFIX
+    + r"PDB width-selector v1 (candidate|selected): (.*)$"
 )
 
 
@@ -163,6 +226,631 @@ def parse_cofactor_width(content, props) -> None:
 def get_cofactor_width_parser() -> Parser:
     parser = Parser()
     parser.add_function(parse_cofactor_width, file="run.log")
+    return parser
+
+
+def _reject_json_constant(value):
+    raise ValueError("non-finite JSON constant {!r}".format(value))
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key {!r}".format(key))
+        result[key] = value
+    return result
+
+
+def _is_nonnegative_int(value):
+    return type(value) is int and value >= 0
+
+
+def _validate_selector_record(record, kind):
+    """Return an error for a malformed stable selector record, else None."""
+    if not isinstance(record, dict):
+        return "{} payload must be a JSON object".format(kind)
+    if tuple(record) != PDB_SELECTOR_RECORD_KEYS:
+        return "{} payload keys/order changed: {!r}".format(
+            kind, tuple(record)
+        )
+    if record["protocol"] != PDB_SELECTOR_POOL_PROTOCOL:
+        return "{} protocol changed".format(kind)
+    if record["score_version"] != PDB_SELECTOR_SCORE_VERSION:
+        return "{} score_version changed".format(kind)
+
+    sources = record["sources"]
+    if (
+        not isinstance(sources, list)
+        or not sources
+        or any(type(source) is not str for source in sources)
+        or len(sources) != len(set(sources))
+        or any(source not in PDB_SELECTOR_SOURCES for source in sources)
+    ):
+        return "{} sources are malformed".format(kind)
+    source_positions = [PDB_SELECTOR_SOURCES.index(source) for source in sources]
+    if source_positions != sorted(source_positions):
+        return "{} sources violate fixed-pool order".format(kind)
+
+    pattern = record["pattern"]
+    if (
+        not isinstance(pattern, list)
+        or any(not _is_nonnegative_int(var) for var in pattern)
+        or pattern != sorted(set(pattern))
+    ):
+        return "{} pattern must be sorted unique nonnegative integers".format(
+            kind
+        )
+    if not _is_nonnegative_int(record["abstract_states"]) or record[
+        "abstract_states"
+    ] < 1:
+        return "{} abstract_states must be a positive integer".format(kind)
+    if not _is_nonnegative_int(record["cofactor_width_budget"]) or record[
+        "cofactor_width_budget"
+    ] < 1:
+        return "{} cofactor_width_budget must be positive".format(kind)
+    if type(record["feasible"]) is not bool:
+        return "{} feasible must be boolean".format(kind)
+
+    statistic_fields = (
+        "initial_dead_end",
+        "initial_h",
+        "finite_sum",
+        "finite_count",
+        "dead_count",
+        "cofactor_width",
+        "width_upper_bound",
+    )
+    unmaterialized = all(record[field] is None for field in statistic_fields)
+    if unmaterialized:
+        if (
+            kind == "selected"
+            or record["feasible"] is not False
+            or record["rejection_reason"] != "abstract_state_budget"
+        ):
+            return "{} unmaterialized record has inconsistent outcome".format(
+                kind
+            )
+        if record["sources"] != ["cegar"]:
+            return (
+                "{} abstract-state-budget rejection must be the lone CEGAR "
+                "candidate".format(kind)
+            )
+        if len(record["pattern"]) != 1:
+            return (
+                "{} abstract-state-budget CEGAR rejection must be the "
+                "oversized initial singleton".format(kind)
+            )
+        return None
+
+    if type(record["initial_dead_end"]) is not bool:
+        return "{} initial_dead_end must be boolean".format(kind)
+    if record["initial_dead_end"]:
+        if record["initial_h"] is not None:
+            return "{} dead initial state must use initial_h=null".format(kind)
+    elif not _is_nonnegative_int(record["initial_h"]):
+        return "{} finite initial_h must be nonnegative integer".format(kind)
+    for field in ("finite_sum", "finite_count", "dead_count"):
+        if not _is_nonnegative_int(record[field]):
+            return "{} {} must be a nonnegative integer".format(kind, field)
+    if record["finite_count"] + record["dead_count"] != record[
+        "abstract_states"
+    ]:
+        return "{} finite/dead counts do not cover abstract states".format(kind)
+    if record["finite_count"] < 1:
+        return "{} record must contain at least one finite abstract goal state".format(
+            kind
+        )
+    if (
+        not record["initial_dead_end"]
+        and record["finite_sum"] < record["initial_h"]
+    ):
+        return "{} finite_sum is smaller than the finite initial_h".format(kind)
+    if record["initial_dead_end"] and record["dead_count"] == 0:
+        return "{} initial dead end has zero dead states".format(kind)
+    width = record["cofactor_width"]
+    upper = record["width_upper_bound"]
+    if not _is_nonnegative_int(width) or width < 1:
+        return "{} cofactor_width must be positive".format(kind)
+    if not _is_nonnegative_int(upper) or upper < width:
+        return "{} width_upper_bound is invalid".format(kind)
+    expected_feasible = width <= record["cofactor_width_budget"]
+    if record["feasible"] is not expected_feasible:
+        return "{} feasibility contradicts exact width budget".format(kind)
+    expected_reason = None if expected_feasible else "cofactor_width_budget"
+    if record["rejection_reason"] != expected_reason:
+        return "{} rejection_reason contradicts feasibility".format(kind)
+    if kind == "selected" and not expected_feasible:
+        return "selected record is infeasible"
+    return None
+
+
+def canonical_pdb_selector_json(value):
+    """Return the selector protocol's stable, finite ASCII JSON encoding."""
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+
+
+def pdb_selector_trace_sha256(candidates, selected, final):
+    """Hash a certified whole trace independently of run.log timestamps."""
+    payload = {
+        "candidates": candidates,
+        "selected": selected,
+        "final": final,
+    }
+    return hashlib.sha256(
+        canonical_pdb_selector_json(payload).encode("ascii")
+    ).hexdigest()
+
+
+def pdb_selector_pool_sha256(candidates):
+    """Hash candidate identities/scores while omitting K-dependent outcomes."""
+    omitted = {
+        "cofactor_width_budget",
+        "feasible",
+        "rejection_reason",
+    }
+    normalized = [
+        {key: value for key, value in record.items() if key not in omitted}
+        for record in candidates
+    ]
+    return hashlib.sha256(
+        canonical_pdb_selector_json(normalized).encode("ascii")
+    ).hexdigest()
+
+
+def _selector_score_key(record):
+    """Exact ascending key for the C++ selector's descending score."""
+    if record["finite_count"] == 0:
+        # PatternDatabase::compute_mean_finite_h defines this mean as +infinity.
+        mean_key = (0, Fraction(0))
+    else:
+        mean_key = (
+            1,
+            -Fraction(record["finite_sum"], record["finite_count"]),
+        )
+    initial_h = record["initial_h"]
+    return (
+        -int(record["initial_dead_end"]),
+        -(initial_h if initial_h is not None else 0),
+        mean_key,
+        -Fraction(record["dead_count"], record["abstract_states"]),
+        record["cofactor_width"],
+        record["abstract_states"],
+        tuple(record["pattern"]),
+    )
+
+
+def _validate_selector_whole_trace(candidates, selected, final):
+    errors = []
+    if not 1 <= len(candidates) <= len(PDB_SELECTOR_SOURCES):
+        errors.append(
+            "selector trace needs 1-{} deduplicated candidates; got {}".format(
+                len(PDB_SELECTOR_SOURCES), len(candidates)
+            )
+        )
+        return errors
+
+    patterns = [tuple(record["pattern"]) for record in candidates]
+    if len(patterns) != len(set(patterns)):
+        errors.append("selector candidate patterns are not deduplicated")
+    if "empty" not in candidates[0]["sources"]:
+        errors.append("selector candidate prefix does not start with empty")
+
+    source_owner = {}
+    first_source_positions = []
+    for candidate_index, record in enumerate(candidates):
+        positions = [
+            PDB_SELECTOR_SOURCES.index(source)
+            for source in record["sources"]
+        ]
+        first_source_positions.append(positions[0])
+        for source in record["sources"]:
+            if source in source_owner:
+                errors.append(
+                    "selector source {!r} occurs in multiple candidates".format(
+                        source
+                    )
+                )
+            else:
+                source_owner[source] = candidate_index
+    missing_sources = [
+        source for source in PDB_SELECTOR_SOURCES if source not in source_owner
+    ]
+    if missing_sources and (selected is not None or final is not None):
+        errors.append(
+            "selector trace is missing fixed-pool sources {}".format(
+                ", ".join(missing_sources)
+            )
+        )
+    if first_source_positions != sorted(first_source_positions) or len(
+        first_source_positions
+    ) != len(set(first_source_positions)):
+        errors.append("selector candidates violate fixed first-source order")
+    if first_source_positions:
+        # All candidate specifications are created in fixed source order before
+        # any record is logged. A later source may deduplicate into an earlier
+        # candidate, but a newly introduced candidate cannot skip an earlier
+        # source: that source would already own an earlier candidate or appear
+        # in one of the records seen so far.
+        observed_positions = {
+            PDB_SELECTOR_SOURCES.index(source) for source in source_owner
+        }
+        required_positions = set(range(max(observed_positions) + 1))
+        missing_prefix = sorted(required_positions - observed_positions)
+        if missing_prefix:
+            errors.append(
+                "selector candidate prefix skips earlier fixed-pool sources {}".
+                format(
+                    ", ".join(PDB_SELECTOR_SOURCES[pos] for pos in missing_prefix)
+                )
+            )
+
+    empty_records = [
+        record for record in candidates if "empty" in record["sources"]
+    ]
+    if len(empty_records) == 1:
+        empty = empty_records[0]
+        expected_empty = {
+            "pattern": [],
+            "abstract_states": 1,
+            "initial_dead_end": False,
+            "initial_h": 0,
+            "finite_sum": 0,
+            "finite_count": 1,
+            "dead_count": 0,
+            "cofactor_width": 1,
+            "width_upper_bound": 1,
+            "feasible": True,
+            "rejection_reason": None,
+        }
+        mismatches = [
+            key
+            for key, value in expected_empty.items()
+            if empty.get(key) != value
+        ]
+        if mismatches:
+            errors.append(
+                "empty-pattern candidate violates its exact invariants: {}".
+                format(", ".join(mismatches))
+            )
+
+    budgets = {record["cofactor_width_budget"] for record in candidates}
+    if selected is not None:
+        budgets.add(selected["cofactor_width_budget"])
+    if final is not None:
+        budgets.add(final["cofactor_width_budget"])
+    if len(budgets) != 1:
+        errors.append("selector trace does not use one common width budget K")
+
+    if selected is None:
+        if final is not None:
+            errors.append("selector final exists without a selected record")
+        return errors
+    matching = [record for record in candidates if record == selected]
+    if len(matching) != 1:
+        errors.append(
+            "selected record is not value-equal to one candidate record"
+        )
+    feasible = [record for record in candidates if record["feasible"]]
+    if not feasible:
+        errors.append("selector trace contains no feasible candidate")
+    else:
+        expected = min(feasible, key=_selector_score_key)
+        if selected != expected:
+            errors.append(
+                "selected record is not the independently recomputed exact winner"
+            )
+
+    if final is not None:
+        comparisons = {
+            "pattern_size": len(selected["pattern"]),
+            "selected_source": selected["sources"][0],
+            "abstract_states": selected["abstract_states"],
+            "cofactor_width_budget": selected["cofactor_width_budget"],
+            "cofactor_width": selected["cofactor_width"],
+            "width_upper_bound": selected["width_upper_bound"],
+        }
+        for key, expected in comparisons.items():
+            if final.get(key) != expected:
+                errors.append(
+                    "selector final {}={!r}, selected record requires {!r}".
+                    format(key, final.get(key), expected)
+                )
+        num_values = final["num_values"]
+        finite_count = selected["finite_count"]
+        if num_values < 1:
+            errors.append("selector final must contain at least one finite value")
+        elif num_values > finite_count:
+            errors.append(
+                "selector final num_values exceeds selected finite_count"
+            )
+    return errors
+
+
+def parse_pdb_selector_log(content, props) -> None:
+    """Parse strict legacy/exact PDB finals and selector JSON from run.log."""
+    lines = content.splitlines()
+    final_entries = [
+        (index, line)
+        for index, line in enumerate(lines)
+        if _PDB_FINAL_MARKER in line
+    ]
+    selector_entries = [
+        (index, line)
+        for index, line in enumerate(lines)
+        if "PDB width-selector" in line
+    ]
+    final_lines = [line for _, line in final_entries]
+    selector_lines = [line for _, line in selector_entries]
+    if not final_lines and not selector_lines:
+        return
+
+    errors = []
+    final_format = None
+    final = None
+    if len(final_lines) != 1:
+        errors.append(
+            "PDB final parser expected one line; got {}".format(
+                len(final_lines)
+            )
+        )
+    else:
+        legacy_match = _PDB_LEGACY_FINAL_RE.fullmatch(final_lines[0])
+        selector_match = _PDB_SELECTOR_FINAL_RE.fullmatch(final_lines[0])
+        if legacy_match:
+            final_format = "legacy"
+            pattern_size, values, width, upper = map(
+                int, legacy_match.groups()
+            )
+            props.update(
+                {
+                    "pdb_final_format": final_format,
+                    "pdb_pattern_size": pattern_size,
+                    "pdb_final_num_values": values,
+                    "pdb_final_cofactor_width": width,
+                    "pdb_final_width_upper_bound": upper,
+                }
+            )
+        elif selector_match:
+            final_format = "exact_width_filter"
+            (
+                pattern_size,
+                selected_source,
+                abstract_states,
+                width_budget,
+                values,
+                width,
+                upper,
+            ) = selector_match.groups()
+            integer_values = list(
+                map(
+                    int,
+                    (
+                        pattern_size,
+                        abstract_states,
+                        width_budget,
+                        values,
+                        width,
+                        upper,
+                    ),
+                )
+            )
+            (
+                pattern_size,
+                abstract_states,
+                width_budget,
+                values,
+                width,
+                upper,
+            ) = integer_values
+            final = {
+                "pattern_size": pattern_size,
+                "selected_source": selected_source,
+                "abstract_states": abstract_states,
+                "cofactor_width_budget": width_budget,
+                "num_values": values,
+                "cofactor_width": width,
+                "width_upper_bound": upper,
+            }
+            props.update(
+                {
+                    "pdb_final_format": final_format,
+                    "pdb_pattern_size": pattern_size,
+                    "pdb_selected_source": selected_source,
+                    "pdb_abstract_states": abstract_states,
+                    "pdb_cofactor_width_budget": width_budget,
+                    "pdb_final_num_values": values,
+                    "pdb_final_cofactor_width": width,
+                    "pdb_final_width_upper_bound": upper,
+                }
+            )
+            if selected_source not in PDB_SELECTOR_SOURCES:
+                errors.append("selector final selected_source is unknown")
+            if abstract_states < 1:
+                errors.append("selector final abstract_states must be positive")
+            if width_budget < 1:
+                errors.append(
+                    "selector final cofactor_width_budget must be positive"
+                )
+            if width < 1 or upper < width:
+                errors.append("selector final exact/upper widths are invalid")
+        else:
+            errors.append("PDB final parser rejected malformed/unknown format")
+
+    candidates = []
+    selected = []
+    record_kinds = []
+    records_are_valid = True
+    for line in selector_lines:
+        match = _PDB_SELECTOR_LOG_RE.fullmatch(line)
+        if not match:
+            errors.append("selector parser rejected nonstandard log line")
+            records_are_valid = False
+            continue
+        kind, payload = match.groups()
+        record_kinds.append(kind)
+        try:
+            record = json.loads(
+                payload,
+                object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant,
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as err:
+            errors.append("selector {} JSON is malformed: {}".format(kind, err))
+            records_are_valid = False
+            continue
+        error = _validate_selector_record(record, kind)
+        if error:
+            errors.append(error)
+            records_are_valid = False
+        if kind == "candidate":
+            candidates.append(record)
+        else:
+            selected.append(record)
+
+    is_selector_trace = bool(selector_lines) or final_format == "exact_width_filter"
+    if not is_selector_trace:
+        # Preserve the original legacy behavior and diagnostics exactly: legacy
+        # PDB finals gain only their final-value properties and malformed finals
+        # remain unexplained run errors.
+        for error in errors:
+            tools.add_unexplained_error(props, error)
+        return
+
+    raw_candidate_count = sum(
+        _PDB_SELECTOR_CANDIDATE_MARKER in line for line in selector_lines
+    )
+    raw_selected_count = sum(
+        _PDB_SELECTOR_SELECTED_MARKER in line for line in selector_lines
+    )
+    expected_kind_sequence = ["candidate"] * raw_candidate_count
+    if raw_selected_count:
+        expected_kind_sequence += ["selected"] * raw_selected_count
+    record_order_valid = record_kinds == expected_kind_sequence and not (
+        raw_selected_count and raw_candidate_count == 0
+    )
+    if not record_order_valid:
+        errors.append(
+            "selector records must be candidate+ followed by one terminal "
+            "selected record"
+        )
+    final_order_valid = not (
+        final_entries
+        and selector_entries
+        and final_entries[0][0] <= selector_entries[-1][0]
+    )
+    if not final_order_valid:
+        errors.append("selector final line must follow all selector records")
+    complete = (
+        1 <= raw_candidate_count <= len(PDB_SELECTOR_SOURCES)
+        and raw_selected_count == 1
+        and len(final_lines) == 1
+        and final_format == "exact_width_filter"
+    )
+    if not 1 <= raw_candidate_count <= len(PDB_SELECTOR_SOURCES):
+        errors.append(
+            "selector trace needs 1-{} candidate lines; got {}".format(
+                len(PDB_SELECTOR_SOURCES), raw_candidate_count
+            )
+        )
+    if raw_selected_count != 1:
+        errors.append(
+            "selector trace needs one selected line; got {}".format(
+                raw_selected_count
+            )
+        )
+    if final_format == "legacy":
+        errors.append("legacy PDB final unexpectedly has selector records")
+    elif final_format != "exact_width_filter":
+        errors.append("selector records lack one exact selector final")
+
+    selected_record = selected[0] if len(selected) == 1 else None
+    if len(selected) != raw_selected_count:
+        records_are_valid = False
+    if len(candidates) != raw_candidate_count:
+        records_are_valid = False
+    semantic_errors = []
+    if records_are_valid and candidates:
+        semantic_errors = _validate_selector_whole_trace(
+            candidates, selected_record, final
+        )
+        errors.extend(semantic_errors)
+    elif complete and not errors:
+        errors.append("selector trace could not be decoded as a whole")
+
+    if final is not None:
+        for property_name, final_key in (
+            (COFACTOR_WIDTH_PROPERTY, "cofactor_width"),
+            ("width_upper_bound", "width_upper_bound"),
+            ("num_values", "num_values"),
+        ):
+            if (
+                property_name in props
+                and props[property_name] != final[final_key]
+            ):
+                errors.append(
+                    "selector final {}={} disagrees with parsed {}={!r}".
+                    format(
+                        final_key,
+                        final[final_key],
+                        property_name,
+                        props[property_name],
+                    )
+                )
+
+    # A killed run may contain a valid prefix ending before selected/final. Keep
+    # it explicitly incomplete and diagnostic, but leave outcome acceptance to
+    # the analyzer, which can distinguish resource exits from completed runs.
+    certified = complete and not errors
+    if not certified and not errors:
+        errors.append("selector trace is incomplete")
+    validation_error = None if certified else " | ".join(dict.fromkeys(errors))
+
+    # Only a semantically valid producer prefix may be explained later as a
+    # resource interruption. Duplicate/malformed/out-of-order records and
+    # finals are parser failures immediately, independent of planner outcome.
+    valid_interrupted_prefix = (
+        not complete
+        and len(final_lines) == 0
+        and 1 <= raw_candidate_count <= len(PDB_SELECTOR_SOURCES)
+        and raw_selected_count <= 1
+        and records_are_valid
+        and record_order_valid
+        and final_order_valid
+        and not semantic_errors
+    )
+    if not certified and not valid_interrupted_prefix:
+        for error in dict.fromkeys(errors):
+            tools.add_unexplained_error(props, error)
+
+    props[PDB_SELECTOR_TRACE_COMPLETE_PROPERTY] = complete
+    props[PDB_SELECTOR_TRACE_CERTIFIED_PROPERTY] = certified
+    props[PDB_SELECTOR_VALIDATION_ERROR_PROPERTY] = validation_error
+    props[PDB_SELECTOR_TRACE_SHA256_PROPERTY] = (
+        pdb_selector_trace_sha256(candidates, selected_record, final)
+        if certified
+        else None
+    )
+    props[PDB_SELECTOR_POOL_SHA256_PROPERTY] = (
+        pdb_selector_pool_sha256(candidates) if certified else None
+    )
+    if candidates:
+        props[PDB_SELECTOR_CANDIDATES_PROPERTY] = candidates
+    if selected_record is not None:
+        props[PDB_SELECTOR_SELECTED_PROPERTY] = selected_record
+    if final is not None:
+        props[PDB_SELECTOR_FINAL_PROPERTY] = final
+
+
+def get_pdb_selector_parser() -> Parser:
+    parser = Parser()
+    parser.add_function(parse_pdb_selector_log, file="run.log")
     return parser
 
 
@@ -702,6 +1390,7 @@ def common_protocol_metadata(
         "plan_file_parser_protocol": PLAN_FILE_PARSER_PROTOCOL,
         "cofactor_width_property": COFACTOR_WIDTH_PROPERTY,
         "cofactor_width_parser_protocol": COFACTOR_WIDTH_PARSER_PROTOCOL,
+        "metrics_validation_protocol": wbh_parser.METRICS_VALIDATION_PROTOCOL,
         "python_version": platform.python_version(),
         "lab_version": INSTALLED_LAB_VERSION,
         "required_lab_version": REQUIRED_LAB_VERSION,
@@ -776,6 +1465,7 @@ def new_experiment(protocol_metadata: dict) -> ProtocolFastDownwardExperiment:
     experiment.add_parser(experiment.PLANNER_PARSER)
     experiment.add_parser(wbh_parser.get_parser())
     experiment.add_parser(get_cofactor_width_parser())
+    experiment.add_parser(get_pdb_selector_parser())
     experiment.add_parser(get_plan_file_parser())
     return experiment
 
@@ -833,13 +1523,24 @@ ATTRIBUTES = [
     "coverage", "solution_cost", "planner_time", "total_time", "effort",
     "plan_file_present", "plan_file_cost",
     "cofactor_width",
+    "pdb_final_format", "pdb_pattern_size", "pdb_final_num_values",
+    "pdb_final_cofactor_width", "pdb_final_width_upper_bound",
+    "pdb_selected_source", "pdb_abstract_states",
+    "pdb_cofactor_width_budget", PDB_SELECTOR_CANDIDATES_PROPERTY,
+    PDB_SELECTOR_SELECTED_PROPERTY, PDB_SELECTOR_FINAL_PROPERTY,
+    PDB_SELECTOR_TRACE_COMPLETE_PROPERTY,
+    PDB_SELECTOR_TRACE_CERTIFIED_PROPERTY,
+    PDB_SELECTOR_VALIDATION_ERROR_PROPERTY,
+    PDB_SELECTOR_TRACE_SHA256_PROPERTY,
+    PDB_SELECTOR_POOL_SHA256_PROPERTY,
     "peak_bdd_nodes", "expanded_bdd_nodes", "expanded_states",
     "expanded_bdd_pieces", "attempted_bdd_nodes", "attempted_states",
     "attempted_bdd_pieces", "bucket_expansions", "bucket_expansion_attempts",
     "image_events", "bucket_images", "image_source_buckets",
     "image_source_pieces", "image_calls_attempted", "image_calls_completed",
     "batched_images", "image_time", "raw_metrics_complete",
-    "wbh_schema_version", "node_count_convention", "image_count_convention",
+    "wbh_log_nonempty", "wbh_schema_version", "node_count_convention",
+    "image_count_convention",
     "expansion_count_convention", "piece_metrics_certified",
     "metrics_validation_protocol", "metrics_validation_error",
     "expanded_buckets_single_piece", "partition_ratio_max",
@@ -1120,6 +1821,411 @@ def self_test_cofactor_width_parser():
     )
 
 
+def _synthetic_selector_record(
+    sources, pattern, states, width, upper, budget, initial_h
+):
+    return {
+        "protocol": PDB_SELECTOR_POOL_PROTOCOL,
+        "score_version": PDB_SELECTOR_SCORE_VERSION,
+        "sources": sources,
+        "pattern": pattern,
+        "abstract_states": states,
+        "initial_dead_end": False,
+        "initial_h": initial_h,
+        "finite_sum": initial_h * states,
+        "finite_count": states,
+        "dead_count": 0,
+        "cofactor_width": width,
+        "width_upper_bound": upper,
+        "cofactor_width_budget": budget,
+        "feasible": width <= budget,
+        "rejection_reason": None if width <= budget else "cofactor_width_budget",
+    }
+
+
+def self_test_pdb_selector_parser():
+    prefix = "[t=0.071340s, 534048 KB] "
+    legacy = (
+        prefix
+        + "wbh PDB heuristic: pattern_size=6, values=12, "
+        "cofactor_width=11, width_upper_bound=17\n"
+    )
+    legacy_props = {}
+    parse_cofactor_width(legacy, legacy_props)
+    parse_pdb_selector_log(legacy, legacy_props)
+    expected_legacy = {
+        "cofactor_width": 11,
+        "pdb_final_format": "legacy",
+        "pdb_pattern_size": 6,
+        "pdb_final_num_values": 12,
+        "pdb_final_cofactor_width": 11,
+        "pdb_final_width_upper_bound": 17,
+    }
+    if legacy_props != expected_legacy:
+        raise AssertionError(
+            "legacy PDB final parsing regressed: {!r}".format(legacy_props)
+        )
+
+    budget = 8
+    empty = _synthetic_selector_record(
+        ["empty"], [], 1, 1, 1, budget, 0
+    )
+    winner = _synthetic_selector_record(
+        ["bdd_prefix", "goal_prefix", "goal_fill"],
+        [0],
+        2,
+        2,
+        2,
+        budget,
+        1,
+    )
+    oversized = {
+        "protocol": PDB_SELECTOR_POOL_PROTOCOL,
+        "score_version": PDB_SELECTOR_SCORE_VERSION,
+        "sources": ["cegar"],
+        "pattern": [1],
+        "abstract_states": 100001,
+        "initial_dead_end": None,
+        "initial_h": None,
+        "finite_sum": None,
+        "finite_count": None,
+        "dead_count": None,
+        "cofactor_width": None,
+        "width_upper_bound": None,
+        "cofactor_width_budget": budget,
+        "feasible": False,
+        "rejection_reason": "abstract_state_budget",
+    }
+    candidates = [empty, winner, oversized]
+    final = {
+        "pattern_size": 1,
+        "selected_source": "bdd_prefix",
+        "abstract_states": 2,
+        "cofactor_width_budget": budget,
+        "num_values": 2,
+        "cofactor_width": 2,
+        "width_upper_bound": 2,
+    }
+
+    def selector_line(kind, record):
+        return (
+            prefix
+            + "PDB width-selector v1 {}: ".format(kind)
+            + json.dumps(record, separators=(",", ":"))
+            + "\n"
+        )
+
+    def final_line(values=2, width=2, upper=2):
+        return (
+            prefix
+            + "wbh PDB heuristic: pattern_size=1, "
+            "selected_source=bdd_prefix, abstract_states=2, "
+            "cofactor_width_budget=8, values={}, cofactor_width={}, "
+            "width_upper_bound={}\n".format(values, width, upper)
+        )
+
+    candidate_lines = "".join(
+        selector_line("candidate", record) for record in candidates
+    )
+    selected_line = selector_line("selected", winner)
+    exact = candidate_lines + selected_line + final_line()
+    exact_props = {"width_upper_bound": 2, "num_values": 2}
+    parse_cofactor_width(exact, exact_props)
+    parse_pdb_selector_log(exact, exact_props)
+    if exact_props.get("unexplained_errors"):
+        raise AssertionError(
+            "valid exact-selector output was rejected: {!r}".format(
+                exact_props
+            )
+        )
+    expected_trace = {
+        PDB_SELECTOR_TRACE_COMPLETE_PROPERTY: True,
+        PDB_SELECTOR_TRACE_CERTIFIED_PROPERTY: True,
+        PDB_SELECTOR_VALIDATION_ERROR_PROPERTY: None,
+        PDB_SELECTOR_TRACE_SHA256_PROPERTY: pdb_selector_trace_sha256(
+            candidates, winner, final
+        ),
+        PDB_SELECTOR_POOL_SHA256_PROPERTY: pdb_selector_pool_sha256(
+            candidates
+        ),
+        PDB_SELECTOR_CANDIDATES_PROPERTY: candidates,
+        PDB_SELECTOR_SELECTED_PROPERTY: winner,
+        PDB_SELECTOR_FINAL_PROPERTY: final,
+    }
+    for key, value in expected_trace.items():
+        if exact_props.get(key) != value:
+            raise AssertionError(
+                "wrong exact-selector property {}={!r}, expected {!r}".format(
+                    key, exact_props.get(key), value
+                )
+            )
+    for key, value in (
+        ("cofactor_width", 2),
+        ("pdb_final_format", "exact_width_filter"),
+        ("pdb_pattern_size", 1),
+        ("pdb_selected_source", "bdd_prefix"),
+        ("pdb_abstract_states", 2),
+        ("pdb_cofactor_width_budget", budget),
+        ("pdb_final_num_values", 2),
+        ("pdb_final_cofactor_width", 2),
+        ("pdb_final_width_upper_bound", 2),
+    ):
+        if exact_props.get(key) != value:
+            raise AssertionError(
+                "wrong exact final property {}={!r}".format(
+                    key, exact_props.get(key)
+                )
+            )
+
+    # Timestamp/memory prefixes are intentionally excluded from trace identity.
+    shifted = exact.replace(
+        "[t=0.071340s, 534048 KB]", "[t=9.000000s, 600000 KB]"
+    )
+    shifted_props = {"width_upper_bound": 2, "num_values": 2}
+    parse_cofactor_width(shifted, shifted_props)
+    parse_pdb_selector_log(shifted, shifted_props)
+    if (
+        shifted_props.get(PDB_SELECTOR_TRACE_SHA256_PROPERTY)
+        != exact_props[PDB_SELECTOR_TRACE_SHA256_PROPERTY]
+        or shifted_props.get(PDB_SELECTOR_POOL_SHA256_PROPERTY)
+        != exact_props[PDB_SELECTOR_POOL_SHA256_PROPERTY]
+    ):
+        raise AssertionError("selector trace hashes depend on log timestamps")
+
+    # The initial state may be abstractly dead even though every PDB retains at
+    # least one finite abstract goal state at distance zero.
+    initial_dead = copy.deepcopy(winner)
+    initial_dead.update(
+        {
+            "initial_dead_end": True,
+            "initial_h": None,
+            "finite_sum": 0,
+            "finite_count": 1,
+            "dead_count": 1,
+        }
+    )
+    initial_dead_candidates = [empty, initial_dead, oversized]
+    initial_dead_content = (
+        "".join(
+            selector_line("candidate", record)
+            for record in initial_dead_candidates
+        )
+        + selector_line("selected", initial_dead)
+        + final_line(values=1)
+    )
+    initial_dead_props = {"width_upper_bound": 2, "num_values": 1}
+    parse_cofactor_width(initial_dead_content, initial_dead_props)
+    parse_pdb_selector_log(initial_dead_content, initial_dead_props)
+    if initial_dead_props.get(PDB_SELECTOR_TRACE_CERTIFIED_PROPERTY) is not True:
+        raise AssertionError(
+            "valid initial-dead selector trace was rejected: {!r}".format(
+                initial_dead_props
+            )
+        )
+
+    # Resource kills can leave a valid candidate-only prefix, or all
+    # candidates plus selected but no final. They remain explicit and
+    # uncertified without becoming parser infrastructure errors.
+    partials = (
+        selector_line("candidate", empty),
+        candidate_lines + selected_line,
+    )
+    for partial in partials:
+        partial_props = {}
+        parse_pdb_selector_log(partial, partial_props)
+        if (
+            partial_props.get(PDB_SELECTOR_TRACE_COMPLETE_PROPERTY) is not False
+            or partial_props.get(PDB_SELECTOR_TRACE_CERTIFIED_PROPERTY) is not False
+            or not partial_props.get(PDB_SELECTOR_VALIDATION_ERROR_PROPERTY)
+            or partial_props.get(PDB_SELECTOR_TRACE_SHA256_PROPERTY) is not None
+            or partial_props.get(PDB_SELECTOR_POOL_SHA256_PROPERTY) is not None
+            or partial_props.get("unexplained_errors")
+        ):
+            raise AssertionError(
+                "valid interrupted selector prefix was mishandled: {!r}".
+                format(partial_props)
+            )
+
+    def assert_rejected(name, content, initial_props=None):
+        props = dict(initial_props or {})
+        parse_cofactor_width(content, props)
+        parse_pdb_selector_log(content, props)
+        if (
+            props.get(PDB_SELECTOR_TRACE_CERTIFIED_PROPERTY) is True
+            or not props.get(PDB_SELECTOR_VALIDATION_ERROR_PROPERTY)
+            or not props.get("unexplained_errors")
+        ):
+            raise AssertionError(
+                "{} selector mutation was accepted: {!r}".format(name, props)
+            )
+
+    assert_rejected("duplicate selected", exact + selected_line)
+    assert_rejected(
+        "duplicate JSON key",
+        exact.replace(
+            '"protocol":"fixed_pool_v1"',
+            '"protocol":"fixed_pool_v1","protocol":"fixed_pool_v1"',
+            1,
+        ),
+    )
+    assert_rejected(
+        "malformed final",
+        exact.replace("cofactor_width_budget=8", "width_budget=8"),
+    )
+    assert_rejected(
+        "out-of-order final",
+        final_line() + candidate_lines + selected_line,
+    )
+
+    duplicate_pattern = copy.deepcopy(candidates)
+    duplicate_pattern[2]["pattern"] = [0]
+    assert_rejected(
+        "duplicate candidate pattern",
+        "".join(
+            selector_line("candidate", record)
+            for record in duplicate_pattern
+        )
+        + selected_line
+        + final_line(),
+    )
+
+    missing_source = copy.deepcopy(candidates)
+    missing_source[1]["sources"].remove("goal_fill")
+    missing_selected = copy.deepcopy(winner)
+    missing_selected["sources"].remove("goal_fill")
+    assert_rejected(
+        "missing provenance",
+        "".join(
+            selector_line("candidate", record)
+            for record in missing_source
+        )
+        + selector_line("selected", missing_selected)
+        + final_line(),
+    )
+
+    assert_rejected(
+        "candidate order",
+        "".join(
+            selector_line("candidate", record)
+            for record in (winner, empty, oversized)
+        )
+        + selected_line
+        + final_line(),
+    )
+
+    skipped_prefix = copy.deepcopy(winner)
+    skipped_prefix["sources"] = ["goal_fill"]
+    assert_rejected(
+        "skipped partial source prefix",
+        selector_line("candidate", empty)
+        + selector_line("candidate", skipped_prefix),
+    )
+    merged_skip = copy.deepcopy(empty)
+    merged_skip["sources"] = ["empty", "cegar"]
+    assert_rejected(
+        "deduplicated later source skips partial prefix",
+        selector_line("candidate", merged_skip),
+    )
+    assert_rejected(
+        "wrong selected winner",
+        candidate_lines + selector_line("selected", empty) + final_line(),
+    )
+
+    impossible_sum = copy.deepcopy(winner)
+    impossible_sum["finite_sum"] = 0
+    assert_rejected(
+        "initial h exceeds finite sum",
+        selector_line("candidate", empty)
+        + selector_line("candidate", impossible_sum)
+        + selector_line("candidate", oversized)
+        + selector_line("selected", impossible_sum)
+        + final_line(),
+    )
+
+    impossible_all_dead = copy.deepcopy(winner)
+    impossible_all_dead.update(
+        {
+            "initial_dead_end": True,
+            "initial_h": None,
+            "finite_sum": 0,
+            "finite_count": 0,
+            "dead_count": impossible_all_dead["abstract_states"],
+        }
+    )
+    assert_rejected(
+        "all-dead PDB",
+        selector_line("candidate", empty)
+        + selector_line("candidate", impossible_all_dead)
+        + selector_line("candidate", oversized)
+        + selector_line("selected", impossible_all_dead)
+        + final_line(values=0),
+    )
+
+    mixed_budget = copy.deepcopy(candidates)
+    mixed_budget[2]["cofactor_width_budget"] = 7
+    assert_rejected(
+        "mixed width budget",
+        "".join(
+            selector_line("candidate", record)
+            for record in mixed_budget
+        )
+        + selected_line
+        + final_line(),
+    )
+    assert_rejected(
+        "final-selected width mismatch",
+        candidate_lines + selected_line + final_line(width=3, upper=3),
+    )
+
+    bad_oversized = copy.deepcopy(oversized)
+    bad_oversized["sources"] = ["goal_fill"]
+    assert_rejected(
+        "invalid unmaterialized source",
+        selector_line("candidate", empty)
+        + selector_line("candidate", winner)
+        + selector_line("candidate", bad_oversized)
+        + selected_line
+        + final_line(),
+    )
+    multi_var_oversized = copy.deepcopy(oversized)
+    multi_var_oversized["pattern"] = [0, 1]
+    assert_rejected(
+        "invalid multi-variable unmaterialized CEGAR",
+        selector_line("candidate", empty)
+        + selector_line("candidate", winner)
+        + selector_line("candidate", multi_var_oversized)
+        + selected_line
+        + final_line(),
+    )
+
+    parser = get_pdb_selector_parser()
+    if len(parser.functions) != 1 or parser.functions[0].filename != "run.log":
+        raise AssertionError("selector parser is not bound to run.log")
+    for attribute in (
+        PDB_SELECTOR_CANDIDATES_PROPERTY,
+        PDB_SELECTOR_SELECTED_PROPERTY,
+        PDB_SELECTOR_FINAL_PROPERTY,
+        PDB_SELECTOR_TRACE_COMPLETE_PROPERTY,
+        PDB_SELECTOR_TRACE_CERTIFIED_PROPERTY,
+        PDB_SELECTOR_VALIDATION_ERROR_PROPERTY,
+        PDB_SELECTOR_TRACE_SHA256_PROPERTY,
+        PDB_SELECTOR_POOL_SHA256_PROPERTY,
+        "pdb_final_format",
+        "pdb_cofactor_width_budget",
+    ):
+        if attribute not in ATTRIBUTES:
+            raise AssertionError(
+                "selector property missing from ATTRIBUTES: {}".format(
+                    attribute
+                )
+            )
+    print(
+        "PDB selector parser self-tests: PASS "
+        "(legacy; dedup/unmaterialized/initial-dead; certified hashes; "
+        "valid interruption prefixes; malformed whole-trace gates)"
+    )
+
+
 def self_test_plan_file_parser():
     for footer in ("unit cost", "general cost"):
         props = {}
@@ -1144,4 +2250,5 @@ def self_test_plan_file_parser():
 if __name__ == "__main__":
     self_test_scheduler_headers()
     self_test_cofactor_width_parser()
+    self_test_pdb_selector_parser()
     self_test_plan_file_parser()

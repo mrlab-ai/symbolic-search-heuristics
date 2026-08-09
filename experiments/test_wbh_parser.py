@@ -146,6 +146,7 @@ class WbhParserTest(unittest.TestCase):
 
     def test_accepts_consistent_contour_batched_stream(self):
         props = parse(base_events())
+        self.assertIs(props["wbh_log_nonempty"], True)
         self.assertIs(props["raw_metrics_complete"], True)
         self.assertIs(props["piece_metrics_certified"], True)
         self.assertEqual(
@@ -161,12 +162,38 @@ class WbhParserTest(unittest.TestCase):
         self.assertEqual(props["batched_images"], 1)
         self.assertIs(props["expanded_buckets_single_piece"], True)
 
+    def test_records_exact_empty_log_presence(self):
+        self.assertIs(parse([])["wbh_log_nonempty"], False)
+        self.assertIs(parse([{}])["wbh_log_nonempty"], True)
+
     def test_partial_stream_is_not_complete(self):
         events = base_events()[:-1]
         props = parse(events)
         self.assertIs(props["raw_metrics_complete"], False)
         self.assertIs(props["piece_metrics_certified"], True)
         self.assertEqual(props["expanded_bdd_nodes"], 5)
+
+    def test_accepts_kill_after_heuristic_before_construction(self):
+        events = base_events()[:2]
+        props = parse(events)
+        self.assertIs(props["raw_metrics_complete"], False)
+        self.assertIs(props["piece_metrics_certified"], True)
+        self.assertNotIn("metrics_validation_error", props)
+        self.assertEqual(props["num_values"], 2)
+        self.assertNotIn("construction_completed", props)
+
+    def test_rejects_search_event_after_unconstructed_heuristic(self):
+        events = base_events()[:2] + [copy.deepcopy(base_events()[3])]
+        self.assert_rejected(
+            events, "heuristic event requires one completed construction event"
+        )
+
+    def test_summary_still_requires_completed_construction(self):
+        events = copy.deepcopy(base_events())
+        events.pop(2)
+        self.assert_rejected(
+            events, "heuristic event requires one completed construction event"
+        )
 
     def test_summary_cannot_override_events(self):
         events = copy.deepcopy(base_events())
@@ -273,6 +300,16 @@ class WbhParserTest(unittest.TestCase):
         self.assertIs(props["piece_metrics_certified"], False)
         self.assertIn("malformed JSON", props["metrics_validation_error"])
 
+    def test_rejects_duplicate_json_keys_without_last_wins(self):
+        lines = [json.dumps(item) for item in base_events()]
+        lines[0] = lines[0].replace(
+            '"version": 2', '"version": 999, "version": 2'
+        )
+        props = parse([], suffix="\n".join(lines))
+        self.assertIs(props["raw_metrics_complete"], False)
+        self.assertIs(props["piece_metrics_certified"], False)
+        self.assertIn("duplicate JSON key", props["metrics_validation_error"])
+
     def test_rejects_duplicate_or_nonfinal_summary(self):
         events = base_events()
         events.append(copy.deepcopy(event(events, "summary")))
@@ -295,7 +332,7 @@ class WbhParserTest(unittest.TestCase):
             ("piece_count", "expand", "piece_count", 0, "must be positive"),
             ("negative_nodes", "expand", "bdd_nodes", -1, "must be nonnegative"),
             ("nonfinite_states", "expand", "states", float("nan"),
-             "states=nan is not float"),
+             "non-finite JSON constant"),
             ("overflow_states", "expand", "states", 10 ** 1000,
              "is not float"),
             ("zero_source_buckets", "image", "source_buckets", 0,

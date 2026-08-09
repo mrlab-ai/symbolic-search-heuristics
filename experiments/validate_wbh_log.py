@@ -66,6 +66,28 @@ _FLOAT_REL_TOL = 2e-5
 _FLOAT_ABS_TOL = 1e-9
 
 
+def _reject_json_constant(value):
+    raise ValueError("non-finite JSON constant {!r}".format(value))
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key {!r}".format(key))
+        result[key] = value
+    return result
+
+
+def load_json_line(line):
+    """Decode one strict finite JSON object without last-key-wins behavior."""
+    return json.loads(
+        line,
+        object_pairs_hook=_unique_json_object,
+        parse_constant=_reject_json_constant,
+    )
+
+
 def _value_has_type(value, expected_type):
     """Use JSON types, rejecting bool where Python considers it an int."""
     if expected_type is int:
@@ -103,7 +125,7 @@ def validate_object(path, lineno, obj):
 
 
 def validate_line(path, lineno, line):
-    return validate_object(path, lineno, json.loads(line))
+    return validate_object(path, lineno, load_json_line(line))
 
 
 def _close(left, right):
@@ -273,8 +295,22 @@ def validate_v2_events(events, external_errors=()):
             errors, label, event, ("seconds", "size_bound"))
         if event["value_cap"] < -1:
             errors.append(f"{label}.value_cap must be -1 or nonnegative")
-    if heuristics and (len(constructions) != 1
-                       or not constructions[0]["completed"]):
+    # Heuristic statistics are emitted before construction completion. A hard
+    # resource kill may therefore leave a schema-valid, summary-less prefix with
+    # one heuristic event and no construction event. Preserve that prefix as
+    # piece-certified but incomplete; an orderly summary or an explicit failed
+    # construction still makes the relationship mandatory.
+    missing_construction_is_valid_prefix = (
+        len(valid_events) == 2
+        and valid_events[0]["event"] == "schema"
+        and valid_events[1]["event"] == "heuristic"
+        and len(heuristics) == 1
+        and len(constructions) == 0
+        and len(summaries) == 0
+    )
+    if heuristics and not missing_construction_is_valid_prefix and (
+        len(constructions) != 1 or not constructions[0]["completed"]
+    ):
         errors.append(
             "heuristic event requires one completed construction event")
     if (len(constructions) == 1 and constructions[0]["completed"]
@@ -370,7 +406,7 @@ def main():
                 line = line.strip()
                 if not line:
                     continue
-                obj = json.loads(line)
+                obj = load_json_line(line)
                 event = validate_object(path, lineno, obj)
                 events.append(obj)
                 counts[event] = counts.get(event, 0) + 1

@@ -11,13 +11,13 @@ import json
 import math
 
 try:
-    from validate_wbh_log import validate_v2_events
+    from validate_wbh_log import load_json_line, validate_v2_events
 except ImportError:
     # Supports importing this module from the repository root in focused tests.
-    from experiments.validate_wbh_log import validate_v2_events
+    from experiments.validate_wbh_log import load_json_line, validate_v2_events
 
 
-METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v1"
+METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v2"
 
 
 _METRIC_KEYS = (
@@ -286,6 +286,9 @@ def _parse_legacy(events, props):
 
 def parse_wbh_log(content, props):
     props["metrics_validation_protocol"] = METRICS_VALIDATION_PROTOCOL
+    props["wbh_log_nonempty"] = any(
+        line.strip() for line in content.splitlines()
+    )
     events = []
     parse_errors = []
     for lineno, line in enumerate(content.splitlines(), 1):
@@ -293,7 +296,7 @@ def parse_wbh_log(content, props):
         if not line:
             continue
         try:
-            event = json.loads(line)
+            event = load_json_line(line)
         except (json.JSONDecodeError, ValueError) as err:
             # A killed run can leave a truncated line. Keep parsing diagnostics,
             # but never certify a v2 stream after silently dropping that line.
@@ -312,6 +315,7 @@ def parse_wbh_log(content, props):
     else:
         _parse_legacy(events, props)
         if parse_errors:
+            props["raw_metrics_complete"] = False
             _append_validation_error(props, " | ".join(parse_errors))
 
     if (props["piece_metrics_certified"]

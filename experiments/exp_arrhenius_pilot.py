@@ -402,6 +402,19 @@ def attest_task_sources(benchmark_root: Path, descriptions):
                 len(descriptions), len(resolved), len(by_description)
             )
         )
+    unsupported = sorted(
+        set(by_description) - {
+            "{}:{}".format(domain, problem)
+            for domain, problem in suite_cost_manifest.supported_tasks()
+        }
+    )
+    if unsupported:
+        raise ProtocolError(
+            "pilot manifest contains tasks outside the positive-cost, "
+            "axiom-free supported population: {}".format(
+                ", ".join(unsupported)
+            )
+        )
     ordered = []
     for description in descriptions:
         try:
