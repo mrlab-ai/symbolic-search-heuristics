@@ -65,8 +65,8 @@ Symbolic search with binary decision diagrams (BDDs) is a leading
 approach to cost-optimal classical planning, but its dominant
 instantiation remains blind: partitioning the search frontier by
 heuristic value can increase BDD sizes so much that even the perfect
-heuristic deteriorates performance exponentially. We give a
-representation-side sufficient condition for safety. A heuristic has
+heuristic can increase cumulative BDD representation effort exponentially.
+We give a representation-side sufficient condition for safety. A heuristic has
 \emph{cofactor width} $W$ under the search's variable order if its value
 is computable by scanning the state variables once in that order while
 distinguishing at most $W$ residual functions. We prove that partitioning
@@ -76,7 +76,7 @@ $W^2n$ times the augmented input size $|B|+2$, and that symbolic
 $W^2n$ times blind effort plus the stated layer-additive term (and a
 $3W^2n$ multiplicative bound under a mild nondegeneracy condition).
 The known exponential deterioration requires exponential width, and an
-explicit family realizes a quadratic overhead ratio in $W$. Integer
+explicit family realizes an $\Omega(W^2)$ overhead ratio. Integer
 potential heuristics, pattern databases (PDBs), and aligned linear
 merge-and-shrink abstractions instantiate the class.
 
@@ -978,7 +978,7 @@ Together with the blind bound, this proves the claimed
 $\Omega(W^2)$ ratio.
 \end{proof}
 
-Theorem~\ref{thm-tight} shows that a quadratic ratio in $W$ is
+Theorem~\ref{thm-tight} shows that an $\Omega(W^2)$ ratio is
 realizable. It does not make the joint $W^2n$ upper bound tight: its
 construction requires $n=\Omega(W)$ and therefore does not exclude, for
 example, a bound of order $Wn$. Nor does the construction predict typical
@@ -1796,7 +1796,7 @@ $\effort(\task,h)\leq W^2n(\effort(\task,\hblind)+2\copt)$; this becomes a
 $3W^2n$ multiplicative bound when every nonempty blind layer below \copt\ is a
 proper subset of all Boolean assignments. The known exponential pathology
 requires exponential width, while a separate construction realizes a
-quadratic ratio in $W$. Integer potentials, bounded-state PDBs, and aligned
+$\Omega(W^2)$ ratio. Integer potentials, bounded-state PDBs, and aligned
 linear M\&S abstractions connect the definition to familiar heuristic
 parameters. These results bound possible representational harm; they do not
 rank heuristics, pay their construction cost, or predict wall-clock time.

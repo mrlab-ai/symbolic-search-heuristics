@@ -3,14 +3,9 @@
 # via `make update-bib`; do not edit them directly (edit extra.bib for entries
 # not yet in the shared repository).
 
-.PHONY: paper paperA paperB update-bib clean
+.PHONY: paper update-bib clean
 
 paper: paper.pdf
-paperA: paperA.pdf
-paperB: paperB.pdf
-
-paper%.pdf: paper%.tex $(wildcard bib/*.bib)
-	latexmk -pdf -interaction=nonstopmode -halt-on-error $<
 
 paper.pdf: paper.tex $(wildcard bib/*.bib)
 	latexmk -pdf -interaction=nonstopmode -halt-on-error $<
