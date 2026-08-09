@@ -1660,6 +1660,13 @@ level, and exact width. Selector logs are checked as a whole trace: source
 order, deduplication, candidate feasibility, score recomputation, selected
 winner, and final heuristic hashes must agree. This prevents a favorable
 summary from being accepted if the pool or selection process drifted.
+Selection and description are emitted separately. The version-2 selection
+artifact carries the frozen ranking and downstream matrix. A canonical
+\texttt{arrhenius-selector-screen-certified-descriptive-census/v1} report
+reuses those exact public selection objects and adds certified pattern-size
+and source counts plus image and batching totals only over explicitly counted
+complete cells. Adaptive-gate acceptance and rejection summaries remain only
+in console logs, so we do not report them as fetched protocol data.
 
 The source and execution identities are frozen independently. The planner
 implementation is revision
@@ -1692,8 +1699,9 @@ parser, and \texttt{wbh-exact-schema-semantic-v2} for metric validation.
 \paragraph{Screen result---placeholder.}
 \emph{[RESULT PLACEHOLDER: insert the protocol-certified 20-by-50 coverage,
 micro-PAR2, complete-counter status, image-time tie-break (if enabled),
-selected label, selected-pattern/source distribution, exact-width
-distribution, and batching diagnostics. Do not insert values from the
+selected label, certified selected-pattern-size and source distributions,
+exact-width distribution, and complete-cell batched-image/image-call
+diagnostics with their censored denominators. Do not insert values from the
 diagnostic or legacy-cluster runs.]}
 
 \paragraph{Held-out result---placeholder.}
@@ -1710,8 +1718,9 @@ explicitly that no held-out outcome changed the configuration.]}
 \emph{[RESULT PLACEHOLDER: report the current-Arrhenius descriptive census on
 all 1377 supported tasks, including the selector-versus-CEGAR equally weighted
 46-domain macro-coverage contrast, overall and per-domain coverage, carried
-paired comparisons, PAR2/runtime, exact-width and selected-source strata, and
-certified construction/image/node metrics. Report the sole predeclared
+paired comparisons, PAR2/runtime, certified exact-width summaries and
+selected-source counts, certified construction/image summaries, and
+solved-cell BDD-node effort. Report the sole predeclared
 screen-excluded 1327-task sensitivity without an interval, the completion and
 automatic-restart counts, and every resource-censored denominator explicitly.
 Do not rerank configurations or substitute any archived coverage table.]}

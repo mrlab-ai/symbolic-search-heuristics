@@ -15,17 +15,20 @@ winner and the first selector in this same frozen order. It also derives the
 prospective held-out configuration matrix without inspecting held-out outcomes.
 
 ``--emit-selection-artifact`` prints deterministic JSON to stdout and never
-writes a file. The planner revision, launch-protocol revision, and cached
-binary hash are pinned independently below. ``--self-test`` injects synthetic
-values.
+writes a file. ``--emit-reporting-json`` separately prints a certified,
+descriptive screen census without changing the selection artifact. The planner
+revision, launch-protocol revision, and cached binary hash are pinned
+independently below. ``--self-test`` injects synthetic values.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 from fractions import Fraction
 import hashlib
+import io
 import json
 import math
 import re
@@ -131,6 +134,12 @@ BLIND = "blind_fw"
 MS_EXACT = "ms_exact"
 ARTIFACT_SCHEMA = (
     "symbolic-search-heuristics/arrhenius-selector-screen-selection/v2"
+)
+REPORTING_SCHEMA = (
+    "symbolic-search-heuristics/arrhenius-selector-screen-report/v1"
+)
+REPORTING_ANALYSIS_PROTOCOL = (
+    "arrhenius-selector-screen-certified-descriptive-census/v1"
 )
 
 CONFIGS = tuple(runner.CONTROL_CONFIGS) + tuple(runner.SELECTOR_CONFIGS)
@@ -238,6 +247,14 @@ SCHEMA_V2_REAL_METRICS = (
     "expanded_states",
     "attempted_states",
     "image_time",
+)
+REPORTING_IMAGE_TOTAL_FIELDS = (
+    "image_events",
+    "image_source_buckets",
+    "image_source_pieces",
+    "image_calls_attempted",
+    "image_calls_completed",
+    "batched_images",
 )
 
 # Current Fast Downward exit-code outcomes accepted by this prospective
@@ -739,10 +756,19 @@ def parse_args(argv=None):
         default=runner.MANIFEST,
         help="Exact frozen 50-task manifest (default: %(default)s).",
     )
-    parser.add_argument(
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument(
         "--emit-selection-artifact",
         action="store_true",
         help="Print only deterministic selection JSON; never write a file.",
+    )
+    output_group.add_argument(
+        "--emit-reporting-json",
+        action="store_true",
+        help=(
+            "Print only the deterministic certified descriptive report JSON; "
+            "never write a file."
+        ),
     )
     parser.add_argument(
         "--self-test",
@@ -750,7 +776,11 @@ def parse_args(argv=None):
         help="Run comprehensive deterministic synthetic tests and exit.",
     )
     args = parser.parse_args(argv)
-    if args.self_test and (args.properties is not None or args.emit_selection_artifact):
+    if args.self_test and (
+        args.properties is not None
+        or args.emit_selection_artifact
+        or args.emit_reporting_json
+    ):
         parser.error("--self-test does not accept properties or artifact output")
     return args
 
@@ -2138,10 +2168,9 @@ def raise_validation_errors(errors):
     )
 
 
-def certified_image_cell(record):
+def certified_piece_metrics_cell(record):
     return (
-        record.get("raw_metrics_complete") is True
-        and record.get("piece_metrics_certified") is True
+        record.get("piece_metrics_certified") is True
         and record.get("metrics_validation_error") is None
         and all(
             _same_json_scalar(record.get(field), expected)
@@ -2156,6 +2185,13 @@ def certified_image_cell(record):
             and _json_number(record.get(field)) >= 0
             for field in SCHEMA_V2_REAL_METRICS
         )
+    )
+
+
+def certified_image_cell(record):
+    return (
+        record.get("raw_metrics_complete") is True
+        and certified_piece_metrics_cell(record)
     )
 
 
@@ -2422,6 +2458,276 @@ def make_selection_artifact(
         },
         "paired_deltas": paired,
         "validation": validation,
+    }
+
+
+def _certified_complete_selector_trace(record):
+    return (
+        record.get("pdb_selector_trace_complete") is True
+        and record.get("pdb_selector_trace_certified") is True
+        and record.get("pdb_selector_validation_error") is None
+        and type(record.get(common.PDB_SELECTOR_SELECTED_PROPERTY)) is dict
+    )
+
+
+def reporting_selector_trace_summary(label, records):
+    eligible = _is_selector(label)
+    eligible_cells = len(records) if eligible else 0
+    certified_records = (
+        [record for record in records if _certified_complete_selector_trace(record)]
+        if eligible
+        else []
+    )
+    pattern_sizes = defaultdict(int)
+    primary_sources = {source: 0 for source in EXPECTED_SELECTOR_SOURCES}
+    provenances = defaultdict(int)
+    source_positions = {
+        source: index for index, source in enumerate(EXPECTED_SELECTOR_SOURCES)
+    }
+    for record in certified_records:
+        selected = record[common.PDB_SELECTOR_SELECTED_PROPERTY]
+        pattern = selected.get("pattern")
+        sources = selected.get("sources")
+        if (
+            type(pattern) is not list
+            or type(sources) is not list
+            or not sources
+            or any(source not in source_positions for source in sources)
+            or record.get("pdb_pattern_size") != len(pattern)
+            or record.get("pdb_selected_source") != sources[0]
+        ):
+            raise AnalysisError(
+                "validated selector trace cannot be summarized for {}".format(label)
+            )
+        pattern_sizes[len(pattern)] += 1
+        primary_sources[sources[0]] += 1
+        provenances[tuple(sources)] += 1
+
+    certified_cells = len(certified_records)
+    pattern_histogram = [
+        {"pattern_size": pattern_size, "count": pattern_sizes[pattern_size]}
+        for pattern_size in sorted(pattern_sizes)
+    ]
+    primary_counts = [
+        {"source": source, "count": primary_sources[source]}
+        for source in EXPECTED_SELECTOR_SOURCES
+    ]
+    provenance_counts = [
+        {"sources": list(sources), "count": provenances[sources]}
+        for sources in sorted(
+            provenances,
+            key=lambda values: tuple(source_positions[value] for value in values),
+        )
+    ]
+    conserved = (
+        sum(item["count"] for item in pattern_histogram) == certified_cells
+        and sum(item["count"] for item in primary_counts) == certified_cells
+        and sum(item["count"] for item in provenance_counts) == certified_cells
+    )
+    if not conserved:
+        raise AnalysisError(
+            "selector reporting counts do not conserve certified traces for {}".
+            format(label)
+        )
+    return {
+        "eligible_cells": eligible_cells,
+        "certified_complete_cells": certified_cells,
+        "censored_cells": eligible_cells - certified_cells,
+        "pattern_size_histogram": pattern_histogram,
+        "primary_selected_source_counts": primary_counts,
+        "selected_provenance_counts": provenance_counts,
+    }
+
+
+def reporting_image_metrics_summary(records):
+    piece_certified = [
+        record for record in records if certified_piece_metrics_cell(record)
+    ]
+    raw_complete = [record for record in records if certified_image_cell(record)]
+    totals = {
+        "denominator_cells": len(raw_complete),
+        "image_time_seconds": math.fsum(
+            float(record["image_time"]) for record in raw_complete
+        ),
+    }
+    totals.update(
+        {
+            field: sum(record[field] for record in raw_complete)
+            for field in REPORTING_IMAGE_TOTAL_FIELDS
+        }
+    )
+    return {
+        "eligible_cells": len(records),
+        "piece_certified_prefix_cells": len(piece_certified),
+        "piece_censored_or_uncertified_cells": len(records) - len(piece_certified),
+        "raw_complete_certified_cells": len(raw_complete),
+        "raw_censored_or_uncertified_cells": len(records) - len(raw_complete),
+        "totals_over_raw_complete_certified_cells": totals,
+    }
+
+
+def _null_safe_reporting_ratio(numerator, denominator):
+    if denominator == 0:
+        return None
+    ratio = numerator / denominator
+    if not math.isfinite(ratio):
+        raise AnalysisError("reporting ratio is not finite")
+    return ratio
+
+
+def reporting_batching_pair_summary(matrix, tasks, score_by_label, candidate, reference):
+    outcomes = paired_delta(matrix, tasks, candidate, reference, False)
+    intersection = [
+        task
+        for task in tasks
+        if certified_image_cell(matrix[(candidate, task)])
+        and certified_image_cell(matrix[(reference, task)])
+    ]
+    candidate_image_time = math.fsum(
+        float(matrix[(candidate, task)]["image_time"]) for task in intersection
+    )
+    reference_image_time = math.fsum(
+        float(matrix[(reference, task)]["image_time"]) for task in intersection
+    )
+    candidate_completed_calls = sum(
+        matrix[(candidate, task)]["image_calls_completed"] for task in intersection
+    )
+    reference_completed_calls = sum(
+        matrix[(reference, task)]["image_calls_completed"] for task in intersection
+    )
+    candidate_score = score_by_label[candidate]
+    reference_score = score_by_label[reference]
+    return {
+        "candidate": candidate,
+        "reference": reference,
+        "outcomes_over_all_tasks": {
+            "denominator_tasks": len(tasks),
+            "candidate_coverage": candidate_score["coverage"],
+            "reference_coverage": reference_score["coverage"],
+            "candidate_minus_reference_coverage": outcomes["coverage_delta"],
+            "candidate_micro_par2": candidate_score["micro_par2"],
+            "reference_micro_par2": reference_score["micro_par2"],
+            "candidate_minus_reference_micro_par2": outcomes[
+                "micro_par2_delta"
+            ],
+            "candidate_only_solved": outcomes["wins"],
+            "reference_only_solved": outcomes["losses"],
+            "both_solved": outcomes["both_solved"],
+            "both_unsolved": outcomes["both_unsolved"],
+        },
+        "certified_image_metrics": {
+            "eligible_task_pairs": len(tasks),
+            "intersection_complete_pairs": len(intersection),
+            "censored_task_pairs": len(tasks) - len(intersection),
+            "candidate_totals": {
+                "image_time_seconds": candidate_image_time,
+                "image_calls_completed": candidate_completed_calls,
+            },
+            "reference_totals": {
+                "image_time_seconds": reference_image_time,
+                "image_calls_completed": reference_completed_calls,
+            },
+            "candidate_minus_reference": {
+                "image_time_seconds": candidate_image_time - reference_image_time,
+                "image_calls_completed": (
+                    candidate_completed_calls - reference_completed_calls
+                ),
+            },
+            "candidate_over_reference_ratio": {
+                "image_time_seconds": _null_safe_reporting_ratio(
+                    candidate_image_time, reference_image_time
+                ),
+                "image_calls_completed": _null_safe_reporting_ratio(
+                    candidate_completed_calls, reference_completed_calls
+                ),
+            },
+        },
+    }
+
+
+def make_reporting_artifact(records, matrix, tasks, selection_artifact):
+    if selection_artifact.get("schema") != ARTIFACT_SCHEMA:
+        raise AnalysisError("reporting input is not the exact selection artifact v2")
+    pilot = selection_artifact.get("pilot")
+    if (
+        type(pilot) is not dict
+        or pilot.get("properties_canonical_sha256")
+        != logical_properties_sha256(records)
+    ):
+        raise AnalysisError("reporting properties identity disagrees with selection")
+    selection = selection_artifact.get("selection")
+    paired = selection_artifact.get("paired_deltas")
+    if type(selection) is not dict or type(paired) is not list:
+        raise AnalysisError("reporting selection inputs are malformed")
+    ranking = selection.get("ranking")
+    if type(ranking) is not list or len(ranking) != EXPECTED_CONFIGS:
+        raise AnalysisError("reporting ranking is not the exact 20-config ranking")
+    score_by_label = {score.get("label"): score for score in ranking}
+    if set(score_by_label) != set(LABELS):
+        raise AnalysisError("reporting ranking labels differ from the exact matrix")
+
+    config_reports = []
+    for label in LABELS:
+        config_records = [matrix[(label, task)] for task in tasks]
+        config_reports.append(
+            {
+                "label": label,
+                "search": SEARCHES[label],
+                "selector_trace": reporting_selector_trace_summary(
+                    label, config_records
+                ),
+                "image_metrics": reporting_image_metrics_summary(config_records),
+            }
+        )
+    batching_pairs = [
+        reporting_batching_pair_summary(
+            matrix, tasks, score_by_label, candidate, reference
+        )
+        for candidate, reference in BATCHED_SELECTOR_BASE.items()
+    ]
+    pair_order = [
+        {"candidate": candidate, "reference": reference}
+        for candidate, reference in BATCHED_SELECTOR_BASE.items()
+    ]
+    return {
+        "schema": REPORTING_SCHEMA,
+        "analysis_protocol": REPORTING_ANALYSIS_PROTOCOL,
+        "identity": {
+            "pilot": pilot,
+            "config_label_order": list(LABELS),
+            "config_label_order_sha256": sha256_json(list(LABELS)),
+            "batching_pair_order": pair_order,
+            "batching_pair_order_sha256": sha256_json(pair_order),
+            "image_total_field_order": list(REPORTING_IMAGE_TOTAL_FIELDS),
+            "selection_artifact_raw_sha256": hashlib.sha256(
+                (canonical_json(selection_artifact) + "\n").encode("ascii")
+            ).hexdigest(),
+        },
+        # These are the exact public objects carried by selection artifact v2.
+        "selection": selection,
+        "paired_deltas": paired,
+        "configs": config_reports,
+        "batching_pairs": batching_pairs,
+        "reporting_policy": {
+            "population": "exact-50-task-screen-census",
+            "statistics": "descriptive-only",
+            "inference": "none",
+            "confidence_intervals": None,
+            "p_values": None,
+            "reranking": False,
+            "selector_trace_censoring": (
+                "only-complete-certified-no-error-traces-are-counted"
+            ),
+            "image_prefix_denominator": (
+                "piece-certified-no-error-schema-v2-cells"
+            ),
+            "image_totals_denominator": (
+                "raw-complete-piece-certified-no-error-schema-v2-cells-only"
+            ),
+            "batching_image_denominator": (
+                "candidate-reference-intersection-of-raw-complete-certified-cells"
+            ),
+        },
     }
 
 
@@ -3022,6 +3328,268 @@ def self_test():
         )
     )
 
+    # Reporting is a separate artifact: it reuses the exact public selection
+    # objects, binds itself to the raw selection-artifact line, and cannot
+    # mutate or extend selection artifact v2.
+    selection_bytes = (canonical_json(artifact) + "\n").encode("ascii")
+    assert hashlib.sha256(selection_bytes).hexdigest() == (
+        "d9a23a7b727037ef653ddc24e4d9da53684a125743a3a289870f80c614b25812"
+    )
+    import exp_arrhenius_selector_validation as heldout_runner
+
+    # Synthetic cells deliberately exercise an explicit protocol-pin override.
+    # Restore the reviewed launch pin before asking the independent held-out
+    # runner to validate the otherwise unchanged artifact schema/content.
+    heldout_artifact = copy.deepcopy(artifact)
+    heldout_artifact["pilot"]["protocol_revision"] = (
+        heldout_runner.PILOT_PROTOCOL_REVISION
+    )
+    heldout_before = heldout_runner.validate_selection_artifact(
+        copy.deepcopy(heldout_artifact)
+    )
+    report = make_reporting_artifact(records, matrix, tasks, artifact)
+    assert (canonical_json(artifact) + "\n").encode("ascii") == selection_bytes
+    heldout_after = heldout_runner.validate_selection_artifact(
+        copy.deepcopy(heldout_artifact)
+    )
+    assert canonical_json(heldout_before) == canonical_json(heldout_after)
+    assert report["schema"] == REPORTING_SCHEMA
+    assert report["analysis_protocol"] == REPORTING_ANALYSIS_PROTOCOL
+    assert report["selection"] is artifact["selection"]
+    assert report["paired_deltas"] is artifact["paired_deltas"]
+    assert report["identity"]["pilot"] is artifact["pilot"]
+    assert report["identity"]["selection_artifact_raw_sha256"] == (
+        hashlib.sha256(selection_bytes).hexdigest()
+    )
+    report_json = canonical_json(report)
+    assert report_json.isascii() and "\n" not in report_json
+    reporting_bytes = (report_json + "\n").encode("ascii")
+    assert hashlib.sha256(reporting_bytes).hexdigest() == (
+        "246d30a3039f5409be73cff29697cd9d701d1a0b443f9adc721d493575a534b0"
+    )
+    assert [item["label"] for item in report["configs"]] == list(LABELS)
+    assert report["identity"]["config_label_order"] == list(LABELS)
+    assert report["identity"]["config_label_order_sha256"] == sha256_json(
+        list(LABELS)
+    )
+
+    expected_image_totals = {
+        "denominator_cells": EXPECTED_TASKS,
+        "image_time_seconds": 100.0,
+        "image_events": 300,
+        "image_source_buckets": 350,
+        "image_source_pieces": 400,
+        "image_calls_attempted": 350,
+        "image_calls_completed": 300,
+        "batched_images": 50,
+    }
+    for config_report in report["configs"]:
+        image = config_report["image_metrics"]
+        assert image["eligible_cells"] == EXPECTED_TASKS
+        assert image["piece_certified_prefix_cells"] == EXPECTED_TASKS
+        assert image["piece_censored_or_uncertified_cells"] == 0
+        assert image["raw_complete_certified_cells"] == EXPECTED_TASKS
+        assert image["raw_censored_or_uncertified_cells"] == 0
+        assert (
+            image["totals_over_raw_complete_certified_cells"]
+            == expected_image_totals
+        )
+        trace = config_report["selector_trace"]
+        assert sum(
+            item["count"] for item in trace["pattern_size_histogram"]
+        ) == trace["certified_complete_cells"]
+        assert sum(
+            item["count"] for item in trace["primary_selected_source_counts"]
+        ) == trace["certified_complete_cells"]
+        assert sum(
+            item["count"] for item in trace["selected_provenance_counts"]
+        ) == trace["certified_complete_cells"]
+
+    selector_report = next(
+        item for item in report["configs"] if item["label"] == "pdb_selector_k32"
+    )["selector_trace"]
+    assert selector_report == {
+        "eligible_cells": EXPECTED_TASKS,
+        "certified_complete_cells": EXPECTED_TASKS,
+        "censored_cells": 0,
+        "pattern_size_histogram": [
+            {"pattern_size": 1, "count": EXPECTED_TASKS}
+        ],
+        "primary_selected_source_counts": [
+            {"source": "empty", "count": 0},
+            {"source": "bdd_prefix", "count": EXPECTED_TASKS},
+            {"source": "goal_prefix", "count": 0},
+            {"source": "goal_fill", "count": 0},
+            {"source": "cegar", "count": 0},
+        ],
+        "selected_provenance_counts": [
+            {
+                "sources": ["bdd_prefix", "goal_prefix", "goal_fill"],
+                "count": EXPECTED_TASKS,
+            }
+        ],
+    }
+
+    expected_pair_order = [
+        {"candidate": candidate, "reference": reference}
+        for candidate, reference in BATCHED_SELECTOR_BASE.items()
+    ]
+    assert len(expected_pair_order) == 5
+    assert report["identity"]["batching_pair_order"] == expected_pair_order
+    assert [
+        {"candidate": item["candidate"], "reference": item["reference"]}
+        for item in report["batching_pairs"]
+    ] == expected_pair_order
+    for pair_report in report["batching_pairs"]:
+        outcomes = pair_report["outcomes_over_all_tasks"]
+        assert outcomes["denominator_tasks"] == EXPECTED_TASKS
+        assert sum(
+            outcomes[field]
+            for field in (
+                "candidate_only_solved",
+                "reference_only_solved",
+                "both_solved",
+                "both_unsolved",
+            )
+        ) == EXPECTED_TASKS
+        image = pair_report["certified_image_metrics"]
+        assert image["intersection_complete_pairs"] == EXPECTED_TASKS
+        assert image["censored_task_pairs"] == 0
+        assert image["candidate_totals"] == {
+            "image_time_seconds": 100.0,
+            "image_calls_completed": 300,
+        }
+        assert image["reference_totals"] == {
+            "image_time_seconds": 100.0,
+            "image_calls_completed": 300,
+        }
+        assert image["candidate_over_reference_ratio"] == {
+            "image_time_seconds": 1.0,
+            "image_calls_completed": 1.0,
+        }
+
+    # Canonical reporting is invariant to the order in which Lab records are
+    # packaged. Revalidate and recompute every shared object after reversal.
+    shuffled_records = list(reversed(records))
+    shuffled_matrix, shuffled_errors = validate_records(
+        shuffled_records,
+        tasks,
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+    )
+    assert not shuffled_errors, shuffled_errors[:12]
+    shuffled_scores = analyze_scores(shuffled_matrix, tasks)
+    shuffled_paired = all_paired_deltas(
+        shuffled_matrix,
+        tasks,
+        shuffled_scores["image_time_tiebreak_available"],
+    )
+    shuffled_artifact = make_selection_artifact(
+        shuffled_records,
+        shuffled_scores,
+        shuffled_paired,
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+    )
+    shuffled_report = make_reporting_artifact(
+        shuffled_records, shuffled_matrix, tasks, shuffled_artifact
+    )
+    assert canonical_json(shuffled_report) == report_json
+
+    parsed_reporting = parse_args(["synthetic.json", "--emit-reporting-json"])
+    assert parsed_reporting.emit_reporting_json is True
+    cli_error = io.StringIO()
+    with contextlib.redirect_stderr(cli_error):
+        try:
+            main(
+                [
+                    "synthetic.json",
+                    "--emit-selection-artifact",
+                    "--emit-reporting-json",
+                ]
+            )
+        except SystemExit as err:
+            assert err.code == 2
+        else:
+            raise AssertionError("artifact output modes are not mutually exclusive")
+    assert "not allowed with argument" in cli_error.getvalue()
+
+    # Ratios use the same certified intersection and are explicitly null when
+    # the reference total is zero; zero is never replaced or inferred.
+    zero_matrix = copy.deepcopy(matrix)
+    zero_candidate, zero_reference = next(iter(BATCHED_SELECTOR_BASE.items()))
+    for task in tasks:
+        zero_record = zero_matrix[(zero_reference, task)]
+        zero_record["image_time"] = 0.0
+        zero_record["image_calls_completed"] = 0
+        zero_record["bucket_images"] = 0
+    zero_records = [
+        zero_matrix[(label, task)] for label in LABELS for task in tasks
+    ]
+    zero_matrix, zero_errors = validate_records(
+        zero_records,
+        tasks,
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+    )
+    assert not zero_errors, zero_errors[:12]
+    zero_scores = analyze_scores(zero_matrix, tasks)
+    zero_score_by_label = {
+        score["label"]: score for score in zero_scores["ranking"]
+    }
+    zero_pair = reporting_batching_pair_summary(
+        zero_matrix,
+        tasks,
+        zero_score_by_label,
+        zero_candidate,
+        zero_reference,
+    )
+    assert zero_pair["certified_image_metrics"][
+        "candidate_over_reference_ratio"
+    ] == {"image_time_seconds": None, "image_calls_completed": None}
+
+    # Exercise numeric ordering of more than one exact pattern-size bin while
+    # preserving the independently validated selector pool across all K values.
+    histogram_matrix = copy.deepcopy(matrix)
+    for label in SELECTOR_LABELS:
+        histogram_record = histogram_matrix[(label, tasks[0])]
+        histogram_record[common.PDB_SELECTOR_CANDIDATES_PROPERTY][1][
+            "pattern"
+        ] = [0, 1]
+        if histogram_record[common.PDB_SELECTOR_SELECTED_PROPERTY][
+            "sources"
+        ][0] == "bdd_prefix":
+            histogram_record[common.PDB_SELECTOR_SELECTED_PROPERTY][
+                "pattern"
+            ] = [0, 1]
+            histogram_record[common.PDB_SELECTOR_FINAL_PROPERTY][
+                "pattern_size"
+            ] = 2
+            histogram_record["pdb_pattern_size"] = 2
+        _refresh_selector_hashes(histogram_record)
+    histogram_records = [
+        histogram_matrix[(label, task)] for label in LABELS for task in tasks
+    ]
+    histogram_matrix, histogram_errors = validate_records(
+        histogram_records,
+        tasks,
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+    )
+    assert not histogram_errors, histogram_errors[:12]
+    histogram_summary = reporting_selector_trace_summary(
+        "pdb_selector_k32",
+        [histogram_matrix[("pdb_selector_k32", task)] for task in tasks],
+    )
+    assert histogram_summary["pattern_size_histogram"] == [
+        {"pattern_size": 1, "count": EXPECTED_TASKS - 1},
+        {"pattern_size": 2, "count": 1},
+    ]
+
     # If a fixed control wins globally, it receives an alias role on its
     # existing cell; the independently derived selector-family winner remains
     # present and the matrix stays at seven unique configurations.
@@ -3310,6 +3878,24 @@ def self_test():
         records, tasks, planner_revision, protocol_revision, binary_sha256
     )
     assert not errors, errors[:12]
+    interrupted_summary = reporting_selector_trace_summary(
+        "pdb_selector_k256",
+        [
+            _synthetic_target(records, "pdb_selector_k256", task)
+            for task in tasks
+        ],
+    )
+    assert interrupted_summary["eligible_cells"] == EXPECTED_TASKS
+    assert interrupted_summary["certified_complete_cells"] == EXPECTED_TASKS - 1
+    assert interrupted_summary["censored_cells"] == 1
+    assert sum(
+        item["count"]
+        for item in interrupted_summary["primary_selected_source_counts"]
+    ) == EXPECTED_TASKS - 1
+    assert interrupted_summary["primary_selected_source_counts"][1] == {
+        "source": "bdd_prefix",
+        "count": EXPECTED_TASKS - 1,
+    }
 
     # The final/heuristic lines can be complete immediately before a resource
     # kill and immediately before the construction event. A certified trace is
@@ -3369,7 +3955,37 @@ def self_test():
     )
     assert not errors, errors[:12]
     assert analyze_scores(matrix, tasks)["image_time_tiebreak_available"] is False
+    incomplete_image = reporting_image_metrics_summary(
+        [matrix[("pdb_selector_k32", task)] for task in tasks]
+    )
+    assert incomplete_image["piece_certified_prefix_cells"] == EXPECTED_TASKS
+    assert incomplete_image["raw_complete_certified_cells"] == EXPECTED_TASKS - 1
+    assert incomplete_image["raw_censored_or_uncertified_cells"] == 1
+    assert incomplete_image["totals_over_raw_complete_certified_cells"] == {
+        "denominator_cells": EXPECTED_TASKS - 1,
+        "image_time_seconds": 98.0,
+        "image_events": 294,
+        "image_source_buckets": 343,
+        "image_source_pieces": 392,
+        "image_calls_attempted": 343,
+        "image_calls_completed": 294,
+        "batched_images": 49,
+    }
+    target["piece_metrics_certified"] = False
+    target["metrics_validation_error"] = "synthetic uncertified piece prefix"
+    matrix, errors = validate_records(
+        records, tasks, planner_revision, protocol_revision, binary_sha256
+    )
+    assert not errors, errors[:12]
+    censored_prefix = reporting_image_metrics_summary(
+        [matrix[("pdb_selector_k32", task)] for task in tasks]
+    )
+    assert censored_prefix["piece_certified_prefix_cells"] == EXPECTED_TASKS - 1
+    assert censored_prefix["piece_censored_or_uncertified_cells"] == 1
+    assert censored_prefix["raw_complete_certified_cells"] == EXPECTED_TASKS - 1
     target["raw_metrics_complete"] = True
+    target["piece_metrics_certified"] = True
+    target.pop("metrics_validation_error")
 
     presearch = _synthetic_target(records, "pdb_goal_fill_b100k", tasks[0])
     saved_presearch = copy.deepcopy(presearch)
@@ -3461,6 +4077,18 @@ def self_test():
         binary_sha256, "explained outcome"
     )
     blind["planner_exit_code"] = old_exit
+
+    old_completed_calls = blind["image_calls_completed"]
+    blind["image_calls_completed"] = -1
+    _expect_error(
+        records,
+        tasks,
+        planner_revision,
+        protocol_revision,
+        binary_sha256,
+        "image_calls_completed must be a nonnegative integer schema-v2 metric",
+    )
+    blind["image_calls_completed"] = old_completed_calls
 
     def selector_mutation(mutator, fragment):
         original = copy.deepcopy(target)
@@ -3602,6 +4230,20 @@ def main(argv=None):
         )
         # This mode has no other stdout output and performs no writes.
         print(canonical_json(artifact))
+    elif args.emit_reporting_json:
+        selection_artifact = make_selection_artifact(
+            records,
+            scores,
+            paired,
+            planner_revision,
+            protocol_revision,
+            binary_sha256,
+        )
+        report = make_reporting_artifact(
+            records, matrix, tasks, selection_artifact
+        )
+        # This mode has no other stdout output and performs no writes.
+        print(canonical_json(report))
     else:
         print_report(source, records, scores, paired)
     return 0
