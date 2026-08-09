@@ -22,6 +22,8 @@ class SymbolicPdbForwardSearch : public SymbolicSearch {
     const PdbPatternSelection pattern_selection;
     const double cegar_max_time;
     const int cegar_seed;
+    const int cofactor_width_budget;
+    const bool dynamic_reordering;
     const bool prune_only;
     const int batch_f_window;
 

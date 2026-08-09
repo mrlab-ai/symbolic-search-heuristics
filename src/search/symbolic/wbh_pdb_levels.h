@@ -27,16 +27,19 @@ enum class PdbPatternSelection {
     GOAL_PREFIX,
     GOAL_FILL,
     CEGAR,
+    EXACT_WIDTH_FILTER,
 };
 
 /*
   Budget-bounded pattern database level sets.
 
   Selects a pattern up to an abstract-state budget B using a legacy prefix,
-  a budget-filling goal/causal order, or Fast Downward's CEGAR generator. The
-  pattern need not be a prefix: under a variable-contiguous bit order,
-  non-pattern variables are skipped by the reduced ADD, so any pattern with
-  at most B abstract states has the same O(dB) width guarantee.
+  a budget-filling goal/causal order, Fast Downward's CEGAR generator, or an
+  exact cofactor-width filter over a fixed deduplicated pool containing all of
+  these strategies plus the empty pattern. The pattern need not be a prefix:
+  under a variable-contiguous bit order, non-pattern variables are skipped by
+  the reduced ADD, so any pattern with at most B abstract states has the same
+  O(dB) width guarantee.
 
   Computes the PDB explicitly with Fast Downward's PDB code on the projection,
   then builds level-set BDDs H_d by iterating abstract states and conjoining
@@ -54,6 +57,10 @@ class PdbLevelSets {
     BDD dead_ends; // states mapping to dead-end abstract states
     AddStats add_stats;
     std::string selection_name;
+    std::string selected_source;
+    int num_abstract_states = 0;
+    int cofactor_width_budget;
+    bool selected_initial_dead_end = false;
 
     // Independent check that BDD level-set membership agrees with explicit PDB
     // lookups on sampled abstract states (PR4 acceptance).
@@ -65,7 +72,8 @@ public:
     PdbLevelSets(
         SymVariables *vars, const std::shared_ptr<AbstractTask> &task,
         int state_budget, PdbPatternSelection pattern_selection,
-        bool legacy_goal_directed, double cegar_max_time, int cegar_seed);
+        bool legacy_goal_directed, double cegar_max_time, int cegar_seed,
+        int cofactor_width_budget);
 
     const std::map<int, BDD> &get_level_sets() const {
         return level_sets;
@@ -81,6 +89,26 @@ public:
 
     const std::string &get_selection_name() const {
         return selection_name;
+    }
+
+    const std::string &get_selected_source() const {
+        return selected_source;
+    }
+
+    int get_num_abstract_states() const {
+        return num_abstract_states;
+    }
+
+    int get_cofactor_width_budget() const {
+        return cofactor_width_budget;
+    }
+
+    bool uses_exact_width_filter() const {
+        return selection_name == "exact_width_filter";
+    }
+
+    bool selected_initial_is_dead_end() const {
+        return selected_initial_dead_end;
     }
 
     void log_heuristic(WbhStats &stats) const;

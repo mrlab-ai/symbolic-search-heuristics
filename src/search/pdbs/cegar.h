@@ -34,7 +34,9 @@ namespace pdbs {
   which are then never added to the collection, limiting PDB and collection
   size, setting a time limit and switching between computing regular or
   wildcard plans, where the latter are sequences of parallel operators
-  inducing the same abstract transition.
+  inducing the same abstract transition. By default a PDB proof of
+  unsolvability exits immediately. Setting exit_on_unsolvable=false returns
+  that decisive PDB to the caller instead.
 */
 extern PatternCollectionInformation generate_pattern_collection_with_cegar(
     int max_pdb_size, int max_collection_size, double max_time,
@@ -43,7 +45,8 @@ extern PatternCollectionInformation generate_pattern_collection_with_cegar(
     const std::shared_ptr<AbstractTask> &task,
     const std::vector<FactPair> &goals,
     std::unordered_set<int> &&blacklisted_variables =
-        std::unordered_set<int>());
+        std::unordered_set<int>(),
+    bool exit_on_unsolvable = true);
 
 /*
   This function implements the CEGAR algorithm as described above, however
@@ -56,7 +59,8 @@ extern PatternInformation generate_pattern_with_cegar(
     const std::shared_ptr<utils::RandomNumberGenerator> &rng,
     const std::shared_ptr<AbstractTask> &task, const FactPair &goal,
     std::unordered_set<int> &&blacklisted_variables =
-        std::unordered_set<int>());
+        std::unordered_set<int>(),
+    bool exit_on_unsolvable = true);
 
 extern void add_cegar_implementation_notes_to_feature(
     plugins::Feature &feature);

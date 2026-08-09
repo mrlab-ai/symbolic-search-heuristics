@@ -89,6 +89,7 @@ class CEGAR {
     const TaskProxy task_proxy;
     const vector<FactPair> &goals;
     unordered_set<int> blacklisted_variables;
+    const bool exit_on_unsolvable;
 
     vector<unique_ptr<PatternInfo>> pattern_collection;
     /*
@@ -149,7 +150,8 @@ public:
         bool use_wildcard_plans, utils::LogProxy &log,
         const shared_ptr<utils::RandomNumberGenerator> &rng,
         const shared_ptr<AbstractTask> &task, const vector<FactPair> &goals,
-        unordered_set<int> &&blacklisted_variables = unordered_set<int>());
+        unordered_set<int> &&blacklisted_variables = unordered_set<int>(),
+        bool exit_on_unsolvable = true);
     PatternCollectionInformation compute_pattern_collection();
 };
 
@@ -158,7 +160,7 @@ CEGAR::CEGAR(
     bool use_wildcard_plans, utils::LogProxy &log,
     const shared_ptr<utils::RandomNumberGenerator> &rng,
     const shared_ptr<AbstractTask> &task, const vector<FactPair> &goals,
-    unordered_set<int> &&blacklisted_variables)
+    unordered_set<int> &&blacklisted_variables, bool exit_on_unsolvable)
     : max_pdb_size(max_pdb_size),
       max_collection_size(max_collection_size),
       max_time(max_time),
@@ -169,6 +171,7 @@ CEGAR::CEGAR(
       task_proxy(*task),
       goals(goals),
       blacklisted_variables(move(blacklisted_variables)),
+      exit_on_unsolvable(exit_on_unsolvable),
       collection_size(0) {
 #ifndef NDEBUG
     for (const FactPair &goal : goals) {
@@ -349,7 +352,13 @@ bool CEGAR::get_flaws_for_pattern(
     PatternInfo &pattern_info = *pattern_collection[collection_index];
     if (pattern_info.is_unsolvable()) {
         log << "task is unsolvable." << endl;
-        utils::exit_with(utils::ExitCode::SEARCH_UNSOLVABLE);
+        if (exit_on_unsolvable) {
+            utils::exit_with(utils::ExitCode::SEARCH_UNSOLVABLE);
+        }
+        // The exact-width selector must retain and score this decisive PDB
+        // before the heuristic search reports unsolvability. Returning true
+        // makes this collection entry the selected result of CEGAR.
+        return true;
     }
 
     vector<int> current_state = concrete_init.get_unpacked_values();
@@ -593,7 +602,15 @@ PatternCollectionInformation CEGAR::compute_pattern_collection() {
 
         if (concrete_solution_index != -1) {
             if (log.is_at_least_normal()) {
-                log << "task solved during computation of abstraction" << endl;
+                if (pattern_collection[concrete_solution_index]
+                        ->is_unsolvable()) {
+                    log << "task proved unsolvable during computation of "
+                           "abstraction"
+                        << endl;
+                } else {
+                    log << "task solved during computation of abstraction"
+                        << endl;
+                }
             }
             break;
         }
@@ -657,10 +674,10 @@ PatternCollectionInformation generate_pattern_collection_with_cegar(
     bool use_wildcard_plans, utils::LogProxy &log,
     const shared_ptr<utils::RandomNumberGenerator> &rng,
     const shared_ptr<AbstractTask> &task, const vector<FactPair> &goals,
-    unordered_set<int> &&blacklisted_variables) {
+    unordered_set<int> &&blacklisted_variables, bool exit_on_unsolvable) {
     CEGAR cegar(
         max_pdb_size, max_collection_size, max_time, use_wildcard_plans, log,
-        rng, task, goals, move(blacklisted_variables));
+        rng, task, goals, move(blacklisted_variables), exit_on_unsolvable);
     return cegar.compute_pattern_collection();
 }
 
@@ -668,11 +685,11 @@ PatternInformation generate_pattern_with_cegar(
     int max_pdb_size, double max_time, bool use_wildcard_plans,
     utils::LogProxy &log, const shared_ptr<utils::RandomNumberGenerator> &rng,
     const shared_ptr<AbstractTask> &task, const FactPair &goal,
-    unordered_set<int> &&blacklisted_variables) {
+    unordered_set<int> &&blacklisted_variables, bool exit_on_unsolvable) {
     vector<FactPair> goals = {goal};
     CEGAR cegar(
         max_pdb_size, max_pdb_size, max_time, use_wildcard_plans, log, rng,
-        task, goals, move(blacklisted_variables));
+        task, goals, move(blacklisted_variables), exit_on_unsolvable);
     PatternCollectionInformation collection_info =
         cegar.compute_pattern_collection();
     shared_ptr<PatternCollection> new_patterns = collection_info.get_patterns();

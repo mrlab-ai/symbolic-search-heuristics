@@ -13,6 +13,7 @@ class PatternGeneratorCEGAR : public PatternGenerator {
     const double max_time;
     const bool use_wildcard_plans;
     std::shared_ptr<utils::RandomNumberGenerator> rng;
+    const bool exit_on_unsolvable;
 
     virtual std::string name() const override;
     virtual PatternInformation compute_pattern(
@@ -20,7 +21,8 @@ class PatternGeneratorCEGAR : public PatternGenerator {
 public:
     PatternGeneratorCEGAR(
         int max_pdb_size, double max_time, bool use_wildcard_plans,
-        int random_seed, utils::Verbosity verbosity);
+        int random_seed, utils::Verbosity verbosity,
+        bool exit_on_unsolvable = true);
 };
 }
 

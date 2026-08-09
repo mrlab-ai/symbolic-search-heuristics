@@ -18,12 +18,13 @@ using namespace std;
 namespace pdbs {
 PatternGeneratorCEGAR::PatternGeneratorCEGAR(
     int max_pdb_size, double max_time, bool use_wildcard_plans, int random_seed,
-    utils::Verbosity verbosity)
+    utils::Verbosity verbosity, bool exit_on_unsolvable)
     : PatternGenerator(verbosity),
       max_pdb_size(max_pdb_size),
       max_time(max_time),
       use_wildcard_plans(use_wildcard_plans),
-      rng(utils::get_rng(random_seed)) {
+      rng(utils::get_rng(random_seed)),
+      exit_on_unsolvable(exit_on_unsolvable) {
 }
 
 string PatternGeneratorCEGAR::name() const {
@@ -35,7 +36,8 @@ PatternInformation PatternGeneratorCEGAR::compute_pattern(
     TaskProxy task_proxy(*task);
     vector<FactPair> goals = get_goals_in_random_order(task_proxy, *rng);
     return generate_pattern_with_cegar(
-        max_pdb_size, max_time, use_wildcard_plans, log, rng, task, goals[0]);
+        max_pdb_size, max_time, use_wildcard_plans, log, rng, task, goals[0],
+        {}, exit_on_unsolvable);
 }
 
 class PatternGeneratorCEGARFeature
