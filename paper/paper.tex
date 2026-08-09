@@ -1594,21 +1594,47 @@ After the held-out analysis, its complete seven- or eight-configuration matrix
 is carried forward unchanged to all 1377 supported tasks on the same cluster,
 giving 9639 or 11016 cells. Before launch, a separate runner must freeze the
 resulting artifact hash, task-source bytes, option matrix, and array layout.
-This planned stage estimates overall and per-domain coverage and operational
-cost; it does not reopen the selector, width budget, batching parameters,
-ranking, or control set. Thus the screen performs selection, the held-out set
-tests the frozen choice, and the full rerun measures its scope.
+This planned stage is an exact descriptive census of the frozen supported
+population, not a third confirmatory or unseen-task experiment. It
+intentionally includes the 50 screening and 92 held-out tasks. We report the
+selector-versus-CEGAR coverage difference averaged equally over the 46 domains,
+overall and per-domain coverage, and operational cost without sampling
+intervals. One predeclared sensitivity repeats that macro-coverage contrast on
+the 1327 tasks outside the selection screen; we do not describe this complement
+as historically unseen. No Stage-2 or Stage-3 outcome reopens the selector,
+width budget, batching parameters, matrix, ranking, or contrasts. Thus the
+screen performs selection, the held-out set tests the frozen choice, and the
+full census describes its scope.
 
-Every run has a 300-second planner limit, 8\,GiB memory limit, and one AMD EPYC
-9755 core on Arrhenius. We use the \texttt{release\_no\_lp} build, so the
-present matrix does not evaluate potential heuristics. The scheduler permits
-at most five simultaneous array elements. The screen and held-out stages place
-one run in each element. To stay below Arrhenius's 1000-element array limit,
-the planned full-suite stage deterministically executes 10 runs per element in
-the seven-configuration case and 12 in the eight-configuration case, with a
-70-minute scheduler envelope; runs within an element remain sequential. Time
-spent constructing a heuristic is inside the planner limit and therefore
-charged to that configuration.
+Every run has a 300-second aggregate process-CPU planner limit, 8\,GiB memory
+limit, and one AMD EPYC 9755 core on Arrhenius. We use the
+\texttt{release\_no\_lp} build, so the present matrix does not evaluate
+potential heuristics. The scheduler permits at most five simultaneous array
+elements. The screen and held-out stages place one run in each element. To
+stay below Arrhenius's 1000-element array limit, the planned full-suite stage
+deterministically executes at most 10 runs per element in the
+seven-configuration case and 12 in the eight-configuration case, with 70- and
+75-minute scheduler envelopes, respectively; runs within an element remain
+sequential. Time spent constructing a heuristic is inside the planner limit
+and therefore charged to that configuration. These envelopes are conservative
+requests, not per-cell wall-clock guarantees: the wrapper has no separate wall
+watchdog, and an outer scheduler timeout invalidates the census.
+
+The full-suite job requests scheduler requeue for node failure or preemption.
+After grid construction, it replaces every benchmark symlink with an
+independent read-only copy, verifies each copy against the frozen per-source
+digest, and reattests all cells immediately before submission; later changes
+to the benchmark worktree therefore cannot change queued inputs.
+On restart it skips only cells bearing an exact, atomically written
+wrapper-completion marker and archives all dynamic state of an unmarked cell
+before trying that cell again. The marker records a zero exit from the Python
+run wrapper; it does not certify that the planner solved the task. The census
+is accepted only if every declared cell is fetched exactly once with a valid
+marker and a protocol-recognized planner outcome. A missing, starved, duplicate,
+or unexpected infrastructure cell invalidates the census rather than changing
+a denominator or becoming a timeout. Any recovery beyond automatic scheduler
+requeue requires a separately frozen recovery artifact before outcomes are
+inspected; there is no post-hoc cell fill.
 
 \subsection{Frozen Selection and Measurement}
 
@@ -1640,7 +1666,7 @@ implementation is revision
 \texttt{8e56de8862c9449246596e779177cc9e6a7bcf8e}; the benchmark repository is
 revision \texttt{48d6a00d482de2384a9e751f9343df58bf5582be}; and the clean screening
 protocol is revision
-\texttt{d3049f8f0c4022e8bed4b9a564131262a7f810b6}. The stripped cached planner
+\texttt{45316335e78e7c9fa2a59c3462fcffbe15a16f80}. The stripped cached planner
 binary has SHA-256
 \texttt{21ea6aff991b4f8196ee8642ff0534bebae67ee3d13f3bd9c7f6f9b3b1fe8cb9}.
 Its copied preprocessor has SHA-256
@@ -1651,7 +1677,7 @@ complete option matrix have SHA-256 digests
 \texttt{dbb7730c257472c07f7946f0434949449169e06d1faa2174a92a6d13c48cb8ba},
 and
 \texttt{e16f6e34af5101a3549bfbf98ebaba23371c645f9166c884bfdf07b3b65e7442},
-respectively. The runner attests the copied code, PDDL links, run scripts,
+respectively. The runner attests the copied code, PDDL inputs, run scripts,
 static properties, job header and array body before submission. The read-only
 analyzer pins these identities. The named protocols are
 \texttt{arrhenius-exact-width-selector-screening-v1} for the experiment,
@@ -1681,11 +1707,14 @@ PAR2/runtime/image/construction summaries on the 92 held-out tasks. State
 explicitly that no held-out outcome changed the configuration.]}
 
 \paragraph{Full-suite result---placeholder.}
-\emph{[RESULT PLACEHOLDER: report current-Arrhenius overall and per-domain
-coverage on all 1377 supported tasks, paired comparisons with the declared
-controls, exact-width and selected-source strata, and certified image/node
-metrics. Keep resource-censored denominators explicit and do not substitute
-any archived coverage table.]}
+\emph{[RESULT PLACEHOLDER: report the current-Arrhenius descriptive census on
+all 1377 supported tasks, including the selector-versus-CEGAR equally weighted
+46-domain macro-coverage contrast, overall and per-domain coverage, carried
+paired comparisons, PAR2/runtime, exact-width and selected-source strata, and
+certified construction/image/node metrics. Report the sole predeclared
+screen-excluded 1327-task sensitivity without an interval, the completion and
+automatic-restart counts, and every resource-censored denominator explicitly.
+Do not rerank configurations or substitute any archived coverage table.]}
 
 Until these placeholders are filled from the attested artifacts, the
 empirical conclusion is deliberately unresolved. The formal safety results do
