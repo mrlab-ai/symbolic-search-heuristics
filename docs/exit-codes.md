@@ -15,9 +15,19 @@ which does not prevent the execution of further components.
 | **Code** | **Name** | **Meaning** |
 | -------- | -------- | ----------- |
 | 0 | SUCCESS | All run components successfully terminated (translator: completed, search: found a plan, validate: validated a plan) |
-| 1 | SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY | Only returned by portfolios: at least one plan was found and another component ran out of memory. |
-| 2 | SEARCH_PLAN_FOUND_AND_OUT_OF_TIME | Only returned by portfolios: at least one plan was found and another component ran out of time. |
-| 3 | SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY_AND_TIME | Only returned by portfolios: at least one plan was found, another component ran out of memory, and yet another one ran out of time. |
+| 1 | SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY | At least one plan was found and the search or another portfolio component ran out of memory. |
+| 2 | SEARCH_PLAN_FOUND_AND_OUT_OF_TIME | At least one plan was found and the search or another portfolio component ran out of time. |
+| 3 | SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY_AND_TIME | At least one plan was found and the search or portfolio ran out of both memory and time. |
+
+For a non-portfolio search, the driver reports the search process's raw exit
+code separately. If that code is 22, 23, or 24 and the process created exactly
+one complete, single-link regular plan at the requested plan-file path, the
+driver returns the corresponding effective code 1, 2, or 3 and permits later
+components such as plan validation to run. The file must retain the identity
+and metadata observed after search while the driver reads it, and it must end
+with its only canonical cost footer. Symlinks, hard links, and additional or
+incomplete plan files do not trigger this conversion when they are created or
+modified by the current search.
 
 The second block (10-19) represents unsuccessful, but error-free
 termination which prevents the execution of further components.
@@ -37,7 +47,7 @@ execution of further components.
 | 21 | TRANSLATE_OUT_OF_TIME | Time exhausted. Not supported on Windows because we use SIGXCPU to kill the planner. |
 | 22 | SEARCH_OUT_OF_MEMORY | Memory exhausted. |
 | 23 | SEARCH_OUT_OF_TIME | Timeout occurred. Not supported on Windows because we use SIGXCPU to kill the planner. |
-| 24 | SEARCH_OUT_OF_MEMORY_AND_TIME | Only returned by portfolios: one component ran out of memory and another one out of time. |
+| 24 | SEARCH_OUT_OF_MEMORY_AND_TIME | Search ran out of both memory and time. For portfolios, this can mean that different components exhausted the two resources. |
 
 The fourth block (30-39) represents unrecoverable failures which prevent
 the execution of further components.

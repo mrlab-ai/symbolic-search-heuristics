@@ -1,6 +1,8 @@
 import itertools
+import os
 from pathlib import Path
 import re
+import stat
 
 from . import returncodes
 
@@ -8,24 +10,40 @@ from . import returncodes
 _PLAN_INFO_REGEX = re.compile(r"; cost = (\d+) \((unit cost|general cost)\)\n")
 
 
-def _read_last_line(path: Path):
+def _parse_plan_stream(input_file):
+    """Parse a plan stream with exactly one canonical final cost footer."""
     line = None
-    with path.open() as input_file:
-        for line in input_file:
-            pass
-    return line
+    footer = None
+    footer_count = 0
+    for line in input_file:
+        match = _PLAN_INFO_REGEX.fullmatch(line)
+        if match:
+            footer = match
+            footer_count += 1
+    if footer_count == 1 and footer is not None:
+        final_match = _PLAN_INFO_REGEX.fullmatch(line or "")
+        if final_match:
+            return int(final_match.group(1)), final_match.group(2)
+    return None, None
 
 
 def _parse_plan(plan_path: Path):
     """Parse a plan file and return a pair (cost, problem_type)
     summarizing the salient information. Return (None, None) for
     incomplete plans."""
-    last_line = _read_last_line(plan_path) or ""
-    match = _PLAN_INFO_REGEX.match(last_line)
-    if match:
-        return int(match.group(1)), match.group(2)
-    else:
-        return None, None
+    with plan_path.open() as input_file:
+        return _parse_plan_stream(input_file)
+
+
+def _get_file_fingerprint(status):
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_mode,
+        status.st_nlink,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns)
 
 
 class PlanManager:
@@ -109,6 +127,71 @@ class PlanManager:
                 yield plan_path
             else:
                 break
+
+    def get_existing_plan_artifacts(self):
+        """Return existing entries that use the plan-file naming scheme.
+
+        In contrast to get_existing_plans(), this also finds broken symlinks,
+        nonregular entries, and numbered entries after a gap. This stricter
+        inventory is used when deciding whether a direct search produced
+        exactly one trustworthy plan file.
+        """
+        artifacts = []
+        if self._plan_prefix.exists() or self._plan_prefix.is_symlink():
+            artifacts.append(self._plan_prefix)
+
+        parent = self._plan_prefix.parent
+        numbered_prefix = f"{self._plan_prefix.name}."
+        for path in parent.iterdir():
+            if not path.name.startswith(numbered_prefix):
+                continue
+            suffix = path.name[len(numbered_prefix):]
+            if suffix.isdigit():
+                artifacts.append(path)
+        return sorted(artifacts, key=str)
+
+    def get_plan_artifact_snapshot(self):
+        """Return fingerprints for all currently existing plan artifacts."""
+        snapshot = {}
+        for path in self.get_existing_plan_artifacts():
+            snapshot[path] = _get_file_fingerprint(path.lstat())
+        return snapshot
+
+    def is_single_complete_plan(self, plan_artifacts):
+        """Return whether artifacts contain one valid direct-search plan."""
+        if list(plan_artifacts) != [self._plan_prefix]:
+            return False
+
+        expected_fingerprint = plan_artifacts[self._plan_prefix]
+        expected_mode = expected_fingerprint[2]
+        expected_nlink = expected_fingerprint[3]
+        if not stat.S_ISREG(expected_mode) or expected_nlink != 1:
+            return False
+
+        flags = os.O_RDONLY
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
+        descriptor = None
+        try:
+            descriptor = os.open(self._plan_prefix, flags)
+            if (_get_file_fingerprint(os.fstat(descriptor)) !=
+                    expected_fingerprint):
+                return False
+            with os.fdopen(descriptor) as input_file:
+                descriptor = None
+                cost, problem_type = _parse_plan_stream(input_file)
+                if (_get_file_fingerprint(os.fstat(input_file.fileno())) !=
+                        expected_fingerprint):
+                    return False
+            if (_get_file_fingerprint(self._plan_prefix.lstat()) !=
+                    expected_fingerprint):
+                return False
+        except (OSError, UnicodeError):
+            return False
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+        return cost is not None and problem_type is not None
 
     def delete_existing_plans(self):
         """Delete all plans that match the given plan prefix."""

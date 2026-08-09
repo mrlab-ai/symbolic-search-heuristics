@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import traceback
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +18,7 @@ from .arguments import EXAMPLES
 from .call import check_call, _replace_paths_with_strings
 from . import limits
 from . import returncodes
+from . import run_components
 from .run_components import get_executable, REL_SEARCH_PATH
 from .util import REPO_ROOT_DIR, find_domain_path
 
@@ -131,3 +133,305 @@ def test_automatic_domain_file_name_computation():
         for filename in filenames:
             if "domain" not in filename:
                 assert find_domain_path(dirpath / filename)
+
+
+_COMPLETE_PLAN = "(move a b)\n; cost = 7 (unit cost)\n"
+
+
+def _get_direct_search_args(tmp_path):
+    return SimpleNamespace(
+        build="unused",
+        overall_time_limit=None,
+        search_time_limit=None,
+        overall_memory_limit=None,
+        search_memory_limit=None,
+        plan_file=tmp_path / "sas_plan",
+        portfolio_bound=None,
+        portfolio_single_plan=False,
+        portfolio=None,
+        search_options=["--search", "dummy()"],
+        search_input=tmp_path / "output.sas")
+
+
+def _run_mock_direct_search(monkeypatch, args, raw_exitcode, create_artifacts):
+    monkeypatch.setattr(
+        run_components,
+        "get_executable",
+        lambda _build, _path: Path("downward"))
+
+    def fake_check_call(_nick, cmd, **_kwargs):
+        create_artifacts()
+        if raw_exitcode:
+            raise subprocess.CalledProcessError(raw_exitcode, cmd)
+
+    monkeypatch.setattr(run_components.call, "check_call", fake_check_call)
+    return run_components.run_search(args)
+
+
+@pytest.mark.parametrize(
+    "raw_exitcode, effective_exitcode",
+    [
+        (returncodes.SEARCH_OUT_OF_MEMORY,
+         returncodes.SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY),
+        (returncodes.SEARCH_OUT_OF_TIME,
+         returncodes.SEARCH_PLAN_FOUND_AND_OUT_OF_TIME),
+        (returncodes.SEARCH_OUT_OF_MEMORY_AND_TIME,
+         returncodes.SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY_AND_TIME),
+    ])
+def test_direct_search_maps_resource_limit_with_complete_plan(
+        monkeypatch, capsys, tmp_path, raw_exitcode, effective_exitcode):
+    args = _get_direct_search_args(tmp_path)
+    args.plan_file.write_text("old plan that must be deleted\n")
+
+    def create_complete_plan():
+        assert not args.plan_file.exists()
+        args.plan_file.write_text(_COMPLETE_PLAN)
+
+    result = _run_mock_direct_search(
+        monkeypatch, args, raw_exitcode, create_complete_plan)
+
+    assert result == (effective_exitcode, True)
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {raw_exitcode}",
+        "search resource-limit exit with complete plan: "
+        f"raw_exit_code={raw_exitcode} "
+        f"effective_exit_code={effective_exitcode}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "artifact_kind", ["none", "truncated", "symlink", "directory", "multiple"])
+def test_direct_search_rejects_uncertified_plan(
+        monkeypatch, capsys, tmp_path, artifact_kind):
+    args = _get_direct_search_args(tmp_path)
+
+    def create_artifacts():
+        if artifact_kind == "truncated":
+            args.plan_file.write_text("(move a b)\n")
+        elif artifact_kind == "symlink":
+            target = tmp_path / "complete-plan-target"
+            target.write_text(_COMPLETE_PLAN)
+            args.plan_file.symlink_to(target)
+        elif artifact_kind == "directory":
+            args.plan_file.mkdir()
+        elif artifact_kind == "multiple":
+            args.plan_file.write_text(_COMPLETE_PLAN)
+            Path(f"{args.plan_file}.2").write_text(_COMPLETE_PLAN)
+
+    result = _run_mock_direct_search(
+        monkeypatch, args, returncodes.SEARCH_OUT_OF_TIME, create_artifacts)
+
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {returncodes.SEARCH_OUT_OF_TIME}",
+    ]
+
+
+def test_direct_search_ignores_plan_artifact_from_before_search(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+    stale_plan = Path(f"{args.plan_file}.2")
+    stale_plan.write_text(_COMPLETE_PLAN)
+
+    result = _run_mock_direct_search(
+        monkeypatch, args, returncodes.SEARCH_OUT_OF_TIME, lambda: None)
+
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert stale_plan.exists()
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {returncodes.SEARCH_OUT_OF_TIME}",
+    ]
+
+
+def test_direct_search_rejects_modified_preexisting_plan_artifact(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+    preexisting_plan = Path(f"{args.plan_file}.2")
+    preexisting_plan.write_text("stale\n")
+
+    def create_artifacts():
+        args.plan_file.write_text(_COMPLETE_PLAN)
+        preexisting_plan.write_text(_COMPLETE_PLAN)
+
+    result = _run_mock_direct_search(
+        monkeypatch, args, returncodes.SEARCH_OUT_OF_TIME, create_artifacts)
+
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {returncodes.SEARCH_OUT_OF_TIME}",
+    ]
+
+
+def test_direct_search_rejects_duplicate_cost_footer(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+
+    def create_plan_with_duplicate_footer():
+        args.plan_file.write_text(
+            "; cost = 6 (unit cost)\n" + _COMPLETE_PLAN)
+
+    result = _run_mock_direct_search(
+        monkeypatch,
+        args,
+        returncodes.SEARCH_OUT_OF_TIME,
+        create_plan_with_duplicate_footer)
+
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {returncodes.SEARCH_OUT_OF_TIME}",
+    ]
+
+
+def test_direct_search_rejects_hardlinked_plan(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+    target = tmp_path / "complete-plan-target"
+
+    def create_hardlinked_plan():
+        target.write_text(_COMPLETE_PLAN)
+        os.link(target, args.plan_file)
+
+    result = _run_mock_direct_search(
+        monkeypatch,
+        args,
+        returncodes.SEARCH_OUT_OF_TIME,
+        create_hardlinked_plan)
+
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert args.plan_file.stat().st_nlink == 2
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {returncodes.SEARCH_OUT_OF_TIME}",
+    ]
+
+
+def test_direct_search_rejects_plan_replaced_after_snapshot(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+    real_snapshot = run_components.PlanManager.get_plan_artifact_snapshot
+    snapshot_calls = 0
+
+    def snapshot_then_replace_plan(plan_manager):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        snapshot = real_snapshot(plan_manager)
+        if snapshot_calls == 2:
+            replacement = tmp_path / "replacement-plan"
+            replacement.write_text(
+                "(different action)\n; cost = 99 (unit cost)\n")
+            replacement.replace(args.plan_file)
+        return snapshot
+
+    monkeypatch.setattr(
+        run_components.PlanManager,
+        "get_plan_artifact_snapshot",
+        snapshot_then_replace_plan)
+    result = _run_mock_direct_search(
+        monkeypatch,
+        args,
+        returncodes.SEARCH_OUT_OF_TIME,
+        lambda: args.plan_file.write_text(_COMPLETE_PLAN))
+
+    assert snapshot_calls == 2
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {returncodes.SEARCH_OUT_OF_TIME}",
+    ]
+
+
+def test_direct_search_does_not_reuse_deleted_canonical_plan(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+    args.plan_file.write_text(_COMPLETE_PLAN)
+
+    result = _run_mock_direct_search(
+        monkeypatch, args, returncodes.SEARCH_OUT_OF_TIME, lambda: None)
+
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert not args.plan_file.exists()
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {returncodes.SEARCH_OUT_OF_TIME}",
+    ]
+
+
+def test_direct_search_rejects_plan_when_inventory_is_unavailable(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+
+    def fail_inventory(_self):
+        raise PermissionError("test inventory failure")
+
+    monkeypatch.setattr(
+        run_components.PlanManager,
+        "get_plan_artifact_snapshot",
+        fail_inventory)
+    result = _run_mock_direct_search(
+        monkeypatch,
+        args,
+        returncodes.SEARCH_OUT_OF_TIME,
+        lambda: args.plan_file.write_text(_COMPLETE_PLAN))
+
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {returncodes.SEARCH_OUT_OF_TIME}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "raw_exitcode",
+    [
+        returncodes.SEARCH_UNSOLVABLE,
+        returncodes.SEARCH_UNSOLVED_INCOMPLETE,
+        returncodes.SEARCH_UNSUPPORTED,
+        -9,
+    ])
+def test_direct_search_preserves_other_exitcodes(
+        monkeypatch, capsys, tmp_path, raw_exitcode):
+    args = _get_direct_search_args(tmp_path)
+    result = _run_mock_direct_search(
+        monkeypatch,
+        args,
+        raw_exitcode,
+        lambda: args.plan_file.write_text(_COMPLETE_PLAN))
+
+    assert result == (raw_exitcode, False)
+    assert capsys.readouterr().out.splitlines() == [
+        f"search raw exit code: {raw_exitcode}",
+    ]
+
+
+def test_direct_search_preserves_unexpected_low_exitcode_assertion(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+    with pytest.raises(AssertionError, match="got returncode < 10: 1"):
+        _run_mock_direct_search(monkeypatch, args, 1, lambda: None)
+
+    assert capsys.readouterr().out.splitlines() == ["search raw exit code: 1"]
+
+
+def test_direct_search_logs_success_raw_exitcode(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+    result = _run_mock_direct_search(monkeypatch, args, 0, lambda: None)
+
+    assert result == (returncodes.SUCCESS, True)
+    assert capsys.readouterr().out.splitlines() == ["search raw exit code: 0"]
+
+
+def test_portfolio_search_does_not_log_direct_raw_exitcode(
+        monkeypatch, capsys, tmp_path):
+    args = _get_direct_search_args(tmp_path)
+    args.portfolio = tmp_path / "portfolio.py"
+    args.search_options = []
+    monkeypatch.setattr(
+        run_components,
+        "get_executable",
+        lambda _build, _path: Path("downward"))
+    monkeypatch.setattr(
+        run_components.portfolio_runner,
+        "run",
+        lambda *_args: (returncodes.SEARCH_OUT_OF_TIME, False))
+
+    result = run_components.run_search(args)
+
+    assert result == (returncodes.SEARCH_OUT_OF_TIME, False)
+    assert capsys.readouterr().out == ""

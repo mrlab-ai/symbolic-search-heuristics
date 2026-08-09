@@ -23,6 +23,14 @@ else:
 REL_TRANSLATE_PATH = Path("translate")
 REL_PREPROCESS_PATH = f"preprocess{BINARY_EXT}"
 REL_SEARCH_PATH = Path(f"downward{BINARY_EXT}")
+_SEARCH_RESOURCE_LIMIT_EXITCODE_WITH_PLAN = {
+    returncodes.SEARCH_OUT_OF_MEMORY:
+        returncodes.SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY,
+    returncodes.SEARCH_OUT_OF_TIME:
+        returncodes.SEARCH_PLAN_FOUND_AND_OUT_OF_TIME,
+    returncodes.SEARCH_OUT_OF_MEMORY_AND_TIME:
+        returncodes.SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY_AND_TIME,
+}
 # Older versions of VAL use lower case, newer versions upper case. We prefer the
 # older version because this is what our build instructions recommend.
 _VALIDATE_NAME = (shutil.which(f"validate{BINARY_EXT}") or
@@ -163,6 +171,11 @@ def run_search(args):
         if "--help" not in args.search_options:
             args.search_options.extend(["--internal-plan-file", args.plan_file])
         try:
+            plan_artifacts_before_search = (
+                plan_manager.get_plan_artifact_snapshot())
+        except OSError:
+            plan_artifacts_before_search = None
+        try:
             call.check_call(
                 "search",
                 [executable] + args.search_options,
@@ -170,15 +183,47 @@ def run_search(args):
                 time_limit=time_limit,
                 memory_limit=memory_limit)
         except subprocess.CalledProcessError as err:
-            # TODO: if we ever add support for SEARCH_PLAN_FOUND_AND_* directly
-            # in the planner, this assertion no longer holds. Furthermore, we
-            # would need to return (err.returncode, True) if the returncode is
-            # in [0..10].
-            # Negative exit codes are allowed for passing out signals.
-            assert err.returncode >= 10 or err.returncode < 0, "got returncode < 10: {}".format(err.returncode)
-            return (err.returncode, False)
+            raw_exitcode = err.returncode
         else:
-            return (0, True)
+            raw_exitcode = returncodes.SUCCESS
+
+        print(f"search raw exit code: {raw_exitcode}", flush=True)
+        if raw_exitcode == returncodes.SUCCESS:
+            return (returncodes.SUCCESS, True)
+
+        # The search binary does not directly return the driver's
+        # SEARCH_PLAN_FOUND_AND_* codes. Negative exit codes are allowed for
+        # passing out signals.
+        assert raw_exitcode >= 10 or raw_exitcode < 0, \
+            f"got returncode < 10: {raw_exitcode}"
+
+        effective_exitcode = _SEARCH_RESOURCE_LIMIT_EXITCODE_WITH_PLAN.get(
+            raw_exitcode)
+        if (effective_exitcode is not None and
+                plan_artifacts_before_search is not None):
+            try:
+                plan_artifacts_after_search = (
+                    plan_manager.get_plan_artifact_snapshot())
+            except OSError:
+                plan_artifacts_after_search = None
+            if plan_artifacts_after_search is not None:
+                new_plan_artifacts = {
+                    path: fingerprint
+                    for path, fingerprint in
+                    plan_artifacts_after_search.items()
+                    if plan_artifacts_before_search.get(path) != fingerprint
+                }
+            else:
+                new_plan_artifacts = {}
+            if plan_manager.is_single_complete_plan(new_plan_artifacts):
+                print(
+                    "search resource-limit exit with complete plan: "
+                    f"raw_exit_code={raw_exitcode} "
+                    f"effective_exit_code={effective_exitcode}",
+                    flush=True)
+                return (effective_exitcode, True)
+
+        return (raw_exitcode, False)
 
 
 def run_validate(args):
