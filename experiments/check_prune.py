@@ -6,11 +6,10 @@ For each positive-cost smoke task:
   1. prune-only variants of all three families find the optimal cost;
   2. with m=0 the prune-only potential search is exactly blind (identical
      per-layer expand records and effort);
-  3. prune-only effort never exceeds blind effort (layers are slices of blind
-     layers, so per-layer BDDs can only shrink... measured on reduced BDDs the
-     slice can be larger (paper Ex. ex-parity), so we check effort <=
-     Wn-factor loosely: effort_prune <= 5 * effort_blind as a smoke-level
-     sanity bound, and report the ratio).
+  3. prune-only effort stays within a loose smoke-level bound. Its layers are
+     slices of blind layers, but a slice can have a larger reduced BDD (paper
+     Ex. ex-parity), so the test checks effort_prune <= 5 * effort_blind and
+     reports the ratio rather than asserting monotone BDD size.
 
 Usage: python3 experiments/check_prune.py [--timeout SECONDS]
 """
