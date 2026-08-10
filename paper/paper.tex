@@ -92,8 +92,12 @@ high-level image calls while deferring logical expansion order, and a
 construction deadline makes merge-and-shrink fall back to blind search.
 We specify a prospective three-stage evaluation on the Arrhenius cluster:
 a frozen 50-task screen, a disjoint 92-task held-out comparison, and a
-current-cluster rerun on the full 1377-task supported population. Results
-are intentionally left open until those protocol-attested runs complete.
+current-cluster rerun on the full 1377-task supported population. The frozen
+screen selects exact merge-and-shrink (43/50 tasks) over its capped control
+(also 43/50 but worse PAR2), blind search (30/50), and every width-constrained
+PDB treatment (at most 30/50). Batching reduces completed image calls on
+complete pairs but worsens coverage and image time. The held-out comparison
+and full census remain prospectively fixed and open.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -1708,13 +1712,62 @@ certification.
 
 \subsection{Results}
 
-\paragraph{Screen result---placeholder.}
-\emph{[RESULT PLACEHOLDER: insert the protocol-certified 20-by-50 coverage,
-micro-PAR2, complete-counter status, image-time tie-break (if enabled),
-selected label, certified selected-pattern-size and source distributions,
-exact-width distribution, and complete-cell batched-image/image-call
-diagnostics with their censored denominators. Do not insert values from the
-diagnostic or legacy-cluster runs.]}
+\paragraph{Screen result.}
+All 1000 declared cells passed the protocol checks. Table~\ref{tab:screen}
+shows the decisive rows of the frozen 20-by-50 census. Exact M\&S and its
+32-terminal-capped control both solved 43 tasks, but exact M\&S had 1.3706
+seconds lower micro-PAR2 and was therefore selected globally before the
+image-time tie-break. Against blind search it gained 13 tasks net, with 17
+exclusive wins and four losses. All 950 heuristic constructions completed,
+with no construction or pattern fallback.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption{Selected screening-census rows. Micro-PAR2 is in seconds with a
+  600-second penalty. Width gives minimum/median/maximum exact cofactor width
+  over the 50 tasks. ``Image $n$'' is the number of raw-complete, certified
+  cells admitted to that configuration's total-image summary.}
+  \label{tab:screen}
+  \begin{tabular}{lrrcr}
+    \toprule
+    Configuration & Solved & Micro-PAR2 & Width & Image $n$ \\
+    \midrule
+    Blind forward & 30 & 264.9006 & -- & 30 \\
+    Exact M\&S (global winner) & 43 & 133.6736 & $11/201/149{,}079$ & 43 \\
+    32-terminal-capped M\&S & 43 & 135.0442 & $11/185.5/58{,}010$ & 43 \\
+    Selector $K=1$ (family winner) & 30 & 273.2554 & $1/1/1$ & 30 \\
+    CEGAR PDB & 27 & 312.1382 & $2/18/2{,}696$ & 27 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The selector-family winner, $K=1$, tied blind coverage but increased
+micro-PAR2 by 8.3548 seconds; descriptively, it solved three more tasks than
+the CEGAR PDB control. Its 50 certified traces all selected the empty,
+size-zero pattern and had exact width one. Relaxing the unbatched budget did
+not improve this result: the nine $K>1$ treatments solved 28--30 tasks and
+had micro-PAR2 277.1670--291.7778. At $K=32$, for example, selected widths
+ranged from 1 to 30 (median 17), selected pattern sizes from 0 to 16, and the
+primary-source counts in pool order---empty, BDD prefix, goal prefix, goal
+fill, and CEGAR---were $8/12/18/1/11$. Thus larger safe widths changed the
+selected abstractions without improving the selector-family ordering.
+
+Adaptive batching also regressed on this screen. Each $\Delta=64$ treatment
+lost three tasks against its same-$K$ unbatched reference and increased
+micro-PAR2 by 33.8674--44.8040 seconds; the fixed $\Delta=16$, $K=32$
+treatment lost six tasks and increased micro-PAR2 by 57.4396 seconds. On the
+raw-complete certified intersections, batching reduced completed image calls
+to 11.8--23.2\% of the corresponding unbatched counts, but image time was
+1.31--2.06 times as large. These comparisons contain only 24--27 of the 50
+task pairs; the other 23--26 pairs are censored.
+
+Every cell nevertheless supplied a piece-certified prefix, and all 750
+selector traces were complete. Only 589 of 1000 cells were raw-complete for
+total-image aggregation, however, leaving 411 censored; consequently the
+ranking's total image times are undefined and the image-time tie-break was
+not used. These are descriptive selection-screen results only and make no
+claim about the held-out set or the full supported population.
 
 \paragraph{Held-out result---placeholder.}
 \emph{[RESULT PLACEHOLDER: after freezing the Stage-1 selection artifact,
@@ -1737,9 +1790,9 @@ screen-excluded 1327-task sensitivity without an interval, the completion and
 automatic-restart counts, and every resource-censored denominator explicitly.
 Do not rerank configurations or substitute any archived coverage table.]}
 
-Until these placeholders are filled from the attested artifacts, the
-empirical conclusion is deliberately unresolved. The formal safety results do
-not depend on the outcome of the screen.
+Until the held-out and full-suite placeholders are filled from their attested
+artifacts, the population-level empirical conclusion remains deliberately
+unresolved. The formal safety results do not depend on any empirical outcome.
 \section{Related Work}
 
 Heuristic symbolic search has long exposed a tension between information and
@@ -1831,13 +1884,18 @@ fall back to blind search. The analytic $d(N+1)$ M\&S guarantee applies only
 to aligned merge and search orders; the evaluated
 \texttt{align\_merge\_order=false} control is explicitly outside it.
 
-The empirical verdict is not yet part of this manuscript. The frozen
-Arrhenius screen, disjoint held-out comparison, and full supported-suite rerun
-must fill the placeholders in Section~\ref{sec-experiments} before any claim
-about coverage, batching benefit, preferred width budget, or runtime is made.
-Whatever their outcome, the central design lesson is the separation of roles:
-width is the safety constraint; abstraction information, image-call
-amortization, and bounded setup cost are distinct optimization objectives.
+The frozen Arrhenius screen gives a clear but deliberately local verdict.
+Exact M\&S is the global screen winner; the selector-family winner is the
+width-one empty PDB, which ties blind coverage but is slower; and the tested
+batching policies reduce image-call counts without improving coverage or image
+time on the certified complete pairs. Thus the width certificate prevents the
+targeted representation failure but is neither an informativeness criterion
+nor a performance predictor. The disjoint held-out comparison and full
+supported-suite census must still fill their placeholders in
+Section~\ref{sec-experiments} before these observations are generalized.
+The central design lesson remains the separation of roles: width is the safety
+constraint; abstraction information, image-call amortization, and bounded
+setup cost are distinct optimization objectives.
 
 Open questions include learning better informativeness scores without
 adapting them to held-out results, enlarging the fixed candidate pool without
