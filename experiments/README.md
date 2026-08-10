@@ -2,6 +2,94 @@
 
 Downward Lab experiments for the width-bounded-heuristics paper (PR5).
 
+## Current paper protocol (Arrhenius P4/P5)
+
+The paper no longer uses the older Tetralith sweeps described later in this
+file as empirical evidence.  Its current-cluster evaluation is a frozen,
+three-stage Arrhenius protocol:
+
+1. `exp_arrhenius_selector_pilot.py` crosses 20 configurations with 50
+   screening tasks.  The completed P4 screen uses planner revision
+   `58a3f742d7ac63f391d06c237573f14ad590c187` and launch-protocol revision
+   `d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf`.
+2. `exp_arrhenius_selector_validation.py` carries the five controls, the
+   construction-bounded M&S safeguard, and the frozen selector-family winner
+   to 92 disjoint held-out tasks (seven configurations, 644 cells).
+3. `exp_arrhenius_selector_full.py` carries that identical seven-configuration
+   matrix to all 1377 supported positive-cost, normalized-axiom-free tasks
+   (9639 cells).  This is a descriptive census and cannot rerank methods.
+
+The canonical Stage-1 outputs are tracked under
+`artifacts/arrhenius-selector-screen-p4/`.  In particular,
+`selection-v3.json` has raw SHA-256
+`d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2`.
+It selects `ms_exact` globally and `pdb_selector_k1` within the selector
+family.  `certified-report-v2.json` is the separate descriptive screen report;
+downstream runners consume only the selection artifact.  Verify both files
+with their adjacent `sha256sum` sidecars before use.
+
+The held-out and full reruns use the prospectively corrected P5 producer at
+planner revision `165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f`, launch-protocol
+revision `a52488637a1c054b26dac93fe2eb1a556110a2dd`, and protocol
+`pdb-ms-initial-dead-bdd-construction-prelog/v1`.  The stripped cached search
+binary and preprocessor have SHA-256 digests
+`af2a19d236ecad9b747d2a1b9c49da73d98248c38d21cc60ad0ac7613d74bdbe`
+and
+`1b351a4a5f9380bf41fe9fd61b98c816505ebd8cf88b20afa0d81a9bfb2474bd`,
+respectively.  Each accepted downstream run record must name this exact
+execution identity.  The immutable P4 provenance remains separately embedded
+in the selection artifact; do not rewrite it to P5.
+
+Run `build` and `start` only from a clean detached worktree at the exact launch
+revision.  Bind the account, benchmark checkout, revision cache, and Lab-8.0
+virtual environment explicitly; ambient cluster defaults are intentionally
+rejected.  The command shape is:
+
+```
+env PYTHONDONTWRITEBYTECODE=1 \
+  WBH_ACCOUNT=naiss2025-5-561-cpu \
+  DOWNWARD_BENCHMARKS=/path/to/clean/downward-benchmarks-wbh \
+  DOWNWARD_REVISION_CACHE=/path/to/p5/revision-cache \
+  /path/to/experiments/.venv/bin/python \
+  experiments/exp_arrhenius_selector_validation.py \
+  --selection experiments/artifacts/arrhenius-selector-screen-p4/selection-v3.json \
+  build
+```
+
+Invoke `start` exactly once after the built grid passes the runner's complete
+start-equivalent attestation.  Do not combine `build` and `start`, rebuild an
+existing grid, reuse a partially executed grid, or fill individual cells after
+outcomes are visible.  The full census is launched only after the complete
+held-out array has passed raw certification, `parse fetch`, and the frozen
+held-out analyzer.  Substitute `exp_arrhenius_selector_full.py` only at that
+stage.
+
+After a complete array passes its raw audit, run `parse fetch` with the same
+runner, environment, selection artifact, and launch worktree.  Analyze the
+resulting exact `*-eval/properties` file read-only with:
+
+```
+experiments/.venv/bin/python \
+  experiments/analyze_arrhenius_selector_validation.py \
+  /path/to/exp_arrhenius_selector_validation-eval/properties \
+  --selection experiments/artifacts/arrhenius-selector-screen-p4/selection-v3.json
+```
+
+Use `analyze_arrhenius_selector_full.py` analogously for the full census.  Both
+analyzers emit one canonical JSON object on stdout and deliberately do not
+write a result artifact.  Preserve and independently audit that byte stream
+before adding results to the paper.  Their `--self-test` modes exercise the
+complete matrix plus provenance, outcome, parser, selector, recovery, and
+strict-JSON adversaries without reading experiment outcomes.
+
+The first P4 downstream starts were canceled after a producer-ordering defect
+was exposed by an initial-dead heuristic.  None of their stable or partial
+cells are reused.  The strict metric parser was retained; P5 fixes the producer
+and reruns every downstream cell from scratch.  See `paper/paper.tex` for the
+frozen estimands, denominators, and disclosure.  Everything below this section
+documents older development experiments or archived evidence and must not be
+substituted for the P4/P5 paper data.
+
 ## Setup
 
 ```
