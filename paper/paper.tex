@@ -71,10 +71,11 @@ We give a representation-side sufficient condition for safety. A heuristic has
 is computable by scanning the state variables once in that order while
 distinguishing at most $W$ residual functions. We prove that partitioning
 \emph{any} state-set BDD by such a heuristic has total size at most
-$W^2n$ times the augmented input size $|B|+2$, and that symbolic
-\astar\ with a consistent width-$W$ heuristic has effort at most
-$W^2n$ times blind effort plus the stated layer-additive term, and hence at
-most $3W^2n$ times blind effort.
+$TWn$ times the augmented input size $|B|+2$, where $T\leq W$ is its
+number of terminals. Symbolic \astar\ with a consistent width-$W$
+heuristic and $V\leq T$ finite values has effort at most $VWn$ times blind
+effort plus the stated layer-additive term, and hence at most $3VWn$
+(and no more than $3W^2n$) times blind effort.
 The known exponential deterioration requires exponential width, and an
 explicit family realizes an $\Omega(W^2)$ overhead ratio. Integer
 potential heuristics, pattern databases (PDBs), and aligned linear
@@ -158,16 +159,17 @@ covers both known failure modes of heuristic symbolic search, the
 fragmentation of the frontier and the fact that a subset of a state set
 can have an exponentially larger BDD. Second, we prove a
 \emph{search-effort theorem}: \bddastar\ with a consistent width-$W$
-heuristic has cumulative BDD size at most $W^2n$ times blind effort plus
-the stated layer-additive term, and hence a factor at most $3W^{2}n$, where
-$n$ is the number of binary variables.
+heuristic and $V$ finite values has cumulative BDD size at most $VWn$ times
+blind effort plus the stated layer-additive term, and hence a factor at most
+$3VWn\leq3W^{2}n$, where $n$ is the number of binary variables.
 Third, we delimit the bound from both sides: the pathological
 heuristic in the construction of \citet{speck-et-al-icaps2020} has width
 $2^{\Omega(n)}$, so exponential width is necessary for their exponential
 deterioration, and an explicit family of tasks and width-$W$ heuristics
 realizes an $\Omega(W^2)$ overhead. Because that family has
-$n=\Omega(W)$, it leaves open whether the joint $W^2n$ upper bound can
-be improved. Fourth, we identify natural width-bounded families:
+$\values=W$ and $n=\Omega(W)$, it leaves open whether the joint
+$\values Wn$ upper bound can be improved. Fourth, we identify natural
+width-bounded families:
 integer potential heuristics, pattern databases with a bounded abstract
 state space, and merge-and-shrink heuristics whose linear merge order is
 aligned with the search order---in that aligned case, the shrink size limit
@@ -178,7 +180,8 @@ Fifth, we refine the cost model of symbolic
 search to count high-level image operations, which the node-based effort
 measure cannot see, and analyze a \emph{pruning-only} search that
 keeps the layer structure of blind search, uses the heuristic solely for
-provably sound discards, and improves the effort bound by a factor $W$.
+provably sound discards, and removes the factor $V$ due to value
+partitioning from the effort bound.
 Finally, we turn the sufficient condition into a selector rather than a
 post-hoc diagnostic. In SymK \citep{speck-et-al-jair2025}, we compute exact
 width from the total heuristic ADD, materialize a fixed pool of PDB
@@ -482,7 +485,9 @@ Thus rectifying a signed estimate and capping a nonnegative integer
 heuristic to $\min(h,K)$ preserve admissibility and consistency without
 increasing width. The cap has at most $K+1$ finite values, so it also
 caps the number of \bddastar\ buckets and product-at-evaluation image
-calls per layer while retaining recognized dead ends. This is a
+calls per layer while retaining recognized dead ends. In the refined
+search-effort bound below it also replaces the value-count factor $V$ by
+at most $K+1$, independently of the heuristic's cofactor width. This is a
 candidate design principle; whether the information loss pays off is an
 experimental question.
 
@@ -619,21 +624,27 @@ Proposition~\ref{prop-range} bounds the entire partition.
 Let $S \subseteq \{0,1\}^n$. Then
 \[
 \sum_{v \in \img(h)} \bddsize{S \cap \level{h}{v}}
-\;\leq\; W^{2} \cdot \cofcount(\chi_S)
+\;\leq\; T W \cdot \cofcount(\chi_S)
+\;\leq\; T W n \, (\bddsize{S} + 2)
 \;\leq\; W^{2} n \, (\bddsize{S} + 2).
 \]
+If $S\subseteq\states$ and the sum ranges only over finite values attained
+on planning states, the first two bounds hold with $T$ replaced by $\values$.
 \end{theorem}
 
 \begin{proof}
 By Theorem~\ref{thm-bucket} applied to $U = \{v\}$, each of the at most
-$|\img(h)| \leq W$ (Proposition~\ref{prop-range}) buckets has BDD size
-at most $W \cdot \cofcount(\chi_S)$; the second inequality is
-Lemma~\ref{lem-qsize}.
+$T=|\img(h)| \leq W$ (Proposition~\ref{prop-range}) buckets has BDD size
+at most $W \cdot \cofcount(\chi_S)$; Lemma~\ref{lem-qsize} gives the
+second inequality. If $S\subseteq\states$ and only finite planning-state
+values are included, those buckets range over a set of cardinality at most
+$\values$.
 \end{proof}
 
-The proof deliberately uses the coarse worst-case factor $W$ once for a
-bucket and once for the number of values. A shared unique table such as
-CUDD's may reuse isomorphic subgraphs while the buckets are constructed,
+The proof uses the width factor $W$ once for a bucket and the exact terminal
+factor $T$ (or finite-value factor $\values$) for the number of buckets; the
+coarser one-parameter statement substitutes $T\leq W$. A shared unique table
+such as CUDD's may reuse isomorphic subgraphs while the buckets are constructed,
 but the effort measure sums the reduced size of each bucket separately;
 we do not claim a sharper aggregate bound from such sharing.
 
@@ -832,7 +843,10 @@ partition bound applied layer by layer.
 Let $h$ be consistent with $\width_\pi(h) \leq W$. Then
 \[
 \effort(\task, h)
-\;\leq\; W^{2} n \cdot \bigl(\effort(\task, \hblind) + 2\copt\bigr).
+\;\leq\; \values W n \cdot
+\bigl(\effort(\task, \hblind) + 2\copt\bigr)
+\;\leq\; W^{2} n \cdot
+\bigl(\effort(\task, \hblind) + 2\copt\bigr).
 \]
 \end{theorem}
 
@@ -843,26 +857,30 @@ By Lemma~\ref{lem-identity} and Definition~\ref{def-effort},
 = \sum_{g < \copt} \;\sum_{\substack{v \in \img(h)\\ g + v \leq \copt}}
 \bddsize{L_g \cap \level{h}{v}}
 \;\leq\; \sum_{\substack{g < \copt\\ L_g \neq \emptyset}}
-\;\sum_{v \in \img(h)}
+\;\sum_{v \in h(\states)\setminus\{\infty\}}
 \bddsize{L_g \cap \level{h}{v}},
 \]
 where the restriction to nonempty layers loses nothing because all
 buckets of an empty layer are empty and the BDD of the empty set has no
-inner nodes. By Theorem~\ref{thm-partition}, the inner sum is at most
-$W^{2} n \,(\bddsize{L_g} + 2)$ for every $g$. Writing $N$ for the
+inner nodes. By the finite planning-state form of
+Theorem~\ref{thm-partition}, the inner sum is at most
+$\values W n \,(\bddsize{L_g} + 2)$ for every $g$. Writing $N$ for the
 number of nonempty layers $L_g$ with $g < \copt$ and using
 $\effort(\task,\hblind) = \sum_{g < \copt} \bddsize{L_g}$, we obtain
 \begin{equation}
 \effort(\task,h)
-\;\leq\; W^{2} n \,\bigl(\effort(\task,\hblind) + 2N\bigr),
+\;\leq\; \values W n \,\bigl(\effort(\task,\hblind) + 2N\bigr),
 \label{eq-effort-nonempty}
 \end{equation}
-and $N \leq \copt$ yields the claim.
+and $N \leq \copt$ yields the first claim; $\values\leq W$ yields the
+second.
 \end{proof}
 
 \begin{corollary}
 \label{cor-effort}
-$\effort(\task, h) \leq 3\, W^{2} n \cdot \effort(\task, \hblind)$.
+$\effort(\task, h) \leq 3\,\values W n \cdot
+\effort(\task, \hblind) \leq
+3\, W^{2} n \cdot \effort(\task, \hblind)$.
 \end{corollary}
 
 \begin{proof}
@@ -984,11 +1002,12 @@ $\Omega(W^2)$ ratio.
 \end{proof}
 
 Theorem~\ref{thm-tight} shows that an $\Omega(W^2)$ ratio is
-realizable. It does not make the joint $W^2n$ upper bound tight: its
-construction requires $n=\Omega(W)$ and therefore does not exclude, for
-example, a bound of order $Wn$. Nor does the construction predict typical
-instances: it establishes that quadratic dependence on width can be forced,
-not how frequently a particular heuristic family will approach that case.
+realizable. It does not make the joint $\values Wn$ upper bound tight: its
+construction has $\values=W$ and requires $n=\Omega(W)$, and therefore does
+not exclude, for example, a bound of order $Wn$. Nor does the construction
+predict typical instances: it establishes that quadratic dependence on width
+can be forced when the value count grows with width, not how frequently a
+particular heuristic family will approach that case.
 
 \subsection{Exponential Width Is Necessary for the Known Pathology}
 
@@ -1169,9 +1188,10 @@ directly, and only one such set is expanded per layer:
 \label{cor-prune}
 Let $h$ be admissible and consistent with $\width_\pi(h) \leq W$. The
 cumulative size of the layers expanded by pruning-only search is at most
-$W n \cdot (\effort(\task, \hblind) + 2\copt)$, one factor $W$ less than
-the \bddastar\ bound of Theorem~\ref{thm-effort}, with one image
-operation per layer as in blind search. With $c = \infty$ throughout
+$W n \cdot (\effort(\task, \hblind) + 2\copt)$, removing the factor
+$\values$ due to value partitioning from the refined \bddastar\ bound of
+Theorem~\ref{thm-effort}, with one image operation per layer as in blind
+search. With $c = \infty$ throughout
 (no solution found yet) and no dead ends, the search coincides with
 blind forward search.
 \end{corollary}
@@ -1272,10 +1292,16 @@ For rectified consistent integer potential heuristics with magnitudes at
 most $M$,
 \[
 \effort(\task,\hpot)
- \leq 3d^2(2mM+1)^2n\cdot\effort(\task,\hblind),
+ \leq 3d(mM+1)(2mM+1)n\cdot\effort(\task,\hblind),
 \]
 a factor polynomial in the task size and $M$.
 \end{corollary}
+
+\begin{proof}
+Proposition~\ref{prop-pot} gives
+$W\leq d(2mM+1)$ and $\values\leq mM+1$; substitute both bounds in
+Corollary~\ref{cor-effort}.
+\end{proof}
 
 Corollary~\ref{cor-pot} gives a representation-effort guarantee when
 integer potentials are compiled into level sets and used by
@@ -1329,7 +1355,9 @@ a level is not the exact cofactor width; Proposition~\ref{prop-add}
 instead supplies an ADD-derived upper bound. By
 Proposition~\ref{prop-closure}, maximizing or admissibly adding a few
 such PDBs, e.g., under a cost partitioning, multiplies their width
-bounds.
+bounds. A single PDB has at most $|\states^P|$ finite distances, so
+Corollary~\ref{cor-effort} specializes to a multiplicative factor at most
+$3d|\states^P|^2n$ over blind effort.
 
 \subsection{Linear Merge-and-Shrink}
 
@@ -1370,7 +1398,9 @@ Proposition~\ref{prop-ms} supplies a different consequence of the same
 cascading structure: when the linear merge order is the search variable
 order, the standard shrink limit $N$ is also an a-priori cofactor-width
 safety knob, and Theorems~\ref{thm-partition} and~\ref{thm-effort} then
-bound its effect on search frontiers.
+bound its effect on search frontiers. Since the final abstraction has at
+most $N$ finite distances, Corollary~\ref{cor-effort} gives a multiplicative
+factor at most $3dN(N+1)n$ over blind effort.
 
 The alignment premise is essential. Our causal-graph control explicitly
 uses \texttt{align\_merge\_order=false}; it is measured in the search
@@ -1907,10 +1937,13 @@ meeting points, and direction choices remains open.
 
 Bounded cofactor width provides a worst-case safety certificate for heuristic
 symbolic search. Partitioning an arbitrary state-set BDD by a width-$W$
-heuristic costs at most $W^2n$ times its augmented size. For search, consistent
-width-$W$ \bddastar\ satisfies
-$\effort(\task,h)\leq W^2n(\effort(\task,\hblind)+2\copt)$ and, consequently,
-a $3W^2n$ multiplicative bound. The known exponential pathology requires
+heuristic with $T$ terminals costs at most $TWn$ times its augmented size.
+For search, a consistent width-$W$ heuristic with $\values$ finite values
+satisfies
+$\effort(\task,h)\leq \values Wn
+(\effort(\task,\hblind)+2\copt)$ and, consequently, a $3\values Wn$
+multiplicative bound; $T,\values\leq W$ recover the simpler $W^2n$ and
+$3W^2n$ statements. The known exponential pathology requires
 exponential width, while a separate construction realizes a
 $\Omega(W^2)$ ratio. Integer potentials, bounded-state PDBs, and aligned
 linear M\&S abstractions connect the definition to familiar heuristic
