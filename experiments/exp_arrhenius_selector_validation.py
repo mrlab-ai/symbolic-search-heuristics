@@ -59,7 +59,9 @@ ANALYSIS_BOOTSTRAP_REPLICATES = 100000
 ARTIFACT_SCHEMA = (
     "symbolic-search-heuristics/arrhenius-selector-screen-selection/v3"
 )
-EXPECTED_SELECTION_ARTIFACT_SHA256 = None
+EXPECTED_SELECTION_ARTIFACT_SHA256 = (
+    "d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2"
+)
 
 EXPERIMENT_DATA_PATH = (
     Path(__file__).resolve().parent / "data" / Path(__file__).stem
