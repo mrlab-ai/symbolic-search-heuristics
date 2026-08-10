@@ -97,8 +97,11 @@ current-cluster rerun on the full 1377-task supported population. The frozen
 screen selects exact merge-and-shrink (43/50 tasks) over its capped control
 (also 43/50 but worse PAR2), blind search (30/50), and every width-constrained
 PDB treatment (at most 30/50). Batching reduces completed image calls on
-complete pairs but worsens coverage and image time. The held-out comparison
-and full census remain prospectively fixed and open.
+complete pairs but worsens coverage and image time. On the disjoint held-out
+set, the selected width-one PDB solves 41/92 tasks against CEGAR's 40/92; the
+domain-bootstrap interval on their macro-coverage difference spans zero. A
+construction-limited M\&S safeguard solves 43/92 with five blind fallbacks.
+The full census remains prospectively fixed and open.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -191,10 +194,10 @@ informativeness. We combine this selector with same-$g$ speculative batching
 and compare it with blind search, conventional PDB construction, and
 merge-and-shrink controls under a frozen screen and predeclared held-out
 protocol. The held-out and full-suite stages carry the frozen matrix forward
-under a prospectively corrected protocol; their results remain pending. This
-empirical part is prospective: no result from an older cluster or an
-incompatible logging convention is used as evidence for the claims in this
-paper.
+under a prospectively corrected protocol. The held-out result is reported
+below and the full-suite result remains pending. No result from an older
+cluster or an incompatible logging convention is used as evidence for the
+claims in this paper.
 
 % ============================ background =================================
 \section{Background}
@@ -1769,8 +1772,9 @@ fixed, and fresh grids replace both starts. Accepted downstream data must come
 from complete arrays in which every cell is rerun from scratch under the
 prospectively committed P5 identity. The selection artifact,
 seven-configuration matrix, Stage-1 ranking, declared comparisons, and
-statistical contrasts are unchanged. Downstream results remain pending and
-cannot reopen any of them.
+statistical contrasts are unchanged, and downstream outcomes cannot reopen
+any of them. The accepted held-out rerun is now complete; the full census
+remains pending.
 
 \subsection{Results}
 
@@ -1831,19 +1835,75 @@ ranking's total image times are undefined and the image-time tie-break was
 not used. These are descriptive selection-screen results only and make no
 claim about the held-out set or the full supported population.
 
-\paragraph{Held-out result---placeholder.}
-\emph{[RESULT PLACEHOLDER: report the frozen selector-family winner's
-paired, equally weighted 46-domain macro-coverage difference from CEGAR on
-92 tasks, with the predeclared 100,000-replicate 95\% domain-bootstrap
-interval and task-level discordant wins/losses. Report task-micro coverage
-and PAR2 for all seven configurations; the matched M\&S construction-budget
-safeguard, including fallback incidence over its 92 cells; and descriptive
-selector comparisons with goal-fill PDB, blind forward, exact M\&S (the
-global winner), and capped M\&S. Report solved or jointly solved runtime,
-construction time, certified image time, and observed exact-width summaries
-only with each metric's explicit solved, observed, complete-summary, or
-paired-intersection denominator. State that the held-out data did not rerank
-or change any frozen configuration.]}
+\paragraph{Held-out result.}
+All 644 held-out cells passed the protocol checks.  In the primary comparison,
+the width-one selector solved 41 tasks and CEGAR solved 40.  The equally
+weighted 46-domain macro difference was therefore $1/92=1.09$ percentage
+points; because every domain contributes two tasks, it equals the task-micro
+difference in this sample.  The predeclared 100,000-replicate domain-bootstrap
+95\% interval was $[-1/46,1/23]$, or $[-2.17,4.35]$ percentage points, with two
+task-level discordant wins and one loss.  Thus the held-out data do not
+establish a clear selector coverage advantage over CEGAR.  The selector's
+micro-PAR2 was 345.1040 seconds against 351.5588 seconds for CEGAR, while its
+planner-time geometric-mean ratio on the 39 jointly solved tasks was 1.006.
+
+\begin{table}[t]
+  \centering
+  \small
+  \caption{Held-out results on 92 tasks.  PAR2 charges 600 seconds to an
+  unsolved cell.  Width reports observed-cell count followed by
+  median/maximum exact width.  Construction reports observed records/fallbacks
+  and their total time.  Gaps are a pre-search cell in every configuration
+  and, for exact M\&S, one additional resource prefix before construction;
+  the five build-budget fallbacks supply no M\&S width.}
+  \label{tab:heldout}
+  \begin{tabular}{lrrcrr}
+    \toprule
+    Configuration & Solved & PAR2 & Width $n;\widetilde{x}/\max$ &
+      Constr. $n/f$ & Constr. s \\
+    \midrule
+    Blind forward & 40 & 348.1627 & -- & -- & -- \\
+    Exact M\&S & 42 & 338.7962 & $90;142/14{,}540$ & $90/0$ & 769.928 \\
+    M\&S, finite-value cap 32 & 42 & 336.8272 & $91;135/14{,}540$ & $91/0$ & 1017.722 \\
+    Goal-fill PDB & 41 & 345.3886 & $91;31/6{,}670$ & $91/0$ & 27.074 \\
+    CEGAR PDB & 40 & 351.5588 & $91;17/6{,}672$ & $91/0$ & 12.570 \\
+    M\&S cap 32, 60-s build & 43 & 334.1384 & $86;123/14{,}540$ & $91/5$ & 701.311 \\
+    Selector $K=1$ & 41 & 345.1040 & $91;1/1$ & $91/0$ & 54.185 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The construction safeguard was descriptively strongest in Table~\ref{tab:heldout}:
+it solved 43 tasks, one more than uncapped-build capped M\&S (one discordant
+win, no loss), and reduced micro-PAR2 by 2.6888 seconds.  Five of its 92 cells
+fell back to blind search (5.43\%).  Across the 91 paired construction
+observations its total construction time was 0.689 times the reference total;
+on the 42 jointly solved tasks its planner-time geometric-mean ratio was
+0.994.  These are diagnostics of the predeclared safeguard, not a new ranking.
+
+Every configuration contributed 91 semantically certified image prefixes
+and one pre-search-empty cell.  Complete-summary image counts in table order
+were $41/43/43/42/41/44/42$, with corresponding total image times
+$477.883/341.866/321.073/549.118/483.450/572.440/673.078$ seconds.
+On the primary 40-pair complete-summary intersection, however, the selector
+used 350.098 seconds against CEGAR's 446.812 seconds, a ratio of 0.784.
+The same two methods had 91 paired construction and width observations:
+selector construction took 4.311 times the CEGAR total, whereas its paired
+width totals were 91 and 14,707.  On 39 jointly solved cells its BDD-node
+effort ratio was 0.679.  All 91 eligible selector traces were complete and
+certified and selected the empty, width-one pattern.
+
+For context, the selector tied goal-fill coverage (two discordant wins and two
+losses) and lowered PAR2 by 0.2846 seconds; against blind it gained one task
+(one win, no loss) and lowered PAR2 by 3.0587 seconds; against exact and capped
+M\&S it lost one task (two wins and three losses in each comparison) and
+increased PAR2 by 6.3078 and 8.2768 seconds.  The respective jointly solved
+planner-time geometric-mean ratios were 0.874 ($n=39$), 1.428 ($n=40$),
+0.908 ($n=39$), and 0.907 ($n=39$).  Exact M\&S itself gained two tasks over
+blind (four wins and two losses) and lowered PAR2 by 9.3665 seconds, although
+its jointly solved runtime ratio was 1.632 ($n=38$).  The seven frozen
+configurations and every declared comparison remain unchanged; no held-out
+outcome was used to rerank them.
 
 \paragraph{Full-suite result---placeholder.}
 \emph{[RESULT PLACEHOLDER: report the current-Arrhenius descriptive census on
@@ -1863,9 +1923,9 @@ cell-attempt-generation counts globally and per configuration; do not describe
 attempt generations as planner invocations. Do not rerank configurations or
 substitute any archived coverage table.]}
 
-Until the held-out and full-suite placeholders are filled from their attested
-artifacts, the population-level empirical conclusion remains deliberately
-unresolved. The formal safety results do not depend on any empirical outcome.
+Until the full-suite placeholder is filled from its attested artifact, the
+population-level empirical conclusion remains deliberately unresolved. The
+formal safety results do not depend on any empirical outcome.
 \section{Related Work}
 
 Heuristic symbolic search has long exposed a tension between information and
@@ -1965,9 +2025,12 @@ width-one empty PDB, which ties blind coverage but is slower; and the tested
 batching policies reduce image-call counts without improving coverage or image
 time on the certified complete pairs. Thus the width certificate bounds the
 targeted representation blow-up but is neither an informativeness criterion
-nor a performance predictor. The disjoint held-out comparison and full
-supported-suite census must still fill their placeholders in
-Section~\ref{sec-experiments} before these observations are generalized.
+nor a performance predictor. On the disjoint held-out set the selector gains
+one task over CEGAR, but its predeclared domain-bootstrap interval spans zero;
+the construction-limited capped M\&S safeguard instead has the highest
+descriptive coverage, with five fallbacks. The full supported-suite census
+must still fill its placeholder in Section~\ref{sec-experiments} before these
+observations are generalized.
 The central design lesson remains the separation of roles: width is the safety
 constraint; abstraction information, image-call amortization, and bounded
 setup cost are distinct optimization objectives.
