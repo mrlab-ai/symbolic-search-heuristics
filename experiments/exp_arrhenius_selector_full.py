@@ -6,8 +6,9 @@ It independently reconstructs the held-out 7/8-configuration contract and
 carries that matrix forward unchanged to every frozen supported task.  It does
 not read, rank, or otherwise consume held-out outcomes.
 
-Launch is intentionally impossible until the reviewed raw selection-artifact
-SHA-256 is pinned below.  Read-only commands remain available::
+The reviewed raw selection-artifact SHA-256 remains immutable.  Launch is
+intentionally impossible while the corrected downstream planner/cache and
+prospective full-job pins are unset.  Read-only commands remain available::
 
     python experiments/exp_arrhenius_selector_full.py --self-test
     python experiments/exp_arrhenius_selector_full.py \
@@ -48,7 +49,7 @@ class ProtocolError(RuntimeError):
     pass
 
 
-PROTOCOL = "arrhenius-selector-full-population-v2"
+PROTOCOL = "arrhenius-selector-full-population-v3"
 FULL_ANALYSIS_PROTOCOL = "full-supported-population-census-v1"
 FULL_COMPLETION_MARKER = ".arrhenius-full-run-complete-v1"
 FULL_COMPLETION_MARKER_SCHEMA = (
@@ -119,6 +120,12 @@ PLANNER_REVISION = V.PLANNER_REVISION
 PILOT_PROTOCOL_REVISION = V.PILOT_PROTOCOL_REVISION
 CACHE_BINARY_SHA256 = V.CACHE_BINARY_SHA256
 CACHE_PREPROCESS_SHA256 = V.CACHE_PREPROCESS_SHA256
+PILOT_PLANNER_REVISION = V.PILOT_PLANNER_REVISION
+PILOT_PLANNER_BINARY_SHA256 = V.PILOT_PLANNER_BINARY_SHA256
+PILOT_PLANNER_PREPROCESS_SHA256 = V.PILOT_PLANNER_PREPROCESS_SHA256
+INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL = (
+    V.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+)
 
 TIME_LIMIT_SECONDS = V.TIME_LIMIT_SECONDS
 MEMORY_LIMIT_MIB = V.MEMORY_LIMIT_MIB
@@ -163,12 +170,8 @@ EXPECTED_FINAL_LOGICAL_GROUP_SLURM_ID = {
     EXPECTED_BATCHED_RUNS: 871,
 }
 EXPECTED_PROSPECTIVE_JOB_SHA256 = {
-    EXPECTED_UNBATCHED_RUNS: (
-        "c83c880c1bfaa503cfffab69c91abb037e58b4424b7216480aa551631aed043f"
-    ),
-    EXPECTED_BATCHED_RUNS: (
-        "857fd48ef3cc1b3e76a012fed8bcb3ddf5b4a0bf03686daaed7eca7424361bcd"
-    ),
+    EXPECTED_UNBATCHED_RUNS: None,
+    EXPECTED_BATCHED_RUNS: None,
 }
 
 FULL_COMPLETION_POLICY = {
@@ -1357,20 +1360,38 @@ def validate_matrix(tasks, matrix):
     return matrix
 
 
-def validate_cache_pins(*, require_job_hashes=True):
-    if not isinstance(PLANNER_REVISION, str) or not re.fullmatch(
-        r"[0-9a-f]{40}", PLANNER_REVISION
+def validate_cache_pins(
+    *,
+    require_job_hashes=True,
+    planner_revision=PLANNER_REVISION,
+    cache_binary_sha256=CACHE_BINARY_SHA256,
+    cache_preprocess_sha256=CACHE_PREPROCESS_SHA256,
+    heldout_planner_revision=V.PLANNER_REVISION,
+    heldout_cache_binary_sha256=V.CACHE_BINARY_SHA256,
+    heldout_cache_preprocess_sha256=V.CACHE_PREPROCESS_SHA256,
+    expected_job_sha256=EXPECTED_PROSPECTIVE_JOB_SHA256,
+):
+    if not isinstance(planner_revision, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", planner_revision
     ):
-        raise ProtocolError("P4 planner revision is unset")
+        raise ProtocolError("downstream planner revision is unset")
     if not isinstance(PILOT_PROTOCOL_REVISION, str) or not re.fullmatch(
         r"[0-9a-f]{40}", PILOT_PROTOCOL_REVISION
     ):
         raise ProtocolError("P4 screen protocol revision is unset")
-    _require_sha256(CACHE_BINARY_SHA256, "cached planner SHA-256")
-    _require_sha256(CACHE_PREPROCESS_SHA256, "cached preprocess SHA-256")
+    _require_sha256(cache_binary_sha256, "downstream cached planner SHA-256")
+    _require_sha256(
+        cache_preprocess_sha256,
+        "downstream cached preprocess SHA-256",
+    )
+    if set(expected_job_sha256) != {
+        EXPECTED_UNBATCHED_RUNS,
+        EXPECTED_BATCHED_RUNS,
+    }:
+        raise ProtocolError("reviewed full job SHA-256 mapping changed")
     pinned_job_hashes = {
         run_count: digest is not None
-        for run_count, digest in EXPECTED_PROSPECTIVE_JOB_SHA256.items()
+        for run_count, digest in expected_job_sha256.items()
     }
     if any(pinned_job_hashes.values()) and not all(pinned_job_hashes.values()):
         raise ProtocolError(
@@ -1378,18 +1399,29 @@ def validate_cache_pins(*, require_job_hashes=True):
         )
     if require_job_hashes and not all(pinned_job_hashes.values()):
         raise ProtocolError("reviewed full job SHA-256 pins are unset")
-    for run_count, digest in EXPECTED_PROSPECTIVE_JOB_SHA256.items():
+    for run_count, digest in expected_job_sha256.items():
         if digest is not None:
             _require_sha256(
                 digest,
                 "reviewed full job SHA-256 for {} runs".format(run_count),
             )
     if (
-        PLANNER_REVISION != V.PLANNER_REVISION
-        or CACHE_BINARY_SHA256 != V.CACHE_BINARY_SHA256
-        or CACHE_PREPROCESS_SHA256 != V.CACHE_PREPROCESS_SHA256
+        planner_revision != heldout_planner_revision
+        or cache_binary_sha256 != heldout_cache_binary_sha256
+        or cache_preprocess_sha256 != heldout_cache_preprocess_sha256
     ):
-        raise ProtocolError("full runner differs from P4 planner/cache pins")
+        raise ProtocolError(
+            "full runner differs from held-out downstream planner/cache pins"
+        )
+    if (
+        PILOT_PLANNER_REVISION != V.PILOT_PLANNER_REVISION
+        or PILOT_PLANNER_BINARY_SHA256 != V.PILOT_PLANNER_BINARY_SHA256
+        or PILOT_PLANNER_PREPROCESS_SHA256
+        != V.PILOT_PLANNER_PREPROCESS_SHA256
+        or INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        != V.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+    ):
+        raise ProtocolError("full runner differs from held-out provenance pins")
 
 
 def require_full_revision_cache():
@@ -1501,6 +1533,11 @@ def make_protocol_metadata(
         "selection_rule": V.PILOT_SELECTION_RULE,
         "pilot_protocol": V.PILOT_PROTOCOL,
         "pilot_protocol_revision": PILOT_PROTOCOL_REVISION,
+        "pilot_planner_revision": PILOT_PLANNER_REVISION,
+        "pilot_planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
+        "pilot_planner_preprocess_sha256": (
+            PILOT_PLANNER_PREPROCESS_SHA256
+        ),
         "pilot_properties_canonical_sha256": matrix[
             "pilot_properties_digest"
         ],
@@ -1508,6 +1545,9 @@ def make_protocol_metadata(
         "pilot_selector_configs_sha256": V.PILOT_SELECTOR_CONFIGS_SHA256,
         "selector_eligibility_sha256": V.SELECTOR_ELIGIBILITY_SHA256,
         "pdb_selector_parser_protocol": V.PDB_SELECTOR_PARSER_PROTOCOL,
+        "initial_dead_construction_logging_protocol": (
+            INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        ),
         "selector_pool_protocol": V.SELECTOR_POOL_PROTOCOL,
         "selector_score_version": V.SELECTOR_SCORE_VERSION,
         "selector_source_order": list(V.SELECTOR_SOURCES),
@@ -1515,6 +1555,9 @@ def make_protocol_metadata(
         "selector_family_winner": matrix["selector_winner"]["label"],
         "matched_same_k_unbatched": matrix["matched_unbatched"],
         "heldout_protocol": V.PROTOCOL,
+        "heldout_initial_dead_construction_logging_protocol": (
+            V.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        ),
         "heldout_task_manifest_sha256": V.MANIFEST_DIGEST,
         "heldout_task_count": V.EXPECTED_TASKS,
         "heldout_run_count": matrix["heldout_run_count"],
@@ -2186,7 +2229,7 @@ def inspect_launch_blockers(artifact_sha256):
                 artifact_sha256, required=True
             ),
         ),
-        ("reviewed P4 planner/screen/cache/job pins", validate_cache_pins),
+        ("reviewed downstream planner/cache/job pins", validate_cache_pins),
         (
             "committed planner/full protocol revision",
             lambda: C.require_clean_committed_revision(
@@ -2194,7 +2237,7 @@ def inspect_launch_blockers(artifact_sha256):
             ),
         ),
         ("requirements Lab version", C.require_pinned_lab_version),
-        ("release_no_lp P4 revision cache", require_full_revision_cache),
+        ("release_no_lp downstream revision cache", require_full_revision_cache),
     )
     blockers = []
     for label, check in checks:
@@ -2426,22 +2469,68 @@ def self_test_preflight_helpers():
 def self_test():
     validate_fixed_environment()
     self_test_full_parser_registration()
-    validate_cache_pins(require_job_hashes=False)
     original_job_hashes = dict(EXPECTED_PROSPECTIVE_JOB_SHA256)
-    run_counts = sorted(EXPECTED_PROSPECTIVE_JOB_SHA256)
-    try:
-        EXPECTED_PROSPECTIVE_JOB_SHA256[run_counts[0]] = "0" * 64
-        EXPECTED_PROSPECTIVE_JOB_SHA256[run_counts[1]] = None
+    if all(
+        value is None
+        for value in (
+            PLANNER_REVISION,
+            CACHE_BINARY_SHA256,
+            CACHE_PREPROCESS_SHA256,
+        )
+    ):
         _expect_protocol_error(
             lambda: validate_cache_pins(require_job_hashes=False),
-            "either all set or all unset",
+            "downstream planner revision is unset",
         )
-    finally:
-        EXPECTED_PROSPECTIVE_JOB_SHA256.clear()
-        EXPECTED_PROSPECTIVE_JOB_SHA256.update(original_job_hashes)
+    else:
+        validate_cache_pins(require_job_hashes=False)
+    synthetic_revision = C.REV
+    synthetic_binary = hashlib.sha256(b"synthetic full planner").hexdigest()
+    synthetic_preprocess = hashlib.sha256(
+        b"synthetic full preprocess"
+    ).hexdigest()
+    synthetic_pin_args = {
+        "planner_revision": synthetic_revision,
+        "cache_binary_sha256": synthetic_binary,
+        "cache_preprocess_sha256": synthetic_preprocess,
+        "heldout_planner_revision": synthetic_revision,
+        "heldout_cache_binary_sha256": synthetic_binary,
+        "heldout_cache_preprocess_sha256": synthetic_preprocess,
+    }
+    validate_cache_pins(
+        require_job_hashes=False,
+        expected_job_sha256=original_job_hashes,
+        **synthetic_pin_args,
+    )
+    mismatched_heldout_pins = dict(synthetic_pin_args)
+    mismatched_heldout_pins["heldout_planner_revision"] = "1" * 40
+    _expect_protocol_error(
+        lambda: validate_cache_pins(
+            require_job_hashes=False,
+            expected_job_sha256=original_job_hashes,
+            **mismatched_heldout_pins,
+        ),
+        "differs from held-out downstream planner/cache pins",
+    )
+    partial_job_hashes = dict(original_job_hashes)
+    run_counts = sorted(partial_job_hashes)
+    partial_job_hashes[run_counts[0]] = "0" * 64
+    partial_job_hashes[run_counts[1]] = None
+    _expect_protocol_error(
+        lambda: validate_cache_pins(
+            require_job_hashes=False,
+            expected_job_sha256=partial_job_hashes,
+            **synthetic_pin_args,
+        ),
+        "either all set or all unset",
+    )
     if not any(original_job_hashes.values()):
         _expect_protocol_error(
-            validate_cache_pins, "reviewed full job SHA-256 pins are unset"
+            lambda: validate_cache_pins(
+                expected_job_sha256=original_job_hashes,
+                **synthetic_pin_args,
+            ),
+            "reviewed full job SHA-256 pins are unset",
         )
     tasks, records = read_full_tasks()
     if (
@@ -2536,6 +2625,17 @@ def self_test():
     )
     required_full_metadata = {
         "analysis_protocol": FULL_ANALYSIS_PROTOCOL,
+        "pilot_planner_revision": PILOT_PLANNER_REVISION,
+        "pilot_planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
+        "pilot_planner_preprocess_sha256": (
+            PILOT_PLANNER_PREPROCESS_SHA256
+        ),
+        "initial_dead_construction_logging_protocol": (
+            INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        ),
+        "heldout_initial_dead_construction_logging_protocol": (
+            V.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        ),
         "completion_marker_schema": FULL_COMPLETION_MARKER_SCHEMA,
         "completion_marker_protocol": FULL_COMPLETION_MARKER_PROTOCOL,
         "scheduler_requeue_requested": True,
@@ -2621,13 +2721,28 @@ def self_test():
     self_test_preflight_helpers()
     print(
         "Arrhenius selector full runner self-test: PASS "
-        "(artifact tampering; frozen 1377-task sources; 7/8 configs; "
+        "(artifact/P4 provenance; downstream v3 prelog; tampering; "
+        "frozen 1377-task sources; 7/8 configs; "
         "9639/11016 cells; 70/75-minute <=1000 arrays; fresh/no-submit gates)"
     )
     if EXPECTED_SELECTION_ARTIFACT_SHA256 is None:
         print("launch gate: BLOCKED (EXPECTED_SELECTION_ARTIFACT_SHA256 is unset)")
     else:
-        print("launch gate: artifact hash pinned")
+        print("artifact gate: selection hash pinned")
+    if (
+        any(
+            value is None
+            for value in (
+                PLANNER_REVISION,
+                CACHE_BINARY_SHA256,
+                CACHE_PREPROCESS_SHA256,
+            )
+        )
+        or not all(EXPECTED_PROSPECTIVE_JOB_SHA256.values())
+    ):
+        print("launch gate: BLOCKED (downstream planner/cache/job pins are unset)")
+    else:
+        print("launch gate: downstream planner/cache/job pins set")
 
 
 def check_protocol(

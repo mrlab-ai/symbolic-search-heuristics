@@ -3,8 +3,9 @@
 
 The runner consumes the exact v3 artifact emitted by
 ``analyze_arrhenius_selector_pilot.py``.  It independently reconstructs every
-pilot and held-out invariant.  Launch is intentionally impossible until the
-raw artifact SHA-256 below is reviewed and pinned.
+pilot and held-out invariant.  The reviewed Stage-1 artifact pin remains
+immutable; launch is intentionally impossible while the corrected downstream
+planner and revision-cache pins below are unset.
 
 Read-only checks::
 
@@ -50,7 +51,11 @@ class ProtocolError(RuntimeError):
     pass
 
 
-PROTOCOL = "arrhenius-selector-heldout-validation-v2"
+PROTOCOL = "arrhenius-selector-heldout-validation-v3"
+# The frozen Stage-1 artifact prospectively named the original held-out
+# execution protocol.  Keep that embedded contract byte-for-byte stable while
+# the corrected downstream execution gets a distinct protocol identity.
+ARTIFACT_VALIDATION_PROTOCOL = "arrhenius-selector-heldout-validation-v2"
 ANALYSIS_PROTOCOL = "paired-domain-macro-coverage-sha256-bootstrap-v1"
 ANALYSIS_BOOTSTRAP_SEED = (
     "symbolic-search-heuristics/arrhenius-selector-heldout-bootstrap/v1"
@@ -108,14 +113,21 @@ MATERIALIZED_PDDL_PROTOCOL = C.PDDL_MATERIALIZATION_PROTOCOL
 
 BENCHMARK_REVISION = "48d6a00d482de2384a9e751f9343df58bf5582be"
 BENCHMARK_REPOSITORY = "https://github.com/aibasel/downward-benchmarks.git"
-PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
+PILOT_PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
 PILOT_PROTOCOL_REVISION = "d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf"
-CACHE_BINARY_SHA256 = (
+PILOT_PLANNER_BINARY_SHA256 = (
     "59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511"
 )
-CACHE_PREPROCESS_SHA256 = (
+PILOT_PLANNER_PREPROCESS_SHA256 = (
     "acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c"
 )
+
+# Prospective downstream execution pins.  Fill these only after the
+# initial-dead construction-prelog producer change is committed and its exact
+# revision cache has been independently reviewed.
+PLANNER_REVISION = None
+CACHE_BINARY_SHA256 = None
+CACHE_PREPROCESS_SHA256 = None
 
 PILOT_PROTOCOL = "arrhenius-exact-width-selector-screening-v2"
 PILOT_SELECTION_RULE = (
@@ -145,6 +157,9 @@ PDB_SELECTOR_PARSER_PROTOCOL = (
     "run.log/pdb-final-and-width-selector-v1-whole-trace/v3"
 )
 METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v3"
+INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL = (
+    "pdb-ms-initial-dead-bdd-construction-prelog/v1"
+)
 OUTCOME_RECONCILIATION_PROTOCOL = (
     "direct-search-raw-effective-plan-reconciliation/v1"
 )
@@ -414,6 +429,17 @@ def _fixed_validation_records():
 
 
 def _validate_frozen_constants():
+    if not re.fullmatch(r"[0-9a-f]{40}", PILOT_PLANNER_REVISION):
+        raise ProtocolError("frozen P4 pilot planner revision changed")
+    if not re.fullmatch(r"[0-9a-f]{40}", PILOT_PROTOCOL_REVISION):
+        raise ProtocolError("frozen P4 pilot protocol revision changed")
+    _require_sha256(
+        PILOT_PLANNER_BINARY_SHA256, "frozen P4 pilot planner SHA-256"
+    )
+    _require_sha256(
+        PILOT_PLANNER_PREPROCESS_SHA256,
+        "frozen P4 pilot preprocess SHA-256",
+    )
     if len(CONTROL_CONFIGS) != 5 or len(SELECTOR_CONFIGS) != 15:
         raise ProtocolError("frozen pilot matrix is not 5 controls + 15 selectors")
     if len(set(PILOT_LABELS)) != PILOT_CONFIGS:
@@ -676,11 +702,11 @@ def _validate_pilot(pilot):
     exact = {
         "protocol": PILOT_PROTOCOL,
         "selection_rule": PILOT_SELECTION_RULE,
-        "planner_revision": PLANNER_REVISION,
+        "planner_revision": PILOT_PLANNER_REVISION,
         "protocol_revision": PILOT_PROTOCOL_REVISION,
         "planner_revision_is_protocol_ancestor": True,
-        "planner_binary_sha256": CACHE_BINARY_SHA256,
-        "planner_preprocess_sha256": CACHE_PREPROCESS_SHA256,
+        "planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
+        "planner_preprocess_sha256": PILOT_PLANNER_PREPROCESS_SHA256,
         "planner_build_config": "release_no_lp",
         "benchmark_revision": BENCHMARK_REVISION,
         "benchmark_repository": BENCHMARK_REPOSITORY,
@@ -976,7 +1002,7 @@ def _expected_validation_contract(global_label, selector_label):
         "pddl_bytes_per_config": EXPECTED_PDDL_BYTES_PER_CONFIG,
         "unique_pddl_source_files": EXPECTED_UNIQUE_PDDL_SOURCE_FILES,
         "unique_pddl_source_bytes": EXPECTED_UNIQUE_PDDL_SOURCE_BYTES,
-        "protocol": PROTOCOL,
+        "protocol": ARTIFACT_VALIDATION_PROTOCOL,
         "requires_disjoint_tasks": True,
         "selection_artifact_schema": ARTIFACT_SCHEMA,
         "selection_rule": PILOT_SELECTION_RULE,
@@ -1605,17 +1631,24 @@ def materialize_grid_pddl_inputs(
     return {"files": copied_files, "bytes": copied_bytes}
 
 
-def validate_cache_pins():
-    if not isinstance(PLANNER_REVISION, str) or not re.fullmatch(
-        r"[0-9a-f]{40}", PLANNER_REVISION
+def validate_cache_pins(
+    *,
+    planner_revision=PLANNER_REVISION,
+    cache_binary_sha256=CACHE_BINARY_SHA256,
+    cache_preprocess_sha256=CACHE_PREPROCESS_SHA256,
+):
+    if not isinstance(planner_revision, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", planner_revision
     ):
-        raise ProtocolError("P4 planner revision is unset")
+        raise ProtocolError("downstream planner revision is unset")
     if not isinstance(PILOT_PROTOCOL_REVISION, str) or not re.fullmatch(
         r"[0-9a-f]{40}", PILOT_PROTOCOL_REVISION
     ):
         raise ProtocolError("P4 screen protocol revision is unset")
-    _require_sha256(CACHE_BINARY_SHA256, "cached planner SHA-256")
-    _require_sha256(CACHE_PREPROCESS_SHA256, "cached preprocess SHA-256")
+    _require_sha256(cache_binary_sha256, "downstream cached planner SHA-256")
+    _require_sha256(
+        cache_preprocess_sha256, "downstream cached preprocess SHA-256"
+    )
 
 
 def _sha256_file(path):
@@ -1690,11 +1723,19 @@ def make_protocol_metadata(
         "selection_rule": PILOT_SELECTION_RULE,
         "pilot_protocol": PILOT_PROTOCOL,
         "pilot_protocol_revision": PILOT_PROTOCOL_REVISION,
+        "pilot_planner_revision": PILOT_PLANNER_REVISION,
+        "pilot_planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
+        "pilot_planner_preprocess_sha256": (
+            PILOT_PLANNER_PREPROCESS_SHA256
+        ),
         "pilot_properties_canonical_sha256": matrix["properties_digest"],
         "pilot_option_matrix_sha256": PILOT_OPTION_MATRIX_SHA256,
         "pilot_selector_configs_sha256": PILOT_SELECTOR_CONFIGS_SHA256,
         "selector_eligibility_sha256": SELECTOR_ELIGIBILITY_SHA256,
         "pdb_selector_parser_protocol": PDB_SELECTOR_PARSER_PROTOCOL,
+        "initial_dead_construction_logging_protocol": (
+            INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        ),
         "selector_pool_protocol": SELECTOR_POOL_PROTOCOL,
         "selector_score_version": SELECTOR_SCORE_VERSION,
         "selector_source_order": list(SELECTOR_SOURCES),
@@ -2292,7 +2333,7 @@ def inspect_launch_blockers(artifact_sha256):
                 artifact_sha256, required=True
             ),
         ),
-        ("reviewed P4 planner/screen/cache pins", validate_cache_pins),
+        ("reviewed downstream planner/cache pins", validate_cache_pins),
         (
             "committed planner/protocol revision",
             lambda: C.require_clean_committed_revision(
@@ -2392,11 +2433,11 @@ def _synthetic_artifact(global_label, selector_label):
     pilot = {
         "protocol": PILOT_PROTOCOL,
         "selection_rule": PILOT_SELECTION_RULE,
-        "planner_revision": PLANNER_REVISION,
+        "planner_revision": PILOT_PLANNER_REVISION,
         "protocol_revision": PILOT_PROTOCOL_REVISION,
         "planner_revision_is_protocol_ancestor": True,
-        "planner_binary_sha256": CACHE_BINARY_SHA256,
-        "planner_preprocess_sha256": CACHE_PREPROCESS_SHA256,
+        "planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
+        "planner_preprocess_sha256": PILOT_PLANNER_PREPROCESS_SHA256,
         "planner_build_config": "release_no_lp",
         "benchmark_revision": BENCHMARK_REVISION,
         "benchmark_repository": BENCHMARK_REPOSITORY,
@@ -2655,7 +2696,28 @@ def self_test():
     C.self_test_pddl_materialization()
     _validate_frozen_constants()
     validate_fixed_environment()
-    validate_cache_pins()
+    if all(
+        value is None
+        for value in (
+            PLANNER_REVISION,
+            CACHE_BINARY_SHA256,
+            CACHE_PREPROCESS_SHA256,
+        )
+    ):
+        _expect_protocol_error(
+            validate_cache_pins, "downstream planner revision is unset"
+        )
+    else:
+        validate_cache_pins()
+    validate_cache_pins(
+        planner_revision=C.REV,
+        cache_binary_sha256=hashlib.sha256(
+            b"synthetic heldout planner"
+        ).hexdigest(),
+        cache_preprocess_sha256=hashlib.sha256(
+            b"synthetic heldout preprocess"
+        ).hexdigest(),
+    )
     tasks = read_manifest()
     source_attestation = validate_manifest_record_pins(tasks)
 
@@ -2836,7 +2898,15 @@ def self_test():
     ):
         raise AssertionError("prospective protocol metadata changed")
     expected_selector_metadata = {
+        "pilot_planner_revision": PILOT_PLANNER_REVISION,
+        "pilot_planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
+        "pilot_planner_preprocess_sha256": (
+            PILOT_PLANNER_PREPROCESS_SHA256
+        ),
         "pdb_selector_parser_protocol": PDB_SELECTOR_PARSER_PROTOCOL,
+        "initial_dead_construction_logging_protocol": (
+            INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        ),
         "selector_pool_protocol": SELECTOR_POOL_PROTOCOL,
         "selector_score_version": SELECTOR_SCORE_VERSION,
         "selector_source_order": list(SELECTOR_SOURCES),
@@ -2857,12 +2927,24 @@ def self_test():
                 )
     print(
         "Arrhenius selector held-out runner self-test: PASS "
-        "(artifact v3; tampering; 7/8-config dedup; 644/736 arrays; fresh start)"
+        "(artifact v3/P4 provenance; downstream v3 prelog; tampering; "
+        "7/8-config dedup; 644/736 arrays; fresh start)"
     )
     if EXPECTED_SELECTION_ARTIFACT_SHA256 is None:
         print("launch gate: BLOCKED (EXPECTED_SELECTION_ARTIFACT_SHA256 is unset)")
     else:
-        print("launch gate: artifact hash pinned")
+        print("artifact gate: selection hash pinned")
+    if any(
+        value is None
+        for value in (
+            PLANNER_REVISION,
+            CACHE_BINARY_SHA256,
+            CACHE_PREPROCESS_SHA256,
+        )
+    ):
+        print("launch gate: BLOCKED (downstream planner/cache pins are unset)")
+    else:
+        print("launch gate: downstream planner/cache pins set")
 
 
 def check_protocol(

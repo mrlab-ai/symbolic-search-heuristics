@@ -8,8 +8,9 @@ configuration matrix is never reranked.  Every one of the 9,639 or 11,016
 cells, including its wrapper-completion and requeue provenance, must validate
 before any descriptive census result is emitted.
 
-Ordinary analysis remains blocked until both reviewed launch identities below
-are pinned.  ``--self-test`` exercises both layouts without relaxing them.
+Ordinary analysis remains blocked until every corrected downstream launch
+identity below is pinned.  ``--self-test`` exercises both layouts without
+relaxing those gates.
 """
 
 from __future__ import annotations
@@ -41,9 +42,9 @@ class AnalysisError(RuntimeError):
     pass
 
 
-ANALYSIS_SCHEMA = "symbolic-search-heuristics/full-population-analysis/v2"
+ANALYSIS_SCHEMA = "symbolic-search-heuristics/full-population-analysis/v3"
 ANALYSIS_PROTOCOL = "full-supported-population-census-v1"
-FULL_PROTOCOL = "arrhenius-selector-full-population-v2"
+FULL_PROTOCOL = "arrhenius-selector-full-population-v3"
 ARTIFACT_SCHEMA = (
     "symbolic-search-heuristics/arrhenius-selector-screen-selection/v3"
 )
@@ -57,31 +58,32 @@ SCHEDULER_ENVELOPE_PROTOCOL = (
     "conditional-requested-70m-75m-using-300plus60-accounting/v1"
 )
 
-# These two gates are intentionally unset until the exact screen artifact and
-# clean full-stage launch revision have been reviewed.  The later pinning
-# sequence is deliberately two-step: first commit the artifact-pinned runner
-# as launch revision R and launch only from clean R; then, in a descendant,
-# update these two values and FULL_RUNNER_SOURCE_SHA256 to the bytes/revision
-# of R.  Launching from that descendant would record the wrong protocol HEAD.
+# The artifact pin remains immutable.  Downstream launch-derived identities
+# are deliberately pinned in two steps: first commit the corrected runners as
+# launch revision R and launch only from clean R; then, in a descendant,
+# record R and the exact full-runner bytes for analysis.  Launching from that
+# analysis descendant would record the wrong protocol HEAD.
 EXPECTED_SELECTION_ARTIFACT_SHA256 = (
     "d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2"
 )
-EXPECTED_FULL_PROTOCOL_REVISION = (
-    "c80d22b15c93dcbb7e9404b69fc04ddd95806008"
-)
+EXPECTED_FULL_PROTOCOL_REVISION = None
 
-FULL_RUNNER_SOURCE_SHA256 = (
-    "bf7526eacbe828d5bdf393cccf1cbb0b6e761d47a7d13685e06ed923816d9b1b"
-)
-PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
+FULL_RUNNER_SOURCE_SHA256 = None
+PILOT_PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
 PILOT_PROTOCOL_REVISION = "d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf"
-CACHE_BINARY_SHA256 = (
+PILOT_PLANNER_BINARY_SHA256 = (
     "59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511"
 )
-CACHE_PREPROCESS_SHA256 = (
+PILOT_PLANNER_PREPROCESS_SHA256 = (
     "acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c"
 )
-CACHE_NAME_SUFFIX = "_61a748e5"
+PLANNER_REVISION = None
+CACHE_BINARY_SHA256 = None
+CACHE_PREPROCESS_SHA256 = None
+CACHE_NAME_SUFFIX = None
+INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL = (
+    "pdb-ms-initial-dead-bdd-construction-prelog/v1"
+)
 BENCHMARK_REVISION = "48d6a00d482de2384a9e751f9343df58bf5582be"
 BENCHMARK_REPOSITORY = "https://github.com/aibasel/downward-benchmarks.git"
 EXPECTED_PYTHON_VERSION = "3.9.25"
@@ -169,12 +171,8 @@ EXPECTED_FINAL_LOGICAL_GROUP_SLURM_ID = {
     EXPECTED_BATCHED_RUNS: 871,
 }
 EXPECTED_PROSPECTIVE_JOB_SHA256 = {
-    EXPECTED_UNBATCHED_RUNS: (
-        "c83c880c1bfaa503cfffab69c91abb037e58b4424b7216480aa551631aed043f"
-    ),
-    EXPECTED_BATCHED_RUNS: (
-        "857fd48ef3cc1b3e76a012fed8bcb3ddf5b4a0bf03686daaed7eca7424361bcd"
-    ),
+    EXPECTED_UNBATCHED_RUNS: None,
+    EXPECTED_BATCHED_RUNS: None,
 }
 EXPECTED_MATERIALIZED_PDDL_FILES = {
     EXPECTED_UNBATCHED_RUNS: 19278,
@@ -905,6 +903,9 @@ def expected_protocol_metadata(contract, artifact_sha256, protocol_revision):
             "run.log/unique-wbh-heuristic-cofactor-width/v1"
         ),
         "metrics_validation_protocol": heldout.METRICS_VALIDATION_PROTOCOL,
+        "initial_dead_construction_logging_protocol": (
+            INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        ),
         "python_version": EXPECTED_PYTHON_VERSION,
         "lab_version": EXPECTED_LAB_VERSION,
         "required_lab_version": EXPECTED_LAB_VERSION,
@@ -946,6 +947,11 @@ def expected_protocol_metadata(contract, artifact_sha256, protocol_revision):
         "selection_rule": heldout.SELECTION_RULE,
         "pilot_protocol": heldout.PILOT_PROTOCOL,
         "pilot_protocol_revision": PILOT_PROTOCOL_REVISION,
+        "pilot_planner_revision": PILOT_PLANNER_REVISION,
+        "pilot_planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
+        "pilot_planner_preprocess_sha256": (
+            PILOT_PLANNER_PREPROCESS_SHA256
+        ),
         "pilot_properties_canonical_sha256": contract[
             "pilot_properties_sha256"
         ],
@@ -960,6 +966,9 @@ def expected_protocol_metadata(contract, artifact_sha256, protocol_revision):
         "selector_family_winner": contract["selector_winner"],
         "matched_same_k_unbatched": contract["matched_unbatched"],
         "heldout_protocol": heldout.VALIDATION_PROTOCOL,
+        "heldout_initial_dead_construction_logging_protocol": (
+            heldout.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+        ),
         "heldout_task_manifest_sha256": heldout.MANIFEST_SHA256,
         "heldout_task_count": heldout.EXPECTED_TASKS,
         "heldout_run_count": contract["heldout_run_count"],
@@ -1062,14 +1071,46 @@ def validate_runner_contract(
             SCHEDULER_ENVELOPE_PROTOCOL,
         ),
         "planner revision": (full_runner.PLANNER_REVISION, PLANNER_REVISION),
+        "pilot planner revision": (
+            full_runner.PILOT_PLANNER_REVISION,
+            PILOT_PLANNER_REVISION,
+        ),
+        "held-out pilot planner revision": (
+            heldout.PILOT_PLANNER_REVISION,
+            PILOT_PLANNER_REVISION,
+        ),
         "pilot revision": (
             full_runner.PILOT_PROTOCOL_REVISION,
             PILOT_PROTOCOL_REVISION,
         ),
         "binary digest": (full_runner.CACHE_BINARY_SHA256, CACHE_BINARY_SHA256),
+        "pilot binary digest": (
+            full_runner.PILOT_PLANNER_BINARY_SHA256,
+            PILOT_PLANNER_BINARY_SHA256,
+        ),
+        "held-out pilot binary digest": (
+            heldout.PILOT_PLANNER_BINARY_SHA256,
+            PILOT_PLANNER_BINARY_SHA256,
+        ),
         "preprocess digest": (
             full_runner.CACHE_PREPROCESS_SHA256,
             CACHE_PREPROCESS_SHA256,
+        ),
+        "pilot preprocess digest": (
+            full_runner.PILOT_PLANNER_PREPROCESS_SHA256,
+            PILOT_PLANNER_PREPROCESS_SHA256,
+        ),
+        "held-out pilot preprocess digest": (
+            heldout.PILOT_PLANNER_PREPROCESS_SHA256,
+            PILOT_PLANNER_PREPROCESS_SHA256,
+        ),
+        "initial-dead construction logging protocol": (
+            full_runner.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL,
+            INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL,
+        ),
+        "held-out initial-dead construction logging protocol": (
+            heldout.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL,
+            INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL,
         ),
         "benchmark revision": (
             full_runner.BENCHMARK_REVISION,
@@ -1177,6 +1218,9 @@ def require_reviewed_pins(
     protocol_revision=EXPECTED_FULL_PROTOCOL_REVISION,
     planner_revision=PLANNER_REVISION,
     pilot_protocol_revision=PILOT_PROTOCOL_REVISION,
+    pilot_planner_revision=PILOT_PLANNER_REVISION,
+    pilot_binary_sha256=PILOT_PLANNER_BINARY_SHA256,
+    pilot_preprocess_sha256=PILOT_PLANNER_PREPROCESS_SHA256,
     binary_sha256=CACHE_BINARY_SHA256,
     preprocess_sha256=CACHE_PREPROCESS_SHA256,
     cache_name_suffix=CACHE_NAME_SUFFIX,
@@ -1202,22 +1246,25 @@ def require_reviewed_pins(
             "launch revision before ordinary analysis"
         )
     _require_revision(protocol_revision, "full protocol revision")
-    _require_revision(planner_revision, "P4 planner revision")
+    _require_revision(planner_revision, "downstream planner revision")
     _require_revision(pilot_protocol_revision, "P4 screen protocol revision")
-    _require_sha256(binary_sha256, "P4 cached planner digest")
-    _require_sha256(preprocess_sha256, "P4 cached preprocess digest")
-    _require_sha256(runner_source_sha256, "P4 full-runner source digest")
+    _require_revision(pilot_planner_revision, "P4 pilot planner revision")
+    _require_sha256(pilot_binary_sha256, "P4 pilot planner digest")
+    _require_sha256(pilot_preprocess_sha256, "P4 pilot preprocess digest")
+    _require_sha256(binary_sha256, "downstream cached planner digest")
+    _require_sha256(preprocess_sha256, "downstream cached preprocess digest")
+    _require_sha256(runner_source_sha256, "downstream full-runner source digest")
     if (
         not isinstance(cache_name_suffix, str)
         or not re.fullmatch(r"_[0-9a-f]{8}", cache_name_suffix)
     ):
-        raise AnalysisError("P4 cache-name suffix is unset")
+        raise AnalysisError("downstream cache-name suffix is unset")
     if not isinstance(job_sha256, dict):
-        raise AnalysisError("P4 full job-digest mapping is unset")
+        raise AnalysisError("downstream full job-digest mapping is unset")
     for run_count in (EXPECTED_UNBATCHED_RUNS, EXPECTED_BATCHED_RUNS):
         digest = job_sha256.get(run_count)
         _require_sha256(
-            digest, "P4 full job digest for {} runs".format(run_count)
+            digest, "downstream full job digest for {} runs".format(run_count)
         )
     return protocol_revision
 
@@ -1831,6 +1878,11 @@ def analyze(
             "global_winner_alias": contract["global_winner"],
             "selector_family_winner": contract["selector_winner"],
             "matched_same_k_unbatched": contract["matched_unbatched"],
+            "pilot_planner_revision": PILOT_PLANNER_REVISION,
+            "pilot_planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
+            "pilot_planner_preprocess_sha256": (
+                PILOT_PLANNER_PREPROCESS_SHA256
+            ),
         },
         "execution": {
             "protocol": FULL_PROTOCOL,
@@ -1839,6 +1891,9 @@ def analyze(
             "planner_revision": PLANNER_REVISION,
             "planner_binary_sha256": CACHE_BINARY_SHA256,
             "planner_preprocess_sha256": CACHE_PREPROCESS_SHA256,
+            "initial_dead_construction_logging_protocol": (
+                INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+            ),
             "benchmark_revision": BENCHMARK_REVISION,
             "task_manifest_sha256": EXPECTED_TASK_MANIFEST_SHA256,
             "domain_sequence_sha256": EXPECTED_DOMAIN_SEQUENCE_SHA256,
@@ -2213,6 +2268,15 @@ def self_test():
     _assert_synthetic_macro_pins(result, EXPECTED_UNBATCHED_RUNS)
     if result["execution"]["cell_count"] != EXPECTED_UNBATCHED_RUNS:
         raise AssertionError("unbatched census cell count changed")
+    if (
+        result["selection_artifact"]["pilot_planner_revision"]
+        != PILOT_PLANNER_REVISION
+        or result["execution"][
+            "initial_dead_construction_logging_protocol"
+        ]
+        != INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
+    ):
+        raise AssertionError("full pilot/downstream provenance split changed")
     if result["decision_policy"]["rerank_on_full_population"] is not False:
         raise AssertionError("full analysis reranked configurations")
     if [item["label"] for item in result["primary"]["configs"]] != [
@@ -2264,6 +2328,30 @@ def self_test():
         hashlib.sha256(b"changed metadata").hexdigest(),
         validate_current,
         "task_manifest_sha256",
+    )
+    _mutate_and_expect(
+        records,
+        0,
+        "pilot_planner_preprocess_sha256",
+        hashlib.sha256(b"changed pilot preprocess").hexdigest(),
+        validate_current,
+        "pilot_planner_preprocess_sha256",
+    )
+    _mutate_and_expect(
+        records,
+        0,
+        "initial_dead_construction_logging_protocol",
+        "changed",
+        validate_current,
+        "initial_dead_construction_logging_protocol",
+    )
+    _mutate_and_expect(
+        records,
+        0,
+        "heldout_initial_dead_construction_logging_protocol",
+        "changed",
+        validate_current,
+        "heldout_initial_dead_construction_logging_protocol",
     )
     solved_index = next(i for i, record in enumerate(records) if record["coverage"] == 1)
     mapped = copy.deepcopy(records[solved_index])
@@ -2401,6 +2489,12 @@ def self_test():
         lambda: validate_selection_artifact(changed_artifact),
         "invalid selection artifact",
     )
+    changed_artifact = copy.deepcopy(artifact)
+    changed_artifact["pilot"]["planner_binary_sha256"] = "4" * 64
+    _expect_error(
+        lambda: validate_selection_artifact(changed_artifact),
+        "invalid selection artifact",
+    )
     synthetic_identity_pins = {
         "planner_revision": "89abcdef0123456789abcdef0123456789abcdef",
         "pilot_protocol_revision": "fedcba9876543210fedcba9876543210fedcba98",
@@ -2505,6 +2599,12 @@ def self_test():
     gates_pinned = (
         EXPECTED_SELECTION_ARTIFACT_SHA256 is not None
         and EXPECTED_FULL_PROTOCOL_REVISION is not None
+        and FULL_RUNNER_SOURCE_SHA256 is not None
+        and PLANNER_REVISION is not None
+        and CACHE_BINARY_SHA256 is not None
+        and CACHE_PREPROCESS_SHA256 is not None
+        and CACHE_NAME_SUFFIX is not None
+        and all(EXPECTED_PROSPECTIVE_JOB_SHA256.values())
     )
     return {
         "schema": ANALYSIS_SCHEMA,
@@ -2512,6 +2612,7 @@ def self_test():
         "synthetic_cells_sequential": layouts,
         "adversarial": [
             "metadata",
+            "pilot-vs-downstream-provenance",
             "missing-and-duplicate-cells",
             "outcome-and-cross-config-cost",
             "mapped-success-reconciliation-and-cost-evidence",
