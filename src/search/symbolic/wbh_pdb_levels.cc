@@ -473,7 +473,8 @@ PdbLevelSets::PdbLevelSets(
     if (use_cegar && task_proxy.get_goals().size() > 0) {
         pdbs::PatternGeneratorCEGAR generator(
             state_budget, cegar_max_time, /*use_wildcard_plans=*/true,
-            cegar_seed, utils::Verbosity::NORMAL);
+            cegar_seed, utils::Verbosity::NORMAL,
+            /*exit_on_unsolvable=*/false);
         pdbs::PatternInformation info = generator.generate(task);
         pattern = info.get_pattern();
 

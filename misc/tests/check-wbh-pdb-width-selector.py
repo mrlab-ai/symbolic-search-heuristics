@@ -4,7 +4,9 @@
 The bundled Gripper task gives five distinct candidates at a PDB state budget
 of 1000.  Their independently enumerated PDB scores exercise the empty-pattern
 boundary, an intermediate exact-width cutoff, and the exact-mean tie breaker
-when every candidate is feasible.
+when every candidate is feasible. A direct unsolvable SAS task also checks
+that each heuristic producer records completed construction before the common
+heuristic search reports an initial-state dead end.
 """
 
 import argparse
@@ -20,6 +22,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 DRIVER = REPO / "fast-downward.py"
 TASK = REPO / "misc/tests/benchmarks/gripper/prob01.pddl"
+sys.path.insert(0, str(REPO / "experiments"))
+from validate_wbh_log import validate_v2_events  # noqa: E402
 
 # Direct SAS avoids translator/preprocessor unsolvability shortcuts. The only
 # variable starts at value 1, the goal requires value 0, and there are no
@@ -269,6 +273,8 @@ def validate_candidate(record, source, width_budget):
 
 
 def validate_wbh_events(events, selected, state_budget=PDB_STATE_BUDGET):
+    report = validate_v2_events(events)
+    assert not report["errors"], report["errors"]
     assert events and events[0] == SCHEMA_V2
     assert sum(event.get("event") == "schema" for event in events) == 1
 
@@ -458,16 +464,26 @@ def check_unsolvable_cegar_return(build, directory):
     assert not any(event.get("event") == "done" for event in events)
 
 
-def check_legacy_cegar_immediate_exit(build, directory):
-    search = (
-        "sym_fw_pdb(budget=100,pattern_selection=cegar,"
-        "cegar_max_time=10,cegar_seed=2011)"
-    )
+def check_unsolvable_logged_heuristic(
+    build,
+    directory,
+    label,
+    search,
+    expected_heuristic,
+    expected_size_bound,
+    expected_value_cap,
+):
+    log = directory / f"unsolvable-{label}.jsonl"
+    plan = directory / f"unsolvable-{label}.plan"
+    assert search.endswith(")")
+    logged_search = search[:-1] + f',wbh_log="{log}")'
     result = subprocess.run(
         [
             str(REPO / "builds" / build / "bin" / "downward"),
             "--search",
-            search,
+            logged_search,
+            "--internal-plan-file",
+            str(plan),
         ],
         cwd=directory,
         input=UNSOLVABLE_SAS,
@@ -476,13 +492,71 @@ def check_legacy_cegar_immediate_exit(build, directory):
     )
     output = result.stdout + result.stderr
     assert result.returncode == 11, result.returncode
-    assert "task is unsolvable." in output
-    assert (
-        "task proved unsolvable during computation of abstraction" not in output
+    assert "Initial state has infinite heuristic value" in output
+    assert not plan.exists()
+
+    events = [json.loads(line) for line in log.read_text().splitlines()]
+    report = validate_v2_events(events)
+    assert not report["errors"], report["errors"]
+    assert [event["event"] for event in events] == [
+        "schema",
+        "heuristic",
+        "construction",
+        "summary",
+    ], events
+    construction = events[2]
+    assert construction["heuristic"] == expected_heuristic
+    assert construction["size_bound"] == expected_size_bound
+    assert construction["value_cap"] == expected_value_cap
+    assert construction["completed"] is True
+    assert construction["seconds"] >= 0
+    assert events[3]["solved"] is False
+    return output
+
+
+def check_initial_dead_construction_matrix(build, directory):
+    goal_fill_output = check_unsolvable_logged_heuristic(
+        build,
+        directory,
+        "goal-fill",
+        "sym_fw_pdb(budget=100,pattern_selection=goal_fill)",
+        "pdb_goal_fill",
+        100,
+        -1,
     )
-    assert CANDIDATE_PREFIX not in output
-    assert SELECTED_PREFIX not in output
-    assert "wbh PDB heuristic:" not in output
+    assert "PDB pattern selection=goal_fill" in goal_fill_output
+
+    cegar_output = check_unsolvable_logged_heuristic(
+        build,
+        directory,
+        "cegar",
+        "sym_fw_pdb(budget=100,pattern_selection=cegar,"
+        "cegar_max_time=10,cegar_seed=2011)",
+        "pdb_cegar",
+        100,
+        -1,
+    )
+    assert "task is unsolvable." in cegar_output
+    assert "wbh PDB heuristic:" in cegar_output
+    assert CANDIDATE_PREFIX not in cegar_output
+    assert SELECTED_PREFIX not in cegar_output
+
+    for label, value_cap, extra in (
+        ("ms-exact", -1, ""),
+        ("ms-cap32", 32, ""),
+        ("ms-cap32-build60", 32, ",build_time_limit=60"),
+    ):
+        output = check_unsolvable_logged_heuristic(
+            build,
+            directory,
+            label,
+            "sym_fw_ms(max_states=10000,value_cap="
+            f"{value_cap}{extra})",
+            "merge_and_shrink",
+            10000,
+            value_cap,
+        )
+        assert "wbh linear M&S heuristic:" in output
 
 
 def main():
@@ -549,16 +623,16 @@ def main():
 
         check_dynamic_reordering_rejection(args.build, sas_file, directory)
         check_unsolvable_cegar_return(args.build, directory)
-        check_legacy_cegar_immediate_exit(args.build, directory)
+        check_initial_dead_construction_matrix(args.build, directory)
 
     print(
         "PDB exact-width selector acceptance passed: K=1, intermediate, and "
         "permissive oracles match; output is deterministic; schema-v2 records "
         "one heuristic/construction; dynamic reordering is rejected; all "
         "selected searches preserve the blind optimal cost; a decisive "
-        "CEGAR dead-end PDB is returned, selected, and logged before the "
-        "normal unsolvable exit, while legacy CEGAR retains its immediate "
-        "exit behavior"
+        "CEGAR dead-end PDB is returned and logged; and PDB goal-fill, PDB "
+        "CEGAR, exact-width selection, and exact/capped/budgeted M&S all log "
+        "completed construction before a normal initial-dead unsolvable exit"
     )
 
 
