@@ -3,3 +3,7 @@
 /.github export-ignore
 /.gitignore export-ignore
 /.clang-format export-ignore
+/experiments/artifacts/arrhenius-selector-screen-p4/selection-v3.json -text
+/experiments/artifacts/arrhenius-selector-screen-p4/selection-v3.json.sha256 -text
+/experiments/artifacts/arrhenius-selector-screen-p4/certified-report-v2.json -text
+/experiments/artifacts/arrhenius-selector-screen-p4/certified-report-v2.json.sha256 -text
