@@ -187,10 +187,11 @@ feasible remainder by a deterministic score whose leading criteria measure
 informativeness. We combine this selector with same-$g$ speculative batching
 and compare it with blind search, conventional PDB construction, and
 merge-and-shrink controls under a frozen screen and predeclared held-out
-protocol. The full-suite stage carries the held-out matrix forward unchanged
-but remains unlaunched. This empirical part is prospective: no result from an
-older cluster or an incompatible logging convention is used as evidence for
-the claims in this paper.
+protocol. The held-out and full-suite stages carry the frozen matrix forward
+under a prospectively corrected protocol; their results remain pending. This
+empirical part is prospective: no result from an older cluster or an
+incompatible logging convention is used as evidence for the claims in this
+paper.
 
 % ============================ background =================================
 \section{Background}
@@ -1577,29 +1578,30 @@ A separately frozen 92-task manifest contains two supported tasks in each of
 46 eligible domains and is disjoint from the screen and development-smoke
 tasks. Six configurations are fixed independently of the screen: the five
 screening controls plus terminal-capped M\&S with a 60-second construction
-budget and blind fallback. We add the Stage-1 selector-family winner without
-retuning and, if it uses batching, its mechanically matched same-$K$ unbatched
-ablation. The global winner is already one of these configurations and is
-recorded as an alias rather than a duplicate cell. Hence this stage has seven
-or eight unique configurations and 644 or 736 runs, respectively.
+budget and blind fallback. The Stage-1 selector-family winner is unbatched and
+is added without retuning, so the conditional same-$K$ unbatched ablation is
+not instantiated. The global winner is already one of the fixed controls and
+is recorded as an alias rather than a duplicate cell. The frozen stage
+therefore has exactly seven unique configurations and 644 runs.
 
 The primary contrast is the selector-family winner against the CEGAR PDB
 control. Its estimand is the paired coverage difference within each domain,
 averaged equally over the 46 domains; a predeclared deterministic
 100,000-replicate domain bootstrap supplies a 95\% interval. The construction
-budget and, conditionally, batching have their own matched safeguards.
+budget has its own matched safeguard.
 Comparisons with blind search, exact and capped M\&S, task-micro coverage,
 PAR2, runtime, construction time, image time, and width-conditioned summaries
 are descriptive because there is one run per cell. No held-out outcome changes
 the configuration ordering.
 
 \paragraph{Stage 3: full supported suite.}
-After the held-out analysis, its complete seven- or eight-configuration matrix
-is carried forward unchanged to all 1377 supported tasks on the same cluster,
-giving 9639 or 11016 cells. Before launch, a separate runner must freeze the
-resulting artifact hash, task-source bytes, option matrix, and array layout.
-This planned stage is an exact descriptive census of the frozen supported
-population, not a third confirmatory or unseen-task experiment. It
+The grid and execution protocol for this stage are frozen, while its results
+remain pending. The complete seven-configuration held-out matrix is carried
+forward unchanged to all 1377 supported tasks on the same cluster, giving
+9639 cells. A separate runner freezes the selection-artifact hash, task-source
+bytes, option matrix, and array layout. This stage is an exact descriptive
+census of the frozen supported population, not a third confirmatory or
+unseen-task experiment. It
 intentionally includes the 50 screening and 92 held-out tasks. We report the
 selector-versus-CEGAR coverage difference averaged equally over the 46 domains,
 overall and per-domain coverage, and operational cost without sampling
@@ -1615,14 +1617,13 @@ limit, and one AMD EPYC 9755 core on Arrhenius. We use the
 \texttt{release\_no\_lp} build, so the present matrix does not evaluate
 potential heuristics. The scheduler permits at most five simultaneous array
 elements. The screen and held-out stages place one run in each element. To
-stay below Arrhenius's 1000-element array limit, the planned full-suite stage
-deterministically executes at most 10 runs per element in the
-seven-configuration case and 12 in the eight-configuration case, with 70- and
-75-minute scheduler envelopes, respectively; runs within an element remain
-sequential. Time spent constructing a heuristic is inside the planner limit
-and therefore charged to that configuration. These envelopes are conservative
-requests, not per-cell wall-clock guarantees: the wrapper has no separate wall
-watchdog, and an outer scheduler timeout invalidates the census.
+stay below Arrhenius's 1000-element array limit, the frozen full-suite layout
+deterministically executes at most 10 runs per element in 964 array elements,
+with a 70-minute scheduler envelope; runs within an element remain sequential.
+Time spent constructing a heuristic is inside the planner limit and therefore
+charged to that configuration. This envelope is a conservative request, not a
+per-cell wall-clock guarantee: the wrapper has no separate wall watchdog, and
+an outer scheduler timeout invalidates the census.
 
 After grid construction, every stage replaces each benchmark symlink with an
 independent read-only copy, verifies each copy against the frozen per-source
@@ -1682,16 +1683,15 @@ costs, and a complete solved metric summary. Thus a CPU-limit signal during
 successful teardown cannot silently turn a durable plan into either an
 ordinary timeout or an uncertified success.
 
-The source and execution identities are frozen independently. The planner
-implementation is revision
-\texttt{58a3f742d7ac63f391d06c237573f14ad590c187}; the benchmark repository is
-revision \texttt{48d6a00d482de2384a9e751f9343df58bf5582be}; and the clean screening
-protocol is revision
-\texttt{d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf}. The stripped cached planner
-binary has SHA-256
-\texttt{59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511}.
-Its copied preprocessor has SHA-256
-\texttt{acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c}.
+The source and execution identities are frozen independently. The immutable
+Stage-1 P4 identity uses planner revision
+\texttt{58a3f742d7ac63f391d06c237573f14ad590c187}, stripped cached-binary SHA-256
+\texttt{59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511},
+copied-preprocessor SHA-256
+\texttt{acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c},
+and clean screening-protocol revision
+\texttt{d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf}. The benchmark repository is
+revision \texttt{48d6a00d482de2384a9e751f9343df58bf5582be}.
 The normalized noncomment task sequence, selected task-source records, and
 complete option matrix have SHA-256 digests
 \texttt{3195dac7e62a34e5ac4cbeb715ab7f9b99e2ee64341082dd7d718ea2820751ca},
@@ -1709,6 +1709,35 @@ for candidate scoring,
 parser, \texttt{wbh-exact-schema-semantic-v3} for metric validation, and
 \texttt{direct-search-raw-effective-plan-reconciliation/v1} for outcome
 certification.
+
+The prospectively corrected downstream P5 execution has a separate frozen
+identity: planner revision
+\texttt{165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f}, stripped cached-binary SHA-256
+\texttt{af2a19d236ecad9b747d2a1b9c49da73d98248c38d21cc60ad0ac7613d74bdbe},
+copied-preprocessor SHA-256
+\texttt{1b351a4a5f9380bf41fe9fd61b98c816505ebd8cf88b20afa0d81a9bfb2474bd},
+and clean launch-protocol revision R
+\texttt{a52488637a1c054b26dac93fe2eb1a556110a2dd}. Its held-out and full-suite
+protocols are \texttt{arrhenius-selector-heldout-validation-v3} and
+\texttt{arrhenius-selector-full-population-v3}, respectively. Both declare
+\texttt{pdb-ms-initial-dead-bdd-construction-prelog/v1}: a completed PDB or
+M\&S heuristic that proves the initial state dead emits its construction event
+before the normal unsolvable exit. The strict
+\texttt{wbh-exact-schema-semantic-v3} parser is unchanged.
+
+This amendment followed a fail-closed protocol audit, not a performance
+comparison. In the first downstream start, the first stable held-out
+goal-fill cell whose heuristic proved the initial state dead exposed a missing
+construction event: producer ordering allowed the normal unsolvable exit
+before that event was emitted. Both arrays were canceled promptly. At
+cancellation, 53 held-out cells were stable and 20 full-suite cells bore
+wrapper-completion markers; none of those data are reused. The producer was
+fixed, and fresh grids replace both starts. Accepted downstream data must come
+from complete arrays in which every cell is rerun from scratch under the
+prospectively committed P5 identity. The selection artifact,
+seven-configuration matrix, Stage-1 ranking, declared comparisons, and
+statistical contrasts are unchanged. Downstream results remain pending and
+cannot reopen any of them.
 
 \subsection{Results}
 
@@ -1773,10 +1802,10 @@ claim about the held-out set or the full supported population.
 \emph{[RESULT PLACEHOLDER: after freezing the Stage-1 selection artifact,
 report the selector-family winner's paired, equally weighted domain-macro
 coverage difference against CEGAR with the frozen bootstrap interval; the
-M\&S construction-budget safeguard; the conditional same-$K$ batching
-ablation; contextual comparisons with the global winner, blind forward, and
-M\&S; discordant wins/losses; task-micro coverage; and descriptive
-PAR2/runtime/image/construction summaries on the 92 held-out tasks. State
+M\&S construction-budget safeguard; contextual comparisons with the global
+winner, blind forward, and M\&S; discordant wins/losses; task-micro coverage;
+and descriptive PAR2/runtime/image/construction summaries on the 92 held-out
+tasks. State
 explicitly that no held-out outcome changed the configuration.]}
 
 \paragraph{Full-suite result---placeholder.}
