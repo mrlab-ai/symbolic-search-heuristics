@@ -94,8 +94,12 @@ SYNTHETIC_BOOTSTRAP_SHA256 = (
 
 # Review and replace these after the selector screen and the runner-pin commit.
 # Ordinary held-out analysis fails closed while either value is unset.
-EXPECTED_SELECTION_ARTIFACT_SHA256 = None
-EXPECTED_VALIDATION_PROTOCOL_REVISION = None
+EXPECTED_SELECTION_ARTIFACT_SHA256 = (
+    "d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2"
+)
+EXPECTED_VALIDATION_PROTOCOL_REVISION = (
+    "c80d22b15c93dcbb7e9404b69fc04ddd95806008"
+)
 
 PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
 PILOT_PROTOCOL_REVISION = "d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf"
@@ -2637,7 +2641,12 @@ def self_test():
                 "sorted_replicate_numerators_sha256"
             ],
         },
-        "ordinary_analysis_gate": "BLOCKED_UNTIL_REVIEWED_HASHES_ARE_PINNED",
+        "ordinary_analysis_gate": (
+            "PINNED"
+            if EXPECTED_SELECTION_ARTIFACT_SHA256 is not None
+            and EXPECTED_VALIDATION_PROTOCOL_REVISION is not None
+            else "BLOCKED_UNTIL_REVIEWED_HASHES_ARE_PINNED"
+        ),
     }
 
 
