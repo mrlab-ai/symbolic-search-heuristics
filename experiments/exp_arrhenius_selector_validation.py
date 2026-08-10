@@ -125,9 +125,13 @@ PILOT_PLANNER_PREPROCESS_SHA256 = (
 # Prospective downstream execution pins.  Fill these only after the
 # initial-dead construction-prelog producer change is committed and its exact
 # revision cache has been independently reviewed.
-PLANNER_REVISION = None
-CACHE_BINARY_SHA256 = None
-CACHE_PREPROCESS_SHA256 = None
+PLANNER_REVISION = "165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f"
+CACHE_BINARY_SHA256 = (
+    "af2a19d236ecad9b747d2a1b9c49da73d98248c38d21cc60ad0ac7613d74bdbe"
+)
+CACHE_PREPROCESS_SHA256 = (
+    "1b351a4a5f9380bf41fe9fd61b98c816505ebd8cf88b20afa0d81a9bfb2474bd"
+)
 
 PILOT_PROTOCOL = "arrhenius-exact-width-selector-screening-v2"
 PILOT_SELECTION_RULE = (
