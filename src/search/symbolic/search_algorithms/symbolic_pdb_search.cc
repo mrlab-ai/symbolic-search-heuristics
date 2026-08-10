@@ -79,19 +79,22 @@ void SymbolicPdbForwardSearch::initialize() {
     // A completed PDB may prove the initial state dead. Record its construction
     // before HeuristicFwSearch reports that clean unsolvability outcome; every
     // ordinary path retains the legacy post-init timing semantics.
-    bool initial_dead_end =
-        !(mgr->get_initial_state() * level_sets->get_dead_ends()).IsZero();
-    if (level_sets->uses_exact_width_filter() &&
-        initial_dead_end != level_sets->selected_initial_is_dead_end()) {
-        ABORT(
-            "PDB width-selector initial-dead metadata disagrees with its "
-            "selected dead-end BDD.");
-    }
-    bool construction_prelogged = initial_dead_end;
-    if (construction_prelogged && sym_params.stats) {
-        sym_params.stats->log_construction(
-            "pdb_" + level_sets->get_selection_name(), construction_timer(),
-            state_budget, -1, true);
+    bool construction_prelogged = false;
+    if (sym_params.stats) {
+        bool initial_dead_end =
+            !(mgr->get_initial_state() * level_sets->get_dead_ends()).IsZero();
+        if (level_sets->uses_exact_width_filter() &&
+            initial_dead_end != level_sets->selected_initial_is_dead_end()) {
+            ABORT(
+                "PDB width-selector initial-dead metadata disagrees with its "
+                "selected dead-end BDD.");
+        }
+        construction_prelogged = initial_dead_end;
+        if (construction_prelogged) {
+            sym_params.stats->log_construction(
+                "pdb_" + level_sets->get_selection_name(),
+                construction_timer(), state_budget, -1, true);
+        }
     }
 
     auto search_ptr =

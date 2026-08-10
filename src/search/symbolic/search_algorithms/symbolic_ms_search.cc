@@ -74,12 +74,15 @@ void SymbolicMsForwardSearch::initialize() {
     // A completed abstraction may prove the initial state dead. Record its
     // construction before HeuristicFwSearch reports that clean unsolvability
     // outcome; every ordinary path retains the legacy post-init timing.
-    bool construction_prelogged =
-        !(mgr->get_initial_state() * level_sets->get_dead_ends()).IsZero();
-    if (construction_prelogged && sym_params.stats) {
-        sym_params.stats->log_construction(
-            "merge_and_shrink", construction_timer(), max_states, value_cap,
-            true);
+    bool construction_prelogged = false;
+    if (sym_params.stats) {
+        construction_prelogged =
+            !(mgr->get_initial_state() * level_sets->get_dead_ends()).IsZero();
+        if (construction_prelogged) {
+            sym_params.stats->log_construction(
+                "merge_and_shrink", construction_timer(), max_states,
+                value_cap, true);
+        }
     }
 
     auto search_ptr =
