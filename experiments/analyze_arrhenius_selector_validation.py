@@ -2486,39 +2486,43 @@ def self_test():
     resource_target["wbh_summary_solved"] = None
     validate_records(resource_prefix, tasks, contract, digest, revision)
 
-    presearch = copy.deepcopy(records)
-    presearch_target = next(
-        item
-        for item in presearch
-        if item["algorithm"] == "ms_cap32" and item["coverage"] == 0
-    )
-    for field in (
-        *ALL_SCHEMA_V2_METRICS,
-        *SCHEMA_V2_CONVENTIONS,
-        *CONSTRUCTION_FIELDS,
-        *HEURISTIC_FIELDS,
-        "search_raw_exit_code",
-        "search_effective_exit_code",
-        "wbh_summary_solved",
-        "wbh_done_solution_cost",
-        "wbh_solved_summary_certified",
+    for exit_code, error in (
+        (20, "translate-out-of-memory"),
+        (21, "translate-out-of-time"),
     ):
-        presearch_target.pop(field, None)
-    presearch_target.update(
-        {
-            "planner_exit_code": 20,
-            "error": "translate-out-of-memory",
-            "unsolvable": 0,
-            "wbh_schema_version": 1,
-            "node_count_convention": "legacy_cudd_dag_size",
-            "image_count_convention": "legacy_expand_event_count",
-            "expansion_count_convention": "legacy_attempts_unmarked",
-            "wbh_log_nonempty": False,
-            "raw_metrics_complete": False,
-            "piece_metrics_certified": False,
-        }
-    )
-    validate_records(presearch, tasks, contract, digest, revision)
+        presearch = copy.deepcopy(records)
+        presearch_target = next(
+            item
+            for item in presearch
+            if item["algorithm"] == "ms_cap32" and item["coverage"] == 0
+        )
+        for field in (
+            *ALL_SCHEMA_V2_METRICS,
+            *SCHEMA_V2_CONVENTIONS,
+            *CONSTRUCTION_FIELDS,
+            *HEURISTIC_FIELDS,
+            "search_raw_exit_code",
+            "search_effective_exit_code",
+            "wbh_summary_solved",
+            "wbh_done_solution_cost",
+            "wbh_solved_summary_certified",
+        ):
+            presearch_target.pop(field, None)
+        presearch_target.update(
+            {
+                "planner_exit_code": exit_code,
+                "error": error,
+                "unsolvable": 0,
+                "wbh_schema_version": 1,
+                "node_count_convention": "legacy_cudd_dag_size",
+                "image_count_convention": "legacy_expand_event_count",
+                "expansion_count_convention": "legacy_attempts_unmarked",
+                "wbh_log_nonempty": False,
+                "raw_metrics_complete": False,
+                "piece_metrics_certified": False,
+            }
+        )
+        validate_records(presearch, tasks, contract, digest, revision)
 
     _expect_error(
         lambda: validate_records(records[:-1], tasks, contract, digest, revision),

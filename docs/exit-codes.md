@@ -49,6 +49,12 @@ execution of further components.
 | 23 | SEARCH_OUT_OF_TIME | Timeout occurred. Not supported on Windows because we use SIGXCPU to kill the planner. |
 | 24 | SEARCH_OUT_OF_MEMORY_AND_TIME | Search ran out of both memory and time. For portfolios, this can mean that different components exhausted the two resources. |
 
+On POSIX, the driver normalizes a child-process `SIGXCPU` from either the
+translator or the legacy preprocessor to `TRANSLATE_OUT_OF_TIME` (21). This
+prevents the negative signal return from wrapping to an undocumented positive
+shell status when the top-level Python driver exits. Other pre-search signals
+remain unmodified and are treated as unexpected failures.
+
 The fourth block (30-39) represents unrecoverable failures which prevent
 the execution of further components.
 

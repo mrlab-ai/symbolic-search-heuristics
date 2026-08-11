@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+import signal
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,7 @@ _SEARCH_RESOURCE_LIMIT_EXITCODE_WITH_PLAN = {
     returncodes.SEARCH_OUT_OF_MEMORY_AND_TIME:
         returncodes.SEARCH_PLAN_FOUND_AND_OUT_OF_MEMORY_AND_TIME,
 }
+_SIGXCPU = getattr(signal, "SIGXCPU", None)
 # Older versions of VAL use lower case, newer versions upper case. We prefer the
 # older version because this is what our build instructions recommend.
 _VALIDATE_NAME = (shutil.which(f"validate{BINARY_EXT}") or
@@ -40,6 +42,21 @@ VALIDATE = Path(_VALIDATE_NAME) if _VALIDATE_NAME else None
 
 class IncompleteBuildError(Exception):
     pass
+
+
+def _normalize_presearch_exitcode(exitcode):
+    """Map a pre-search CPU-limit signal to the documented driver code.
+
+    The translator and the legacy preprocessor run as child processes.  If
+    either exhausts its RLIMIT_CPU allowance, ``subprocess`` reports
+    ``-SIGXCPU``.  Passing that negative value through ``sys.exit`` would wrap
+    it to an undocumented positive shell status (232 on POSIX), so normalize
+    this one unambiguous resource outcome before the driver logs it.  Other
+    signals remain distinguishable and fail closed as before.
+    """
+    if _SIGXCPU is not None and exitcode == -_SIGXCPU:
+        return returncodes.TRANSLATE_OUT_OF_TIME
+    return exitcode
 
 
 def try_get_executable(build: str, rel_path: Path):
@@ -92,6 +109,7 @@ def run_translate(args):
         time_limit=time_limit,
         memory_limit=memory_limit,
         prepend_to_python_path=translate.parent)
+    returncode = _normalize_presearch_exitcode(returncode)
 
     # We collect stderr of the translator and print it here, unless
     # the translator ran out of memory and all output in stderr is
@@ -140,7 +158,7 @@ def run_preprocess(args):
     except subprocess.CalledProcessError as err:
         assert err.returncode >= 10 or err.returncode < 0, "got returncode < 10: {}".format(
             err.returncode)
-        return (err.returncode, False)
+        return (_normalize_presearch_exitcode(err.returncode), False)
     return (0, True)
 
 

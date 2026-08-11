@@ -3361,18 +3361,24 @@ def self_test_outcome_reconciliation_parser():
                     malformed_log
                 )
             )
-    presearch = {
-        "planner_exit_code": 20,
-        "coverage": 0,
-        "plan_file_present": False,
-        "plan_file_candidate_count": 0,
-        "plan_file_canonical": False,
-    }
-    parse_outcome_reconciliation(
-        "translate exit code: 20\nplanner exit code: 20\n", presearch
-    )
-    if presearch.get("outcome_reconciliation_certified") is not True:
-        raise AssertionError("exact pre-search outcome was not certified")
+    for exit_code, component in ((20, "translate"), (21, "preprocess")):
+        presearch = {
+            "planner_exit_code": exit_code,
+            "coverage": 0,
+            "plan_file_present": False,
+            "plan_file_candidate_count": 0,
+            "plan_file_canonical": False,
+        }
+        parse_outcome_reconciliation(
+            "{} exit code: {}\nplanner exit code: {}\n".format(
+                component, exit_code, exit_code
+            ),
+            presearch,
+        )
+        if presearch.get("outcome_reconciliation_certified") is not True:
+            raise AssertionError(
+                "exact pre-search outcome {} was not certified".format(exit_code)
+            )
     malformed_presearch = {
         "planner_exit_code": 20,
         "coverage": 0,

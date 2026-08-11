@@ -6,6 +6,7 @@ Test module for Fast Downward driver script. Run with
 
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import traceback
@@ -21,6 +22,16 @@ from . import returncodes
 from . import run_components
 from .run_components import get_executable, REL_SEARCH_PATH
 from .util import REPO_ROOT_DIR, find_domain_path
+
+_SIGXCPU = getattr(signal, "SIGXCPU", None)
+_PRESEARCH_EXITCODE_CASES = [
+    (returncodes.TRANSLATE_OUT_OF_TIME, returncodes.TRANSLATE_OUT_OF_TIME),
+    (-signal.SIGTERM, -signal.SIGTERM),
+]
+if _SIGXCPU is not None:
+    _PRESEARCH_EXITCODE_CASES.append(
+        (-_SIGXCPU, returncodes.TRANSLATE_OUT_OF_TIME)
+    )
 
 
 def cleanup():
@@ -133,6 +144,51 @@ def test_automatic_domain_file_name_computation():
         for filename in filenames:
             if "domain" not in filename:
                 assert find_domain_path(dirpath / filename)
+
+
+def _get_mock_presearch_args(tmp_path):
+    return SimpleNamespace(
+        build="unused",
+        overall_time_limit=None,
+        translate_time_limit=None,
+        preprocess_time_limit=None,
+        overall_memory_limit=None,
+        translate_memory_limit=None,
+        preprocess_memory_limit=None,
+        translate_inputs=[str(tmp_path / "domain.pddl"),
+                          str(tmp_path / "problem.pddl")],
+        translate_options=[],
+        preprocess_options=[],
+        preprocess_input=tmp_path / "output.sas")
+
+
+@pytest.mark.parametrize(
+    "raw_exitcode, expected_exitcode",
+    _PRESEARCH_EXITCODE_CASES)
+@pytest.mark.parametrize("component", ["translate", "preprocess"])
+def test_presearch_components_normalize_only_sigxcpu(
+        monkeypatch, tmp_path, component, raw_exitcode, expected_exitcode):
+    args = _get_mock_presearch_args(tmp_path)
+    monkeypatch.setattr(
+        run_components,
+        "get_executable",
+        lambda _build, _path: tmp_path / "component")
+
+    if component == "translate":
+        monkeypatch.setattr(
+            run_components.call,
+            "get_error_output_and_returncode",
+            lambda *_args, **_kwargs: (b"", raw_exitcode))
+        result = run_components.run_translate(args)
+    else:
+        def fail_component(_nick, cmd, **_kwargs):
+            raise subprocess.CalledProcessError(raw_exitcode, cmd)
+
+        monkeypatch.setattr(
+            run_components.call, "check_call", fail_component)
+        result = run_components.run_preprocess(args)
+
+    assert result == (expected_exitcode, False)
 
 
 _COMPLETE_PLAN = "(move a b)\n; cost = 7 (unit cost)\n"

@@ -2365,6 +2365,39 @@ def self_test():
         validate_current,
         "heldout_initial_dead_construction_logging_protocol",
     )
+    presearch_time = copy.deepcopy(records)
+    presearch_target = next(
+        record
+        for record in presearch_time
+        if record["algorithm"] == "ms_cap32" and record["coverage"] == 0
+    )
+    for field in (
+        *heldout.ALL_SCHEMA_V2_METRICS,
+        *heldout.SCHEMA_V2_CONVENTIONS,
+        *heldout.CONSTRUCTION_FIELDS,
+        *heldout.HEURISTIC_FIELDS,
+        "search_raw_exit_code",
+        "search_effective_exit_code",
+        "wbh_summary_solved",
+        "wbh_done_solution_cost",
+        "wbh_solved_summary_certified",
+    ):
+        presearch_target.pop(field, None)
+    presearch_target.update(
+        {
+            "planner_exit_code": 21,
+            "error": "translate-out-of-time",
+            "unsolvable": 0,
+            "wbh_schema_version": 1,
+            "node_count_convention": "legacy_cudd_dag_size",
+            "image_count_convention": "legacy_expand_event_count",
+            "expansion_count_convention": "legacy_attempts_unmarked",
+            "wbh_log_nonempty": False,
+            "raw_metrics_complete": False,
+            "piece_metrics_certified": False,
+        }
+    )
+    validate_records(presearch_time, tasks, contract, digest, revision)
     solved_index = next(i for i, record in enumerate(records) if record["coverage"] == 1)
     mapped = copy.deepcopy(records[solved_index])
     mapped.update(
