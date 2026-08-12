@@ -42,9 +42,9 @@ class AnalysisError(RuntimeError):
     pass
 
 
-ANALYSIS_SCHEMA = "symbolic-search-heuristics/full-population-analysis/v3"
+ANALYSIS_SCHEMA = "symbolic-search-heuristics/full-population-analysis/v4"
 ANALYSIS_PROTOCOL = "full-supported-population-census-v1"
-FULL_PROTOCOL = "arrhenius-selector-full-population-v3"
+FULL_PROTOCOL = "arrhenius-selector-full-population-v4"
 ARTIFACT_SCHEMA = (
     "symbolic-search-heuristics/arrhenius-selector-screen-selection/v3"
 )
@@ -66,12 +66,9 @@ SCHEDULER_ENVELOPE_PROTOCOL = (
 EXPECTED_SELECTION_ARTIFACT_SHA256 = (
     "d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2"
 )
-EXPECTED_FULL_PROTOCOL_REVISION = (
-    "a52488637a1c054b26dac93fe2eb1a556110a2dd"
-)
-
+EXPECTED_FULL_PROTOCOL_REVISION = "0cb19e111da36fbb32d1b3bc0f07a52b733fbbe9"
 FULL_RUNNER_SOURCE_SHA256 = (
-    "84d6408781724203ba3420d6a559d1c56aac196f560f8b76c14f8cde730ab642"
+    "3a7cfd4307217db13a8ec42d9157cd2290b0e8fba962f9aa40815af80d06058f"
 )
 PILOT_PLANNER_REVISION = "58a3f742d7ac63f391d06c237573f14ad590c187"
 PILOT_PROTOCOL_REVISION = "d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf"
@@ -81,14 +78,59 @@ PILOT_PLANNER_BINARY_SHA256 = (
 PILOT_PLANNER_PREPROCESS_SHA256 = (
     "acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c"
 )
-PLANNER_REVISION = "165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f"
-CACHE_BINARY_SHA256 = (
+P6_FULL_PLANNER_REVISION = "a3486a027a0f281e762cb6d66d72311455b66b33"
+P6_FULL_CACHE_BINARY_SHA256 = (
+    "2887194c74acc88273702b807dba28e4fd8f7ae3d916562bcf1b83ec79632758"
+)
+P6_FULL_CACHE_PREPROCESS_SHA256 = (
+    "40e1d5580ec447cb606ead447317469bd861bd8cda398095df3fbf22922d0d23"
+)
+P6_FULL_CACHE_NAME_SUFFIX = "_61a748e5"
+P5_HELDOUT_PROTOCOL_REVISION = "a52488637a1c054b26dac93fe2eb1a556110a2dd"
+P5_HELDOUT_PLANNER_REVISION = "165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f"
+P5_HELDOUT_CACHE_BINARY_SHA256 = (
     "af2a19d236ecad9b747d2a1b9c49da73d98248c38d21cc60ad0ac7613d74bdbe"
 )
-CACHE_PREPROCESS_SHA256 = (
+P5_HELDOUT_CACHE_PREPROCESS_SHA256 = (
     "1b351a4a5f9380bf41fe9fd61b98c816505ebd8cf88b20afa0d81a9bfb2474bd"
 )
-CACHE_NAME_SUFFIX = "_61a748e5"
+P5_HELDOUT_CACHE_NAME_SUFFIX = "_61a748e5"
+P5_TO_P6_GIT_LINEAGE_PROTOCOL = (
+    "git-merge-base-is-ancestor/p5-protocol-and-planner-to-p6-planner/v1"
+)
+PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL = (
+    "driver-translate-and-legacy-preprocess-negative-sigxcpu-to-21/v1"
+)
+PRESEARCH_SIGXCPU_RAW_EXIT_CODE = -24
+PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE = 21
+PRESEARCH_SIGXCPU_COMPONENTS = ("translate", "preprocess")
+TERMINAL_OUTCOME_CENSUS_PROTOCOL = (
+    "protocol-recognized-final-cell-outcome-census/v1"
+)
+TERMINAL_OUTCOME_CENSUS_UNIT = "final-retained-attested-cell-records"
+TERMINAL_OUTCOME_SPECS = (
+    (0, "success", False, 0, 0),
+    (1, "search-plan-found-and-out-of-memory", False, 22, 1),
+    (2, "search-plan-found-and-out-of-time", False, 23, 2),
+    (3, "search-plan-found-and-out-of-memory-and-time", False, 24, 3),
+    (10, "translate-unsolvable", True, None, None),
+    (11, "search-unsolvable", False, 11, 11),
+    (12, "search-unsolvable-incomplete", False, 12, 12),
+    (20, "translate-out-of-memory", True, None, None),
+    (21, "translate-out-of-time", True, None, None),
+    (22, "search-out-of-memory", False, 22, 22),
+    (23, "search-out-of-time", False, 23, 23),
+    (24, "search-out-of-memory-and-time", False, 24, 24),
+)
+TERMINAL_OUTCOME_CODES = tuple(item[0] for item in TERMINAL_OUTCOME_SPECS)
+TERMINAL_OUTCOME_SPEC_BY_CODE = {
+    item[0]: item for item in TERMINAL_OUTCOME_SPECS
+}
+# Backward-compatible analyzer aliases.  Unqualified fields describe P6.
+PLANNER_REVISION = P6_FULL_PLANNER_REVISION
+CACHE_BINARY_SHA256 = P6_FULL_CACHE_BINARY_SHA256
+CACHE_PREPROCESS_SHA256 = P6_FULL_CACHE_PREPROCESS_SHA256
+CACHE_NAME_SUFFIX = P6_FULL_CACHE_NAME_SUFFIX
 INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL = (
     "pdb-ms-initial-dead-bdd-construction-prelog/v1"
 )
@@ -811,6 +853,7 @@ def expected_analysis_predeclaration(contract):
         "summaries": [
             "overall-config-coverage-count-and-rate",
             "per-domain-config-coverage-count-and-rate",
+            "protocol-recognized-final-cell-outcome-counts",
             "micro-par2-600s",
             "carried-comparison-discordant-wins-losses",
             "carried-comparison-jointly-solved-runtime-ratio",
@@ -898,6 +941,17 @@ def expected_protocol_metadata(contract, artifact_sha256, protocol_revision):
             and isinstance(CACHE_NAME_SUFFIX, str)
             else None
         ),
+        "p5_to_p6_git_lineage_protocol": P5_TO_P6_GIT_LINEAGE_PROTOCOL,
+        "p5_heldout_protocol_revision_is_p6_full_planner_ancestor": True,
+        "p5_heldout_planner_revision_is_p6_full_planner_ancestor": True,
+        "presearch_sigxcpu_normalization_protocol": (
+            PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL
+        ),
+        "presearch_sigxcpu_raw_exit_code": PRESEARCH_SIGXCPU_RAW_EXIT_CODE,
+        "presearch_sigxcpu_effective_exit_code": (
+            PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE
+        ),
+        "presearch_sigxcpu_components": list(PRESEARCH_SIGXCPU_COMPONENTS),
         "external_plan_validation": False,
         "plan_validation_protocol": (
             "no-external-val;canonical-plan-log-wbh-cost-and-raw-exit-"
@@ -978,6 +1032,17 @@ def expected_protocol_metadata(contract, artifact_sha256, protocol_revision):
         "selector_family_winner": contract["selector_winner"],
         "matched_same_k_unbatched": contract["matched_unbatched"],
         "heldout_protocol": heldout.VALIDATION_PROTOCOL,
+        "p5_heldout_protocol_revision": P5_HELDOUT_PROTOCOL_REVISION,
+        "p5_heldout_planner_revision": P5_HELDOUT_PLANNER_REVISION,
+        "p5_heldout_planner_binary_sha256": (
+            P5_HELDOUT_CACHE_BINARY_SHA256
+        ),
+        "p5_heldout_planner_preprocess_sha256": (
+            P5_HELDOUT_CACHE_PREPROCESS_SHA256
+        ),
+        "p5_heldout_planner_revision_cache_name": (
+            P5_HELDOUT_PLANNER_REVISION + P5_HELDOUT_CACHE_NAME_SUFFIX
+        ),
         "heldout_initial_dead_construction_logging_protocol": (
             heldout.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
         ),
@@ -1082,7 +1147,83 @@ def validate_runner_contract(
             full_runner.SCHEDULER_ENVELOPE_PROTOCOL,
             SCHEDULER_ENVELOPE_PROTOCOL,
         ),
+        "P5-to-P6 lineage protocol": (
+            full_runner.P5_TO_P6_GIT_LINEAGE_PROTOCOL,
+            P5_TO_P6_GIT_LINEAGE_PROTOCOL,
+        ),
+        "pre-search SIGXCPU normalization protocol": (
+            full_runner.PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL,
+            PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL,
+        ),
+        "pre-search SIGXCPU raw exit": (
+            full_runner.PRESEARCH_SIGXCPU_RAW_EXIT_CODE,
+            PRESEARCH_SIGXCPU_RAW_EXIT_CODE,
+        ),
+        "pre-search SIGXCPU effective exit": (
+            full_runner.PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE,
+            PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE,
+        ),
+        "pre-search SIGXCPU components": (
+            tuple(full_runner.PRESEARCH_SIGXCPU_COMPONENTS),
+            PRESEARCH_SIGXCPU_COMPONENTS,
+        ),
         "planner revision": (full_runner.PLANNER_REVISION, PLANNER_REVISION),
+        "P6 full planner revision": (
+            full_runner.P6_FULL_PLANNER_REVISION,
+            P6_FULL_PLANNER_REVISION,
+        ),
+        "P6 full binary digest": (
+            full_runner.P6_FULL_CACHE_BINARY_SHA256,
+            P6_FULL_CACHE_BINARY_SHA256,
+        ),
+        "P6 full preprocess digest": (
+            full_runner.P6_FULL_CACHE_PREPROCESS_SHA256,
+            P6_FULL_CACHE_PREPROCESS_SHA256,
+        ),
+        "P6 full cache-name suffix": (
+            full_runner.P6_FULL_CACHE_NAME_SUFFIX,
+            P6_FULL_CACHE_NAME_SUFFIX,
+        ),
+        "P5 held-out protocol revision": (
+            full_runner.P5_HELDOUT_PROTOCOL_REVISION,
+            P5_HELDOUT_PROTOCOL_REVISION,
+        ),
+        "held-out analyzer protocol revision": (
+            heldout.EXPECTED_VALIDATION_PROTOCOL_REVISION,
+            P5_HELDOUT_PROTOCOL_REVISION,
+        ),
+        "P5 held-out planner revision": (
+            full_runner.P5_HELDOUT_PLANNER_REVISION,
+            P5_HELDOUT_PLANNER_REVISION,
+        ),
+        "held-out analyzer planner revision": (
+            heldout.PLANNER_REVISION,
+            P5_HELDOUT_PLANNER_REVISION,
+        ),
+        "P5 held-out binary digest": (
+            full_runner.P5_HELDOUT_CACHE_BINARY_SHA256,
+            P5_HELDOUT_CACHE_BINARY_SHA256,
+        ),
+        "held-out analyzer binary digest": (
+            heldout.CACHE_BINARY_SHA256,
+            P5_HELDOUT_CACHE_BINARY_SHA256,
+        ),
+        "P5 held-out preprocess digest": (
+            full_runner.P5_HELDOUT_CACHE_PREPROCESS_SHA256,
+            P5_HELDOUT_CACHE_PREPROCESS_SHA256,
+        ),
+        "held-out analyzer preprocess digest": (
+            heldout.CACHE_PREPROCESS_SHA256,
+            P5_HELDOUT_CACHE_PREPROCESS_SHA256,
+        ),
+        "P5 held-out cache-name suffix": (
+            full_runner.P5_HELDOUT_CACHE_NAME_SUFFIX,
+            P5_HELDOUT_CACHE_NAME_SUFFIX,
+        ),
+        "held-out analyzer cache-name suffix": (
+            heldout.CACHE_NAME_SUFFIX,
+            P5_HELDOUT_CACHE_NAME_SUFFIX,
+        ),
         "pilot planner revision": (
             full_runner.PILOT_PLANNER_REVISION,
             PILOT_PLANNER_REVISION,
@@ -1228,7 +1369,22 @@ def require_reviewed_pins(
     *,
     expected_artifact_sha256=EXPECTED_SELECTION_ARTIFACT_SHA256,
     protocol_revision=EXPECTED_FULL_PROTOCOL_REVISION,
+    full_protocol=FULL_PROTOCOL,
     planner_revision=PLANNER_REVISION,
+    p5_heldout_protocol_revision=P5_HELDOUT_PROTOCOL_REVISION,
+    p5_heldout_planner_revision=P5_HELDOUT_PLANNER_REVISION,
+    p5_heldout_binary_sha256=P5_HELDOUT_CACHE_BINARY_SHA256,
+    p5_heldout_preprocess_sha256=P5_HELDOUT_CACHE_PREPROCESS_SHA256,
+    p5_heldout_cache_name_suffix=P5_HELDOUT_CACHE_NAME_SUFFIX,
+    p5_to_p6_git_lineage_protocol=P5_TO_P6_GIT_LINEAGE_PROTOCOL,
+    presearch_sigxcpu_normalization_protocol=(
+        PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL
+    ),
+    presearch_sigxcpu_raw_exit_code=PRESEARCH_SIGXCPU_RAW_EXIT_CODE,
+    presearch_sigxcpu_effective_exit_code=(
+        PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE
+    ),
+    presearch_sigxcpu_components=PRESEARCH_SIGXCPU_COMPONENTS,
     pilot_protocol_revision=PILOT_PROTOCOL_REVISION,
     pilot_planner_revision=PILOT_PLANNER_REVISION,
     pilot_binary_sha256=PILOT_PLANNER_BINARY_SHA256,
@@ -1259,6 +1415,43 @@ def require_reviewed_pins(
         )
     _require_revision(protocol_revision, "full protocol revision")
     _require_revision(planner_revision, "downstream planner revision")
+    if full_protocol != "arrhenius-selector-full-population-v4":
+        raise AnalysisError("full execution protocol changed")
+    if planner_revision != P6_FULL_PLANNER_REVISION:
+        raise AnalysisError("P6 full planner revision pin changed")
+    _require_revision(
+        p5_heldout_protocol_revision, "P5 held-out protocol revision"
+    )
+    _require_revision(
+        p5_heldout_planner_revision, "P5 held-out planner revision"
+    )
+    _require_sha256(
+        p5_heldout_binary_sha256, "P5 held-out cached planner digest"
+    )
+    _require_sha256(
+        p5_heldout_preprocess_sha256,
+        "P5 held-out cached preprocess digest",
+    )
+    exact_p5 = (
+        p5_heldout_protocol_revision == P5_HELDOUT_PROTOCOL_REVISION
+        and p5_heldout_planner_revision == P5_HELDOUT_PLANNER_REVISION
+        and p5_heldout_binary_sha256 == P5_HELDOUT_CACHE_BINARY_SHA256
+        and p5_heldout_preprocess_sha256
+        == P5_HELDOUT_CACHE_PREPROCESS_SHA256
+        and p5_heldout_cache_name_suffix == P5_HELDOUT_CACHE_NAME_SUFFIX
+    )
+    if not exact_p5:
+        raise AnalysisError("exact held-out P5 provenance pin changed")
+    if p5_to_p6_git_lineage_protocol != P5_TO_P6_GIT_LINEAGE_PROTOCOL:
+        raise AnalysisError("P5-to-P6 Git lineage protocol changed")
+    if (
+        presearch_sigxcpu_normalization_protocol
+        != PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL
+        or presearch_sigxcpu_raw_exit_code != -24
+        or presearch_sigxcpu_effective_exit_code != 21
+        or tuple(presearch_sigxcpu_components) != ("translate", "preprocess")
+    ):
+        raise AnalysisError("pre-search SIGXCPU normalization protocol changed")
     _require_revision(pilot_protocol_revision, "P4 screen protocol revision")
     _require_revision(pilot_planner_revision, "P4 pilot planner revision")
     _require_sha256(pilot_binary_sha256, "P4 pilot planner digest")
@@ -1271,6 +1464,8 @@ def require_reviewed_pins(
         or not re.fullmatch(r"_[0-9a-f]{8}", cache_name_suffix)
     ):
         raise AnalysisError("downstream cache-name suffix is unset")
+    if cache_name_suffix != P6_FULL_CACHE_NAME_SUFFIX:
+        raise AnalysisError("P6 full cache-name suffix pin changed")
     if not isinstance(job_sha256, dict):
         raise AnalysisError("downstream full job-digest mapping is unset")
     for run_count in (EXPECTED_UNBATCHED_RUNS, EXPECTED_BATCHED_RUNS):
@@ -1720,6 +1915,187 @@ def summarize_config(matrix, tasks, domains, label, search, roles):
     }
 
 
+def _terminal_outcome_rows(records, prefix):
+    """Count final retained cell records in the frozen explained-outcome order."""
+    counts = Counter()
+    declared = heldout.pilot_analyzer.EXPLAINED_OUTCOMES
+    if tuple(declared) != TERMINAL_OUTCOME_CODES:
+        raise AnalysisError("explained terminal-outcome order changed")
+    if heldout.PRESEARCH_EXIT_CODES != frozenset((10, 20, 21)):
+        raise AnalysisError("pre-search terminal-outcome set changed")
+    for code, error, presearch, raw_exit, effective_exit in TERMINAL_OUTCOME_SPECS:
+        declared_error, _, _ = declared[code]
+        if (
+            declared_error != error
+            or presearch != (code in heldout.PRESEARCH_EXIT_CODES)
+        ):
+            raise AnalysisError("explained terminal-outcome mapping changed")
+
+    for index, record in enumerate(records):
+        code = record.get("planner_exit_code")
+        if type(code) is not int or code not in TERMINAL_OUTCOME_SPEC_BY_CODE:
+            raise AnalysisError(
+                "{} record {} has unrecognized terminal outcome {!r}".format(
+                    prefix, index, code
+                )
+            )
+        _, error, _, raw_exit, effective_exit = (
+            TERMINAL_OUTCOME_SPEC_BY_CODE[code]
+        )
+        if record.get("error") != error:
+            raise AnalysisError(
+                "{} record {} terminal error mapping changed".format(prefix, index)
+            )
+        if (
+            record.get("search_raw_exit_code") != raw_exit
+            or record.get("search_effective_exit_code") != effective_exit
+        ):
+            raise AnalysisError(
+                "{} record {} terminal raw/effective mapping changed".format(
+                    prefix, index
+                )
+            )
+        counts[code] += 1
+
+    return [
+        {
+            "planner_exit_code": code,
+            "error": error,
+            "presearch": presearch,
+            "search_raw_exit_code": raw_exit,
+            "search_effective_exit_code": effective_exit,
+            "cell_records": counts[code],
+        }
+        for code, error, presearch, raw_exit, effective_exit
+        in TERMINAL_OUTCOME_SPECS
+    ]
+
+
+def _check_terminal_outcome_slice(
+    rows,
+    cell_records,
+    solved_cells,
+    presearch_empty_cells,
+    prefix,
+):
+    if len(rows) != len(TERMINAL_OUTCOME_SPECS):
+        raise AnalysisError("{} terminal outcome row count changed".format(prefix))
+    counts = {}
+    for row, spec in zip(rows, TERMINAL_OUTCOME_SPECS):
+        code, error, presearch, raw_exit, effective_exit = spec
+        expected = {
+            "planner_exit_code": code,
+            "error": error,
+            "presearch": presearch,
+            "search_raw_exit_code": raw_exit,
+            "search_effective_exit_code": effective_exit,
+        }
+        for field, value in expected.items():
+            if not _same(row.get(field), value):
+                raise AnalysisError(
+                    "{} terminal outcome {} {} mapping changed".format(
+                        prefix, code, field
+                    )
+                )
+        count = row.get("cell_records")
+        if type(count) is not int or count < 0:
+            raise AnalysisError(
+                "{} terminal outcome {} count is invalid".format(prefix, code)
+            )
+        counts[code] = count
+    if sum(counts.values()) != cell_records:
+        raise AnalysisError("{} terminal outcome counts do not sum".format(prefix))
+    if sum(counts[code] for code in (0, 1, 2, 3)) != solved_cells:
+        raise AnalysisError(
+            "{} terminal solved counts disagree with coverage".format(prefix)
+        )
+    if sum(counts[code] for code in (10, 20, 21)) != presearch_empty_cells:
+        raise AnalysisError(
+            "{} pre-search outcome counts disagree with image summary".format(
+                prefix
+            )
+        )
+    return counts
+
+
+def terminal_outcome_census(records, contract, config_summaries):
+    """Build the exact terminal census; counts are records, never attempts."""
+    labels = [label for label, _ in contract["configs"]]
+    if [item.get("label") for item in config_summaries] != labels:
+        raise AnalysisError("terminal outcome configuration order changed")
+    summary_by_label = {item["label"]: item for item in config_summaries}
+    if len(summary_by_label) != len(labels):
+        raise AnalysisError("terminal outcome configuration labels duplicate")
+
+    records_by_label = {label: [] for label in labels}
+    for index, record in enumerate(records):
+        label = record.get("algorithm")
+        if label not in records_by_label:
+            raise AnalysisError(
+                "terminal outcome record {} has unexpected label {!r}".format(
+                    index, label
+                )
+            )
+        records_by_label[label].append(record)
+
+    per_config = []
+    per_config_counts = {}
+    for label in labels:
+        summary = summary_by_label[label]
+        config_records = records_by_label[label]
+        expected_cells = summary["coverage"]["tasks"]
+        if len(config_records) != expected_cells:
+            raise AnalysisError(
+                "terminal outcome {} cell-record denominator changed".format(label)
+            )
+        rows = _terminal_outcome_rows(config_records, label)
+        per_config_counts[label] = _check_terminal_outcome_slice(
+            rows,
+            expected_cells,
+            summary["coverage"]["solved"],
+            summary["image"]["presearch_empty_cells"],
+            label,
+        )
+        per_config.append(
+            {
+                "label": label,
+                "cell_records": expected_cells,
+                "outcomes": rows,
+            }
+        )
+
+    if len(records) != contract["run_count"]:
+        raise AnalysisError("terminal outcome global denominator changed")
+    global_rows = _terminal_outcome_rows(records, "global")
+    global_counts = _check_terminal_outcome_slice(
+        global_rows,
+        len(records),
+        sum(item["coverage"]["solved"] for item in config_summaries),
+        sum(
+            item["image"]["presearch_empty_cells"]
+            for item in config_summaries
+        ),
+        "global",
+    )
+    for code in TERMINAL_OUTCOME_CODES:
+        marginal = sum(per_config_counts[label][code] for label in labels)
+        if global_counts[code] != marginal:
+            raise AnalysisError(
+                "global/per-configuration terminal outcome {} disagrees".format(
+                    code
+                )
+            )
+    return {
+        "protocol": TERMINAL_OUTCOME_CENSUS_PROTOCOL,
+        "unit": TERMINAL_OUTCOME_CENSUS_UNIT,
+        "global": {
+            "cell_records": len(records),
+            "outcomes": global_rows,
+        },
+        "per_config": per_config,
+    }
+
+
 def _fraction_record(value):
     if not isinstance(value, Fraction):
         value = Fraction(value)
@@ -1842,6 +2218,9 @@ def analyze(
         label for label, _ in contract["configs"]
     ]:
         raise AnalysisError("configuration order was reranked")
+    outcome_census = terminal_outcome_census(
+        records, contract, config_summaries
+    )
     comparisons = [
         heldout.compare(matrix, tasks, declaration)
         for declaration in contract["comparisons"]
@@ -1903,6 +2282,29 @@ def analyze(
             "planner_revision": PLANNER_REVISION,
             "planner_binary_sha256": CACHE_BINARY_SHA256,
             "planner_preprocess_sha256": CACHE_PREPROCESS_SHA256,
+            "p5_heldout_protocol_revision": P5_HELDOUT_PROTOCOL_REVISION,
+            "p5_heldout_planner_revision": P5_HELDOUT_PLANNER_REVISION,
+            "p5_heldout_planner_binary_sha256": (
+                P5_HELDOUT_CACHE_BINARY_SHA256
+            ),
+            "p5_heldout_planner_preprocess_sha256": (
+                P5_HELDOUT_CACHE_PREPROCESS_SHA256
+            ),
+            "p5_to_p6_git_lineage_protocol": (
+                P5_TO_P6_GIT_LINEAGE_PROTOCOL
+            ),
+            "presearch_sigxcpu_normalization_protocol": (
+                PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL
+            ),
+            "presearch_sigxcpu_raw_exit_code": (
+                PRESEARCH_SIGXCPU_RAW_EXIT_CODE
+            ),
+            "presearch_sigxcpu_effective_exit_code": (
+                PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE
+            ),
+            "presearch_sigxcpu_components": list(
+                PRESEARCH_SIGXCPU_COMPONENTS
+            ),
             "initial_dead_construction_logging_protocol": (
                 INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
             ),
@@ -1933,6 +2335,7 @@ def analyze(
             "confidence_intervals": None,
             "p_values": None,
         },
+        "terminal_outcome_census": outcome_census,
         "primary": {
             "status": "descriptive-1377-task-census",
             "selector_vs_cegar_equally_weighted_domain_coverage": primary,
@@ -2201,6 +2604,54 @@ def _assert_synthetic_macro_pins(result, run_count):
         raise AssertionError("synthetic primary/sensitivity output digest changed")
 
 
+def _assert_synthetic_terminal_outcomes(result, contract):
+    census = result["terminal_outcome_census"]
+    if (
+        census.get("protocol") != TERMINAL_OUTCOME_CENSUS_PROTOCOL
+        or census.get("unit") != TERMINAL_OUTCOME_CENSUS_UNIT
+        or census.get("global", {}).get("cell_records")
+        != contract["run_count"]
+        or [entry.get("label") for entry in census.get("per_config", [])]
+        != [label for label, _ in contract["configs"]]
+    ):
+        raise AssertionError("synthetic terminal-outcome census identity changed")
+    slices = [census["global"]] + census["per_config"]
+    for value in slices:
+        rows = value.get("outcomes")
+        if not isinstance(rows, list) or len(rows) != len(
+            TERMINAL_OUTCOME_SPECS
+        ):
+            raise AssertionError("terminal-outcome zero-row retention changed")
+        for row, spec in zip(rows, TERMINAL_OUTCOME_SPECS):
+            code, error, presearch, raw_exit, effective_exit = spec
+            expected = {
+                "planner_exit_code": code,
+                "error": error,
+                "presearch": presearch,
+                "search_raw_exit_code": raw_exit,
+                "search_effective_exit_code": effective_exit,
+            }
+            if any(not _same(row.get(key), item) for key, item in expected.items()):
+                raise AssertionError("terminal-outcome row mapping changed")
+        if sum(row["cell_records"] for row in rows) != value["cell_records"]:
+            raise AssertionError("terminal-outcome slice arithmetic changed")
+    global_by_code = {
+        row["planner_exit_code"]: row["cell_records"]
+        for row in census["global"]["outcomes"]
+    }
+    for code in TERMINAL_OUTCOME_CODES:
+        marginal = sum(
+            next(
+                row["cell_records"]
+                for row in entry["outcomes"]
+                if row["planner_exit_code"] == code
+            )
+            for entry in census["per_config"]
+        )
+        if global_by_code[code] != marginal:
+            raise AssertionError("terminal-outcome marginal arithmetic changed")
+
+
 def _self_test_loaders():
     if heldout._parse_json_bytes(b'{"a":1}', "synthetic") != {"a": 1}:
         raise AssertionError("strict JSON parser changed")
@@ -2278,11 +2729,20 @@ def self_test():
         revision,
     )
     _assert_synthetic_macro_pins(result, EXPECTED_UNBATCHED_RUNS)
+    _assert_synthetic_terminal_outcomes(result, contract)
     if result["execution"]["cell_count"] != EXPECTED_UNBATCHED_RUNS:
         raise AssertionError("unbatched census cell count changed")
     if (
         result["selection_artifact"]["pilot_planner_revision"]
         != PILOT_PLANNER_REVISION
+        or result["execution"]["planner_revision"]
+        != P6_FULL_PLANNER_REVISION
+        or result["execution"]["p5_heldout_planner_revision"]
+        != P5_HELDOUT_PLANNER_REVISION
+        or result["execution"]["p5_heldout_planner_binary_sha256"]
+        != P5_HELDOUT_CACHE_BINARY_SHA256
+        or result["execution"]["presearch_sigxcpu_effective_exit_code"]
+        != 21
         or result["execution"][
             "initial_dead_construction_logging_protocol"
         ]
@@ -2299,6 +2759,26 @@ def self_test():
         contract["comparisons"]
     ):
         raise AssertionError("not all artifact-carried comparisons were reported")
+    bad_outcome_summaries = copy.deepcopy(result["primary"]["configs"])
+    bad_outcome_summaries[0]["coverage"]["solved"] -= 1
+    _expect_error(
+        lambda: terminal_outcome_census(
+            records, contract, bad_outcome_summaries
+        ),
+        "terminal solved counts disagree with coverage",
+    )
+    outcome_record = records[0]
+    old_raw_exit = outcome_record["search_raw_exit_code"]
+    outcome_record["search_raw_exit_code"] = 24
+    try:
+        _expect_error(
+            lambda: terminal_outcome_census(
+                records, contract, result["primary"]["configs"]
+            ),
+            "terminal raw/effective mapping changed",
+        )
+    finally:
+        outcome_record["search_raw_exit_code"] = old_raw_exit
     completion = result["completion_and_recovery"]
     if (
         completion["global"]["cells"] != EXPECTED_UNBATCHED_RUNS
@@ -2365,39 +2845,116 @@ def self_test():
         validate_current,
         "heldout_initial_dead_construction_logging_protocol",
     )
-    presearch_time = copy.deepcopy(records)
-    presearch_target = next(
-        record
-        for record in presearch_time
-        if record["algorithm"] == "ms_cap32" and record["coverage"] == 0
-    )
     for field in (
-        *heldout.ALL_SCHEMA_V2_METRICS,
-        *heldout.SCHEMA_V2_CONVENTIONS,
-        *heldout.CONSTRUCTION_FIELDS,
-        *heldout.HEURISTIC_FIELDS,
-        "search_raw_exit_code",
-        "search_effective_exit_code",
-        "wbh_summary_solved",
-        "wbh_done_solution_cost",
-        "wbh_solved_summary_certified",
+        "p5_heldout_protocol_revision",
+        "p5_heldout_planner_revision",
+        "p5_heldout_planner_binary_sha256",
+        "p5_to_p6_git_lineage_protocol",
+        "presearch_sigxcpu_normalization_protocol",
+        "presearch_sigxcpu_effective_exit_code",
     ):
-        presearch_target.pop(field, None)
-    presearch_target.update(
-        {
-            "planner_exit_code": 21,
-            "error": "translate-out-of-time",
-            "unsolvable": 0,
-            "wbh_schema_version": 1,
-            "node_count_convention": "legacy_cudd_dag_size",
-            "image_count_convention": "legacy_expand_event_count",
-            "expansion_count_convention": "legacy_attempts_unmarked",
-            "wbh_log_nonempty": False,
-            "raw_metrics_complete": False,
-            "piece_metrics_certified": False,
-        }
+        _mutate_and_expect(
+            records,
+            0,
+            field,
+            "changed",
+            validate_current,
+            field,
+        )
+    for exit_code, error in (
+        (20, "translate-out-of-memory"),
+        (21, "translate-out-of-time"),
+    ):
+        presearch_resource = copy.deepcopy(records)
+        presearch_target = next(
+            record
+            for record in presearch_resource
+            if record["algorithm"] == "ms_cap32" and record["coverage"] == 0
+        )
+        for field in (
+            *heldout.ALL_SCHEMA_V2_METRICS,
+            *heldout.SCHEMA_V2_CONVENTIONS,
+            *heldout.CONSTRUCTION_FIELDS,
+            *heldout.HEURISTIC_FIELDS,
+            "search_raw_exit_code",
+            "search_effective_exit_code",
+            "wbh_summary_solved",
+            "wbh_done_solution_cost",
+            "wbh_solved_summary_certified",
+        ):
+            presearch_target.pop(field, None)
+        presearch_target.update(
+            {
+                "planner_exit_code": exit_code,
+                "error": error,
+                "unsolvable": 0,
+                "wbh_schema_version": 1,
+                "node_count_convention": "legacy_cudd_dag_size",
+                "image_count_convention": "legacy_expand_event_count",
+                "expansion_count_convention": "legacy_attempts_unmarked",
+                "wbh_log_nonempty": False,
+                "raw_metrics_complete": False,
+                "piece_metrics_certified": False,
+            }
+        )
+        presearch_matrix = validate_records(
+            presearch_resource, tasks, contract, digest, revision
+        )
+        if exit_code == 21:
+            presearch_roles = {
+                item["label"]: item["roles"]
+                for item in contract["config_records"]
+            }
+            presearch_summaries = [
+                summarize_config(
+                    presearch_matrix,
+                    tasks,
+                    domains,
+                    label,
+                    search,
+                    presearch_roles[label],
+                )
+                for label, search in contract["configs"]
+            ]
+            presearch_census = terminal_outcome_census(
+                presearch_resource, contract, presearch_summaries
+            )
+            code_21 = next(
+                row
+                for row in presearch_census["global"]["outcomes"]
+                if row["planner_exit_code"] == 21
+            )
+            if code_21["cell_records"] != 1:
+                raise AssertionError("synthetic code-21 terminal count changed")
+            bad_presearch_summaries = copy.deepcopy(presearch_summaries)
+            bad_presearch_summary = next(
+                item
+                for item in bad_presearch_summaries
+                if item["label"] == "ms_cap32"
+            )
+            bad_presearch_summary["image"]["presearch_empty_cells"] = 0
+            _expect_error(
+                lambda: terminal_outcome_census(
+                    presearch_resource,
+                    contract,
+                    bad_presearch_summaries,
+                ),
+                "pre-search outcome counts disagree with image summary",
+            )
+    legacy_sigxcpu = copy.deepcopy(presearch_resource)
+    legacy_sigxcpu_target = next(
+        record
+        for record in legacy_sigxcpu
+        if record["algorithm"] == "ms_cap32"
+        and record["planner_exit_code"] == 21
     )
-    validate_records(presearch_time, tasks, contract, digest, revision)
+    legacy_sigxcpu_target["planner_exit_code"] = 232
+    _expect_error(
+        lambda: validate_records(
+            legacy_sigxcpu, tasks, contract, digest, revision
+        ),
+        "planner_exit_code must be a predeclared explained outcome; got 232",
+    )
     solved_index = next(i for i, record in enumerate(records) if record["coverage"] == 1)
     mapped = copy.deepcopy(records[solved_index])
     mapped.update(
@@ -2541,13 +3098,13 @@ def self_test():
         "invalid selection artifact",
     )
     synthetic_identity_pins = {
-        "planner_revision": "89abcdef0123456789abcdef0123456789abcdef",
+        "planner_revision": P6_FULL_PLANNER_REVISION,
         "pilot_protocol_revision": "fedcba9876543210fedcba9876543210fedcba98",
         "binary_sha256": hashlib.sha256(b"synthetic full binary").hexdigest(),
         "preprocess_sha256": hashlib.sha256(
             b"synthetic full preprocess"
         ).hexdigest(),
-        "cache_name_suffix": "_1234abcd",
+        "cache_name_suffix": P6_FULL_CACHE_NAME_SUFFIX,
         "runner_source_sha256": hashlib.sha256(
             b"synthetic full runner"
         ).hexdigest(),
@@ -2585,6 +3142,90 @@ def self_test():
         ),
         "EXPECTED_FULL_PROTOCOL_REVISION is unset",
     )
+    bad_p5_pins = dict(synthetic_identity_pins)
+    bad_p5_pins["p5_heldout_planner_revision"] = P6_FULL_PLANNER_REVISION
+    _expect_error(
+        lambda: require_reviewed_pins(
+            digest,
+            expected_artifact_sha256=digest,
+            protocol_revision=revision,
+            **bad_p5_pins,
+        ),
+        "exact held-out P5 provenance pin changed",
+    )
+    bad_p6_cache_suffix = dict(synthetic_identity_pins)
+    bad_p6_cache_suffix["cache_name_suffix"] = "_1234abcd"
+    _expect_error(
+        lambda: require_reviewed_pins(
+            digest,
+            expected_artifact_sha256=digest,
+            protocol_revision=revision,
+            **bad_p6_cache_suffix,
+        ),
+        "P6 full cache-name suffix pin changed",
+    )
+    bad_lineage_protocol = dict(synthetic_identity_pins)
+    bad_lineage_protocol["p5_to_p6_git_lineage_protocol"] = "changed"
+    _expect_error(
+        lambda: require_reviewed_pins(
+            digest,
+            expected_artifact_sha256=digest,
+            protocol_revision=revision,
+            **bad_lineage_protocol,
+        ),
+        "P5-to-P6 Git lineage protocol changed",
+    )
+    bad_sigxcpu_protocol = dict(synthetic_identity_pins)
+    bad_sigxcpu_protocol[
+        "presearch_sigxcpu_normalization_protocol"
+    ] = "changed"
+    _expect_error(
+        lambda: require_reviewed_pins(
+            digest,
+            expected_artifact_sha256=digest,
+            protocol_revision=revision,
+            **bad_sigxcpu_protocol,
+        ),
+        "pre-search SIGXCPU normalization protocol changed",
+    )
+    bad_execution_protocol = dict(synthetic_identity_pins)
+    bad_execution_protocol["full_protocol"] = (
+        "arrhenius-selector-full-population-v3"
+    )
+    _expect_error(
+        lambda: require_reviewed_pins(
+            digest,
+            expected_artifact_sha256=digest,
+            protocol_revision=revision,
+            **bad_execution_protocol,
+        ),
+        "full execution protocol changed",
+    )
+    unset_cache_pin = dict(synthetic_identity_pins)
+    unset_cache_pin["binary_sha256"] = None
+    _expect_error(
+        lambda: require_reviewed_pins(
+            digest,
+            expected_artifact_sha256=digest,
+            protocol_revision=revision,
+            **unset_cache_pin,
+        ),
+        "downstream cached planner digest must be a lowercase SHA-256",
+    )
+    unset_job_pins = dict(synthetic_identity_pins)
+    unset_job_pins["job_sha256"] = {
+        EXPECTED_UNBATCHED_RUNS: None,
+        EXPECTED_BATCHED_RUNS: None,
+    }
+    _expect_error(
+        lambda: require_reviewed_pins(
+            digest,
+            expected_artifact_sha256=digest,
+            protocol_revision=revision,
+            **unset_job_pins,
+        ),
+        "downstream full job digest for 9639 runs must be a lowercase SHA-256",
+    )
 
     del result, records, case, artifact, contract
     gc.collect()
@@ -2615,6 +3256,7 @@ def self_test():
         revision,
     )
     _assert_synthetic_macro_pins(result, EXPECTED_BATCHED_RUNS)
+    _assert_synthetic_terminal_outcomes(result, contract)
     if (
         result["execution"]["cell_count"] != EXPECTED_BATCHED_RUNS
         or result["selection_artifact"]["matched_same_k_unbatched"]
@@ -2661,6 +3303,8 @@ def self_test():
             "missing-and-duplicate-cells",
             "outcome-and-cross-config-cost",
             "mapped-success-reconciliation-and-cost-evidence",
+            "presearch-resource-20-21-and-legacy-232-rejection",
+            "terminal-outcome-order-mapping-zero-rows-and-arithmetic",
             "completion-marker-and-archive",
             "metrics-selector-trace-and-cross-config-pool-consistency",
             "screen-excluded-sensitivity",
