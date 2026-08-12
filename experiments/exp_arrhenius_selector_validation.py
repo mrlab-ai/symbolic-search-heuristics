@@ -1985,20 +1985,25 @@ def _git_blob(revision, relative):
         ) from err
 
 
-def _attest_runtime_tree(code_dir):
-    """Bind all copied Python runtime components to the planner revision."""
+def _attest_runtime_tree(code_dir, planner_revision=PLANNER_REVISION):
+    """Bind copied Python runtime components to an explicit planner revision.
+
+    The default preserves the frozen held-out P5 behavior.  Later stages may
+    pass their own descendant revision while reusing the same byte-exact
+    attestation implementation.
+    """
     C.reject_unattested_python_runtime_artifacts(code_dir)
     for relative in ("fast-downward.py", "build_configs.py"):
         actual = code_dir / relative
         _require_regular_file(actual, "copied runtime source")
-        if actual.read_bytes() != _git_blob(PLANNER_REVISION, relative):
+        if actual.read_bytes() != _git_blob(planner_revision, relative):
             raise ProtocolError(
                 "copied runtime source differs from {}: {}".format(
-                    PLANNER_REVISION, actual
+                    planner_revision, actual
                 )
             )
 
-    expected_driver = _git_tree_python_files(PLANNER_REVISION, "driver")
+    expected_driver = _git_tree_python_files(planner_revision, "driver")
     actual_driver = sorted(
         path.relative_to(code_dir).as_posix()
         for path in (code_dir / "driver").rglob("*.py")
@@ -2011,14 +2016,14 @@ def _attest_runtime_tree(code_dir):
     for relative in expected_driver:
         actual = code_dir / relative
         _require_regular_file(actual, "copied driver source")
-        if actual.read_bytes() != _git_blob(PLANNER_REVISION, relative):
+        if actual.read_bytes() != _git_blob(planner_revision, relative):
             raise ProtocolError(
                 "copied driver source differs from {}: {}".format(
-                    PLANNER_REVISION, relative
+                    planner_revision, relative
                 )
             )
 
-    expected_sources = _git_tree_python_files(PLANNER_REVISION, "src/translate")
+    expected_sources = _git_tree_python_files(planner_revision, "src/translate")
     expected_built = [item.removeprefix("src/") for item in expected_sources]
     translator_root = (
         code_dir / "builds" / C.CACHE_BUILD_NAME / "bin" / "translate"
@@ -2035,10 +2040,10 @@ def _attest_runtime_tree(code_dir):
     for source_relative, built_relative in zip(expected_sources, expected_built):
         actual = translator_root.parent / built_relative
         _require_regular_file(actual, "copied translator source")
-        if actual.read_bytes() != _git_blob(PLANNER_REVISION, source_relative):
+        if actual.read_bytes() != _git_blob(planner_revision, source_relative):
             raise ProtocolError(
                 "copied translator source differs from {}: {}".format(
-                    PLANNER_REVISION, source_relative
+                    planner_revision, source_relative
                 )
             )
 
@@ -2055,11 +2060,11 @@ def _attest_runtime_tree(code_dir):
         else:
             source_relative = copied_relative
         if actual.read_bytes() != _git_blob(
-            PLANNER_REVISION, source_relative.as_posix()
+            planner_revision, source_relative.as_posix()
         ):
             raise ProtocolError(
                 "copied Python source differs from {}: {}".format(
-                    PLANNER_REVISION, copied_relative.as_posix()
+                    planner_revision, copied_relative.as_posix()
                 )
             )
 

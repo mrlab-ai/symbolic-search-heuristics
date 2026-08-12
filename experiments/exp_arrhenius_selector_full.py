@@ -31,6 +31,7 @@ import hashlib
 import os
 import re
 import stat
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -49,7 +50,7 @@ class ProtocolError(RuntimeError):
     pass
 
 
-PROTOCOL = "arrhenius-selector-full-population-v3"
+PROTOCOL = "arrhenius-selector-full-population-v4"
 FULL_ANALYSIS_PROTOCOL = "full-supported-population-census-v1"
 FULL_COMPLETION_MARKER = ".arrhenius-full-run-complete-v1"
 FULL_COMPLETION_MARKER_SCHEMA = (
@@ -67,6 +68,15 @@ TASK_SELECTION_PROTOCOL = (
 SCHEDULER_ENVELOPE_PROTOCOL = (
     "conditional-requested-70m-75m-using-300plus60-accounting/v1"
 )
+P5_TO_P6_GIT_LINEAGE_PROTOCOL = (
+    "git-merge-base-is-ancestor/p5-protocol-and-planner-to-p6-planner/v1"
+)
+PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL = (
+    "driver-translate-and-legacy-preprocess-negative-sigxcpu-to-21/v1"
+)
+PRESEARCH_SIGXCPU_RAW_EXIT_CODE = -24
+PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE = 21
+PRESEARCH_SIGXCPU_COMPONENTS = ("translate", "preprocess")
 ARTIFACT_SCHEMA = V.ARTIFACT_SCHEMA
 EXPECTED_SELECTION_ARTIFACT_SHA256 = (
     "d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2"
@@ -116,10 +126,29 @@ EXPECTED_SOURCE_MANIFEST_SHA256 = V.EXPECTED_SOURCE_MANIFEST_SHA256
 
 BENCHMARK_REVISION = V.BENCHMARK_REVISION
 BENCHMARK_REPOSITORY = V.BENCHMARK_REPOSITORY
-PLANNER_REVISION = V.PLANNER_REVISION
+P6_FULL_PLANNER_REVISION = "a3486a027a0f281e762cb6d66d72311455b66b33"
+P6_FULL_CACHE_BINARY_SHA256 = (
+    "2887194c74acc88273702b807dba28e4fd8f7ae3d916562bcf1b83ec79632758"
+)
+P6_FULL_CACHE_PREPROCESS_SHA256 = (
+    "40e1d5580ec447cb606ead447317469bd861bd8cda398095df3fbf22922d0d23"
+)
+P6_FULL_CACHE_NAME_SUFFIX = "_61a748e5"
+P5_HELDOUT_PROTOCOL_REVISION = "a52488637a1c054b26dac93fe2eb1a556110a2dd"
+P5_HELDOUT_PLANNER_REVISION = "165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f"
+P5_HELDOUT_CACHE_BINARY_SHA256 = (
+    "af2a19d236ecad9b747d2a1b9c49da73d98248c38d21cc60ad0ac7613d74bdbe"
+)
+P5_HELDOUT_CACHE_PREPROCESS_SHA256 = (
+    "1b351a4a5f9380bf41fe9fd61b98c816505ebd8cf88b20afa0d81a9bfb2474bd"
+)
+P5_HELDOUT_CACHE_NAME_SUFFIX = "_61a748e5"
+# Backward-compatible local aliases: every unqualified planner/cache field in
+# the full runner describes P6 execution, never the frozen P5 held-out stage.
+PLANNER_REVISION = P6_FULL_PLANNER_REVISION
+CACHE_BINARY_SHA256 = P6_FULL_CACHE_BINARY_SHA256
+CACHE_PREPROCESS_SHA256 = P6_FULL_CACHE_PREPROCESS_SHA256
 PILOT_PROTOCOL_REVISION = V.PILOT_PROTOCOL_REVISION
-CACHE_BINARY_SHA256 = V.CACHE_BINARY_SHA256
-CACHE_PREPROCESS_SHA256 = V.CACHE_PREPROCESS_SHA256
 PILOT_PLANNER_REVISION = V.PILOT_PLANNER_REVISION
 PILOT_PLANNER_BINARY_SHA256 = V.PILOT_PLANNER_BINARY_SHA256
 PILOT_PLANNER_PREPROCESS_SHA256 = V.PILOT_PLANNER_PREPROCESS_SHA256
@@ -710,6 +739,7 @@ def expected_full_analysis_contract(matrix):
         "summaries": [
             "overall-config-coverage-count-and-rate",
             "per-domain-config-coverage-count-and-rate",
+            "protocol-recognized-final-cell-outcome-counts",
             "micro-par2-600s",
             "carried-comparison-discordant-wins-losses",
             "carried-comparison-jointly-solved-runtime-ratio",
@@ -1366,28 +1396,59 @@ def validate_matrix(tasks, matrix):
 
 def validate_cache_pins(
     *,
+    require_cache_hashes=True,
     require_job_hashes=True,
     planner_revision=PLANNER_REVISION,
     cache_binary_sha256=CACHE_BINARY_SHA256,
     cache_preprocess_sha256=CACHE_PREPROCESS_SHA256,
+    cache_name_suffix=P6_FULL_CACHE_NAME_SUFFIX,
+    heldout_protocol_revision=P5_HELDOUT_PROTOCOL_REVISION,
     heldout_planner_revision=V.PLANNER_REVISION,
     heldout_cache_binary_sha256=V.CACHE_BINARY_SHA256,
     heldout_cache_preprocess_sha256=V.CACHE_PREPROCESS_SHA256,
+    heldout_cache_name_suffix=P5_HELDOUT_CACHE_NAME_SUFFIX,
+    presearch_sigxcpu_normalization_protocol=(
+        PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL
+    ),
+    presearch_sigxcpu_raw_exit_code=PRESEARCH_SIGXCPU_RAW_EXIT_CODE,
+    presearch_sigxcpu_effective_exit_code=(
+        PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE
+    ),
+    presearch_sigxcpu_components=PRESEARCH_SIGXCPU_COMPONENTS,
     expected_job_sha256=EXPECTED_PROSPECTIVE_JOB_SHA256,
 ):
     if not isinstance(planner_revision, str) or not re.fullmatch(
         r"[0-9a-f]{40}", planner_revision
     ):
-        raise ProtocolError("downstream planner revision is unset")
+        raise ProtocolError("P6 full planner revision is unset")
+    if planner_revision != P6_FULL_PLANNER_REVISION:
+        raise ProtocolError("P6 full planner revision pin changed")
+    if cache_name_suffix != P6_FULL_CACHE_NAME_SUFFIX:
+        raise ProtocolError("P6 full cache-name suffix pin changed")
+    if C.cached_revision(planner_revision).name != (
+        planner_revision + cache_name_suffix
+    ):
+        raise ProtocolError("P6 full revision-cache name changed")
     if not isinstance(PILOT_PROTOCOL_REVISION, str) or not re.fullmatch(
         r"[0-9a-f]{40}", PILOT_PROTOCOL_REVISION
     ):
         raise ProtocolError("P4 screen protocol revision is unset")
-    _require_sha256(cache_binary_sha256, "downstream cached planner SHA-256")
-    _require_sha256(
-        cache_preprocess_sha256,
-        "downstream cached preprocess SHA-256",
+    full_cache_pins = (
+        cache_binary_sha256 is not None,
+        cache_preprocess_sha256 is not None,
     )
+    if any(full_cache_pins) and not all(full_cache_pins):
+        raise ProtocolError(
+            "P6 full cache SHA-256 pins must be either both set or both unset"
+        )
+    if require_cache_hashes and not all(full_cache_pins):
+        raise ProtocolError("P6 full cache SHA-256 pins are unset")
+    if all(full_cache_pins):
+        _require_sha256(cache_binary_sha256, "P6 full cached planner SHA-256")
+        _require_sha256(
+            cache_preprocess_sha256,
+            "P6 full cached preprocess SHA-256",
+        )
     if set(expected_job_sha256) != {
         EXPECTED_UNBATCHED_RUNS,
         EXPECTED_BATCHED_RUNS,
@@ -1409,14 +1470,51 @@ def validate_cache_pins(
                 digest,
                 "reviewed full job SHA-256 for {} runs".format(run_count),
             )
-    if (
-        planner_revision != heldout_planner_revision
-        or cache_binary_sha256 != heldout_cache_binary_sha256
-        or cache_preprocess_sha256 != heldout_cache_preprocess_sha256
-    ):
+    exact_heldout = {
+        "P5 held-out protocol revision": (
+            heldout_protocol_revision,
+            P5_HELDOUT_PROTOCOL_REVISION,
+        ),
+        "P5 held-out planner revision": (
+            heldout_planner_revision,
+            P5_HELDOUT_PLANNER_REVISION,
+        ),
+        "P5 held-out cached planner SHA-256": (
+            heldout_cache_binary_sha256,
+            P5_HELDOUT_CACHE_BINARY_SHA256,
+        ),
+        "P5 held-out cached preprocess SHA-256": (
+            heldout_cache_preprocess_sha256,
+            P5_HELDOUT_CACHE_PREPROCESS_SHA256,
+        ),
+        "P5 held-out cache-name suffix": (
+            heldout_cache_name_suffix,
+            P5_HELDOUT_CACHE_NAME_SUFFIX,
+        ),
+    }
+    changed_heldout = [
+        label
+        for label, (actual, expected) in exact_heldout.items()
+        if actual != expected
+    ]
+    if changed_heldout:
         raise ProtocolError(
-            "full runner differs from held-out downstream planner/cache pins"
+            "exact held-out P5 provenance pin changed: {}".format(
+                ", ".join(changed_heldout)
+            )
         )
+    if C.cached_revision(heldout_planner_revision).name != (
+        heldout_planner_revision + heldout_cache_name_suffix
+    ):
+        raise ProtocolError("P5 held-out revision-cache name changed")
+    if (
+        presearch_sigxcpu_normalization_protocol
+        != PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL
+        or presearch_sigxcpu_raw_exit_code != -24
+        or presearch_sigxcpu_effective_exit_code != 21
+        or tuple(presearch_sigxcpu_components) != ("translate", "preprocess")
+    ):
+        raise ProtocolError("pre-search SIGXCPU normalization protocol changed")
     if (
         PILOT_PLANNER_REVISION != V.PILOT_PLANNER_REVISION
         or PILOT_PLANNER_BINARY_SHA256 != V.PILOT_PLANNER_BINARY_SHA256
@@ -1428,8 +1526,89 @@ def validate_cache_pins(
         raise ProtocolError("full runner differs from held-out provenance pins")
 
 
+def require_p5_to_p6_git_lineage(
+    *,
+    p5_protocol_revision=P5_HELDOUT_PROTOCOL_REVISION,
+    p5_planner_revision=P5_HELDOUT_PLANNER_REVISION,
+    p6_planner_revision=P6_FULL_PLANNER_REVISION,
+):
+    """Attest both immutable P5 commits as ancestors of the P6 planner."""
+    for label, revision in (
+        ("P5 held-out protocol", p5_protocol_revision),
+        ("P5 held-out planner", p5_planner_revision),
+        ("P6 full planner", p6_planner_revision),
+    ):
+        if not isinstance(revision, str) or not re.fullmatch(
+            r"[0-9a-f]{40}", revision
+        ):
+            raise ProtocolError("{} revision is unset".format(label))
+        try:
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(C.REPO),
+                    "cat-file",
+                    "-e",
+                    revision + "^{commit}",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as err:
+            raise ProtocolError(
+                "{} revision is not an existing commit: {}".format(
+                    label, revision
+                )
+            ) from err
+    for label, ancestor in (
+        ("P5 held-out protocol", p5_protocol_revision),
+        ("P5 held-out planner", p5_planner_revision),
+    ):
+        try:
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(C.REPO),
+                    "merge-base",
+                    "--is-ancestor",
+                    ancestor,
+                    p6_planner_revision,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as err:
+            raise ProtocolError(
+                "{} revision {} is not an ancestor of P6 full planner {}".
+                format(label, ancestor, p6_planner_revision)
+            ) from err
+    return True
+
+
 def require_full_revision_cache():
-    return V.require_validation_revision_cache()
+    info = C.require_revision_cache(PLANNER_REVISION, CACHE_BINARY_SHA256)
+    preprocessor = (
+        Path(info["path"])
+        / "builds"
+        / C.CACHE_BUILD_NAME
+        / "bin"
+        / "preprocess"
+    )
+    preprocess_sha256 = V._require_file_sha256(
+        preprocessor,
+        CACHE_PREPROCESS_SHA256,
+        "P6 full revision-cache preprocess binary",
+    )
+    if not os.access(preprocessor, os.X_OK):
+        raise ProtocolError(
+            "P6 full revision-cache preprocess binary is not executable: {}".
+            format(preprocessor)
+        )
+    return {**info, "preprocess_sha256": preprocess_sha256}
 
 
 def _full_common_protocol_metadata(
@@ -1439,7 +1618,10 @@ def _full_common_protocol_metadata(
     cache_binary_sha256=CACHE_BINARY_SHA256,
 ):
     layout = validate_full_layout(num_runs)
+    if planner_revision != P6_FULL_PLANNER_REVISION:
+        raise ProtocolError("P6 full protocol metadata planner revision changed")
     protocol_revision = C.require_revision_ancestor_of_head(planner_revision)
+    require_p5_to_p6_git_lineage(p6_planner_revision=planner_revision)
     cache = C.cached_revision(planner_revision)
     return {
         "planner_revision": planner_revision,
@@ -1449,6 +1631,17 @@ def _full_common_protocol_metadata(
         "planner_build_config": C.CACHE_BUILD_NAME,
         "planner_binary_sha256": cache_binary_sha256,
         "planner_revision_cache_name": cache.name,
+        "p5_to_p6_git_lineage_protocol": P5_TO_P6_GIT_LINEAGE_PROTOCOL,
+        "p5_heldout_protocol_revision_is_p6_full_planner_ancestor": True,
+        "p5_heldout_planner_revision_is_p6_full_planner_ancestor": True,
+        "presearch_sigxcpu_normalization_protocol": (
+            PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL
+        ),
+        "presearch_sigxcpu_raw_exit_code": PRESEARCH_SIGXCPU_RAW_EXIT_CODE,
+        "presearch_sigxcpu_effective_exit_code": (
+            PRESEARCH_SIGXCPU_EFFECTIVE_EXIT_CODE
+        ),
+        "presearch_sigxcpu_components": list(PRESEARCH_SIGXCPU_COMPONENTS),
         "external_plan_validation": False,
         "plan_validation_protocol": C.PLAN_VALIDATION_PROTOCOL,
         "plan_file_parser_protocol": C.PLAN_FILE_PARSER_PROTOCOL,
@@ -1559,6 +1752,17 @@ def make_protocol_metadata(
         "selector_family_winner": matrix["selector_winner"]["label"],
         "matched_same_k_unbatched": matrix["matched_unbatched"],
         "heldout_protocol": V.PROTOCOL,
+        "p5_heldout_protocol_revision": P5_HELDOUT_PROTOCOL_REVISION,
+        "p5_heldout_planner_revision": P5_HELDOUT_PLANNER_REVISION,
+        "p5_heldout_planner_binary_sha256": (
+            P5_HELDOUT_CACHE_BINARY_SHA256
+        ),
+        "p5_heldout_planner_preprocess_sha256": (
+            P5_HELDOUT_CACHE_PREPROCESS_SHA256
+        ),
+        "p5_heldout_planner_revision_cache_name": (
+            P5_HELDOUT_PLANNER_REVISION + P5_HELDOUT_CACHE_NAME_SUFFIX
+        ),
         "heldout_initial_dead_construction_logging_protocol": (
             V.INITIAL_DEAD_CONSTRUCTION_LOGGING_PROTOCOL
         ),
@@ -1978,9 +2182,9 @@ def _expected_static_properties(metadata, label, search, task, run_id):
 
 
 def _attest_runtime_tree(code_dir):
-    if V.PLANNER_REVISION != PLANNER_REVISION:
-        raise ProtocolError("held-out/full runtime revision pins differ")
-    return V._attest_runtime_tree(code_dir)
+    return V._attest_runtime_tree(
+        code_dir, planner_revision=P6_FULL_PLANNER_REVISION
+    )
 
 
 def _attest_fresh_start_job(grid_path, num_runs):
@@ -2473,33 +2677,48 @@ def self_test_preflight_helpers():
 def self_test():
     validate_fixed_environment()
     self_test_full_parser_registration()
+    runtime_attestations = []
+    original_runtime_attestor = V._attest_runtime_tree
+    V._attest_runtime_tree = lambda code_dir, planner_revision: (
+        runtime_attestations.append((Path(code_dir), planner_revision))
+    )
+    try:
+        _attest_runtime_tree(Path("synthetic-P6-code"))
+    finally:
+        V._attest_runtime_tree = original_runtime_attestor
+    if runtime_attestations != [
+        (Path("synthetic-P6-code"), P6_FULL_PLANNER_REVISION)
+    ]:
+        raise AssertionError("full runtime tree was not attested against P6")
     original_job_hashes = dict(EXPECTED_PROSPECTIVE_JOB_SHA256)
-    if all(
-        value is None
-        for value in (
-            PLANNER_REVISION,
-            CACHE_BINARY_SHA256,
-            CACHE_PREPROCESS_SHA256,
-        )
-    ):
+    validate_cache_pins(
+        require_cache_hashes=False,
+        require_job_hashes=False,
+    )
+    if CACHE_BINARY_SHA256 is None and CACHE_PREPROCESS_SHA256 is None:
         _expect_protocol_error(
             lambda: validate_cache_pins(require_job_hashes=False),
-            "downstream planner revision is unset",
+            "P6 full cache SHA-256 pins are unset",
         )
     else:
         validate_cache_pins(require_job_hashes=False)
-    synthetic_revision = C.REV
+    if require_p5_to_p6_git_lineage() is not True:
+        raise AssertionError("P5-to-P6 lineage attestation changed")
+    _expect_protocol_error(
+        lambda: require_p5_to_p6_git_lineage(
+            p5_planner_revision=P6_FULL_PLANNER_REVISION,
+            p6_planner_revision=P5_HELDOUT_PLANNER_REVISION,
+        ),
+        "is not an ancestor of P6 full planner",
+    )
     synthetic_binary = hashlib.sha256(b"synthetic full planner").hexdigest()
     synthetic_preprocess = hashlib.sha256(
         b"synthetic full preprocess"
     ).hexdigest()
     synthetic_pin_args = {
-        "planner_revision": synthetic_revision,
+        "planner_revision": P6_FULL_PLANNER_REVISION,
         "cache_binary_sha256": synthetic_binary,
         "cache_preprocess_sha256": synthetic_preprocess,
-        "heldout_planner_revision": synthetic_revision,
-        "heldout_cache_binary_sha256": synthetic_binary,
-        "heldout_cache_preprocess_sha256": synthetic_preprocess,
     }
     validate_cache_pins(
         require_job_hashes=False,
@@ -2514,7 +2733,49 @@ def self_test():
             expected_job_sha256=original_job_hashes,
             **mismatched_heldout_pins,
         ),
-        "differs from held-out downstream planner/cache pins",
+        "exact held-out P5 provenance pin changed",
+    )
+    bad_full_revision = dict(synthetic_pin_args)
+    bad_full_revision["planner_revision"] = P5_HELDOUT_PLANNER_REVISION
+    _expect_protocol_error(
+        lambda: validate_cache_pins(
+            require_job_hashes=False,
+            expected_job_sha256=original_job_hashes,
+            **bad_full_revision,
+        ),
+        "P6 full planner revision pin changed",
+    )
+    bad_cache_suffix = dict(synthetic_pin_args)
+    bad_cache_suffix["cache_name_suffix"] = "_00000000"
+    _expect_protocol_error(
+        lambda: validate_cache_pins(
+            require_job_hashes=False,
+            expected_job_sha256=original_job_hashes,
+            **bad_cache_suffix,
+        ),
+        "P6 full cache-name suffix pin changed",
+    )
+    bad_normalization_protocol = dict(synthetic_pin_args)
+    bad_normalization_protocol[
+        "presearch_sigxcpu_normalization_protocol"
+    ] = "changed"
+    _expect_protocol_error(
+        lambda: validate_cache_pins(
+            require_job_hashes=False,
+            expected_job_sha256=original_job_hashes,
+            **bad_normalization_protocol,
+        ),
+        "pre-search SIGXCPU normalization protocol changed",
+    )
+    _expect_protocol_error(
+        lambda: validate_cache_pins(
+            require_cache_hashes=False,
+            require_job_hashes=False,
+            cache_binary_sha256=synthetic_binary,
+            cache_preprocess_sha256=None,
+            expected_job_sha256=original_job_hashes,
+        ),
+        "must be either both set or both unset",
     )
     partial_job_hashes = dict(original_job_hashes)
     run_counts = sorted(partial_job_hashes)
@@ -2619,7 +2880,7 @@ def self_test():
             "source_manifest_sha256": EXPECTED_SOURCE_MANIFEST_SHA256,
             "task_sources_sha256": EXPECTED_TASK_SOURCES_SHA256,
         },
-        planner_revision=C.REV,
+        planner_revision=P6_FULL_PLANNER_REVISION,
         cache_binary_sha256=hashlib.sha256(
             b"synthetic full binary"
         ).hexdigest(),
@@ -2628,7 +2889,29 @@ def self_test():
         ).hexdigest(),
     )
     required_full_metadata = {
+        "protocol": PROTOCOL,
         "analysis_protocol": FULL_ANALYSIS_PROTOCOL,
+        "planner_revision": P6_FULL_PLANNER_REVISION,
+        "p5_heldout_protocol_revision": P5_HELDOUT_PROTOCOL_REVISION,
+        "p5_heldout_planner_revision": P5_HELDOUT_PLANNER_REVISION,
+        "p5_heldout_planner_binary_sha256": (
+            P5_HELDOUT_CACHE_BINARY_SHA256
+        ),
+        "p5_heldout_planner_preprocess_sha256": (
+            P5_HELDOUT_CACHE_PREPROCESS_SHA256
+        ),
+        "p5_heldout_planner_revision_cache_name": (
+            P5_HELDOUT_PLANNER_REVISION + P5_HELDOUT_CACHE_NAME_SUFFIX
+        ),
+        "p5_to_p6_git_lineage_protocol": P5_TO_P6_GIT_LINEAGE_PROTOCOL,
+        "p5_heldout_protocol_revision_is_p6_full_planner_ancestor": True,
+        "p5_heldout_planner_revision_is_p6_full_planner_ancestor": True,
+        "presearch_sigxcpu_normalization_protocol": (
+            PRESEARCH_SIGXCPU_NORMALIZATION_PROTOCOL
+        ),
+        "presearch_sigxcpu_raw_exit_code": -24,
+        "presearch_sigxcpu_effective_exit_code": 21,
+        "presearch_sigxcpu_components": ["translate", "preprocess"],
         "pilot_planner_revision": PILOT_PLANNER_REVISION,
         "pilot_planner_binary_sha256": PILOT_PLANNER_BINARY_SHA256,
         "pilot_planner_preprocess_sha256": (
@@ -2725,7 +3008,7 @@ def self_test():
     self_test_preflight_helpers()
     print(
         "Arrhenius selector full runner self-test: PASS "
-        "(artifact/P4 provenance; downstream v3 prelog; tampering; "
+        "(artifact/P4/P5/P6 split provenance; downstream v4 SIGXCPU; tampering; "
         "frozen 1377-task sources; 7/8 configs; "
         "9639/11016 cells; 70/75-minute <=1000 arrays; fresh/no-submit gates)"
     )
@@ -2744,7 +3027,7 @@ def self_test():
         )
         or not all(EXPECTED_PROSPECTIVE_JOB_SHA256.values())
     ):
-        print("launch gate: BLOCKED (downstream planner/cache/job pins are unset)")
+        print("launch gate: BLOCKED (P6 full cache/job pins are unset)")
     else:
         print("launch gate: downstream planner/cache/job pins set")
 
@@ -2875,6 +3158,8 @@ def main(argv=None):
         return 0
 
     validate_cache_pins()
+    if launch_requested:
+        require_p5_to_p6_git_lineage()
     cache_info = C.require_launch_prerequisites(
         PLANNER_REVISION,
         CACHE_BINARY_SHA256,
