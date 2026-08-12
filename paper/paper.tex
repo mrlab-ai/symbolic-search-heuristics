@@ -1,7 +1,8 @@
 % =========================================================================
-% Width-Bounded Heuristics for Symbolic Search
-% Draft for ICAPS 2027. Compile with pdflatex; port to icaps27.sty later.
-% Experiments section specifies the prospective SymK evaluation.
+% Cofactor Width as a Representation-Safety Constraint
+% Draft for ICAPS 2027. Compile with `make -C paper`; port to icaps27.sty later.
+% Experiments report the frozen P4 screen and P5 held-out stage; the P6 full
+% census is pending.
 % =========================================================================
 \documentclass[letterpaper]{article}
 \usepackage[margin=1in]{geometry}
@@ -51,8 +52,8 @@
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
-\title{Selecting Heuristics for Symbolic Search under Exact
-Cofactor-Width Budgets}
+\title{Cofactor Width as a Representation-Safety Constraint for
+Heuristic Symbolic Search}
 \author{Anonymous for review}
 \date{}
 
@@ -61,47 +62,36 @@ Cofactor-Width Budgets}
 
 % ============================== abstract =================================
 \begin{abstract}
-Symbolic search with binary decision diagrams (BDDs) is a leading
-approach to cost-optimal classical planning, but its dominant
-instantiation remains blind: partitioning the search frontier by
-heuristic value can increase BDD sizes so much that even the perfect
-heuristic can increase cumulative BDD representation effort exponentially.
-We give a representation-side sufficient condition for safety. A heuristic has
-\emph{cofactor width} $W$ under the search's variable order if its value
-is computable by scanning the state variables once in that order while
-distinguishing at most $W$ residual functions. We prove that partitioning
-\emph{any} state-set BDD by such a heuristic has total size at most
-$TWn$ times the augmented input size $|B|+2$, where $T\leq W$ is its
-number of terminals. Symbolic \astar\ with a consistent width-$W$
-heuristic and $V\leq T$ finite values has effort at most $VWn$ times blind
-effort plus the stated layer-additive term, and hence at most $3VWn$
-(and no more than $3W^2n$) times blind effort.
-The known exponential deterioration requires exponential width, and an
-explicit family realizes an $\Omega(W^2)$ overhead ratio. Integer
-potential heuristics, pattern databases (PDBs), and aligned linear
-merge-and-shrink abstractions instantiate the class.
+Cost-optimal symbolic planners represent state sets with binary decision
+diagrams (BDDs), yet mostly search blind: slicing a frontier by heuristic value
+can make even the perfect heuristic increase representation effort
+exponentially.  We introduce \emph{cofactor width} $W$---the maximum number of
+residual functions after any prefix of the fixed Boolean variable order---as
+a sufficient condition for representation safety.  For a state-set BDD $B$
+over $n$ variables and a heuristic with $T$ terminals, all value slices have
+total size at most $TWn(|B|+2)$.  On a positive-cost task of optimal cost
+$\copt$, a consistent width-$W$ heuristic taking $\values$ finite values yields
+product-at-evaluation forward \bddastar\ effort at most
+$\values Wn(\effort(\task,\hblind)+2\copt)$ and a ratio to blind effort of at
+most $3\values Wn\leq3W^2n$.  The known exponential pathology has exponential
+width; a separate family realizes an $\Omega(W^2)$ ratio, while joint
+$\values Wn$ tightness remains open.  Integer potentials, bounded-state
+pattern databases (PDBs), and aligned linear merge-and-shrink instantiate the
+class.  In an image-aware model, pruning-only search removes the factor
+$\values$ by retaining one high-level image per active $g$-layer.
 
-Width is a worst-case safety certificate, not a proxy for heuristic
-quality, construction cost, or wall-clock performance. We therefore
-separate the width constraint from the objectives optimized within it.
-Our implementation measures exact cofactor width from a heuristic's
-total ADD, filters a fixed, deduplicated pool of PDB candidates by an
-explicit width budget, and ranks only the feasible candidates by
-goal-distance information. Two complementary controls address costs
-outside the width theorem: same-$g$ speculative batching amortizes
-high-level image calls while deferring logical expansion order, and a
-construction deadline makes merge-and-shrink fall back to blind search.
-We specify a prospective three-stage evaluation on the Arrhenius cluster:
-a frozen 50-task screen, a disjoint 92-task held-out comparison, and a
-current-cluster rerun on the full 1377-task supported population. The frozen
-screen selects exact merge-and-shrink (43/50 tasks) over its capped control
-(also 43/50 but worse PAR2), blind search (30/50), and every width-constrained
-PDB treatment (at most 30/50). Batching reduces completed image calls on
-complete pairs but worsens coverage and image time. On the disjoint held-out
-set, the selected width-one PDB solves 41/92 tasks against CEGAR's 40/92; the
-domain-bootstrap interval on their macro-coverage difference spans zero. A
-construction-limited M\&S safeguard solves 43/92 with five blind fallbacks.
-The full census remains prospectively fixed and open.
+We implement an exact-width selector over a fixed PDB pool, same-$g$ image
+batching, and a construction-bounded merge-and-shrink safeguard.  On a
+50-task screen, uncapped and capped merge-and-shrink each solve 43 tasks; the
+uncapped variant wins the frozen PAR2 tie-break, while the selector-family
+winner is the empty width-one PDB (30/50).  On the 24--27 complete pairs,
+batching reduces completed image calls but increases image time, and it lowers
+overall coverage.  On 92 disjoint held-out tasks, the selector solves 41
+tasks against CEGAR's 40, but the predeclared domain-resampling interval spans
+zero; the safeguard solves 43 tasks with five blind fallbacks.  Width thus
+certifies representational safety but neither ranks heuristic quality nor
+predicts runtime.  Pruning-only search and potentials are outside the frozen
+empirical matrix; its 1377-task census remains pending.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -133,8 +123,8 @@ some domains and lose in others
 effort of an expansion is governed by the number of BDD nodes rather than
 the number of represented states, and they prove that even the perfect
 heuristic \hstar\ can increase the cumulative size of the expanded BDDs
-exponentially. Consequently, heuristic symbolic search lost traction, the
-one notable exception being operator-potential heuristics
+exponentially. Against this backdrop, heuristic symbolic search has seen
+limited uptake. A notable recent direction uses operator-potential heuristics
 \citep{fiser-et-al-aaai2022,fiser-et-al-aij2024}, which integrate
 LP-based potential heuristics \citep{pommerening-et-al-aaai2015} into
 \ghseta\ and empirically ``hardly ever suffer'' from increased BDD sizes.
@@ -148,23 +138,24 @@ formulas and explicitly leaves heuristics aside.
 
 In this paper we address this gap. We introduce \emph{width-bounded
 heuristics}: a heuristic has cofactor width $W$ under a variable order
-if its value can be determined by reading the state variables once in
+if its value can be determined by reading the Boolean encoding variables once in
 that order while maintaining at most $W$ distinct cases at any point,
 i.e., if every cut through its quasi-reduced ADD in the search's variable
 order contains at most $W$ distinct residual functions. (A reduced ADD may
 skip levels, so its displayed node count at one level is not equivalent.) Our
 contributions are as follows.
 First, we prove a \emph{fragmentation theorem}: partitioning an arbitrary
-state-set BDD by the values of a width-$W$ heuristic yields buckets whose
-total size is bounded by a polynomial in $W$ times the size of the
-original BDD---for every state set, every layer and every task. The bound
+state-set BDD $B$ by a width-$W$ heuristic with $T\leq W$ terminals yields
+buckets of total size at most $TWn(|B|+2)$, where $n$ is the number of binary
+variables---for every state set, every layer and every task. The bound
 covers both known failure modes of heuristic symbolic search, the
 fragmentation of the frontier and the fact that a subset of a state set
 can have an exponentially larger BDD. Second, we prove a
 \emph{search-effort theorem}: \bddastar\ with a consistent width-$W$
-heuristic and $V$ finite values has cumulative BDD size at most $VWn$ times
+heuristic and $\values$ finite values has cumulative BDD size at most
+$\values Wn$ times
 blind effort plus the stated layer-additive term, and hence a factor at most
-$3VWn\leq3W^{2}n$, where $n$ is the number of binary variables.
+$3\values Wn\leq3W^{2}n$, where $n$ is the number of binary variables.
 Third, we delimit the bound from both sides: the pathological
 heuristic in the construction of \citet{speck-et-al-icaps2020} has width
 $2^{\Omega(n)}$, so exponential width is necessary for their exponential
@@ -176,14 +167,14 @@ width-bounded families:
 integer potential heuristics, pattern databases with a bounded abstract
 state space, and merge-and-shrink heuristics whose linear merge order is
 aligned with the search order---in that aligned case, the shrink size limit
-\emph{is} a width bound. This yields a
+implies width at most $d(N+1)$. This yields a
 representation-effort guarantee for integer potential level sets;
 delta-partitioned operator-potential search requires a separate analysis.
 Fifth, we refine the cost model of symbolic
 search to count high-level image operations, which the node-based effort
 measure cannot see, and analyze a \emph{pruning-only} search that
 keeps the layer structure of blind search, uses the heuristic solely for
-provably sound discards, and removes the factor $V$ due to value
+provably sound discards, and removes the factor $\values$ due to value
 partitioning from the effort bound.
 Finally, we turn the sufficient condition into a selector rather than a
 post-hoc diagnostic. In SymK \citep{speck-et-al-jair2025}, we compute exact
@@ -193,11 +184,12 @@ feasible remainder by a deterministic score whose leading criteria measure
 informativeness. We combine this selector with same-$g$ speculative batching
 and compare it with blind search, conventional PDB construction, and
 merge-and-shrink controls under a frozen screen and predeclared held-out
-protocol. The held-out and full-suite stages carry the frozen matrix forward
-under a prospectively corrected protocol. The held-out result is reported
-below and the full-suite result remains pending. No result from an older
-cluster or an incompatible logging convention is used as evidence for the
-claims in this paper.
+protocol. The accepted P5 held-out stage and the pending P6 full-suite stage
+carry the same frozen matrix forward under separately attested producer
+identities. The held-out result is reported below and the full-suite result
+remains pending. Archived outcomes informed
+only the composition of the selection screen; every performance observation
+reported here comes from Arrhenius under a compatible logging protocol.
 
 % ============================ background =================================
 \section{Background}
@@ -389,8 +381,9 @@ unrelated to the novelty width of \citet{lipovetzky-geffner-ecai2012},
 which measures the size of value tuples needed to distinguish states
 during search, and only indirectly related to structural graph
 parameters such as pathwidth, whose boundedness is a classical
-sufficient condition for small OBDDs \citep{wegener-2000}. Width-style size measures likewise underlie knowledge
-compilation \citep{darwiche-marquis-jair2002,darwiche-ijcai2011}, where
+sufficient condition for small OBDDs \citep{wegener-2000}. Width-style size
+measures likewise underlie knowledge compilation
+\citep{darwiche-marquis-jair2002,darwiche-ijcai2011}, where
 bounded-width classes trade succinctness for tractable operations---the
 same currency our results spend on search. Three
 immediate consequences will do much of the work below.
@@ -422,11 +415,12 @@ $\width_\pi(h_1 \oplus h_2) \leq W_1 \cdot W_2$.
 \end{proposition}
 
 \begin{proof}
-For every prefix $\rho$ we have
-$(h_1 \oplus h_2)|_\rho = h_1|_\rho \oplus h_2|_\rho$, so the map
-$(h_1|_\rho, h_2|_\rho) \mapsto (h_1 \oplus h_2)|_\rho$ is a surjection
-from a set of size at most $W_1 W_2$ onto $\sub{i}{h_1 \oplus h_2}$ for
-every $i$.
+Fix $i\in\{0,\dots,n\}$. The set of realized pairs
+$\{\, (h_1|_\rho,h_2|_\rho) \mid \rho\in\{0,1\}^i \,\}$ has cardinality
+at most $W_1W_2$. Because
+$(h_1 \oplus h_2)|_\rho = h_1|_\rho \oplus h_2|_\rho$, mapping each
+realized pair to its pointwise combination is well defined and surjects onto
+$\sub{i}{h_1 \oplus h_2}$. The claim follows by maximizing over $i$.
 \end{proof}
 
 Hence maximization and admissible additive combinations of few
@@ -436,7 +430,7 @@ reduce the interface exposed to symbolic search.
 
 Call a possibly signed function
 $q\colon\states\to\mathbb Z\cup\{\infty\}$ a \emph{raw admissible and
-consistent estimate} if $q(s)\leq h^*(s)$ for every state,
+consistent estimate} if $q(s)\leq \hstar(s)$ for every state,
 $q(s)\leq c+q(s')$ for every transition $s\xrightarrow{c}s'$, and
 $q(s)\leq0$ on goals.
 
@@ -468,38 +462,38 @@ $\phi(0)=0$ imply
 $\phi(a)=0$ for $a\leq0$, while the last condition with $a=0$ implies
 $\phi(a)\leq a$ for $a\geq0$. Hence
 for finite $q(s)$,
-$\phi(q(s))\leq\max(0,q(s))\leq h^*(s)$. If $q(s)=\infty$,
-raw admissibility implies $h^*(s)=\infty$, so transformed admissibility
+$\phi(q(s))\leq\max(0,q(s))\leq \hstar(s)$. If $q(s)=\infty$,
+raw admissibility implies $\hstar(s)=\infty$, so transformed admissibility
 also holds. Thus $h$ is admissible and zero on goals. Finally,
 $(\phi\circ q)|_\rho=\phi\circ(q|_\rho)$ for every prefix $\rho$.
 Terminal transformation can merge cofactors but cannot create new ones.
 \end{proof}
 
 Two useful instances are rectification
-$\phi_+(a)=\max(0,a)$ and, for $K\in\mathbb{Z}_{\geq0}$,
+$\phi_+(a)=\max(0,a)$ and, for $\kappa\in\mathbb{Z}_{\geq0}$,
 \[
-\phi_K(a)=
+\phi_\kappa(a)=
 \begin{cases}
-\min(\max(0,a),K), & a<\infty,\\
+\min(\max(0,a),\kappa), & a<\infty,\\
 \infty, & a=\infty.
 \end{cases}
 \]
-Thus rectifying a signed estimate and capping a nonnegative integer
-heuristic to $\min(h,K)$ preserve admissibility and consistency without
-increasing width. The cap has at most $K+1$ finite values, so it also
+Thus rectifying a signed estimate and applying $\phi_\kappa$ to a nonnegative
+integer heuristic preserve admissibility and consistency without
+increasing width. The cap has at most $\kappa+1$ finite values, so it also
 caps the number of \bddastar\ buckets and product-at-evaluation image
 calls per layer while retaining recognized dead ends. In the refined
-search-effort bound below it also replaces the value-count factor $V$ by
-at most $K+1$, independently of the heuristic's cofactor width. This is a
+search-effort bound below it also replaces the value-count factor $\values$ by
+at most $\kappa+1$, independently of the heuristic's cofactor width. This is a
 candidate design principle; whether the information loss pays off is an
 experimental question.
 
 The cap is not an arbitrary discretization. Among all transforms
 satisfying Proposition~\ref{prop-transform} whose finite outputs lie in
-$\{0,\dots,K\}$, $\phi_K$ is pointwise strongest: the proof above gives
+$\{0,\dots,\kappa\}$, $\phi_\kappa$ is pointwise strongest: the proof above gives
 $\phi(a)\leq\max(0,a)$, while the codomain gives
-$\phi(a)\leq K$, hence $\phi(a)\leq\phi_K(a)$. Thus no other safe
-monotone post-transform with the same terminal ceiling retains a larger
+$\phi(a)\leq\kappa$, hence $\phi(a)\leq\phi_\kappa(a)$. Thus no other safe
+monotone post-transform with the same finite-output ceiling retains a larger
 estimate at any state.
 
 Finally, width-boundedness is essentially equivalent to
@@ -596,13 +590,14 @@ middle inequality, fix $i \in \{0, \dots, n-1\}$ and define the set of
 \emph{realized pairs}
 $R_i = \{\, (\chi_S|_\rho,\, h|_\rho) \mid \rho \in \{0,1\}^i \,\}$.
 Consider the map
-$\mu \colon \sub{i}{\chi_{S \cap h^{-1}(U)}} \to R_i$ defined as
-follows: for $u \in \sub{i}{\chi_{S \cap h^{-1}(U)}}$, choose any
-prefix $\rho$ with $u = \chi_{S \cap h^{-1}(U)}|_\rho$ and set
-$\mu(u) = (\chi_S|_\rho, h|_\rho)$. The map is well defined on the
-chosen representatives, and it is injective: if
-$\mu(u) = \mu(u')$ via prefixes $\rho, \rho'$, then
-$\chi_S|_\rho = \chi_S|_{\rho'}$ and $h|_\rho = h|_{\rho'}$, so
+$\mu \colon \sub{i}{\chi_{S \cap h^{-1}(U)}} \to R_i$ as follows.
+For each $u \in \sub{i}{\chi_{S \cap h^{-1}(U)}}$, fix one witnessing
+prefix $\rho_u$ such that
+$u = \chi_{S \cap h^{-1}(U)}|_{\rho_u}$ and set
+$\mu(u) = (\chi_S|_{\rho_u}, h|_{\rho_u})$. This map is injective: if
+$\mu(u) = \mu(u')$, then
+$\chi_S|_{\rho_u} = \chi_S|_{\rho_{u'}}$ and
+$h|_{\rho_u} = h|_{\rho_{u'}}$, so
 $u = u'$ by Lemma~\ref{lem-pair}. Hence
 $|\sub{i}{\chi_{S \cap h^{-1}(U)}}| \leq |R_i|
 \leq |\sub{i}{\chi_S}| \cdot |\sub{i}{h}|
@@ -655,7 +650,8 @@ we do not claim a sharper aggregate bound from such sharing.
 \label{ex-parity}
 The factor $n$ in Theorems~\ref{thm-bucket} and~\ref{thm-partition}
 stems from Lemma~\ref{lem-qsize} and cannot be removed when sizes are
-measured in reduced BDDs. Let $S = \{\, s \mid s(x_1) = 1 \,\}$, so
+measured in reduced BDDs. For $n\geq2$, let
+$S = \{\, s \mid s(x_1) = 1 \,\}$, so
 $\bddsize{S} = 1$, and let $h(s) = \bigl(\sum_{i=1}^{n} s(x_i)\bigr)
 \bmod 2$, which has width $2$ under any order. The bucket
 $S \cap \level{h}{0}$ consists of the assignments with $x_1 = 1$ and an
@@ -881,6 +877,7 @@ second.
 
 \begin{corollary}
 \label{cor-effort}
+Under the assumptions of Theorem~\ref{thm-effort},
 $\effort(\task, h) \leq 3\,\values W n \cdot
 \effort(\task, \hblind) \leq
 3\, W^{2} n \cdot \effort(\task, \hblind)$.
@@ -888,11 +885,14 @@ $\effort(\task, h) \leq 3\,\values W n \cdot
 
 \begin{proof}
 Positive action costs imply $L_0=\{\sinit\}$. Since
-$0<\copt<\infty$, the Boolean state space is not a singleton, so $L_0$
-is proper. For every $g>0$, $\sinit\notin L_g$, and hence every nonempty
-layer is again a proper subset of the Boolean state space. Its reduced OBDD
-has at least one inner node, so $N \leq \effort(\task,\hblind)$ in
-Equation~\ref{eq-effort-nonempty}.
+$0<\copt<\infty$, the initial state is not a goal, while an optimal plan
+reaches a distinct goal state. The Boolean encoding therefore contains at
+least two assignments, and $L_0$ is a proper subset of $\{0,1\}^n$. For
+every $g>0$, $\sinit\notin L_g$, so every nonempty $L_g$ with $g<\copt$
+is likewise a proper subset of the cube. Its characteristic function is
+nonconstant and its reduced OBDD has at least one inner node. Consequently
+$N \leq \effort(\task,\hblind)$, and substitution in
+Equation~\ref{eq-effort-nonempty} proves both inequalities.
 \end{proof}
 
 The state-set part of Theorem~\ref{thm-effort} transfers to
@@ -900,13 +900,14 @@ variants that visit the same semantic buckets, including Lazy
 \bddastar\ at the frontier-representation level. This is not a bound on
 the primitive operations of SetA\ensuremath{^{*}} or cost-general
 \ghseta: those methods use transition-relation partitions, whose number
-and BDD sizes require separate accounting. Two honest limitations. First, the guarantee is
+and BDD sizes require separate accounting. Two scope limitations remain.
+First, the guarantee is
 one-sided by design: it caps the overhead of using $h$, while the
 potential savings, namely the layers and dead ends that $h$ prunes via
 the constraints $g + v \leq \copt$ and $v \neq \infty$, remain
 unbounded, which is the desired asymmetry. Second, the baseline is blind
-\emph{forward} search; the strongest blind configuration in practice is
-bidirectional \citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and
+\emph{forward} search; SymK's practical blind baseline is bidirectional
+\citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and
 extending the analysis to bidirectional search, where the backward
 frontier interacts with forward buckets, admits only the pointwise
 pruning observation in Section~\ref{sec-prune}. A complete
@@ -915,8 +916,8 @@ bidirectional guarantee remains open, as does the case of bidirectional
 
 \subsection{A Quadratic Ratio in $W$ Is Realizable}
 
-The factor $n$ in our bounds is unavoidable when width is held constant
-(Example~\ref{ex-parity}). We now give a complementary family whose
+The factor $n$ in the set-level bounds is unavoidable when width is held
+constant (Example~\ref{ex-parity}). We now give a complementary family whose
 heuristic-to-blind effort ratio is quadratic in $W$.
 
 \begin{theorem}[quadratic width-ratio family]
@@ -960,8 +961,10 @@ A unit-cost choice operator either leaves the residue unchanged or maps
 $r$ to $r+1\bmod W$, and
 $q(r)\leq1+q(r+1\bmod W)$. The goal operator can decrease $h$ by at
 most $W-1$ and costs $W$. Hence $h$ is consistent. Every plan from a
-non-goal state must still apply the cost-$W$ goal operator, so
-$h\leq W-1\leq h^*$; thus $h$ is admissible.
+non-goal state must still apply the cost-$W$ goal operator. Therefore a
+solvable non-goal state $s$ satisfies
+$h(s)\leq W-1<W\leq\hstar(s)$; admissibility is immediate at goals and
+dead ends.
 
 The heuristic ignores the $x$-block. While the $v$-block is read, its
 cofactor is determined by the partial residue, of which there are at
@@ -1017,8 +1020,9 @@ particular heuristic family will approach that case.
 We now revisit the family $\task_n$ of \citet{speck-et-al-icaps2020} on
 which \bddastar\ with \hstar\ is exponentially worse than with \hblind.
 The task has binary variables
-$v_1, \dots, v_{2n}$ and $x_0, \dots, x_{2n+1}$; initially only $x_0$
-is true, operators $o_i$ and $\bar o_i$ with precondition
+$v_1, \dots, v_{2n}$ and $x_0, \dots, x_{2n+1}$, for a total of
+$4n+2$ Boolean variables; initially only $x_0$ is true, operators $o_i$
+and $\bar o_i$ with precondition
 $x_{i-1} \wedge \neg x_i$ set $x_i$ true while setting $v_i$ true or
 false, respectively, and once $x_0, \dots, x_{2n}$ are all true, a goal
 operator $g_i$ with precondition $x_{2n} \wedge v_i \wedge v_{n+i}$ for
@@ -1061,13 +1065,13 @@ end and $\hstar(\rho_{A'} \sigma) = \infty \neq 1 =
 $\hstar|_{\rho_A} \neq \hstar|_{\rho_{A'}}$, and
 $|\sub{m}{\hstar}| \geq 2^{n}$. Since the argument evaluates \hstar\
 only on states, it applies to every total extension of \hstar\ to
-the full Boolean cube (Remark~\ref{rem-encoding}).
+the full cube $\{0,1\}^{4n+2}$ (Remark~\ref{rem-encoding}).
 \end{proof}
 
 Theorems~\ref{thm-effort} and~\ref{thm-lb} together delimit the
-phenomenon discovered by \citet{speck-et-al-icaps2020}: any heuristic that
-deteriorates \bddastar\ by a superpolynomial factor over blind search must
-have superpolynomial width under the search order. Their perfect heuristic
+phenomenon discovered by \citet{speck-et-al-icaps2020}: any consistent
+heuristic that deteriorates \bddastar\ by a superpolynomial factor over blind
+search must have superpolynomial width under the search order. Their perfect heuristic
 indeed has exponential width.
 Width-boundedness is a sufficient condition for safety, not a necessary
 one: a heuristic of large width may still happen to induce small
@@ -1092,15 +1096,16 @@ effects. We make this explicit.
 For $\alpha \geq 0$, the \emph{$\alpha$-effort} of a symbolic search run
 is $\effort_\alpha = \sum_{B} (\alpha + |B|)$, where the sum ranges over
 the image operations performed before termination and $B$ is the
-argument of each. The parameter $\alpha$ abstracts the per-call
-overhead; for $\alpha = 0$ and the expansions counted by
-Definition~\ref{def-effort}, the two measures coincide.
+argument of each. The parameter $\alpha$ abstracts the per-call overhead. For
+$\alpha = 0$, this measure coincides with Definition~\ref{def-effort} when the
+high-level image routine is invoked once on each counted expanded BDD.
 \end{definition}
 
 \begin{proposition}[image-call counts]
 \label{prop-calls}
-Let $N_\ell$ be the number of nonempty semantic blind layers $L_g$ with
-$g<C^*$.  An idealized blind implementation that stores each $L_g$ in
+Let $h$ be consistent with $\width_\pi(h)\leq W$, and let $N_\ell$ be the
+number of nonempty semantic blind layers $L_g$ with
+$g<\copt$.  An idealized blind implementation that stores each $L_g$ in
 one BDD performs $N_\ell$ counted high-level image invocations.
 An implementation of \bddastar\ that invokes its cost-image routine once
 for every expanded nonempty $(g,v)$ bucket performs
@@ -1114,7 +1119,7 @@ valid-state value count is known.
 The idealized blind implementation computes one image per nonempty
 semantic layer. Bucket-expanding \bddastar\ computes one image for every
 nonempty $(g,v)$ bucket. Its active $g$-layers form a subset of the
-blind layers below $C^*$ by Lemma~\ref{lem-identity}, and each has
+blind layers below $\copt$ by Lemma~\ref{lem-identity}, and each has
 $\values_g\leq\values$ buckets. The last inequality is
 Proposition~\ref{prop-range}.
 \end{proof}
@@ -1141,7 +1146,7 @@ untested direction here. For product-at-evaluation \bddastar, the factor
 is constructible: on the family of Theorem~\ref{thm-tight},
 \bddastar\ performs $\Theta(W)$ image calls on each of $\Theta(k)$ late
 layers, and hence $\Theta(W)$ calls per active pre-goal layer on average.
-The prospective evaluation therefore records attempted and completed
+The evaluation therefore records attempted and completed
 high-level image calls, their source-piece counts, and image time directly;
 none of these quantities is inferred from an older expansion-event proxy.
 
@@ -1195,8 +1200,9 @@ $W n \cdot (\effort(\task, \hblind) + 2\copt)$, removing the factor
 $\values$ due to value partitioning from the refined \bddastar\ bound of
 Theorem~\ref{thm-effort}, with one image operation per layer as in blind
 search. With $c = \infty$ throughout
-(no solution found yet) and no dead ends, the search coincides with
-blind forward search.
+(no solution found yet) and no dead ends, its semantic layers and expansions
+coincide with blind forward search; heuristic construction and evaluation can
+still consume time.
 \end{corollary}
 
 Pruning-only search trades the $f$-ordered expansion of \bddastar\ for
@@ -1297,7 +1303,7 @@ most $M$,
 \effort(\task,\hpot)
  \leq 3d(mM+1)(2mM+1)n\cdot\effort(\task,\hblind),
 \]
-a factor polynomial in the task size and $M$.
+a factor polynomial in the task size and the numeric magnitude $M$.
 \end{corollary}
 
 \begin{proof}
@@ -1310,6 +1316,9 @@ Corollary~\ref{cor-pot} gives a representation-effort guarantee when
 integer potentials are compiled into level sets and used by
 product-at-evaluation \bddastar. It gives an explicit
 polynomial-in-$(m,n,d,M)$ size bound for those level-set representations.
+Because $M$ may be encoded in binary, this is a pseudo-polynomial guarantee
+with respect to the coefficient magnitudes, not a polynomial bound in their
+bit length.
 It is not a complete performance guarantee for delta-partitioned \ghseta,
 whose relational products require the separate accounting described in
 Section~\ref{sec-cost}.
@@ -1399,18 +1408,20 @@ Running \bddastar\ with M\&S heuristics compiled into BDDs goes back to
 polynomial-size BDD representations for linear M\&S heuristics.
 Proposition~\ref{prop-ms} supplies a different consequence of the same
 cascading structure: when the linear merge order is the search variable
-order, the standard shrink limit $N$ is also an a-priori cofactor-width
+order, the standard shrink limit $N$ is also an a priori cofactor-width
 safety knob, and Theorems~\ref{thm-partition} and~\ref{thm-effort} then
 bound its effect on search frontiers. Since the final abstraction has at
 most $N$ finite distances, Corollary~\ref{cor-effort} gives a multiplicative
 factor at most $3dN(N+1)n$ over blind effort.
 
 The alignment premise is essential. Our causal-graph control explicitly
-uses \texttt{align\_merge\_order=false}; it is measured in the search
-order after construction, but it is \emph{not} covered by the analytic
-$d(N+1)$ bound. Conversely, setting the option to true satisfies the
-premise but can change abstraction quality. The experiment must therefore
-keep analytic certification, measured width, and informativeness distinct.
+uses \texttt{align\_merge\_order=false}; it is \emph{not} covered by the
+a priori $d(N+1)$ formula. Its exact post-construction width in the search
+order can nevertheless instantiate the general theorems. Conversely, setting
+the option to true supplies the closed-form parameter bound but can change
+abstraction quality. The experiment must therefore keep the a priori family
+guarantee, the post-construction width certificate, and informativeness
+distinct.
 In contrast, no small-width representation is known for
 $h^{\max}$, $h^{\mathrm{add}}$ or LM-cut, whose values depend on
 optimization problems that entangle all variables, and
@@ -1424,8 +1435,10 @@ force exponential width.
 The theory suggests a constrained design problem: enforce a
 representation-safety budget, then optimize heuristic information and
 operational cost inside the feasible set. It does \emph{not} justify
-minimizing width as the sole objective. A width-one heuristic can be
-blind, while two heuristics of the same width can differ substantially in
+minimizing width as the sole objective. Under our total-ADD definition and
+goal-zero convention, width one forces the single attained value zero, so the
+$K=1$ selector deliberately includes the blind endpoint as a sanity check.
+Two heuristics of the same larger width can still differ substantially in
 initial estimate, dead-end recognition, construction time, and the BDDs
 encountered during search. We implement the separation through exact
 measurement, a fixed PDB candidate pool, same-$g$ batching, and a
@@ -1505,10 +1518,11 @@ original keys; their goal tests, insertion into the closed list, and logical
 selection occur later in the ordinary $(f,g)$ order. The already-imaged
 \emph{source} BDDs are parked until that selection, while successors of the
 union image are partitioned and inserted immediately. For a consistent
-heuristic and positive operator costs, those successors cannot overtake their
-pending sources; this preserves the logical expansion trace and optimal
-solution cost, although it may generate successors that unbatched search would
-never need.
+heuristic and positive operator costs, the implementation invariant is that
+those successors cannot overtake their pending sources. An independent
+regression oracle compares the exact logical expansion trace and solution cost
+with the unbatched path; batching may nevertheless generate successors that
+unbatched search would never need.
 $\Delta=0$ is the ordinary per-bucket path. The evaluation includes a fixed
 $\Delta=16$ treatment and adaptive treatments with $\Delta=64$, maximum
 union ratio $1.0$, and maximum union size $10^6$ inner nodes. Width bounds
@@ -1523,17 +1537,19 @@ linear merge-and-shrink construction and conversion of its final abstraction
 to symbolic level sets. If the deadline expires or construction leaves more
 than one active factor, the incomplete heuristic is discarded and the same
 wrapper continues with blind forward symbolic search; construction time
-remains charged to the run. A terminal cap $\min(h,K)$ is also available and,
-by Proposition~\ref{prop-transform}, preserves consistency and cannot increase
-width while reducing the finite value count.
+remains charged to the run. A finite-value ceiling $\phi_\kappa\circ h$ is also
+available and, by Proposition~\ref{prop-transform}, preserves consistency and
+cannot increase width while reducing the finite value count.
 
 Our screening controls use a 10,000-state causal-graph linear abstraction
-with \texttt{align\_merge\_order=false}, both with exact distances and with
-terminal cap 32. Exact width is still measured in the search order, but the
+with \texttt{align\_merge\_order=false}, both with uncapped abstract goal
+distances and with finite heuristic values capped at 32. Exact width is still
+measured in the search order, but the
 closed-form $d(N+1)$ guarantee of Proposition~\ref{prop-ms} does not apply to
-these controls. An aligned construction would be analytically certified but
-is a different abstraction-quality treatment. Integer-potential box
-constraints remain another analytic route via Proposition~\ref{prop-pot};
+these controls. An aligned construction would have the a priori
+$d(N+1)$ bound but is a different abstraction-quality treatment.
+Integer-potential box constraints remain another analytic route via
+Proposition~\ref{prop-pot};
 they are outside the present \texttt{release\_no\_lp} evaluation.
 
 % ============================ experiments ================================
@@ -1545,22 +1561,23 @@ The theory already supplies the conditional statement: once a heuristic is
 inside a width budget, fragmentation has a polynomial worst-case bound. The
 experiment asks what heuristic information can be retained inside that
 constraint, whether batching reduces operational overhead, and how heuristic
-construction cost changes the comparison. All reported results will come
+construction cost changes the comparison. All reported results come
 from the current Arrhenius cluster; no older-cluster run is pooled with or used
 as a substitute for this evaluation.
 
 \subsection{Questions and Compared Methods}
 
 We predeclare three questions. \textbf{Q1:} How does the exact width budget
-change the selected PDB, its information statistics, and search outcomes?
+change the selected PDB's width, pattern size and source, and search outcomes?
 \textbf{Q2:} Does same-$g$ batching reduce completed high-level image calls and
 image time without sacrificing coverage? \textbf{Q3:} Does the resulting
 selector improve on conventional goal-fill and CEGAR PDB construction, and how
 does it compare with blind and M\&S controls after construction time is charged?
 
 The screening matrix contains five controls and fifteen selector treatments.
-The controls are blind forward search; causal-graph linear M\&S with 10,000
-states and exact terminal values; the same M\&S abstraction capped at 32;
+The controls are blind forward search; causal-graph linear M\&S with a
+10,000-state shrink limit and uncapped abstract goal distances; the same M\&S
+configuration with finite heuristic values capped at 32;
 goal-fill PDB construction with $B=100{,}000$; and CEGAR PDB construction with
 the same $B$, 10-second limit, and seed 2011. Both M\&S controls set
 \texttt{align\_merge\_order=false}; as emphasized above, their measured exact
@@ -1580,11 +1597,15 @@ five-source, $B=100{,}000$ candidate pool and CEGAR settings from
 Section~\ref{sec-synthesis}. The pool trace, its provenance-preserving
 deduplication, every candidate score and width, the feasible set, the selected
 record, and deterministic trace and pool hashes are logged.
+Pruning-only search is not part of this frozen empirical matrix and remains
+an analytic design direction.
 
 \subsection{Population, Stages, and Resources}
 
-The target population is the frozen set of 1377 positive-cost, axiom-free
-tasks from the optimal sequential IPC benchmarks through 2023. Positive
+The source inventory contains 1697 tasks from the optimal sequential IPC
+benchmarks through 2023. Frozen, disjoint exclusions remove 290 tasks with
+zero-cost operators and 30 with normalized axioms, leaving the target
+population of 1377 positive-cost, axiom-free tasks. Positive
 operator costs match the assumptions of Lemma~\ref{lem-identity} and the
 batching argument; the axiom exclusion is an implementation restriction of
 the abstraction heuristics. The frozen support manifest establishes operator
@@ -1599,20 +1620,27 @@ The evaluation has three stages.
 \paragraph{Stage 1: frozen screen.}
 The corrected screening manifest contains 50 tasks from 25 domains, exactly
 two tasks per domain. Crossing it with all 20 configurations gives 1000 cells.
-The frozen ordering records both the global 20-way winner and the first
+Its composition was assembled during development using archived outcome
+summaries to enrich difficult or discriminating cases. Those old measurements
+influence the screen composition only: they are neither pooled with the
+Arrhenius runs nor used as performance observations. The frozen ordering
+records both the 20-configuration screen winner and the first
 selector-family treatment in that same ordering. The latter remains available
 for a direct test of width-constrained selection even if a control wins
-globally. This stage performs selection; it is not used as a confirmatory
-estimate of either winner's advantage.
+among the screen configurations. This stage performs selection; it is not used
+as a confirmatory estimate of either winner's advantage.
 
 \paragraph{Stage 2: held-out comparison.}
 A separately frozen 92-task manifest contains two supported tasks in each of
-46 eligible domains and is disjoint from the screen and development-smoke
-tasks. Six configurations are fixed independently of the screen: the five
-screening controls plus M\&S capped at finite heuristic value 32 with a
+46 eligible domains and is disjoint from the screen, cap-validation, and
+development-smoke tasks. Within each domain, eligible remaining problem names
+are ordered by SHA-256 of a fixed seed, the domain, and the problem name
+(separated by NUL bytes), and the first two are selected; no planner outcome
+enters this ordering. Six configurations are fixed independently of the
+screen: the five screening controls plus M\&S capped at finite heuristic value 32 with a
 60-second construction budget and blind fallback. The Stage-1 selector-family
-winner is unbatched and is added without retuning, so the conditional same-$K$
-unbatched ablation is not instantiated. The global winner is already one of
+winner is unbatched and is added without retuning, so no additional same-$K$
+unbatched ablation is required. The screen winner is already one of
 the fixed controls and is recorded as an alias rather than a duplicate cell.
 The frozen stage therefore has exactly seven unique configurations and 644
 runs.
@@ -1620,22 +1648,32 @@ runs.
 The primary contrast is the selector-family winner against the CEGAR PDB
 control. Its estimand is the paired coverage difference within each domain,
 averaged equally over the 46 domains; a predeclared deterministic
-100,000-replicate domain bootstrap supplies a 95\% interval. The construction
-budget has its own matched safeguard.
-Comparisons with blind search, exact and capped M\&S, task-micro coverage,
-PAR2, runtime, construction time, image time, and observed exact-width
+100,000-replicate domain bootstrap supplies a 95\% domain-resampling interval.
+The construction budget has its own matched safeguard.
+The bootstrap resamples these 46 fixed domains. Its interval describes
+variation in domain composition; it does not capture task-selection or
+run-to-run uncertainty and is not an interval for the 1377-task census.
+Comparisons with blind search, uncapped and capped M\&S, task-micro coverage,
+PAR2, planner CPU time, construction time, image time, and observed exact-width
 summaries are descriptive because there is one run per cell. No held-out
 outcome changes the configuration ordering.
+The screen artifact and the held-out rerun intentionally retain separate
+provenance pins: the screen is the immutable selection record, whereas the
+held-out run uses the prospectively corrected producer revision described
+below. We therefore compare treatments only within a stage and do not
+interpret differences in absolute counts or times between stages as a
+cross-stage effect.
 
 \paragraph{Stage 3: full supported suite.}
-The grid and execution protocol for this stage are frozen, while its results
-remain pending. The complete seven-configuration held-out matrix is carried
-forward unchanged to all 1377 supported tasks on the same cluster, giving
-9639 cells. A separate runner freezes the selection-artifact hash, task-source
-bytes, option matrix, and array layout. This stage is an exact descriptive
+The population, matrix, execution contract, acceptance rule, and P6 launch
+identity are frozen, while all Stage-3 results remain pending.
+The complete seven-configuration held-out matrix is carried forward unchanged
+to all 1377 supported tasks on the same cluster, giving 9639 cells. A separate
+runner freezes the selection-artifact hash, task-source bytes, option matrix,
+and array layout. This stage is an exact descriptive
 census of the frozen supported population, not a third confirmatory or
-unseen-task experiment. It
-intentionally includes the 50 screening and 92 held-out tasks. We report the
+unseen-task experiment. It intentionally includes the 50 screening and 92
+held-out tasks. We report the
 selector-versus-CEGAR coverage difference averaged equally over the 46 domains,
 overall and per-domain coverage, and operational cost without sampling
 intervals. One predeclared sensitivity repeats that macro-coverage contrast on
@@ -1677,11 +1715,11 @@ inspected; there is no post-hoc cell fill.
 
 \subsection{Frozen Selection and Measurement}
 
-The Stage-1 promotion rule is lexicographic and global over all 20 labels:
+The Stage-1 promotion rule is one lexicographic order over all 20 labels:
 first maximize solved count; then minimize suite-micro PAR2, charging every
 unsolved cell 600 seconds; then minimize total image time only if all 1000
 cells have complete, semantically certified schema-v2 counters; finally choose
-the lexicographically smaller label. The global winner is the first label in
+the lexicographically smaller label. The screen winner is the first label in
 this order; the selector-family winner is the first selector treatment in the
 same order, without a second ranking rule. Costs of every solved task must
 agree across configurations. Unexpected exit outcomes, missing cells, a
@@ -1716,6 +1754,15 @@ costs, and a complete solved metric summary. Thus a CPU-limit signal during
 successful teardown cannot silently turn a durable plan into either an
 ordinary timeout or an uncertified success.
 
+The reconciliation was frozen before the accepted screen. Two earlier
+Arrhenius diagnostic grids are excluded: the first revealed that two zero-cost
+tasks had passed a source-identity-only support gate; the second exposed one
+durable plan followed by a raw CPU-limit exit during teardown. We
+prospectively corrected task admission and raw/effective reconciliation,
+rebuilt the 1000-cell grid, and reran every cell as P4. Those diagnostic
+outcomes serve only as protocol-failure evidence; no score or performance
+observation from them enters the selection artifact.
+
 The source and execution identities are frozen independently. The immutable
 Stage-1 P4 identity uses planner revision
 \texttt{58a3f742d7ac63f391d06c237573f14ad590c187}, stripped cached-binary SHA-256
@@ -1743,47 +1790,84 @@ parser, \texttt{wbh-exact-schema-semantic-v3} for metric validation, and
 \texttt{direct-search-raw-effective-plan-reconciliation/v1} for outcome
 certification.
 
-The prospectively corrected downstream P5 execution has a separate frozen
-identity: planner revision
+The accepted held-out P5 execution has a separate frozen identity: planner
+revision
 \texttt{165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f}, stripped cached-binary SHA-256
 \texttt{af2a19d236ecad9b747d2a1b9c49da73d98248c38d21cc60ad0ac7613d74bdbe},
 copied-preprocessor SHA-256
 \texttt{1b351a4a5f9380bf41fe9fd61b98c816505ebd8cf88b20afa0d81a9bfb2474bd},
-and clean launch-protocol revision R
-\texttt{a52488637a1c054b26dac93fe2eb1a556110a2dd}. Its held-out and full-suite
-protocols are \texttt{arrhenius-selector-heldout-validation-v3} and
-\texttt{arrhenius-selector-full-population-v3}, respectively. Both declare
+and clean launch-protocol revision
+\texttt{a52488637a1c054b26dac93fe2eb1a556110a2dd}. Its protocol is
+\texttt{arrhenius-selector-heldout-validation-v3}. It declares
 \texttt{pdb-ms-initial-dead-bdd-construction-prelog/v1}: a completed PDB or
 M\&S heuristic that proves the initial state dead emits its construction event
 before the normal unsolvable exit. The strict
 \texttt{wbh-exact-schema-semantic-v3} parser is unchanged.
-The full-suite analyzer emits schema
-\texttt{symbolic-search-heuristics/full-population-analysis/v3} under analysis
-protocol \texttt{full-supported-population-census-v1}.
 
-This amendment followed a fail-closed protocol audit, not a performance
-comparison. In the first downstream start, the first stable held-out
+The full-suite rerun is a distinct P6 execution. Its planner revision is
+\texttt{a3486a027a0f281e762cb6d66d72311455b66b33}. Before launch, the runner
+requires both the P5 launch-protocol revision and P5 planner revision above to
+be ancestors of this P6 planner under
+\texttt{git-merge-base-is-ancestor/p5-protocol-and-planner-to-p6-planner/v1}.
+P6 additionally implements
+\texttt{driver-translate-and-legacy-preprocess-negative-sigxcpu-to-21/v1}:
+for translation and legacy preprocessing, a negative child return of $-24$
+(\texttt{SIGXCPU}) becomes canonical planner resource-limit outcome 21 before
+search can start; search-process reconciliation is unchanged. The P6 full
+runner uses \texttt{arrhenius-selector-full-population-v4}, and its analyzer
+emits schema
+\texttt{symbolic-search-heuristics/full-population-analysis/v4} under analysis
+protocol \texttt{full-supported-population-census-v1}. Its
+\texttt{protocol-recognized-final-cell-outcome-census/v1} table retains every
+declared outcome-code bucket, including zeros; its unit is an attested final
+cell record, not a shell attempt generation or a component-process invocation.
+The clean P6 launch-protocol revision is
+\texttt{0cb19e111da36fbb32d1b3bc0f07a52b733fbbe9}; its stripped cached-binary
+and copied-preprocessor SHA-256 digests are
+\texttt{2887194c74acc88273702b807dba28e4fd8f7ae3d916562bcf1b83ec79632758}
+and
+\texttt{40e1d5580ec447cb606ead447317469bd861bd8cda398095df3fbf22922d0d23}.
+A scheduled compute-node smoke forced the legacy preprocessor limit and
+returned canonical outcome 21 with no search process, metric stream, plan, or
+stderr before these pins were committed.
+
+The immutable selection artifact, certified screen report, and accepted
+held-out analysis have SHA-256 digests
+\texttt{d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2},
+\texttt{e75daadefc6cf3cad3121ffb28959659dbc78523970945d575a97b18a319252c},
+and
+\texttt{7c598f068164224272b8ba035b987973f35d0d45e695f90c9083931790908cea},
+respectively.
+
+These amendments followed fail-closed protocol audits, not performance
+comparisons. In the first downstream start, the first stable held-out
 goal-fill cell whose heuristic proved the initial state dead exposed a missing
 construction event: producer ordering allowed the normal unsolvable exit
 before that event was emitted. Both arrays were canceled promptly. At
 cancellation, 53 held-out cells were stable and 20 full-suite cells bore
 wrapper-completion markers; none of those data are reused. The producer was
-fixed, and fresh grids replace both starts. Accepted downstream data must come
-from complete arrays in which every cell is rerun from scratch under the
-prospectively committed P5 identity. The selection artifact,
-seven-configuration matrix, Stage-1 ranking, declared comparisons, and
-statistical contrasts are unchanged, and downstream outcomes cannot reopen
-any of them. The accepted held-out rerun is now complete; the full census
-remains pending.
+fixed, and both grids were replaced. The accepted held-out rerun is complete
+under the P5 identity above.
+
+A later P5 full-suite start was also rejected in its entirety. Four of the
+1650 cells bearing wrapper-completion markers had received
+\texttt{SIGXCPU} in legacy preprocessing: the child return was $-24$, but the
+top-level shell surfaced 232 rather than a protocol-recognized resource-limit
+outcome. The array was canceled, and no completed cell, partial cell, or
+archived attempt from that start is reused. The pending P6 census reruns every
+cell from scratch with the normalization above. Across both amendments, the
+selection artifact, seven-configuration matrix, Stage-1 ranking, declared
+comparisons, and statistical contrasts are unchanged, and downstream outcomes
+cannot reopen any of them. The full census remains pending.
 
 \subsection{Results}
 
 \paragraph{Screen result.}
 All 1000 declared cells passed the protocol checks. Table~\ref{tab:screen}
-shows the decisive rows of the frozen 20-by-50 census. Exact M\&S and its
-control capped at finite heuristic value 32 both solved 43 tasks, but exact
-M\&S had 1.3706 seconds lower micro-PAR2 and was therefore selected globally
-before the image-time tie-break. Against blind search it gained 13 tasks net,
+shows the decisive rows of the frozen 20-by-50 census. Uncapped M\&S and its
+control capped at finite heuristic value 32 both solved 43 tasks, but uncapped
+M\&S had 1.3706 seconds lower micro-PAR2 and therefore won the frozen screen
+ordering before the image-time tie-break. Against blind search it gained 13 tasks net,
 with 17 exclusive wins and four losses. All 950 heuristic constructions
 completed, with no construction or pattern fallback.
 
@@ -1800,7 +1884,7 @@ completed, with no construction or pattern fallback.
     Configuration & Solved & Micro-PAR2 & Width & Image $n$ \\
     \midrule
     Blind forward & 30 & 264.9006 & -- & 30 \\
-    Exact M\&S (global winner) & 43 & 133.6736 & $11/201/149{,}079$ & 43 \\
+    Uncapped M\&S (screen winner) & 43 & 133.6736 & $11/201/149{,}079$ & 43 \\
     M\&S, finite-value cap 32 & 43 & 135.0442 & $11/185.5/58{,}010$ & 43 \\
     Selector $K=1$ (family winner) & 30 & 273.2554 & $1/1/1$ & 30 \\
     CEGAR PDB & 27 & 312.1382 & $2/18/2{,}696$ & 27 \\
@@ -1811,13 +1895,18 @@ completed, with no construction or pattern fallback.
 The selector-family winner, $K=1$, tied blind coverage but increased
 micro-PAR2 by 8.3548 seconds; descriptively, it solved three more tasks than
 the CEGAR PDB control. Its 50 certified traces all selected the empty,
-size-zero pattern and had exact width one. Relaxing the unbatched budget did
-not improve this result: the nine $K>1$ treatments solved 28--30 tasks and
+size-zero pattern and had exact width one. This PDB is semantically
+$h\equiv0$: it induces the blind partition while retaining the heuristic
+wrapper's construction and evaluation overhead. Relaxing the unbatched budget
+did not improve this result: the nine $K>1$ treatments solved 28--30 tasks and
 had micro-PAR2 277.1670--291.7778. At $K=32$, for example, selected widths
 ranged from 1 to 30 (median 17), selected pattern sizes from 0 to 16, and the
 primary-source counts in pool order---empty, BDD prefix, goal prefix, goal
 fill, and CEGAR---were $8/12/18/1/11$. Thus larger safe widths changed the
-selected abstractions without improving the selector-family ordering.
+selected abstractions without improving the selector-family ordering. Across
+the ten unbatched budgets in increasing order, the number of empty-pattern
+selections fell from 50 to $47/40/31/21/8/5/1/0/0$, yet coverage never exceeded
+30 tasks.
 
 Adaptive batching also regressed on this screen. Each $\Delta=64$ treatment
 lost three tasks against its same-$K$ unbatched reference and increased
@@ -1841,11 +1930,16 @@ the width-one selector solved 41 tasks and CEGAR solved 40.  The equally
 weighted 46-domain macro difference was therefore $1/92=1.09$ percentage
 points; because every domain contributes two tasks, it equals the task-micro
 difference in this sample.  The predeclared 100,000-replicate domain-bootstrap
-95\% interval was $[-1/46,1/23]$, or $[-2.17,4.35]$ percentage points, with two
-task-level discordant wins and one loss.  Thus the held-out data do not
-establish a clear selector coverage advantage over CEGAR.  The selector's
+95\% domain-resampling interval was $[-1/46,1/23]$, or
+$[-2.17,4.35]$ percentage points, with two task-level discordant wins and one
+loss.  Thus the held-out data do not
+establish a selector coverage advantage over CEGAR.  The selector's
 micro-PAR2 was 345.1040 seconds against 351.5588 seconds for CEGAR, while its
-planner-time geometric-mean ratio on the 39 jointly solved tasks was 1.006.
+planner CPU-time geometric-mean ratio on the 39 jointly solved tasks was 1.006.
+Because all eligible traces again selected the empty PDB, this primary
+contrast evaluates the frozen selection procedure in its blind-equivalent
+$h\equiv0$ outcome; it does not validate selection of an informative
+heuristic.
 
 \begin{table}[t]
   \centering
@@ -1854,32 +1948,40 @@ planner-time geometric-mean ratio on the 39 jointly solved tasks was 1.006.
   unsolved cell.  Width reports observed-cell count followed by
   median/maximum exact width.  Construction reports observed records/fallbacks
   and their total time.  Gaps are a pre-search cell in every configuration
-  and, for exact M\&S, one additional resource prefix before construction;
+  and, for uncapped M\&S, one additional resource prefix before construction;
   the five build-budget fallbacks supply no M\&S width.}
   \label{tab:heldout}
   \begin{tabular}{lrrcrr}
     \toprule
-    Configuration & Solved & PAR2 & Width $n;\widetilde{x}/\max$ &
+    Configuration & Solved & Micro-PAR2 & Width $n;\widetilde{x}/\max$ &
       Constr. $n/f$ & Constr. s \\
     \midrule
     Blind forward & 40 & 348.1627 & -- & -- & -- \\
-    Exact M\&S & 42 & 338.7962 & $90;142/14{,}540$ & $90/0$ & 769.928 \\
+    Uncapped M\&S & 42 & 338.7962 & $90;142/14{,}540$ & $90/0$ & 769.928 \\
     M\&S, finite-value cap 32 & 42 & 336.8272 & $91;135/14{,}540$ & $91/0$ & 1017.722 \\
     Goal-fill PDB & 41 & 345.3886 & $91;31/6{,}670$ & $91/0$ & 27.074 \\
     CEGAR PDB & 40 & 351.5588 & $91;17/6{,}672$ & $91/0$ & 12.570 \\
-    M\&S cap 32, 60-s build & 43 & 334.1384 & $86;123/14{,}540$ & $91/5$ & 701.311 \\
+    M\&S, value cap 32, 60-s build & 43 & 334.1384 & $86;123/14{,}540$ & $91/5$ & 701.311 \\
     Selector $K=1$ & 41 & 345.1040 & $91;1/1$ & $91/0$ & 54.185 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The construction safeguard was descriptively strongest in Table~\ref{tab:heldout}:
-it solved 43 tasks, one more than uncapped-build capped M\&S (one discordant
+The construction safeguard had the highest coverage among the seven evaluated
+forward configurations in Table~\ref{tab:heldout}: it solved 43 tasks, one
+more than capped M\&S without a build deadline (one discordant
 win, no loss), and reduced micro-PAR2 by 2.6888 seconds.  Five of its 92 cells
 fell back to blind search (5.43\%).  Across the 91 paired construction
 observations its total construction time was 0.689 times the reference total;
-on the 42 jointly solved tasks its planner-time geometric-mean ratio was
-0.994.  These are diagnostics of the predeclared safeguard, not a new ranking.
+on the 42 jointly solved tasks its planner CPU-time geometric-mean ratio was
+0.994. On the 86 cells where both M\&S constructions completed, their paired
+exact-width totals were identical (90,613); on the 42 jointly solved cells,
+their BDD-node-effort totals were also identical. These aggregate equalities
+are consistent with preserving the capped abstraction when the deadline is
+inactive. The five fallbacks identify cells on which construction did depart,
+but the frozen aggregate artifact does not attribute the discordant solve to a
+particular fallback. These are diagnostics of the predeclared safeguard, not a
+new ranking.
 
 Every configuration contributed 91 semantically certified image prefixes
 and one pre-search-empty cell.  Complete-summary image counts in table order
@@ -1890,18 +1992,19 @@ used 350.098 seconds against CEGAR's 446.812 seconds, a ratio of 0.784.
 The same two methods had 91 paired construction and width observations:
 selector construction took 4.311 times the CEGAR total, whereas its paired
 width totals were 91 and 14,707.  On 39 jointly solved cells its BDD-node
-effort ratio was 0.679.  All 91 eligible selector traces were complete and
-certified and selected the empty, width-one pattern.
+effort ratio was 0.679. Thus the selector spent 4.311 times CEGAR's paired
+construction total to return $h\equiv0$ in every eligible trace. All 91
+eligible selector traces were complete and certified.
 
 For context, the selector tied goal-fill coverage (two discordant wins and two
 losses) and lowered PAR2 by 0.2846 seconds; against blind it gained one task
-(one win, no loss) and lowered PAR2 by 3.0587 seconds; against exact and capped
+(one win, no loss) and lowered PAR2 by 3.0587 seconds; against uncapped and capped
 M\&S it lost one task (two wins and three losses in each comparison) and
 increased PAR2 by 6.3078 and 8.2768 seconds.  The respective jointly solved
-planner-time geometric-mean ratios were 0.874 ($n=39$), 1.428 ($n=40$),
-0.908 ($n=39$), and 0.907 ($n=39$).  Exact M\&S itself gained two tasks over
+planner CPU-time geometric-mean ratios were 0.874 ($n=39$), 1.428 ($n=40$),
+0.908 ($n=39$), and 0.907 ($n=39$).  Uncapped M\&S itself gained two tasks over
 blind (four wins and two losses) and lowered PAR2 by 9.3665 seconds, although
-its jointly solved runtime ratio was 1.632 ($n=38$).  The seven frozen
+its jointly solved planner CPU-time ratio was 1.632 ($n=38$).  The seven frozen
 configurations and every declared comparison remain unchanged; no held-out
 outcome was used to rerank them.
 
@@ -1909,7 +2012,7 @@ outcome was used to rerank them.
 \emph{[RESULT PLACEHOLDER: report the current-Arrhenius descriptive census on
 all 1377 supported tasks, including the selector-versus-CEGAR equally weighted
 46-domain macro-coverage contrast; overall and per-domain coverage; all-task
-micro-PAR2; solved-runtime summaries; and the carried jointly solved or
+micro-PAR2; solved planner CPU-time summaries; and the carried jointly solved or
 paired-observation comparisons. Report certified exact-width and construction
 summaries, including capped-M\&S fallback incidence; certified-prefix image
 time; complete-certified image time and call counts; and complete-call
@@ -1918,10 +2021,11 @@ counts; and solved-cell BDD-node effort, each with its exact eligible,
 certified/observed, solved, complete-summary, or paired-intersection
 denominator. Report the sole
 predeclared screen-excluded 1327-task sensitivity without an interval, plus
-completion-marker, Slurm-restart, partial-archive, and shell
-cell-attempt-generation counts globally and per configuration; do not describe
-attempt generations as planner invocations. Do not rerank configurations or
-substitute any archived coverage table.]}
+the protocol-recognized retained final-cell outcome census, completion-marker
+validity, Slurm-restart, partial-archive, and shell cell-attempt-generation
+counts globally and per configuration. Distinguish final cell records from
+attempt generations, and do not describe either as planner invocations. Do not
+rerank configurations or substitute any archived coverage table.]}
 
 Until the full-suite placeholder is filled from its attested artifact, the
 population-level empirical conclusion remains deliberately unresolved. The
@@ -1976,9 +2080,10 @@ one speculative image, while every source remains pending at its original key.
 It then replays the original logical $(f,g)$ order. This addresses the
 image-call multiplier of Proposition~\ref{prop-calls} without changing the
 heuristic representation, permanently merging open-list buckets, or compiling
-heuristic deltas into transition relations. Its guarantee is correspondingly
-limited to preservation of that logical trace and optimal cost under
-consistency and positive costs; it gives no a-priori runtime improvement.
+heuristic deltas into transition relations. Trace and solution-cost
+preservation under consistency and positive costs are implementation
+invariants checked by an exact regression oracle; batching carries no a
+priori runtime guarantee.
 
 Finally, \citet{speck-helmert-ecai2025} compare symbolic and explicit blind
 search through the representation of transition relations and goal formulas.
@@ -1995,8 +2100,9 @@ meeting points, and direction choices remains open.
 % ============================ conclusions ================================
 \section{Conclusions}
 
-Bounded cofactor width provides a worst-case safety certificate for heuristic
-symbolic search. Partitioning an arbitrary state-set BDD by a width-$W$
+For product-at-evaluation forward \bddastar\ on positive-cost tasks under a
+fixed variable order, bounded cofactor width provides a worst-case
+representation-effort certificate. Partitioning an arbitrary state-set BDD by a width-$W$
 heuristic with $T$ terminals costs at most $TWn$ times its augmented size.
 For search, a consistent width-$W$ heuristic with $\values$ finite values
 satisfies
@@ -2005,7 +2111,8 @@ $\effort(\task,h)\leq \values Wn
 multiplicative bound; $T,\values\leq W$ recover the simpler $W^2n$ and
 $3W^2n$ statements. The known exponential pathology requires
 exponential width, while a separate construction realizes a
-$\Omega(W^2)$ ratio. Integer potentials, bounded-state PDBs, and aligned
+$\Omega(W^2)$ ratio; whether the joint $\values Wn$ upper bound can be
+improved remains open. Integer potentials, bounded-state PDBs, and aligned
 linear M\&S abstractions connect the definition to familiar heuristic
 parameters. These results bound possible representational harm; they do not
 rank heuristics, pay their construction cost, or predict wall-clock time.
@@ -2014,23 +2121,31 @@ The implementation therefore enforces width while optimizing other concerns
 separately. It measures exact residual-frontier width on the total ADD, filters
 a fixed and deduplicated PDB pool, ranks only feasible candidates by a
 predeclared deterministic score, optionally batches same-$g$ images without
-advancing logical expansion order, and lets an over-budget M\&S construction
-fall back to blind search. The analytic $d(N+1)$ M\&S guarantee applies only
+advancing logical expansion order, and lets M\&S fall back to blind when its
+construction deadline expires or its factorization remains incomplete. The
+a priori $d(N+1)$ M\&S bound applies only
 to aligned merge and search orders; the evaluated
 \texttt{align\_merge\_order=false} control is explicitly outside it.
+The image-aware model additionally exposes the call overhead of value
+partitioning, and pruning-only search removes the factor $\values$ from the
+representation bound by retaining one image per active $g$-layer; that variant
+is not part of the present empirical matrix.
 
-The frozen Arrhenius screen gives a clear but deliberately local verdict.
-Exact M\&S is the global screen winner; the selector-family winner is the
-width-one empty PDB, which ties blind coverage but is slower; and the tested
-batching policies reduce image-call counts without improving coverage or image
-time on the certified complete pairs. Thus the width certificate bounds the
+The outcome-enriched Arrhenius screen yields a deterministic but deliberately
+local selection decision.
+Uncapped M\&S is the 20-configuration screen winner; the selector-family winner
+is the width-one empty PDB, semantically $h\equiv0$, which ties blind coverage
+but is slower. The tested batching policies lower coverage on the 50-task
+screen; on the certified complete pairs they reduce image-call counts but
+increase image time. Thus the width certificate bounds the
 targeted representation blow-up but is neither an informativeness criterion
 nor a performance predictor. On the disjoint held-out set the selector gains
-one task over CEGAR, but its predeclared domain-bootstrap interval spans zero;
-the construction-limited capped M\&S safeguard instead has the highest
-descriptive coverage, with five fallbacks. The full supported-suite census
-must still fill its placeholder in Section~\ref{sec-experiments} before these
-observations are generalized.
+one task over CEGAR, but its predeclared domain-resampling interval spans zero
+and the selected heuristic remains blind-equivalent; the construction-limited
+capped M\&S safeguard instead has the highest descriptive coverage among the
+seven evaluated forward configurations, with five fallbacks. The full
+supported-suite census must still fill its placeholder in
+Section~\ref{sec-experiments} before these observations are generalized.
 The central design lesson remains the separation of roles: width is the safety
 constraint; abstraction information, image-call amortization, and bounded
 setup cost are distinct optimization objectives.
