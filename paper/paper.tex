@@ -272,26 +272,17 @@ For every Boolean $f$ over $x_1, \dots, x_n$,
 $\bddsize{f} \leq \cofcount(f) \leq n \cdot (\bddsize{f} + 2)$.
 \end{lemma}
 
-\begin{proof}
-For the first inequality, consider a node $N$ of $\bdd{f}$ labeled
-$x_{i+1}$. Since every node of a reduced OBDD is reachable from the root,
-there is a path from the root to $N$; fixing the variables tested along
-this path to the corresponding edge values and all remaining variables
-among $x_1, \dots, x_i$ arbitrarily yields a prefix $\rho \in \{0,1\}^i$
-with $f|_\rho$ equal to the function computed by $N$, because variables
-skipped by long edges do not influence the traversal. Hence every node
-labeled $x_{i+1}$ computes an element of $\sub{i}{f}$, and by canonicity
-distinct nodes compute distinct functions, so the map is injective.
-Summing over $i$ gives
-$\bddsize{f} \leq \sum_{i=0}^{n-1} |\sub{i}{f}| = \cofcount(f)$. For the
-second inequality, fix $i$ and consider any $u \in \sub{i}{f}$. Either
-$u$ is a constant function, of which there are at most two, or $u$
-essentially depends on some variable; let $x_j$ with $j > i$ be the first
-such variable. Traversing $\bdd{f}$ from the root under any prefix
-witnessing $u$ ends at an inner node labeled $x_j$ that computes $u$, and
-by canonicity this node is unique. Hence
-$|\sub{i}{f}| \leq \bddsize{f} + 2$ for every $i$, and summing over the
-$n$ levels yields the claim.
+\begin{proof}[Proof sketch]
+Every reduced-OBDD node labeled $x_{i+1}$ is reachable, so a path to it can
+be completed arbitrarily on skipped prefix variables to produce a prefix
+whose cofactor is the function at that node. Canonicity therefore injects
+the nodes at level $i+1$ into $\sub{i}{f}$, and summing over levels proves
+$\bddsize{f}\leq\cofcount(f)$. Conversely, at any cut $i$, a cofactor is
+either one of the two constants or is computed by the unique reduced-OBDD
+node labeled by its first essential variable. Thus
+$|\sub{i}{f}|\leq\bddsize{f}+2$ at each of the $n$ cuts. The full injection
+argument, together with the complete proofs deferred below, appears in the
+supplement.
 \end{proof}
 
 The factor $n$ in Lemma~\ref{lem-qsize} is unavoidable: for
@@ -823,82 +814,30 @@ $\effort(\task_{k,W}, h) = \Omega(W^{2}) \cdot
 \effort(\task_{k,W}, \hblind)$.
 \end{theorem}
 
-\begin{proof}
-The task has binary variables $x_0,\dots,x_k$, choice variables
-$v_1,\dots,v_k$, and one goal bit $t$. Initially only $x_0$ holds. For
-each $i\in[k]$, two unit-cost operators advance the chain:
-$o_i^0$ has precondition $x_{i-1}\wedge\neg x_i$ and effect $x_i$,
-while $o_i^1$ has the same precondition and effect
-$x_i\wedge v_i$. The only operator that achieves $t$ has precondition
-$x_k\wedge\neg t$, effect $t$, and cost $W$. The goal is $t$, so every
-solution has cost
-\[
-\copt=k+W.
-\]
-The order $\pi$ lists the $x$-block, then $v_1,\dots,v_k$, then $t$.
+\begin{proof}[Proof sketch]
+Use binary chain variables $x_0,\ldots,x_k$, choices $v_1,\ldots,v_k$,
+and goal bit $t$. Two unit-cost operators advance each chain step while
+choosing $v_i\in\{0,1\}$, and a final cost-$W$ operator achieves $t$;
+order the $x$-block before the $v$-block and then $t$, and note that
+$\copt=k+W$. For $r=\sum_j s(v_j)\bmod W$, set
+$h(s)=(-r)\bmod W\in\{0,\ldots,W-1\}$ on non-goals and $h=0$ on goals.
+A unit step either preserves $r$ or increments it, and
+$(-r)\bmod W\leq1+(-(r+1))\bmod W$; the goal step costs $W$, and every
+non-goal still needs it. Thus $h$ is consistent and admissible. Its residual
+function while reading the $v$-block is determined by one of $W$ partial
+residues, and all residues occur, so its width is exactly $W$.
 
-Let
-\[
-r(s)=\Bigl(\sum_{j=1}^{k}s(v_j)\Bigr)\bmod W,
-\qquad
-q(r)=(-r)\bmod W\in\{0,\dots,W-1\},
-\]
-and define
-\[
-h(s)=
-\begin{cases}
-0, & s(t)=1,\\
-q(r(s)), & s(t)=0.
-\end{cases}
-\]
-A unit-cost choice operator either leaves the residue unchanged or maps
-$r$ to $r+1\bmod W$, and
-$q(r)\leq1+q(r+1\bmod W)$. The goal operator can decrease $h$ by at
-most $W-1$ and costs $W$. Hence $h$ is consistent. Every plan from a
-non-goal state must still apply the cost-$W$ goal operator. Therefore a
-solvable non-goal state $s$ satisfies
-$h(s)\leq W-1<W\leq\hstar(s)$; admissibility is immediate at goals and
-dead ends.
-
-The heuristic ignores the $x$-block. While the $v$-block is read, its
-cofactor is determined by the partial residue, of which there are at
-most $W$; after $t$ is read the cofactors are constants. All $W$ values
-are attained, so Proposition~\ref{prop-range} gives the reverse
-inequality and
-\[
-\width_\pi(h)=W.
-\]
-
-\emph{Blind effort.}
-For $i\leq k$, layer $L_i$ fixes the chain prefix, fixes
-$v_j=0$ for $j>i$ and $t=0$, and leaves $v_1,\dots,v_i$ free. Therefore
-$\bddsize{L_i}=\Theta(k)$. There are $k+1$ such pre-goal layers and no
-intermediate layers between costs $k$ and $k+W$, so
-\[
-\effort(\task_{k,W},\hblind)=\Theta(k^2).
-\]
-
-\emph{Heuristic effort.}
-On $L_i$, $h=q(\sum_{j\leq i}v_j\bmod W)$. For $i\geq W-1$ all $W$
-buckets are nonempty, and every bucket is selected because
-$i+h\leq k+W-1<\copt$. Fix a layer
-$i\in[\lceil3k/4\rceil,k]$ and one bucket. For every
-$W\leq j\leq i-W$, prefixes of $v_1,\dots,v_j$ with distinct partial
-residues induce distinct cofactors of the modular bucket: a suffix using
-at most $W-1$ of the remaining variables completes one residue to the
-required bucket and not another. Each such cofactor essentially depends
-on $v_{j+1}$ by the same argument. Consequently the reduced OBDD has
-$W$ distinct nodes at each of the $i-2W+1=\Omega(k)$ middle levels, and
-the bucket has size $\Omega(kW)$. Since $k\geq4W$, the interval
-$[\lceil3k/4\rceil,k]$ contains $\Theta(k)$ layers. Summing over these
-layers and their $W$ buckets gives
-\[
-\effort(\task_{k,W},h)
- \geq \Theta(k)\cdot W\cdot\Omega(kW)
- =\Omega(k^2W^2).
-\]
-Together with the blind bound, this proves the claimed
-$\Omega(W^2)$ ratio.
+Layer $L_i$ fixes the unmade choices $v_j=0$ for $j>i$ and leaves the
+first $i$ choices free, so each of the $k+1$ pre-goal blind layers has BDD
+size $\Theta(k)$ and blind effort is $\Theta(k^2)$. On every late layer
+$i\in[\lceil3k/4\rceil,k]$, all $W$ residue buckets are selected because
+$i+h\leq k+W-1<\copt$. At each middle cut $W\leq j\leq i-W$, the $W$
+partial residues yield distinct cofactors of any fixed bucket: a suffix of
+at most $W-1$ choices completes one residue to the bucket but not another,
+and the same completion argument shows essential dependence on the next
+choice bit. Hence each such bucket has $\Omega(kW)$ nodes. Summing over
+$\Theta(k)$ late layers and $W$ buckets per layer gives
+$\Omega(k^2W^2)$ heuristic effort and the claimed $\Omega(W^2)$ ratio.
 \end{proof}
 
 Theorem~\ref{thm-tight} shows that an $\Omega(W^2)$ ratio is
@@ -935,31 +874,17 @@ For the tasks $\task_n$ and orders $\pi_n$ of
 $\width_{\pi_n}(\hstar) \geq 2^{n}$.
 \end{theorem}
 
-\begin{proof}
-We exhibit $2^n$ prefixes with pairwise distinct \hstar-cofactors. For
-$A \subseteq \{1, \dots, n\}$ let $\rho_A$ be the prefix that assigns
-the $x$-variables the encoding of chain position $2n$, i.e.,
-$x_0, \dots, x_{2n}$ true and $x_{2n+1}$ false, and assigns $v_i = 1$
-iff $i \in A$ for $i \in \{1, \dots, n\}$. All $\rho_A$ fix the same
-variables $x_0, \dots, x_{2n+1}, v_1, \dots, v_n$, so their cofactors
-lie in $\sub{m}{\hstar}$ for the same level $m = (2n + 2) + n$. Let
-$A \neq A'$ and pick without loss of generality
-$i \in A \setminus A'$. Define the suffix $\sigma$ over
-$v_{n+1}, \dots, v_{2n}$ by $v_{n+i} = 1$ and $v_{n+j} = 0$ for
-$j \neq i$. The state $\rho_A \sigma$ satisfies
-$v_i \wedge v_{n+i}$, so a goal operator is applicable and
-$\hstar(\rho_A \sigma) = 1$. The state $\rho_{A'} \sigma$ satisfies
-$v_j \wedge v_{n+j}$ for no $j$: for $j = i$ because $v_i = 0$ under
-$\rho_{A'}$, and for $j \neq i$ because $v_{n+j} = 0$ under $\sigma$.
-No other operator is applicable in either state, since every $o_i$ and
-$\bar o_i$ requires $\neg x_i$ and $x_1, \dots, x_{2n}$ are all true.
-Hence $\rho_{A'} \sigma$ is a dead
-end and $\hstar(\rho_{A'} \sigma) = \infty \neq 1 =
-\hstar(\rho_A \sigma)$, so
-$\hstar|_{\rho_A} \neq \hstar|_{\rho_{A'}}$, and
-$|\sub{m}{\hstar}| \geq 2^{n}$. Since the argument evaluates \hstar\
-only on states, it applies to every total extension of \hstar\ to
-the full cube $\{0,1\}^{4n+2}$ (Remark~\ref{rem-encoding}).
+\begin{proof}[Proof sketch]
+At the cut after $x_0,\ldots,x_{2n+1},v_1,\ldots,v_n$, fix the
+$x$-variables at chain position $2n$ and use one prefix $\rho_A$ for each
+$A\subseteq[n]$, setting $v_i=1$ exactly for $i\in A$. If $A\ne A'$, swap
+their names if necessary, choose $i\in A\setminus A'$, and complete the
+suffix with $v_{n+i}=1$ and every other second-half variable false. The
+completion has goal distance $1$ under $\rho_A$, whereas under $\rho_{A'}$
+it enables no goal operator and is a dead end. Thus all $2^n$ prefixes
+induce distinct \hstar-cofactors at one cut. Because the distinguisher uses
+only valid states, the conclusion holds for every total extension to invalid
+encodings.
 \end{proof}
 
 Theorems~\ref{thm-effort} and~\ref{thm-lb} together delimit the
@@ -1176,17 +1101,13 @@ in $[-M,M]$, e.g., $0$, and let $\pi$ be variable-contiguous. Then
 \]
 \end{proposition}
 
-\begin{proof}
-Consider a prefix $\rho$ that fixes the variables
-$v_1,\dots,v_j$ completely and the first
-$b<\lceil\log_2d\rceil$ bits of $v_{j+1}$. The cofactor $p|_\rho$ is
-determined by the accumulated sum
-$\sum_{j'\leq j}P(v_{j'},\rho(v_{j'}))$, an integer in $[-mM,mM]$,
-and by the assignment to the $b$ read bits of $v_{j+1}$. There are at
-most $2mM+1$ sums and at most $2^b\leq d$ bit prefixes, so
-$\width_\pi(p)\leq d(2mM+1)$. The raw total lies in $[-mM,mM]$;
-rectification maps it to $\{0,\dots,mM\}$ and cannot increase width by
-Proposition~\ref{prop-transform}.
+\begin{proof}[Proof sketch]
+At a variable-contiguous prefix, $p|_\rho$ is determined by an accumulated
+integer sum in $[-mM,mM]$ and the already-read bit buffer of the one current
+variable. There are at most $2mM+1$ sums and at most $d$ buffers, giving
+$\width_\pi(p)\leq d(2mM+1)$. The complete sum lies in the same interval;
+rectification cannot increase width and maps its attainable values into
+$\{0,\ldots,mM\}$.
 \end{proof}
 
 \begin{corollary}
@@ -1200,9 +1121,9 @@ most $M$,
 a factor polynomial in the task size and the numeric magnitude $M$.
 \end{corollary}
 
-\begin{proof}
-Proposition~\ref{prop-pot} gives
-$W\leq d(2mM+1)$ and $\values\leq mM+1$; substitute both bounds in
+\begin{proof}[Proof sketch]
+Substitute $W\leq d(2mM+1)$ and $\values\leq mM+1$ from
+Proposition~\ref{prop-pot} into the $3\values Wn$ effort ratio of
 Corollary~\ref{cor-effort}.
 \end{proof}
 
@@ -1236,18 +1157,14 @@ $|\states^P|=\prod_{v\in P}|D_v|$. Then
 \]
 \end{proposition}
 
-\begin{proof}
-Fix a bit-prefix $\rho$. Values read from variables outside $P$ are
-irrelevant to this extension. If an already read pattern code is
-invalid, the cofactor is the sink constant. Otherwise it is determined
-by the assignments to the fully read pattern variables and, if the
-current variable belongs to $P$, by its already-read bits. The number
-of valid partial abstract assignments and bit buffers is at most
-$|\states^P|$; adding the sink case still fits
-$d|\states^P|$ for $d\geq2$ (the degenerate $d=1$ encoding has no
-invalid bit code). Prefixes producing the same case have identical
-completions. Once every pattern variable has been read, the cofactor is
-a constant PDB value or the fixed sink, again within the stated bound.
+\begin{proof}[Proof sketch]
+At any bit-prefix, non-pattern bits are irrelevant. An invalid pattern
+code yields the fixed sink; otherwise the residual table lookup is determined
+by the fully read pattern values and the bit buffer of the current pattern
+variable. There are at most $|\states^P|$ valid partial abstract cases, and
+the buffer/sink accounting fits $d|\states^P|$ (with the $d=1$ case having
+no invalid code). Prefixes in the same case have identical completions, so
+this bounds the number of cofactors at every cut.
 \end{proof}
 
 The bound does not require the pattern variables to form a prefix of
@@ -1286,15 +1203,13 @@ table with a distinguished sink for invalid variable codes. Then
 $\width_\pi(h^{\alpha}) \leq d \cdot (N+1)$.
 \end{proposition}
 
-\begin{proof}
-For a prefix $\rho$ fixing $v_1, \dots, v_j$ and $b$ bits of
-$v_{j+1}$, the cofactor $h^{\alpha}|_\rho$ is determined by the
-intermediate abstract state $\tau_j(\cdots)$ reached after processing
-$v_1, \dots, v_j$ through the cascading tables, of which there are at
-most $N$, or the distinguished sink, together with the $b$-bit buffer,
-at most $d$ cases: the
-remaining computation applies the fixed tables
-$\tau_{j+1}, \dots, \tau_m$ and the final distance table to the suffix.
+\begin{proof}[Proof sketch]
+After a variable-contiguous prefix, the residual cascade is determined by
+one of at most $N$ intermediate abstract states (or the invalid-code sink)
+and by the bit buffer for the current variable, which has at most $d$ cases.
+The unread suffix then applies the same remaining tables and final distance
+table, so prefixes with the same state--buffer pair induce the same cofactor.
+There are therefore at most $d(N+1)$ cofactors at every cut.
 \end{proof}
 
 Running \bddastar\ with M\&S heuristics compiled into BDDs goes back to

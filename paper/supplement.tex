@@ -1,20 +1,39 @@
 \documentclass[letterpaper]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb,amsthm}
+\usepackage{natbib}
 \usepackage{microtype}
 
 \newcommand{\task}{\ensuremath{\Pi}}
+\newcommand{\vars}{\ensuremath{\mathcal{V}}}
+\newcommand{\states}{\ensuremath{\mathcal{S}}}
 \newcommand{\sinit}{\ensuremath{s_{\mathrm{I}}}}
 \newcommand{\cost}{\ensuremath{\mathit{cost}}}
+\newcommand{\hstar}{\ensuremath{h^{*}}}
+\newcommand{\hblind}{\ensuremath{h^{0}}}
+\newcommand{\hpot}{\ensuremath{h^{\text{pot}}}}
 \newcommand{\gstar}{\ensuremath{g^{*}}}
 \newcommand{\copt}{\ensuremath{C^{*}}}
+\newcommand{\bdd}[1]{\ensuremath{B_{#1}}}
+\newcommand{\bddsize}[1]{\ensuremath{|B_{#1}|}}
+\newcommand{\cofcount}{\ensuremath{Q}}
+\newcommand{\width}{\ensuremath{\mathsf{w}}}
+\newcommand{\values}{\ensuremath{V}}
 \newcommand{\level}[2]{\ensuremath{H_{#2}}}
+\newcommand{\effort}{\ensuremath{\mathit{effort}}}
+\newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
+\newcommand{\img}{\ensuremath{\mathrm{img}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
 
 \theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
 \newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
 
-\title{Supplementary Material: Full Proof of the Bucket Identity}
+\title{Supplementary Material: Full Proofs}
 \author{Anonymous for review}
 \date{}
 
@@ -196,4 +215,334 @@ Claim~5 no key outside the stated range is expanded before the search
 stops.
 \end{proof}
 
+\section{Cofactor Notation and Auxiliary Results}
+
+Fix Boolean variables $x_1,\dots,x_n$ in an order $\pi$.  For a Boolean
+or integer-valued function $f$ and a prefix assignment
+$\rho\in\{0,1\}^i$, write $f|_\rho$ for the residual function after the
+prefix and
+$\sub{i}{f}=\{f|_\rho\mid\rho\in\{0,1\}^i\}$.  The cofactor count and
+cofactor width are
+\[
+  \cofcount(f)=\sum_{i=0}^{n-1}|\sub{i}{f}|,
+  \qquad
+  \width_\pi(f)=\max_{0\leq i\leq n}|\sub{i}{f}|.
+\]
+For a Boolean function $f$, $\bdd{f}$ is its reduced ordered BDD under
+$\pi$, and $\bddsize{f}$ counts its inner nodes.  For a heuristic $h$,
+$\img(h)$ is its attained value set.  The blind heuristic $\hblind$ is
+identically zero, and $\effort(\task,h)$ is the cumulative number of inner
+nodes in the BDDs expanded by product-at-evaluation forward \bddastar\ before
+optimal termination.  We use the following elementary facts from the main
+paper: terminal cofactors imply
+$|\img(h)|\leq\width_\pi(h)$; applying a deterministic pointwise terminal
+mapping cannot increase cofactor width; and a consistent width-$W$
+heuristic taking $\values$ finite values satisfies the effort-ratio bound
+\begin{equation}
+  \effort(\task,h)
+  \leq 3\values Wn\,\effort(\task,\hblind).
+  \label{eq-supp-effort-ratio}
+\end{equation}
+The planning-state encoding may leave invalid Boolean assignments.  As in
+the main paper, a heuristic on states is equipped with a fixed total
+extension to the full Boolean cube; where relevant below, the statements
+specify that extension.
+
+\begin{proposition}[value range]
+\label{prop-range}
+If $\width_\pi(h) \leq W$, then $|\img(h)| \leq W$.
+\end{proposition}
+
+\begin{proposition}[terminal mapping]
+\label{prop-transform}
+For every deterministic pointwise map $\phi$,
+$\width_\pi(\phi\circ h)\leq\width_\pi(h)$.
+\end{proposition}
+
+\begin{corollary}[search-effort ratio]
+\label{cor-effort}
+Under the positive-cost, solvable-task, consistent-heuristic assumptions
+of the main paper, a width-$W$ heuristic with $\values$ finite values obeys
+Equation~\eqref{eq-supp-effort-ratio}.
+\end{corollary}
+
+\begin{remark}[total extensions]
+\label{rem-encoding}
+Cofactor width is measured on the chosen total extension, while a lower
+bound witnessed entirely by genuine states applies to every such extension.
+\end{remark}
+
+\section{Reduced and Quasi-Reduced OBDD Size}
+
+\begin{lemma}
+\label{lem-qsize}
+For every Boolean $f$ over $x_1, \dots, x_n$,
+$\bddsize{f} \leq \cofcount(f) \leq n \cdot (\bddsize{f} + 2)$.
+\end{lemma}
+
+\begin{proof}
+For the first inequality, consider a node $N$ of $\bdd{f}$ labeled
+$x_{i+1}$. Since every node of a reduced OBDD is reachable from the root,
+there is a path from the root to $N$; fixing the variables tested along
+this path to the corresponding edge values and all remaining variables
+among $x_1, \dots, x_i$ arbitrarily yields a prefix $\rho \in \{0,1\}^i$
+with $f|_\rho$ equal to the function computed by $N$, because variables
+skipped by long edges do not influence the traversal. Hence every node
+labeled $x_{i+1}$ computes an element of $\sub{i}{f}$, and by canonicity
+distinct nodes compute distinct functions, so the map is injective.
+Summing over $i$ gives
+$\bddsize{f} \leq \sum_{i=0}^{n-1} |\sub{i}{f}| = \cofcount(f)$. For the
+second inequality, fix $i$ and consider any $u \in \sub{i}{f}$. Either
+$u$ is a constant function, of which there are at most two, or $u$
+essentially depends on some variable; let $x_j$ with $j > i$ be the first
+such variable. Traversing $\bdd{f}$ from the root under any prefix
+witnessing $u$ ends at an inner node labeled $x_j$ that computes $u$, and
+by canonicity this node is unique. Hence
+$|\sub{i}{f}| \leq \bddsize{f} + 2$ for every $i$, and summing over the
+$n$ levels yields the claim.
+\end{proof}
+
+\section{Quadratic Width-Ratio Construction}
+
+\begin{theorem}[quadratic width-ratio family]
+\label{thm-tight}
+For all integers $W \geq 2$ and $k \geq 4W$ there are tasks
+$\task_{k,W}$ with $n = \Theta(k)$ Boolean variables and consistent,
+admissible heuristics $h$ with $\width_\pi(h) = W$ such that
+$\effort(\task_{k,W}, h) = \Omega(W^{2}) \cdot
+\effort(\task_{k,W}, \hblind)$.
+\end{theorem}
+
+\begin{proof}
+The task has binary variables $x_0,\dots,x_k$, choice variables
+$v_1,\dots,v_k$, and one goal bit $t$. Initially only $x_0$ holds. For
+each $i\in[k]$, two unit-cost operators advance the chain:
+$o_i^0$ has precondition $x_{i-1}\wedge\neg x_i$ and effect $x_i$,
+while $o_i^1$ has the same precondition and effect
+$x_i\wedge v_i$. The only operator that achieves $t$ has precondition
+$x_k\wedge\neg t$, effect $t$, and cost $W$. The goal is $t$, so every
+solution has cost
+\[
+\copt=k+W.
+\]
+The order $\pi$ lists the $x$-block, then $v_1,\dots,v_k$, then $t$.
+
+Let
+\[
+r(s)=\Bigl(\sum_{j=1}^{k}s(v_j)\Bigr)\bmod W,
+\qquad
+q(r)=(-r)\bmod W\in\{0,\dots,W-1\},
+\]
+and define
+\[
+h(s)=
+\begin{cases}
+0, & s(t)=1,\\
+q(r(s)), & s(t)=0.
+\end{cases}
+\]
+A unit-cost choice operator either leaves the residue unchanged or maps
+$r$ to $r+1\bmod W$, and
+$q(r)\leq1+q(r+1\bmod W)$. The goal operator can decrease $h$ by at
+most $W-1$ and costs $W$. Hence $h$ is consistent. Every plan from a
+non-goal state must still apply the cost-$W$ goal operator. Therefore a
+solvable non-goal state $s$ satisfies
+$h(s)\leq W-1<W\leq\hstar(s)$; admissibility is immediate at goals and
+dead ends.
+
+The heuristic ignores the $x$-block. While the $v$-block is read, its
+cofactor is determined by the partial residue, of which there are at
+most $W$; after $t$ is read the cofactors are constants. All $W$ values
+are attained, so Proposition~\ref{prop-range} gives the reverse
+inequality and
+\[
+\width_\pi(h)=W.
+\]
+
+\emph{Blind effort.}
+For $i\leq k$, layer $L_i$ fixes the chain prefix, fixes
+$v_j=0$ for $j>i$ and $t=0$, and leaves $v_1,\dots,v_i$ free. Therefore
+$\bddsize{L_i}=\Theta(k)$. There are $k+1$ such pre-goal layers and no
+intermediate layers between costs $k$ and $k+W$, so
+\[
+\effort(\task_{k,W},\hblind)=\Theta(k^2).
+\]
+
+\emph{Heuristic effort.}
+On $L_i$, $h=q(\sum_{j\leq i}v_j\bmod W)$. For $i\geq W-1$ all $W$
+buckets are nonempty, and every bucket is selected because
+$i+h\leq k+W-1<\copt$. Fix a layer
+$i\in[\lceil3k/4\rceil,k]$ and one bucket. For every
+$W\leq j\leq i-W$, prefixes of $v_1,\dots,v_j$ with distinct partial
+residues induce distinct cofactors of the modular bucket: a suffix using
+at most $W-1$ of the remaining variables completes one residue to the
+required bucket and not another. Each such cofactor essentially depends
+on $v_{j+1}$ by the same argument. Consequently the reduced OBDD has
+$W$ distinct nodes at each of the $i-2W+1=\Omega(k)$ middle levels, and
+the bucket has size $\Omega(kW)$. Since $k\geq4W$, the interval
+$[\lceil3k/4\rceil,k]$ contains $\Theta(k)$ layers. Summing over these
+layers and their $W$ buckets gives
+\[
+\effort(\task_{k,W},h)
+ \geq \Theta(k)\cdot W\cdot\Omega(kW)
+ =\Omega(k^2W^2).
+\]
+Together with the blind bound, this proves the claimed
+$\Omega(W^2)$ ratio.
+\end{proof}
+
+\section{Width of the Known Exponential Pathology}
+
+For completeness, the family $\task_n$ has binary variables
+$v_1,\dots,v_{2n}$ and $x_0,\dots,x_{2n+1}$. Initially only $x_0$ is
+true. Operators $o_i$ and $\bar o_i$, whose precondition is
+$x_{i-1}\wedge\neg x_i$, set $x_i$ true while setting $v_i$ true or
+false, respectively. Once $x_0,\dots,x_{2n}$ are true, a goal operator
+$g_i$ is applicable when $v_i\wedge v_{n+i}$ holds and achieves
+$x_{2n+1}$. The order is
+$\pi_n=x_0,\dots,x_{2n+1},v_1,\dots,v_{2n}$.
+
+\begin{theorem}[width lower bound]
+\label{thm-lb}
+For the tasks $\task_n$ and orders $\pi_n$ of
+\citet{speck-et-al-icaps2020},
+$\width_{\pi_n}(\hstar) \geq 2^{n}$.
+\end{theorem}
+
+\begin{proof}
+We exhibit $2^n$ prefixes with pairwise distinct \hstar-cofactors. For
+$A \subseteq \{1, \dots, n\}$ let $\rho_A$ be the prefix that assigns
+the $x$-variables the encoding of chain position $2n$, i.e.,
+$x_0, \dots, x_{2n}$ true and $x_{2n+1}$ false, and assigns $v_i = 1$
+iff $i \in A$ for $i \in \{1, \dots, n\}$. All $\rho_A$ fix the same
+variables $x_0, \dots, x_{2n+1}, v_1, \dots, v_n$, so their cofactors
+lie in $\sub{m}{\hstar}$ for the same level $m = (2n + 2) + n$. Let
+$A \neq A'$ and pick without loss of generality
+$i \in A \setminus A'$. Define the suffix $\sigma$ over
+$v_{n+1}, \dots, v_{2n}$ by $v_{n+i} = 1$ and $v_{n+j} = 0$ for
+$j \neq i$. The state $\rho_A \sigma$ satisfies
+$v_i \wedge v_{n+i}$, so a goal operator is applicable and
+$\hstar(\rho_A \sigma) = 1$. The state $\rho_{A'} \sigma$ satisfies
+$v_j \wedge v_{n+j}$ for no $j$: for $j = i$ because $v_i = 0$ under
+$\rho_{A'}$, and for $j \neq i$ because $v_{n+j} = 0$ under $\sigma$.
+No other operator is applicable in either state, since every $o_i$ and
+$\bar o_i$ requires $\neg x_i$ and $x_1, \dots, x_{2n}$ are all true.
+Hence $\rho_{A'} \sigma$ is a dead
+end and $\hstar(\rho_{A'} \sigma) = \infty \neq 1 =
+\hstar(\rho_A \sigma)$, so
+$\hstar|_{\rho_A} \neq \hstar|_{\rho_{A'}}$, and
+$|\sub{m}{\hstar}| \geq 2^{n}$. Since the argument evaluates \hstar\
+only on states, it applies to every total extension of \hstar\ to
+the full cube $\{0,1\}^{4n+2}$ (Remark~\ref{rem-encoding}).
+\end{proof}
+
+\section{Width Bounds for Heuristic Families}
+
+Let a SAS$^+$ task have variables $\vars=\{v_1,\dots,v_m\}$, let
+$d=\max_v|D_v|$, and use a variable-contiguous Boolean order $\pi$.
+An integer potential assigns $P(v,w)\in\mathbb Z$ to each fact, defines
+$p(s)=\sum_{v\in\vars}P(v,s(v))$, and exposes the rectified heuristic
+$\hpot(s)=\max(0,p(s))$.
+
+\subsection{Integer Potentials}
+
+\begin{proposition}
+\label{prop-pot}
+Let $p$ have integer potentials with $|P(v,w)|\leq M$ for all facts,
+extended to non-state assignments by the same sum over the bit
+encoding's induced table, with table values on invalid bit codes also
+in $[-M,M]$, e.g., $0$, and let $\pi$ be variable-contiguous. Then
+\[
+\width_\pi(\hpot)\leq\width_\pi(p)\leq d(2mM+1)
+\qquad\text{and}\qquad
+|\img(\hpot)|\leq mM+1.
+\]
+\end{proposition}
+
+\begin{proof}
+Consider a prefix $\rho$ that fixes the variables
+$v_1,\dots,v_j$ completely and the first
+$b<\lceil\log_2d\rceil$ bits of $v_{j+1}$. The cofactor $p|_\rho$ is
+determined by the accumulated sum
+$\sum_{j'\leq j}P(v_{j'},\rho(v_{j'}))$, an integer in $[-mM,mM]$,
+and by the assignment to the $b$ read bits of $v_{j+1}$. There are at
+most $2mM+1$ sums and at most $2^b\leq d$ bit prefixes, so
+$\width_\pi(p)\leq d(2mM+1)$. The raw total lies in $[-mM,mM]$;
+rectification maps it to $\{0,\dots,mM\}$ and cannot increase width by
+Proposition~\ref{prop-transform}.
+\end{proof}
+
+\begin{corollary}
+\label{cor-pot}
+For rectified consistent integer potential heuristics with magnitudes at
+most $M$,
+\[
+\effort(\task,\hpot)
+ \leq 3d(mM+1)(2mM+1)n\cdot\effort(\task,\hblind),
+\]
+a factor polynomial in the task size and the numeric magnitude $M$.
+\end{corollary}
+
+\begin{proof}
+Proposition~\ref{prop-pot} gives
+$W\leq d(2mM+1)$ and $\values\leq mM+1$; substitute both bounds in
+Corollary~\ref{cor-effort}.
+\end{proof}
+
+\subsection{Pattern Databases}
+
+\begin{proposition}
+\label{prop-pdb}
+Let $P\subseteq\vars$ be any pattern under a variable-contiguous order
+$\pi$. Extend its table to invalid encodings by ignoring non-pattern
+bits and mapping an invalid pattern-variable code to a fixed sink
+terminal. Let
+$|\states^P|=\prod_{v\in P}|D_v|$. Then
+\[
+\width_\pi(h^P)\leq d\,|\states^P|.
+\]
+\end{proposition}
+
+\begin{proof}
+Fix a bit-prefix $\rho$. Values read from variables outside $P$ are
+irrelevant to this extension. If an already read pattern code is
+invalid, the cofactor is the sink constant. Otherwise it is determined
+by the assignments to the fully read pattern variables and, if the
+current variable belongs to $P$, by its already-read bits. The number
+of valid partial abstract assignments and bit buffers is at most
+$|\states^P|$; adding the sink case still fits
+$d|\states^P|$ for $d\geq2$ (the degenerate $d=1$ encoding has no
+invalid bit code). Prefixes producing the same case have identical
+completions. Once every pattern variable has been read, the cofactor is
+a constant PDB value or the fixed sink, again within the stated bound.
+\end{proof}
+
+\subsection{Linear Merge-and-Shrink}
+
+A linear merge-and-shrink mapping is a cascade of tables
+$\tau_1,\dots,\tau_m$, where $\tau_j$ maps the previous intermediate
+abstract state and the value of $v_j$ to the next intermediate state.
+
+\begin{proposition}
+\label{prop-ms}
+Let $h^{\alpha}$ be an M\&S heuristic built with a linear merge
+strategy whose variable order agrees with the variable-contiguous
+$\pi$ and with intermediate abstraction sizes at most $N$. Extend each
+table with a distinguished sink for invalid variable codes. Then
+$\width_\pi(h^{\alpha}) \leq d \cdot (N+1)$.
+\end{proposition}
+
+\begin{proof}
+For a prefix $\rho$ fixing $v_1, \dots, v_j$ and $b$ bits of
+$v_{j+1}$, the cofactor $h^{\alpha}|_\rho$ is determined by the
+intermediate abstract state $\tau_j(\cdots)$ reached after processing
+$v_1, \dots, v_j$ through the cascading tables, of which there are at
+most $N$, or the distinguished sink, together with the $b$-bit buffer,
+at most $d$ cases: the
+remaining computation applies the fixed tables
+$\tau_{j+1}, \dots, \tau_m$ and the final distance table to the suffix.
+\end{proof}
+
+\bibliographystyle{plainnat}
+\bibliography{bib/abbrv,bib/literatur,bib/crossref}
 \end{document}
