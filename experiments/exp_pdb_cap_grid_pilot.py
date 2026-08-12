@@ -150,9 +150,13 @@ FIXED_ENVIRONMENT = dict(Base.FIXED_ENVIRONMENT)
 # These are an all-or-none post-build pin gate.  The launch runner is first
 # committed, then its clean revision cache is independently built/smoked and
 # these values are reviewed in a descendant protocol-pin commit.
-PLANNER_REVISION = None
-CACHE_BINARY_SHA256 = None
-CACHE_PREPROCESS_SHA256 = None
+PLANNER_REVISION = "e04d56cc61d00c954f2369e9fb74bd469277d52e"
+CACHE_BINARY_SHA256 = (
+    "77cf4950563be2d2a60aded13783a3ffe26c0c8391ac9d626f3bd618231941fa"
+)
+CACHE_PREPROCESS_SHA256 = (
+    "fc3233bfd260210cf4d0cce11146fe6f3198820d6e19a8b56740c1240039378b"
+)
 
 PROTOCOL_FILES = (
     Path(__file__).resolve(),
