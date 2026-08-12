@@ -25,6 +25,7 @@
 \newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
 \newcommand{\img}{\ensuremath{\mathrm{img}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
+\newcommand{\astar}{A\ensuremath{^{*}}}
 \newcommand{\ghseta}{GHSETA\ensuremath{^{*}}}
 
 \theoremstyle{plain}
@@ -38,7 +39,8 @@
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
-\title{Supplementary Material: Proofs and Empirical Details}
+\title{Fixed-Order Residual Width Bounds for Forward
+Product-at-Evaluation Symbolic \astar: Supplementary Material}
 \author{Anonymous for review}
 \date{}
 
@@ -220,7 +222,15 @@ Claim~5 no key outside the stated range is expanded before the search
 stops.
 \end{proof}
 
-\section{Cofactor Notation and Auxiliary Results}
+\section{Fixed-Order Residual-Width Notation and Auxiliary Results}
+
+The maximum number of distinct residual functions at a fixed-order cut is the
+standard width measure for ordered branching programs and MTBDDs
+\citep{wegener-2000}. We use
+\emph{cofactor width} as a planning-facing name for this existing measure.
+The novelty claims concern its application to heuristic fragmentation and
+forward product-at-evaluation search, the separation constructions, and the
+planning-heuristic family bounds, not the width definition.
 
 Fix Boolean variables $x_1,\dots,x_n$ in an order $\pi$.  For a Boolean
 or integer-valued function $f$ and a prefix assignment
@@ -540,47 +550,50 @@ For $\alpha\geq0$, the \emph{$\alpha$-effort} of a symbolic run is
 \[
  \effort_\alpha=\sum_B(\alpha+|B|),
 \]
-where the sum ranges over high-level image calls before termination and
-$B$ is the argument of the call.
+where the sum ranges over idealized high-level cost-image invocations before
+termination and $B$ is the argument of the invocation.
 \end{definition}
 
 For $\alpha=0$, this is the expansion-size measure when the high-level
-image routine is called once for each expanded bucket.
+cost-image routine is invoked once for each expanded bucket in this model.
 
 \begin{proposition}[image-call counts]
 \label{prop-calls}
 Let $h$ be consistent with $\width_\pi(h)\leq W$, and let $N_\ell$ be
 the number of nonempty semantic blind layers $L_g$ with $g<\copt$. An
-idealized blind implementation storing each $L_g$ in one BDD performs
-$N_\ell$ counted high-level image calls. Product-at-evaluation
-\bddastar\ performing one call per expanded nonempty $(g,v)$ bucket
-performs $\sum_g\values_g$ calls, where $\values_g$ is the number of
-nonempty expanded buckets in layer $g$ and
+idealized blind implementation storing each semantic $L_g$ in one BDD performs
+$N_\ell$ counted high-level cost-image invocations, one per nonempty semantic
+layer. An idealized product-at-evaluation
+\bddastar\ performing one high-level cost-image invocation per expanded
+nonempty $(g,v)$ bucket performs $\sum_g\values_g$ counted invocations, where
+$\values_g$ is the number of nonempty expanded buckets in layer $g$ and
 $\values_g\leq\values\leq W$; hence it performs at most
-$\values N_\ell\leq WN_\ell$ calls.
+$\values N_\ell\leq WN_\ell$ counted invocations.
 \end{proposition}
 
 \begin{proof}
-Blind search invokes image once for each nonempty semantic layer.
+The idealized blind implementation invokes the high-level cost-image routine
+once for each nonempty semantic layer.
 Lemma~\ref{lem-identity} makes every active heuristic layer a blind layer
 below $\copt$, and partitions it into exactly $\values_g$ nonempty
 buckets. Proposition~\ref{prop-range} gives
 $\values_g\leq\values\leq W$.
 \end{proof}
 
-Thus the call-overhead term is at most $\alpha WN_\ell$, but width does
+Thus the invocation-overhead term is at most $\alpha WN_\ell$, but width does
 not provide a width-independent one-call-per-layer guarantee. Here one
-call means one invocation of the high-level cost-image routine, not every
-relational product it performs. In particular, the proposition does not
+count means one idealized invocation of the high-level cost-image routine per
+semantic layer or bucket, not every relational product it performs. In
+particular, the proposition does not
 apply verbatim to SetA$^*$ or cost-general \ghseta: operator-potential
 implementations partition transition relations by operator-cost and
 heuristic-delta pairs, so their relational-product count also depends on
 those partitions. The exact finite value count $\values$ can therefore be
 a much sharper operational parameter than an ADD-derived width bound, while
 delta-integrated search requires a separate analysis
-\citep{fiser-et-al-aij2024}. On the quadratic construction below,
-product-at-evaluation \bddastar\ makes $\Theta(W)$ calls on each of
-$\Theta(k)$ late layers, so the factor is realizable.
+\citep{fiser-et-al-aij2024}. On the quadratic construction below, the
+idealized model counts $\Theta(W)$ high-level cost-image invocations on each
+of $\Theta(k)$ late semantic layers, so the factor is realizable.
 
 \emph{Pruning-only search} instead maintains one BDD per uniform-cost
 layer and an incumbent solution bound $c$ ($c=\infty$ initially). It
@@ -615,7 +628,8 @@ cumulative size of the layers expanded by pruning-only search is at most
 \[
  Wn\bigl(\effort(\task,\hblind)+2\copt\bigr),
 \]
-and it performs one image operation per expanded layer. With $c=\infty$
+and it performs one idealized high-level cost-image invocation per expanded
+semantic layer. With $c=\infty$
 throughout and no recognized dead ends, its semantic layers and expansions
 coincide with blind forward search, although heuristic construction and
 evaluation can still consume time.
@@ -626,8 +640,9 @@ By Lemma~\ref{lem-slice}, every expanded BDD is a single threshold slice
 of $L_g$. Theorem~\ref{thm-bucket} bounds it by
 $Wn(\bddsize{L_g}+2)$. Summing over the at most $\copt$ nonempty layers
 below the optimal goal cost proves the node bound. Because no layer is
-partitioned, exactly one image is invoked for each expanded layer. If the
-incumbent stays infinite and no state has $h=\infty$, the retained slice
+partitioned, exactly one modeled high-level cost-image invocation is made for
+each expanded semantic layer. If the incumbent stays infinite and no state
+has $h=\infty$, the retained slice
 is all of $L_g$, proving the final claim.
 \end{proof}
 
@@ -961,11 +976,12 @@ claim that these surrogates optimize runtime.
 
 \subsection{Same-$g$ Speculative Batching}
 
-Product-at-evaluation \bddastar\ normally invokes the high-level image routine
+Product-at-evaluation \bddastar\ normally invokes the instrumented high-level
+cost-image routine
 once for each selected $(g,h)$ bucket. With batching window $\Delta>0$, the
 implementation forms an exact union of the selected bucket and eligible fresh
 buckets having the \emph{same} $g$ and $f\leq F+\Delta$, where $F$ is the
-selected minimum $f$, and computes one image of that union. Restricting the
+selected minimum $f$, and computes one cost-image of that union. Restricting the
 union to one $g$ is essential: the BDD would otherwise erase the parent
 path-cost label needed to assign successor keys. Optional gates reject an
 additional bucket if the candidate union exceeds an inner-node limit or a
@@ -1026,10 +1042,13 @@ planner limit and is therefore charged to that time.
 
 We predeclare three questions. \textbf{Q1:} How does the exact width budget
 change the selected PDB's width, pattern size and source, and search outcomes?
-\textbf{Q2:} Does same-$g$ batching reduce completed high-level image calls and
-image time without sacrificing coverage? \textbf{Q3:} Does the resulting
+\textbf{Q2:} Does same-$g$ batching reduce completed high-level cost-image
+calls and image time without sacrificing coverage? \textbf{Q3:} Does the resulting
 selector improve on conventional goal-fill and CEGAR PDB construction, and how
 does it compare with blind and M\&S controls after construction time is charged?
+The study is diagnostic: the completed P4/P5 evidence is negative for the
+practical usefulness of the current selector and batching designs, while the
+pending P6 census remains unresolved and is not prejudged here.
 
 The screening matrix contains five controls and fifteen selector treatments.
 The controls are blind forward search; causal-graph linear M\&S with a
@@ -1081,11 +1100,12 @@ test of width-constrained selection even if a control wins among the screen
 configurations. This stage performs selection; it is not used as a
 confirmatory estimate of either winner's advantage.
 
-\paragraph{Stage 2: frozen P5 held-out comparison.}
-A separately frozen 92-task manifest contains two supported tasks in each of
-46 eligible domains and is disjoint from the screen, cap-validation, and
-development-smoke tasks. Within each domain, eligible remaining problem names
-are ordered by SHA-256 of a fixed seed, the domain, and the problem name
+\paragraph{Stage 2: frozen P5 disjoint validation sample.}
+A separately frozen 92-task validation manifest contains two supported tasks
+in each of 46 eligible domains and is disjoint from the P4 screen,
+cap-validation, and development-smoke tasks. Within each domain, eligible
+remaining problem names are ordered by SHA-256 of a fixed seed, the domain,
+and the problem name
 (separated by NUL bytes), and the first two are selected; no planner outcome
 enters this ordering. Six configurations are fixed independently of the
 screen: the five screening controls plus M\&S capped at finite heuristic value
@@ -1095,6 +1115,9 @@ additional same-$K$ unbatched ablation is required. The screen winner is
 already one of the fixed controls and is recorded as an alias rather than a
 duplicate cell. The frozen stage therefore has exactly seven unique
 configurations and 644 runs.
+
+Here \emph{held out} means held out from P4 selection. We do not claim that
+these validation tasks were historically unseen over the broader project.
 
 The primary contrast is the selector-family winner against the CEGAR PDB
 control. Its estimand is the paired coverage difference within each domain,
@@ -1106,10 +1129,10 @@ composition; it does not capture task-selection or run-to-run uncertainty and
 is not an interval for the 1377-task census. Comparisons with blind search,
 uncapped and capped M\&S, task-micro coverage, PAR2, planner CPU time,
 construction time, image time, and observed exact-width summaries are
-descriptive because there is one run per cell. No held-out outcome changes the
-configuration ordering. The screen artifact and held-out rerun intentionally
+descriptive because there is one run per cell. No validation outcome changes
+the configuration ordering. The screen artifact and validation rerun intentionally
 retain separate provenance pins: the screen is the immutable selection record,
-whereas the held-out run uses the prospectively corrected producer revision
+whereas the validation run uses the prospectively corrected producer revision
 described below. We therefore compare treatments only within a stage and do
 not interpret differences in absolute counts or times between stages as a
 cross-stage effect.
@@ -1117,20 +1140,20 @@ cross-stage effect.
 \paragraph{Stage 3: frozen, pending P6 full census.}
 The population, matrix, execution contract, acceptance rule, and P6 launch
 identity are frozen, while all Stage-3 results remain pending. The complete
-seven-configuration held-out matrix is carried forward unchanged to all 1377
+seven-configuration validation matrix is carried forward unchanged to all 1377
 supported tasks on the same cluster, giving 9639 cells. A separate runner
 freezes the selection-artifact hash, task-source bytes, option matrix, and
 array layout. This stage is an exact descriptive census of the frozen
-supported population, not a third confirmatory or unseen-task experiment. It
-intentionally includes the 50 screening and 92 held-out tasks. We report the
+supported population, not a third sample-based validation stage. It
+intentionally includes the 50 screening and 92 validation tasks. We report the
 selector-versus-CEGAR coverage difference averaged equally over the 46
 domains, overall and per-domain coverage, and operational cost without
 sampling intervals. One predeclared sensitivity repeats that macro-coverage
 contrast on the 1327 tasks outside the selection screen; we do not describe
 this complement as historically unseen. No Stage-2 or Stage-3 outcome reopens
 the selector, width budget, batching parameters, matrix, ranking, or contrasts.
-Thus the screen performs selection, the held-out set tests the frozen choice,
-and the full census describes its scope.
+Thus the screen performs selection, the disjoint validation set evaluates the
+frozen choice, and the full census describes its scope.
 
 \subsection{Resources, Staging, and Acceptance}
 
@@ -1138,7 +1161,7 @@ Every run has a 300-second aggregate process-CPU planner limit, 8\,GiB memory
 limit, and one AMD EPYC 9755 core on Arrhenius. We use the
 \texttt{release\_no\_lp} build, so the present matrix does not evaluate
 potential heuristics. The scheduler permits at most five simultaneous array
-elements. The screen and held-out stages place one run in each element. To
+elements. The screen and validation stages place one run in each element. To
 stay below Arrhenius's 1000-element array limit, the frozen full-suite layout
 deterministically executes at most 10 runs per element in 964 array elements,
 with a 70-minute scheduler envelope; runs within an element remain sequential.
@@ -1216,7 +1239,7 @@ outcomes serve only as protocol-failure evidence; no score or performance
 observation from them enters the selection artifact.
 
 The source and execution identities are frozen independently. P4 supplies the
-screen, P5 the accepted held-out run, and P6 the full rerun; the corresponding
+screen, P5 the accepted validation run, and P6 the full rerun; the corresponding
 planner/launch revisions begin \texttt{58a3f742d}/\texttt{d6d98ad42},
 \texttt{165b6d2ee}/\texttt{a52488637}, and
 \texttt{a3486a027}/\texttt{0cb19e111}. Every runner byte-attests its planner,
@@ -1230,9 +1253,9 @@ indexes them in one place.
 
 Two downstream audits caused prospective whole-grid corrections. First, a
 heuristic that proved the initial state dead could exit before emitting its
-completed construction event. Both arrays were canceled (53 stable held-out
+completed construction event. Both arrays were canceled (53 stable validation
 cells and 20 full-suite completion markers), the producer ordering was fixed,
-and both grids were rebuilt from scratch; the resulting P5 held-out grid is
+and both grids were rebuilt from scratch; the resulting P5 validation grid is
 the accepted one. Second, four of 1650 completion-marked P5 full cells received
 \texttt{SIGXCPU} in legacy preprocessing, whose negative child return surfaced
 through the shell as 232. P6 maps this pre-search condition to canonical
@@ -1312,18 +1335,18 @@ selector traces were complete. Only 589 of 1000 cells were raw-complete for
 total-image aggregation, however, leaving 411 censored; consequently the
 ranking's total image times are undefined and the image-time tie-break was not
 used. These are descriptive selection-screen results only and make no claim
-about the held-out set or the full supported population.
+about the validation sample or the full supported population.
 
-\subsection{P5 Held-Out Comparison}
+\subsection{P5 Disjoint Validation Sample}
 
-All 644 held-out cells passed the protocol checks. In the primary comparison,
+All 644 validation cells passed the protocol checks. In the primary comparison,
 the width-one selector solved 41 tasks and CEGAR solved 40. Because every
 domain contributes exactly two tasks, the equally weighted domain-macro and
 task-micro estimands coincide in this sample; the selector-minus-CEGAR
 difference under either estimand is $1/92=1.09$ percentage points. The
 predeclared 100,000-replicate domain-bootstrap 95\% domain-resampling interval
 was $[-1/46,1/23]$, or $[-2.17,4.35]$ percentage points, with two task-level
-discordant wins and one loss. Thus the held-out data do not establish a
+discordant wins and one loss. Thus the validation data do not establish a
 selector coverage advantage over CEGAR. The selector's micro-PAR2 was 345.1040
 seconds against 351.5588 seconds for CEGAR, while its planner CPU-time
 geometric-mean ratio on the 39 jointly solved tasks was 1.006. Because all
@@ -1334,7 +1357,8 @@ does not validate selection of an informative heuristic.
 \begin{table}[t]
   \centering
   \small
-  \caption{Held-out results on 92 tasks. PAR2 charges 600 seconds to an
+  \caption{P5 validation results on 92 tasks held out from P4 selection.
+  PAR2 charges 600 seconds to an
   unsolved cell. Width reports observed-cell count followed by median/maximum
   exact width. Construction reports observed records/fallbacks and their total
   time. Gaps are a pre-search cell in every configuration and, for uncapped
@@ -1395,13 +1419,21 @@ planner CPU-time geometric-mean ratios were 0.874 ($n=39$), 1.428 ($n=40$),
 0.908 ($n=39$), and 0.907 ($n=39$). Uncapped M\&S itself gained two tasks over
 blind (four wins and two losses) and lowered PAR2 by 9.3665 seconds, although
 its jointly solved planner CPU-time ratio was 1.632 ($n=38$). The seven frozen
-configurations and every declared comparison remain unchanged; no held-out
-outcome was used to rerank them.
+configurations and every declared comparison remain unchanged; no P5
+validation outcome was used to rerank them.
+
+Taken together, the completed P4/P5 results are a negative diagnostic for the
+current selector and batching designs: the frozen selector repeatedly returns
+the blind-equivalent empty PDB without an established CEGAR advantage, while
+the tested batching variants lose coverage and raise image time. This neither
+validates usefulness nor predicts the pending P6 census.
 
 \subsection{P6 Full-Suite Result Placeholder}
 
-\emph{[RESULT PLACEHOLDER: report the current-Arrhenius descriptive census on
-all 1377 supported tasks, including the selector-versus-CEGAR equally weighted
+\emph{[RESULT PLACEHOLDER: in the main paper, use one combined P5/P6 table
+with the same seven frozen rows rather than a separate P5 table. Report the
+current-Arrhenius descriptive census on all 1377 supported tasks, including
+the selector-versus-CEGAR equally weighted
 46-domain macro-coverage contrast; overall and per-domain coverage; all-task
 micro-PAR2; solved planner CPU-time summaries; and the carried jointly solved
 or paired-observation comparisons. Report certified exact-width and

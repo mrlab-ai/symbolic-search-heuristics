@@ -2,7 +2,7 @@
 
 Downward Lab experiments for the width-bounded-heuristics paper (PR5).
 
-## Current paper protocol (Arrhenius P4/P5)
+## Current paper protocol (Arrhenius P4/P5/P6)
 
 The paper no longer uses the older Tetralith sweeps described later in this
 file as empirical evidence.  Its current-cluster evaluation is a frozen,
@@ -14,7 +14,9 @@ three-stage Arrhenius protocol:
    `d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf`.
 2. `exp_arrhenius_selector_validation.py` carries the five controls, the
    construction-bounded M&S safeguard, and the frozen selector-family winner
-   to 92 disjoint held-out tasks (seven configurations, 644 cells).
+   to a 92-task validation sample disjoint from P4 selection (seven
+   configurations, 644 cells). Here "held out" means held out from P4, not
+   historically unseen over the broader project.
 3. `exp_arrhenius_selector_full.py` carries that identical seven-configuration
    matrix to all 1377 supported positive-cost, normalized-axiom-free tasks
    (9639 cells).  This is a descriptive census and cannot rerank methods.
@@ -28,8 +30,8 @@ family.  `certified-report-v2.json` is the separate descriptive screen report;
 downstream runners consume only the selection artifact.  Verify both files
 with their adjacent `sha256sum` sidecars before use.
 
-The held-out and full reruns use the prospectively corrected P5 producer at
-planner revision `165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f`, launch-protocol
+The accepted P5 validation rerun uses planner revision
+`165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f`, launch-protocol
 revision `a52488637a1c054b26dac93fe2eb1a556110a2dd`, and protocol
 `pdb-ms-initial-dead-bdd-construction-prelog/v1`.  The stripped cached search
 binary and preprocessor have SHA-256 digests
@@ -39,6 +41,16 @@ and
 respectively.  Each accepted downstream run record must name this exact
 execution identity.  The immutable P4 provenance remains separately embedded
 in the selection artifact; do not rewrite it to P5.
+
+The pending P6 census instead uses planner revision
+`a3486a027a0f281e762cb6d66d72311455b66b33`, launch-protocol revision
+`0cb19e111da36fbb32d1b3bc0f07a52b733fbbe9`, stripped search SHA-256
+`2887194c74acc88273702b807dba28e4fd8f7ae3d916562bcf1b83ec79632758`,
+and preprocessor SHA-256
+`40e1d5580ec447cb606ead447317469bd861bd8cda398095df3fbf22922d0d23`.
+It prospectively maps a negative pre-search `SIGXCPU` return to canonical
+outcome 21 and reruns all 9,639 cells; neither canceled full grid contributes
+any cell.
 
 Run `build` and `start` only from a clean detached worktree at the exact launch
 revision.  Bind the account, benchmark checkout, revision cache, and Lab-8.0
@@ -59,17 +71,20 @@ env PYTHONDONTWRITEBYTECODE=1 \
 Invoke `start` exactly once after the built grid passes the runner's complete
 start-equivalent attestation.  Do not combine `build` and `start`, rebuild an
 existing grid, reuse a partially executed grid, or fill individual cells after
-outcomes are visible.  The full census is launched only after the complete
-held-out array has passed raw certification, `parse fetch`, and the frozen
-held-out analyzer.  Substitute `exp_arrhenius_selector_full.py` only at that
-stage.
+outcomes are visible. The full census was launched only after the complete
+validation array passed raw certification, `parse fetch`, and the frozen
+validation analyzer. A full launch must bind the separate P6 cache and exact
+P6 launch revision above; merely substituting the full runner into the P5
+command is invalid.
 
 After a complete array passes its raw audit, run `parse fetch` with the same
 runner, environment, selection artifact, and launch worktree.  Analyze the
 resulting exact `*-eval/properties` file read-only with:
 
 ```
-experiments/.venv/bin/python \
+env PYTHONDONTWRITEBYTECODE=1 \
+  WBH_ACCOUNT=naiss2025-5-561-cpu \
+  experiments/.venv/bin/python \
   experiments/analyze_arrhenius_selector_validation.py \
   /path/to/exp_arrhenius_selector_validation-eval/properties \
   --selection experiments/artifacts/arrhenius-selector-screen-p4/selection-v3.json
@@ -82,13 +97,41 @@ before adding results to the paper.  Their `--self-test` modes exercise the
 complete matrix plus provenance, outcome, parser, selector, recovery, and
 strict-JSON adversaries without reading experiment outcomes.
 
+The P4 artifact-freeze revision is
+`da50f09886bed8c09c73ec5358e49cdde2ce0832`. Regenerate its two canonical
+stdout objects with the required account binding:
+
+```
+env PYTHONDONTWRITEBYTECODE=1 WBH_ACCOUNT=naiss2025-5-561-cpu \
+  experiments/.venv/bin/python \
+  experiments/analyze_arrhenius_selector_pilot.py \
+  /path/to/exp_arrhenius_selector_pilot-eval/properties \
+  --emit-selection-artifact
+
+env PYTHONDONTWRITEBYTECODE=1 WBH_ACCOUNT=naiss2025-5-561-cpu \
+  experiments/.venv/bin/python \
+  experiments/analyze_arrhenius_selector_pilot.py \
+  /path/to/exp_arrhenius_selector_pilot-eval/properties \
+  --emit-reporting-json
+```
+
+The P5 analysis-freeze revision is
+`3255868fcf059c1e94f0377fb98a0d1551349f9f`. Accepted P4 and P5 properties
+have raw SHA-256 values
+`8b3e6862629a6a7b9234c13083e9840956be5bd973de49e6c9e7831627274dbb`
+and
+`d508298425b356023b589e643115ab482419c140da19b6744bbeff57a84bc10f`.
+Exact record-level inputs contain cluster paths and scheduler metadata; an
+anonymous public pack therefore needs a documented semantic projection and
+must not claim byte-for-byte reproduction of those private provenance hashes.
+
 The first P4 downstream starts were canceled after a producer-ordering defect
 was exposed by an initial-dead heuristic.  None of their stable or partial
 cells are reused.  The strict metric parser was retained; P5 fixes the producer
 and reruns every downstream cell from scratch.  See `paper/paper.tex` for the
 frozen estimands, denominators, and disclosure.  Everything below this section
 documents older development experiments or archived evidence and must not be
-substituted for the P4/P5 paper data.
+substituted for the P4/P5/P6 paper data.
 
 ## Setup
 
