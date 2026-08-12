@@ -84,7 +84,8 @@ We implement an exact-width selector over a fixed PDB pool, same-$g$ image
 batching, and a construction-bounded merge-and-shrink safeguard.  On a
 50-task screen, uncapped and capped merge-and-shrink each solve 43 tasks; the
 uncapped variant wins the frozen PAR2 tie-break, while the selector-family
-winner is the empty width-one PDB (30/50).  On the 24--27 complete pairs,
+winner is the empty width-one PDB (30/50).  On the 24--27 complete pairs per
+batching treatment,
 batching reduces completed image calls but increases image time, and it lowers
 overall coverage.  On 92 disjoint held-out tasks, the selector solves 41
 tasks against CEGAR's 40, but the predeclared domain-resampling interval spans
@@ -184,10 +185,10 @@ feasible remainder by a deterministic score whose leading criteria measure
 informativeness. We combine this selector with same-$g$ speculative batching
 and compare it with blind search, conventional PDB construction, and
 merge-and-shrink controls under a frozen screen and predeclared held-out
-protocol. The accepted P5 held-out stage and the pending P6 full-suite stage
-carry the same frozen matrix forward under separately attested producer
-identities. The held-out result is reported below and the full-suite result
-remains pending. Archived outcomes informed
+protocol. P5's seven-configuration held-out matrix is carried unchanged into
+the pending P6 full-suite stage under a separately attested producer identity.
+The held-out result is reported below and the full-suite result remains
+pending. Archived outcomes informed
 only the composition of the selection screen; every performance observation
 reported here comes from Arrhenius under a compatible logging protocol.
 
@@ -1417,7 +1418,8 @@ factor at most $3dN(N+1)n$ over blind effort.
 The alignment premise is essential. Our causal-graph control explicitly
 uses \texttt{align\_merge\_order=false}; it is \emph{not} covered by the
 a priori $d(N+1)$ formula. Its exact post-construction width in the search
-order can nevertheless instantiate the general theorems. Conversely, setting
+order can nevertheless instantiate the general theorems when the resulting
+heuristic is consistent. Conversely, setting
 the option to true supplies the closed-form parameter bound but can change
 abstraction quality. The experiment must therefore keep the a priori family
 guarantee, the post-construction width certificate, and informativeness
@@ -1564,6 +1566,17 @@ constraint, whether batching reduces operational overhead, and how heuristic
 construction cost changes the comparison. All reported results come
 from the current Arrhenius cluster; no older-cluster run is pooled with or used
 as a substitute for this evaluation.
+
+Every treatment uses the same forward symbolic framework and task-specific
+fixed BDD variable order. Completed nonblind heuristics use the
+product-at-evaluation \bddastar\ engine and minimum-$(f,g)$ bucket ordering
+from Section~\ref{sec-effort}; the blind control and safeguard fallbacks use
+the equivalent $h\equiv0$ forward uniform-cost path. Treatments otherwise
+differ only in the heuristic and in the explicit batching or construction
+safeguard named below. Throughout,
+micro-PAR2 is the arithmetic mean of reported planner CPU time for solved
+cells and 600 seconds for every unsolved cell. Heuristic construction is
+inside the 300-second planner limit and is therefore charged to that time.
 
 \subsection{Questions and Compared Methods}
 
@@ -1763,102 +1776,38 @@ rebuilt the 1000-cell grid, and reran every cell as P4. Those diagnostic
 outcomes serve only as protocol-failure evidence; no score or performance
 observation from them enters the selection artifact.
 
-The source and execution identities are frozen independently. The immutable
-Stage-1 P4 identity uses planner revision
-\texttt{58a3f742d7ac63f391d06c237573f14ad590c187}, stripped cached-binary SHA-256
-\texttt{59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511},
-copied-preprocessor SHA-256
-\texttt{acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c},
-and clean screening-protocol revision
-\texttt{d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf}. The benchmark repository is
-revision \texttt{48d6a00d482de2384a9e751f9343df58bf5582be}.
-The normalized noncomment task sequence, selected task-source records, and
-complete option matrix have SHA-256 digests
-\texttt{3195dac7e62a34e5ac4cbeb715ab7f9b99e2ee64341082dd7d718ea2820751ca},
-\texttt{dbb7730c257472c07f7946f0434949449169e06d1faa2174a92a6d13c48cb8ba},
-and
-\texttt{e16f6e34af5101a3549bfbf98ebaba23371c645f9166c884bfdf07b3b65e7442},
-respectively. The runner attests the copied code, PDDL inputs, run scripts,
-static properties, job header and array body before submission. The read-only
-analyzer pins these identities. The named protocols are
-\texttt{arrhenius-exact-width-selector-screening-v2} for the experiment,
-\texttt{fixed\_pool\_v1} for the selector pool,
-\texttt{init\_dead\_init\_h\_mean\_dead\_fraction\_width\_states\_pattern\_v1}
-for candidate scoring,
-\texttt{run.log/pdb-final-and-width-selector-v1-whole-trace/v3} for its log
-parser, \texttt{wbh-exact-schema-semantic-v3} for metric validation, and
-\texttt{direct-search-raw-effective-plan-reconciliation/v1} for outcome
-certification.
+The source and execution identities are frozen independently. P4 supplies the
+screen, P5 the accepted held-out run, and P6 the full rerun; the corresponding
+planner/launch revisions begin \texttt{58a3f742d}/\texttt{d6d98ad42},
+\texttt{165b6d2ee}/\texttt{a52488637}, and
+\texttt{a3486a027}/\texttt{0cb19e111}. Every runner byte-attests its planner,
+preprocessor, code, PDDL inputs, run scripts, static metadata, and complete job
+script before submission. The analyzers independently pin those identities,
+the task and option matrices, and the canonical selection artifact. The
+accompanying anonymous artifact contains the raw SHA-256 sidecars, exact
+revision and protocol strings, runners, analyzers, immutable JSON results, and
+a machine-readable rendering path; \texttt{paper/reproducibility-manifest.md}
+indexes them in one place.
 
-The accepted held-out P5 execution has a separate frozen identity: planner
-revision
-\texttt{165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f}, stripped cached-binary SHA-256
-\texttt{af2a19d236ecad9b747d2a1b9c49da73d98248c38d21cc60ad0ac7613d74bdbe},
-copied-preprocessor SHA-256
-\texttt{1b351a4a5f9380bf41fe9fd61b98c816505ebd8cf88b20afa0d81a9bfb2474bd},
-and clean launch-protocol revision
-\texttt{a52488637a1c054b26dac93fe2eb1a556110a2dd}. Its protocol is
-\texttt{arrhenius-selector-heldout-validation-v3}. It declares
-\texttt{pdb-ms-initial-dead-bdd-construction-prelog/v1}: a completed PDB or
-M\&S heuristic that proves the initial state dead emits its construction event
-before the normal unsolvable exit. The strict
-\texttt{wbh-exact-schema-semantic-v3} parser is unchanged.
+Two downstream audits caused prospective whole-grid corrections. First, a
+heuristic that proved the initial state dead could exit before emitting its
+completed construction event. Both arrays were canceled (53 stable held-out
+cells and 20 full-suite completion markers), the producer ordering was fixed,
+and both grids were rebuilt from scratch; the resulting P5 held-out grid is
+the accepted one.
+Second, four of 1650 completion-marked P5 full cells received
+\texttt{SIGXCPU} in legacy preprocessing, whose negative child return surfaced
+through the shell as 232. P6 maps this pre-search condition to canonical
+resource outcome 21 and again reruns all 9639 cells. A scheduled compute-node
+smoke exercised that path before launch. No completed cell, partial cell, or
+archived attempt from either rejected start is reused.
 
-The full-suite rerun is a distinct P6 execution. Its planner revision is
-\texttt{a3486a027a0f281e762cb6d66d72311455b66b33}. Before launch, the runner
-requires both the P5 launch-protocol revision and P5 planner revision above to
-be ancestors of this P6 planner under
-\texttt{git-merge-base-is-ancestor/p5-protocol-and-planner-to-p6-planner/v1}.
-P6 additionally implements
-\texttt{driver-translate-and-legacy-preprocess-negative-sigxcpu-to-21/v1}:
-for translation and legacy preprocessing, a negative child return of $-24$
-(\texttt{SIGXCPU}) becomes canonical planner resource-limit outcome 21 before
-search can start; search-process reconciliation is unchanged. The P6 full
-runner uses \texttt{arrhenius-selector-full-population-v4}, and its analyzer
-emits schema
-\texttt{symbolic-search-heuristics/full-population-analysis/v4} under analysis
-protocol \texttt{full-supported-population-census-v1}. Its
-\texttt{protocol-recognized-final-cell-outcome-census/v1} table retains every
-declared outcome-code bucket, including zeros; its unit is an attested final
-cell record, not a shell attempt generation or a component-process invocation.
-The clean P6 launch-protocol revision is
-\texttt{0cb19e111da36fbb32d1b3bc0f07a52b733fbbe9}; its stripped cached-binary
-and copied-preprocessor SHA-256 digests are
-\texttt{2887194c74acc88273702b807dba28e4fd8f7ae3d916562bcf1b83ec79632758}
-and
-\texttt{40e1d5580ec447cb606ead447317469bd861bd8cda398095df3fbf22922d0d23}.
-A scheduled compute-node smoke forced the legacy preprocessor limit and
-returned canonical outcome 21 with no search process, metric stream, plan, or
-stderr before these pins were committed.
-
-The immutable selection artifact, certified screen report, and accepted
-held-out analysis have SHA-256 digests
-\texttt{d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2},
-\texttt{e75daadefc6cf3cad3121ffb28959659dbc78523970945d575a97b18a319252c},
-and
-\texttt{7c598f068164224272b8ba035b987973f35d0d45e695f90c9083931790908cea},
-respectively.
-
-These amendments followed fail-closed protocol audits, not performance
-comparisons. In the first downstream start, the first stable held-out
-goal-fill cell whose heuristic proved the initial state dead exposed a missing
-construction event: producer ordering allowed the normal unsolvable exit
-before that event was emitted. Both arrays were canceled promptly. At
-cancellation, 53 held-out cells were stable and 20 full-suite cells bore
-wrapper-completion markers; none of those data are reused. The producer was
-fixed, and both grids were replaced. The accepted held-out rerun is complete
-under the P5 identity above.
-
-A later P5 full-suite start was also rejected in its entirety. Four of the
-1650 cells bearing wrapper-completion markers had received
-\texttt{SIGXCPU} in legacy preprocessing: the child return was $-24$, but the
-top-level shell surfaced 232 rather than a protocol-recognized resource-limit
-outcome. The array was canceled, and no completed cell, partial cell, or
-archived attempt from that start is reused. The pending P6 census reruns every
-cell from scratch with the normalization above. Across both amendments, the
-selection artifact, seven-configuration matrix, Stage-1 ranking, declared
-comparisons, and statistical contrasts are unchanged, and downstream outcomes
-cannot reopen any of them. The full census remains pending.
+These amendments were triggered by protocol violations, not performance
+comparisons. They leave the selection, seven-configuration matrix, ranking,
+contrasts, and statistical policy unchanged. P6 records every declared
+outcome-code bucket, including zeros; the unit is one retained, attested final
+cell record, not a shell attempt generation or component-process invocation.
+The full census remains pending.
 
 \subsection{Results}
 
@@ -1925,11 +1874,12 @@ not used. These are descriptive selection-screen results only and make no
 claim about the held-out set or the full supported population.
 
 \paragraph{Held-out result.}
-All 644 held-out cells passed the protocol checks.  In the primary comparison,
-the width-one selector solved 41 tasks and CEGAR solved 40.  The equally
-weighted 46-domain macro difference was therefore $1/92=1.09$ percentage
-points; because every domain contributes two tasks, it equals the task-micro
-difference in this sample.  The predeclared 100,000-replicate domain-bootstrap
+All 644 held-out cells passed the protocol checks. In the primary comparison,
+the width-one selector solved 41 tasks and CEGAR solved 40. Because every
+domain contributes exactly two tasks, the equally weighted domain-macro and
+task-micro estimands coincide in this sample; the selector-minus-CEGAR
+difference under either estimand is $1/92=1.09$ percentage points. The
+predeclared 100,000-replicate domain-bootstrap
 95\% domain-resampling interval was $[-1/46,1/23]$, or
 $[-2.17,4.35]$ percentage points, with two task-level discordant wins and one
 loss.  Thus the held-out data do not
