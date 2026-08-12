@@ -1,0 +1,199 @@
+\documentclass[letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{microtype}
+
+\newcommand{\task}{\ensuremath{\Pi}}
+\newcommand{\sinit}{\ensuremath{s_{\mathrm{I}}}}
+\newcommand{\cost}{\ensuremath{\mathit{cost}}}
+\newcommand{\gstar}{\ensuremath{g^{*}}}
+\newcommand{\copt}{\ensuremath{C^{*}}}
+\newcommand{\level}[2]{\ensuremath{H_{#2}}}
+\newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
+
+\theoremstyle{plain}
+\newtheorem{lemma}{Lemma}
+
+\title{Supplementary Material: Full Proof of the Bucket Identity}
+\author{Anonymous for review}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup and Full Proof}
+
+Let \task\ be a finite deterministic planning task with positive integer
+operator costs, initial state \sinit, and optimal solution cost
+$0<\copt<\infty$.
+For a state \(s\), let \(\gstar(s)\) be its cheapest-path cost from
+\sinit, let \(L_g=\{s\mid\gstar(s)=g\}\), and let
+\(\level{h}{v}=\{s\mid h(s)=v\}\).  The heuristic
+\(h\colon\mathcal{S}\to\mathbb{Z}_{\geq0}\cup\{\infty\}\) is consistent if
+\(h(s)\leq\cost(o)+h(s[o])\) for every applicable operator \(o\), and
+\(h=0\) on goal states.  In \bddastar, states with infinite heuristic
+value are discarded; the remaining generated states are grouped by keys
+\((g,v)\), selected by increasing \(f=g+v\) and then increasing \(g\).
+Closed states are removed, and search terminates when a selected bucket
+contains a goal.  This is the setting of the following restatement.
+
+\begin{lemma}[bucket identity]
+\label{lem-identity}
+Let $h$ be consistent. \bddastar\ on \task\ with $h$ selects every
+bucket key $(g,v)$ with $g + v \leq \copt$ and $g < \copt$ and
+$L_g \cap \level{h}{v} \neq \emptyset$ exactly once before terminating,
+and the BDD expanded with key $(g,v)$ represents exactly
+$L_g \cap \level{h}{v}$. No other bucket is expanded before
+termination.
+\end{lemma}
+
+\begin{proof}
+Throughout, the \emph{key} of a generated state $s$ is the pair
+$(c, h(s))$, where $c$ is the cost of the generating path, and the
+$f$-value of a key $(g,v)$ is $g + v$. We prove five claims.
+
+\emph{Claim 1 (monotone selection): if a key $(g_1,v_1)$ is selected at
+step $t_1$ and a key $(g_2,v_2)$ at step $t_2 > t_1$, then
+$g_1 + v_1 \leq g_2 + v_2$, and if $g_1 + v_1 = g_2 + v_2$ then
+$g_1 \leq g_2$.}
+For the $f$-part, every state inserted into the open list during the
+expansion of a bucket with key $(g,v)$ is a successor $s[o]$ of a state
+$s$ with $h(s) = v$ and has key $(g + \cost(o),\, h(s[o]))$, whose
+$f$-value satisfies
+$g + \cost(o) + h(s[o]) \geq g + h(s) = g + v$ by consistency. Hence
+expanding a minimum-$f$ key only inserts keys of at least that
+$f$-value, the minimum $f$-value of the open list never decreases, and
+selected $f$-values are non-decreasing over time. For the $g$-part,
+suppose for contradiction that there are selections at steps
+$t_1 < t_2$ of keys with equal $f$-value $F$ and $g_2 < g_1$, and among
+all such violations choose one minimizing $t_2$. The bucket of
+$(g_2,v_2)$ must be empty at step $t_1$: otherwise the tie-breaking
+rule would select it instead of $(g_1,v_1)$. Its content is also not
+inserted at step $t_1$ itself, since states inserted by the expansion
+of $(g_1,v_1)$ have $g$-component $g_1 + \cost(o) > g_1 > g_2$. So
+every state of the bucket is inserted at some step $t'$ with
+$t_1 < t' < t_2$ by expanding a key $(g',v')$ with
+$g' = g_2 - \cost(o) < g_2$ for some operator $o$. Consistency gives
+$g' + v' \leq g_2 + v_2 = F$ as above, and the $f$-part applied to
+$t_1 < t'$ gives $g' + v' \geq F$, so $g' + v' = F$ and $g' < g_1$:
+the pair $(t_1, t')$ is a violation with $t' < t_2$, contradicting
+minimality.
+
+\emph{Claim 2 (no re-population): after a key $(g,v)$ is selected at
+step $t$, no state with key $(g,v)$ is inserted into the open list;
+consequently every key is selected at most once, and at its selection
+its bucket contains every state that was ever generated with this key
+and not expanded before.}
+Suppose a state with key $(g,v)$ is inserted at a step $t' > t$ by
+expanding a key $(g',v')$. Then $g' + v' \leq g + v$ by consistency as
+in Claim~1, and $g' + v' \geq g + v$ by the $f$-part of Claim~1, so the
+$f$-values are equal; but $g' = g - \cost(o) < g$ contradicts the
+$g$-part. A second selection of the same key would require an
+insertion after step $t$, which is excluded. Finally, a state generated
+with key $(g,v)$ before step $t$ enters the bucket unless it is removed
+by the closed-list test, which removes only previously expanded states,
+and states are removed from the open list only when their bucket is
+selected.
+
+\emph{Claim 3 (optimal $g$-values): every state $s$ in a selected
+bucket with key $(g,v)$ satisfies $\gstar(s) = g$ and $h(s) = v$.}
+We use induction on the selection step; Claims~1 and~2 hold
+unconditionally and may be used freely. That $h(s) = v$ holds by
+construction of the level-set partition, and $\gstar(s) \leq g$ because
+$s$ is reached by a path of cost $g$. Suppose $\gstar(s) < g$ for some
+$s$ in the bucket selected at the current step, and fix a cheapest path
+$p_0 = \sinit, \dots, p_k = s$, all of whose prefixes are cheapest
+paths to their end states. Let $j$ be the smallest index such that
+$p_j$ has not been expanded before the current step; $j$ exists because
+$s$ qualifies, and $j \geq 1$ because \bddastar\ selects the initial
+bucket $\{\sinit\}$ first. By the induction hypothesis, every earlier
+expansion of $p_{j-1}$ has key $(\gstar(p_{j-1}), h(p_{j-1}))$, so
+$p_j$ was generated with key $(\gstar(p_j), h(p_j))$ before the current
+step. This key has not been selected yet: a selection after the
+generation of $p_j$ would have expanded $p_j$ (Claim~2), contradicting
+the choice of $j$, and a selection before the generation would
+contradict Claim~2 directly. Hence the open list currently contains the
+key $(\gstar(p_j), h(p_j))$, and consistency along the path segment
+from $p_j$ to $s$ yields
+$\gstar(p_j) + h(p_j) \leq \gstar(s) + h(s) < g + v$, using
+$\gstar(s) < g$ and $h(s) = v$. This contradicts minimum-$f$ selection.
+
+\emph{Claim 4 (completeness): every state $s$ with
+$\gstar(s) = g < \copt$ and $g + h(s) \leq \copt$ is generated with key
+$(g, h(s))$, and this key is selected before the search terminates.}
+By strong induction on $g$. \emph{Generation:} for $g = 0$, $s = \sinit$
+initializes the open list with key $(0, h(\sinit))$. For $g > 0$, let
+$p$ be the predecessor of $s$ on a cheapest path, with
+$\gstar(p) = g - \cost(o) < g$ and, by consistency,
+$\gstar(p) + h(p) \leq \gstar(s) + h(s) \leq \copt$. By the induction
+hypothesis, $p$ is generated with key $(\gstar(p), h(p))$ and this key
+is selected before termination; by Claim~2 the bucket then contains
+$p$, because any earlier expansion of $p$ would, by Claim~3, have
+occurred with the same key, which is selected only once. Expanding the
+bucket generates $s$ at cost $\gstar(p) + \cost(o) = g$ with key
+$(g, h(s))$. \emph{Selection:} let $K = (g, h(s))$, with
+$f(K) \leq \copt$ and $g < \copt$. From the step at which $K$ first
+becomes nonempty, $K$ remains in the open list until it is selected
+(Claim~2). The search terminates only when a selected bucket contains a
+goal state, and by Claim~3 a goal state in a selected bucket has key
+$(\gstar(s_G), 0)$ with $\gstar(s_G) \geq \copt$, since consistent
+heuristics assign $0$ to goal states and \copt\ is the cheapest goal
+cost. While $K$ is open, no such key is selected: its $f$-value is at
+least $\copt \geq f(K)$, and in case of equality its $g$-component
+$\gstar(s_G) \geq \copt > g$ loses the tie-break against $K$ or another
+open key with smaller $g$-component. Hence the search does not
+terminate while $K$ is open. Moreover, while $K$ is open every
+selection picks a key with $f$-value at most $f(K) \leq \copt$; there
+are at most $(\copt + 1)(\copt + 2)/2$ keys $(g', v')$ of nonnegative
+integers with $g' + v' \leq \copt$, each selected at most once
+(Claim~2), and the open list is nonempty while $K$ is open. Hence after
+finitely many steps $K$ itself is selected, before termination.
+
+\emph{Claim 5 (no other expansions): every bucket selected before the
+terminating selection has a key $(g,v)$ with $g + v \leq \copt$ and
+$g < \copt$.}
+Fix a cheapest plan $q_0 = \sinit, \dots, q_r$ with $q_r$ a goal state
+and all prefixes cheapest, so that consistency yields
+$\gstar(q_l) + h(q_l) \leq \copt$ for every $l$. First we exhibit a
+witness key: at every step at which the search has not yet terminated,
+let $l$ be the smallest index such that $q_l$ is unexpanded, which
+exists because $q_r$ is unexpanded before termination. If $l = 0$, the
+initial key $(0, h(\sinit))$ has not been selected, since its bucket
+contains $\sinit$, and is therefore open. If $l \geq 1$, then $q_{l-1}$
+was expanded, by Claim~3 with key $(\gstar(q_{l-1}), h(q_{l-1}))$, so
+$q_l$ was generated with key $K_l = (\gstar(q_l), h(q_l))$; exactly as
+in the proof of Claim~3, $K_l$ has not been selected and is therefore
+open. In all cases the open list contains a key with $f$-value at most
+\copt, namely $(0, h(\sinit))$ or $K_l$; call it the witness. Second,
+minimum-$f$ selection against the witness implies that every selected
+key satisfies $g + v \leq \copt$. Third, a selected key with
+$g + v \leq \copt$ and $g \geq \copt$ must equal $(\copt, 0)$, and we
+show that its selection is the terminating one. Consider the step at
+which $(\copt, 0)$ is selected and let $l$ be as above. If $l < r$,
+the witness $K_l$ is open with $f$-value at most \copt\ and
+$g$-component $\gstar(q_l) < \copt$; then either its $f$-value is
+smaller than \copt, contradicting minimum-$f$ selection of
+$(\copt, 0)$, or it equals \copt\ and the tie-breaking rule prefers
+$K_l$ or another open key of smaller $g$-component over $(\copt, 0)$,
+again a contradiction. Hence $l = r$, so $q_r$ was generated with key
+$(\copt, 0)$ and, being unexpanded, lies in its bucket at selection
+time by Claim~2. The selected bucket thus contains the goal state
+$q_r$ and the search terminates. Consequently, every selection before
+the terminating one has $g + v \leq \copt$ and $g < \copt$.
+
+\emph{Assembly.} Let $(g,v)$ with $g + v \leq \copt$ and $g < \copt$
+and $L_g \cap \level{h}{v} \neq \emptyset$. Every
+$s \in L_g \cap \level{h}{v}$ satisfies the premise of Claim~4, so its
+key $(g,v)$ is selected exactly once before termination (Claims~2
+and~4), and at this selection the bucket contains $s$ (Claim~2, with
+prior expansion of $s$ excluded because, by Claim~3, it would have
+occurred at the same, uniquely selected key). Conversely, by Claim~3
+the selected bucket contains only states with $\gstar = g$ and
+$h$-value $v$. Hence the expanded BDD represents exactly
+$L_g \cap \level{h}{v}$. Keys whose intersection is empty are never
+selected, since buckets enter the open list only when populated, and by
+Claim~5 no key outside the stated range is expanded before the search
+stops.
+\end{proof}
+
+\end{document}
