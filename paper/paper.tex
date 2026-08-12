@@ -291,11 +291,10 @@ total extension
 $q \colon \{0,1\}^{n} \to \mathbb{Z} \cup \{\infty\}$. Let
 $\phi \colon \mathbb{Z} \cup \{\infty\}
  \to \mathbb{Z}_{\geq 0} \cup \{\infty\}$
-be nondecreasing, satisfy $\phi(0)=0$, $\phi(\infty)=\infty$, and
+be nondecreasing, satisfy $\phi(0)=0$, $\phi(\infty)=\infty$, and for
+every $a\in\mathbb Z$ and integer $c\geq0$ satisfy
 \[
-\phi(a+c) \leq \phi(a)+c
-\qquad
-\text{for every $a\in\mathbb{Z}$ and integer cost $c\geq 0$.}
+\phi(a+c) \leq \phi(a)+c.
 \]
 Then $h=\phi\circ q$ is admissible and consistent and
 $\width_\pi(h)\leq\width_\pi(q)$.
@@ -343,10 +342,12 @@ cofactor and the heuristic cofactor.
 \label{thm-bucket}
 Let $S \subseteq \{0,1\}^n$ and $U \subseteq \img(h)$. Then
 \[
+\begin{aligned}
 \bddsize{S \cap h^{-1}(U)}
-\;\leq\; \cofcount(\chi_{S \cap h^{-1}(U)})
-\;\leq\; W \cdot \cofcount(\chi_S)
-\;\leq\; W n \, (\bddsize{S} + 2).
+  &\leq \cofcount(\chi_{S \cap h^{-1}(U)}) \\
+  &\leq W\cofcount(\chi_S) \\
+  &\leq Wn(\bddsize{S}+2).
+\end{aligned}
 \]
 \end{theorem}
 
@@ -366,10 +367,12 @@ more than $Wn$ up to the additive term.
 \label{thm-partition}
 Let $S \subseteq \{0,1\}^n$. Then
 \[
+\begin{aligned}
 \sum_{v \in \img(h)} \bddsize{S \cap \level{h}{v}}
-\;\leq\; T W \cdot \cofcount(\chi_S)
-\;\leq\; T W n \, (\bddsize{S} + 2)
-\;\leq\; W^{2} n \, (\bddsize{S} + 2).
+  &\leq TW\cofcount(\chi_S) \\
+  &\leq TWn(\bddsize{S}+2) \\
+  &\leq W^2n(\bddsize{S}+2).
+\end{aligned}
 \]
 If $S\subseteq\states$ and the sum ranges only over finite values attained
 on planning states, the first two bounds hold with $T$ replaced by $\values$.
@@ -411,11 +414,13 @@ supplement proves these five claims in full.
 \label{thm-effort}
 Let $h$ be consistent with $\width_\pi(h) \leq W$. Then
 \[
-\effort(\task, h)
-\;\leq\; \values W n \cdot
-\bigl(\effort(\task, \hblind) + 2\copt\bigr)
-\;\leq\; W^{2} n \cdot
-\bigl(\effort(\task, \hblind) + 2\copt\bigr).
+\begin{aligned}
+\effort(\task,h)
+  &\leq \values Wn
+    \bigl(\effort(\task,\hblind)+2\copt\bigr) \\
+  &\leq W^2n
+    \bigl(\effort(\task,\hblind)+2\copt\bigr).
+\end{aligned}
 \]
 \end{theorem}
 
@@ -589,9 +594,10 @@ extended to non-state assignments by the same sum over the bit
 encoding's induced table, with table values on invalid bit codes also
 in $[-M,M]$, e.g., $0$, and let $\pi$ be variable-contiguous. Then
 \[
-\width_\pi(\hpot)\leq\width_\pi(p)\leq d(2mM+1)
-\qquad\text{and}\qquad
-|\img(\hpot)|\leq mM+1.
+\begin{aligned}
+\width_\pi(\hpot)&\leq\width_\pi(p)\leq d(2mM+1),\\
+|\img(\hpot)|&\leq mM+1.
+\end{aligned}
 \]
 \end{proposition}
 
