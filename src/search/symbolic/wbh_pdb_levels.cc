@@ -26,6 +26,13 @@ namespace {
 const char *const WIDTH_SELECTOR_PROTOCOL = "fixed_pool_v1";
 const char *const WIDTH_SELECTOR_SCORE =
     "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1";
+const char *const CAPPED_WIDTH_SELECTOR_PROTOCOL = "fixed_pool_value_cap_v2";
+const char *const CAPPED_WIDTH_SELECTOR_SCORE =
+    "init_dead_init_h_mean_dead_fraction_width_states_pattern_value_cap_v2";
+const char *const CAP_GRID_SELECTOR_PROTOCOL = "fixed_pool_cap_grid_v6";
+const char *const CAP_GRID_SELECTOR_SCORE =
+    "per_pattern_strongest_feasible_cap_then_"
+    "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1";
 
 struct CandidateSpec {
     vector<int> pattern;
@@ -48,11 +55,28 @@ struct MaterializedCandidate {
     int64_t finite_sum = 0;
     int finite_count = 0;
     int dead_count = 0;
+    int value_cap = -1;
+    map<int, int> finite_value_counts;
+    string raw_value_histogram;
+    long raw_add_nodes = 0;
+    int raw_num_terminals = 0;
+    long raw_cofactor_width = 0;
+    long raw_width_upper_bound = 0;
+    int raw_num_values = 0;
+    int raw_max_finite_value = 0;
+    int64_t raw_finite_sum = 0;
+    int raw_finite_count = 0;
+    int raw_dead_count = 0;
+    bool raw_initial_dead_end = false;
+    int raw_initial_h = 0;
+    int raw_initial_value_count = 0;
 
     explicit MaterializedCandidate(SymVariables *vars)
         : dead_ends(vars->zeroBDD()) {
     }
 };
+
+string encode_raw_value_histogram(const map<int, int> &value_counts);
 
 vector<int> normalized_pattern(vector<int> pattern) {
     sort(pattern.begin(), pattern.end());
@@ -94,7 +118,25 @@ vector<int> budgeted_pattern(
     return normalized_pattern(move(result));
 }
 
-unique_ptr<MaterializedCandidate> materialize_candidate(
+void compute_candidate_add_stats(
+    SymVariables *vars, MaterializedCandidate &candidate) {
+    // Score the exact same total ADD that the winning heuristic reports.
+    ADD h_add = vars->constant(0);
+    for (const auto &[distance, level] : candidate.level_sets) {
+        h_add += level.Add() * vars->constant(distance);
+    }
+    if (!candidate.dead_ends.IsZero()) {
+        vector<int> terminals = collect_integer_leaf_values(h_add);
+        double infinity_marker =
+            static_cast<double>(terminals.back()) + 1.0;
+        h_add = candidate.dead_ends.Add().Ite(
+            vars->constant(infinity_marker), h_add);
+    }
+    candidate.add_stats = compute_add_stats(
+        vars, h_add, static_cast<int>(candidate.level_sets.size()));
+}
+
+unique_ptr<MaterializedCandidate> materialize_raw_candidate(
     SymVariables *vars, const TaskProxy &task_proxy,
     const CandidateSpec &spec) {
     auto candidate =
@@ -134,6 +176,7 @@ unique_ptr<MaterializedCandidate> materialize_candidate(
             }
             candidate->finite_sum += distance;
             ++candidate->finite_count;
+            ++candidate->finite_value_counts[distance];
         }
     }
 
@@ -143,22 +186,157 @@ unique_ptr<MaterializedCandidate> materialize_candidate(
         candidate->pdb->get_value(initial_state.get_unpacked_values());
     candidate->initial_dead_end =
         candidate->initial_h == numeric_limits<int>::max();
-
-    // Score the exact same total ADD that the winning heuristic reports.
-    ADD h_add = vars->constant(0);
-    for (const auto &[distance, level] : candidate->level_sets) {
-        h_add += level.Add() * vars->constant(distance);
-    }
-    if (!candidate->dead_ends.IsZero()) {
-        vector<int> terminals = collect_integer_leaf_values(h_add);
-        double infinity_marker =
-            static_cast<double>(terminals.back()) + 1.0;
-        h_add = candidate->dead_ends.Add().Ite(
-            vars->constant(infinity_marker), h_add);
-    }
-    candidate->add_stats = compute_add_stats(
-        vars, h_add, static_cast<int>(candidate->level_sets.size()));
+    compute_candidate_add_stats(vars, *candidate);
+    candidate->raw_add_nodes = candidate->add_stats.add_inner_nodes;
+    candidate->raw_num_terminals = candidate->add_stats.num_terminals;
+    candidate->raw_cofactor_width = candidate->add_stats.cofactor_width;
+    candidate->raw_width_upper_bound = candidate->add_stats.width_upper_bound;
+    candidate->raw_num_values = static_cast<int>(candidate->level_sets.size());
+    candidate->raw_max_finite_value = candidate->level_sets.rbegin()->first;
+    candidate->raw_finite_sum = candidate->finite_sum;
+    candidate->raw_finite_count = candidate->finite_count;
+    candidate->raw_dead_count = candidate->dead_count;
+    candidate->raw_initial_dead_end = candidate->initial_dead_end;
+    candidate->raw_initial_h = candidate->initial_h;
     return candidate;
+}
+
+unique_ptr<MaterializedCandidate> cap_candidate(
+    SymVariables *vars, const MaterializedCandidate &raw, int value_cap) {
+    if (value_cap < 0) {
+        ABORT("cap_candidate requires a nonnegative value cap.");
+    }
+    auto candidate =
+        unique_ptr<MaterializedCandidate>(new MaterializedCandidate(vars));
+    candidate->pattern = raw.pattern;
+    candidate->sources = raw.sources;
+    candidate->pdb = raw.pdb;
+    candidate->dead_ends = raw.dead_ends;
+    candidate->abstract_states = raw.abstract_states;
+    candidate->initial_dead_end = raw.initial_dead_end;
+    candidate->initial_h = raw.initial_dead_end
+                               ? raw.initial_h
+                               : min(raw.initial_h, value_cap);
+    candidate->dead_count = raw.dead_count;
+    candidate->value_cap = value_cap;
+    candidate->raw_add_nodes = raw.raw_add_nodes;
+    candidate->raw_num_terminals = raw.raw_num_terminals;
+    candidate->raw_cofactor_width = raw.raw_cofactor_width;
+    candidate->raw_width_upper_bound = raw.raw_width_upper_bound;
+    candidate->raw_num_values = raw.raw_num_values;
+    candidate->raw_max_finite_value = raw.raw_max_finite_value;
+    candidate->raw_finite_sum = raw.raw_finite_sum;
+    candidate->raw_finite_count = raw.raw_finite_count;
+    candidate->raw_dead_count = raw.raw_dead_count;
+    candidate->raw_initial_dead_end = raw.raw_initial_dead_end;
+    candidate->raw_initial_h = raw.raw_initial_h;
+    candidate->raw_initial_value_count = raw.raw_initial_value_count;
+    candidate->raw_value_histogram = raw.raw_value_histogram;
+    for (const auto &[distance, level] : raw.level_sets) {
+        int value = min(distance, value_cap);
+        auto it = candidate->level_sets.find(value);
+        if (it == candidate->level_sets.end()) {
+            candidate->level_sets[value] = level;
+        } else {
+            it->second += level;
+        }
+        int count = raw.finite_value_counts.at(distance);
+        candidate->finite_sum += static_cast<int64_t>(value) * count;
+        candidate->finite_count += count;
+        candidate->finite_value_counts[value] += count;
+    }
+    compute_candidate_add_stats(vars, *candidate);
+    return candidate;
+}
+
+unique_ptr<MaterializedCandidate> materialize_candidate(
+    SymVariables *vars, const TaskProxy &task_proxy,
+    const CandidateSpec &spec, int value_cap) {
+    unique_ptr<MaterializedCandidate> raw =
+        materialize_raw_candidate(vars, task_proxy, spec);
+    if (value_cap < 0) {
+        return raw;
+    }
+    return cap_candidate(vars, *raw, value_cap);
+}
+
+const vector<int> CAP_GRID = {0, 1, 2, 4, 8, 16, 32, 64, 128, 256};
+
+vector<int> cap_grid_for_max(int max_finite_value) {
+    vector<int> caps;
+    for (int cap : CAP_GRID) {
+        // Caps at or above the maximum finite value equal the exact transform.
+        if (cap < max_finite_value) {
+            caps.push_back(cap);
+        }
+    }
+    caps.push_back(-1);
+    return caps;
+}
+
+const char BASE64URL_ALPHABET[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+void append_unsigned_varint(vector<unsigned char> &bytes, uint64_t value) {
+    do {
+        unsigned char byte = value & 0x7f;
+        value >>= 7;
+        bytes.push_back(byte | (value ? 0x80 : 0));
+    } while (value);
+}
+
+string base64url_without_padding(const vector<unsigned char> &bytes) {
+    string result;
+    result.reserve((bytes.size() * 4 + 2) / 3);
+    size_t index = 0;
+    while (index + 3 <= bytes.size()) {
+        uint32_t chunk = (static_cast<uint32_t>(bytes[index]) << 16) |
+                         (static_cast<uint32_t>(bytes[index + 1]) << 8) |
+                         bytes[index + 2];
+        result.push_back(BASE64URL_ALPHABET[(chunk >> 18) & 63]);
+        result.push_back(BASE64URL_ALPHABET[(chunk >> 12) & 63]);
+        result.push_back(BASE64URL_ALPHABET[(chunk >> 6) & 63]);
+        result.push_back(BASE64URL_ALPHABET[chunk & 63]);
+        index += 3;
+    }
+    size_t remaining = bytes.size() - index;
+    if (remaining == 1) {
+        uint32_t chunk = static_cast<uint32_t>(bytes[index]) << 16;
+        result.push_back(BASE64URL_ALPHABET[(chunk >> 18) & 63]);
+        result.push_back(BASE64URL_ALPHABET[(chunk >> 12) & 63]);
+    } else if (remaining == 2) {
+        uint32_t chunk = (static_cast<uint32_t>(bytes[index]) << 16) |
+                         (static_cast<uint32_t>(bytes[index + 1]) << 8);
+        result.push_back(BASE64URL_ALPHABET[(chunk >> 18) & 63]);
+        result.push_back(BASE64URL_ALPHABET[(chunk >> 12) & 63]);
+        result.push_back(BASE64URL_ALPHABET[(chunk >> 6) & 63]);
+    }
+    return result;
+}
+
+string encode_raw_value_histogram(const map<int, int> &value_counts) {
+    // The exact finite-value census is logged once per raw pattern. Sorted
+    // distance deltas and positive counts use canonical unsigned varints,
+    // followed by unpadded base64url. With at most 100,000 abstract states,
+    // the encoded payload is bounded independently of the distances' values.
+    vector<unsigned char> bytes;
+    bytes.reserve(value_counts.size() * 4);
+    append_unsigned_varint(bytes, value_counts.size());
+    int64_t previous = -1;
+    for (const auto &[distance, count] : value_counts) {
+        if (distance < 0 || count <= 0 || distance <= previous) {
+            ABORT("PDB cap-grid raw value histogram is invalid.");
+        }
+        append_unsigned_varint(
+            bytes, static_cast<uint64_t>(distance - previous));
+        append_unsigned_varint(bytes, static_cast<uint64_t>(count));
+        previous = distance;
+    }
+    return base64url_without_padding(bytes);
+}
+
+vector<int> distinct_cap_grid(const MaterializedCandidate &raw) {
+    return cap_grid_for_max(raw.raw_max_finite_value);
 }
 
 int compare_ratio(
@@ -237,13 +415,23 @@ void append_int_array(ostringstream &out, const vector<int> &values) {
     out << "]";
 }
 
+
 void log_selector_record(
     const string &kind, const CandidateSpec &spec,
     const MaterializedCandidate *candidate, int cofactor_width_budget,
-    bool feasible, const string &rejection_reason) {
+    int value_cap, bool select_value_cap, bool feasible,
+    const string &rejection_reason, bool emit_raw_value_histogram = false) {
     ostringstream out;
-    out << "{\"protocol\":\"" << WIDTH_SELECTOR_PROTOCOL
-        << "\",\"score_version\":\"" << WIDTH_SELECTOR_SCORE
+    const bool capped = value_cap >= 0;
+    const bool cap_grid = select_value_cap;
+    out << "{\"protocol\":\""
+        << (cap_grid ? CAP_GRID_SELECTOR_PROTOCOL
+                     : (capped ? CAPPED_WIDTH_SELECTOR_PROTOCOL
+                               : WIDTH_SELECTOR_PROTOCOL))
+        << "\",\"score_version\":\""
+        << (cap_grid ? CAP_GRID_SELECTOR_SCORE
+                     : (capped ? CAPPED_WIDTH_SELECTOR_SCORE
+                               : WIDTH_SELECTOR_SCORE))
         << "\",\"sources\":";
     append_string_array(out, spec.sources);
     out << ",\"pattern\":";
@@ -271,7 +459,79 @@ void log_selector_record(
                ",\"dead_count\":null,\"cofactor_width\":null"
                ",\"width_upper_bound\":null";
     }
-    out << ",\"cofactor_width_budget\":" << cofactor_width_budget
+    out << ",\"cofactor_width_budget\":" << cofactor_width_budget;
+    if (capped || cap_grid) {
+        out << ",\"value_cap\":" << value_cap;
+        if (candidate) {
+            out << ",\"add_nodes\":"
+                << candidate->add_stats.add_inner_nodes
+                << ",\"num_terminals\":"
+                << candidate->add_stats.num_terminals
+                << ",\"raw_add_nodes\":"
+                << candidate->raw_add_nodes
+                << ",\"raw_num_terminals\":"
+                << candidate->raw_num_terminals
+                << ",\"raw_cofactor_width\":"
+                << candidate->raw_cofactor_width
+                << ",\"raw_width_upper_bound\":"
+                << candidate->raw_width_upper_bound
+                << ",\"raw_num_values\":"
+                << candidate->raw_num_values
+                << ",\"raw_max_finite_value\":"
+                << candidate->raw_max_finite_value
+                << ",\"raw_finite_sum\":"
+                << candidate->raw_finite_sum
+                << ",\"raw_finite_count\":"
+                << candidate->raw_finite_count
+                << ",\"raw_dead_count\":"
+                << candidate->raw_dead_count
+                << ",\"raw_initial_dead_end\":"
+                << (candidate->raw_initial_dead_end ? "true" : "false")
+                << ",\"raw_initial_h\":";
+            if (candidate->raw_initial_dead_end) {
+                out << "null";
+            } else {
+                out << candidate->raw_initial_h;
+            }
+            if (cap_grid) {
+                out << ",\"raw_initial_value_count\":";
+                if (candidate->raw_initial_dead_end) {
+                    out << "null";
+                } else {
+                    out << candidate->raw_initial_value_count;
+                }
+                out << ",\"raw_value_histogram\":";
+                if (emit_raw_value_histogram) {
+                    out << "\"" << candidate->raw_value_histogram << "\"";
+                } else {
+                    out << "null";
+                }
+            }
+            out << ",\"transformed_num_values\":"
+                << candidate->level_sets.size();
+        } else {
+            out << ",\"add_nodes\":null"
+                   ",\"num_terminals\":null"
+                   ",\"raw_add_nodes\":null"
+                   ",\"raw_num_terminals\":null"
+                   ",\"raw_cofactor_width\":null"
+                   ",\"raw_width_upper_bound\":null"
+                   ",\"raw_num_values\":null"
+                   ",\"raw_max_finite_value\":null"
+                   ",\"raw_finite_sum\":null"
+                   ",\"raw_finite_count\":null"
+                   ",\"raw_dead_count\":null"
+                   ",\"raw_initial_dead_end\":null"
+                   ",\"raw_initial_h\":null";
+            if (cap_grid) {
+                out << ",\"raw_initial_value_count\":null"
+                       ",\"raw_value_histogram\":null";
+            }
+            out <<
+                   ",\"transformed_num_values\":null";
+        }
+    }
+    out
         << ",\"feasible\":" << (feasible ? "true" : "false")
         << ",\"rejection_reason\":";
     if (rejection_reason.empty()) {
@@ -288,8 +548,10 @@ void log_selector_record(
 PdbLevelSets::PdbLevelSets(
     SymVariables *vars, const shared_ptr<AbstractTask> &task, int state_budget,
     PdbPatternSelection pattern_selection, bool legacy_goal_directed,
-    double cegar_max_time, int cegar_seed, int cofactor_width_budget)
-    : vars(vars), cofactor_width_budget(cofactor_width_budget) {
+    double cegar_max_time, int cegar_seed, int cofactor_width_budget,
+    int value_cap, bool select_value_cap)
+    : vars(vars), cofactor_width_budget(cofactor_width_budget),
+      value_cap(value_cap), select_value_cap(select_value_cap) {
     TaskProxy task_proxy(*task);
 
     if (pattern_selection == PdbPatternSelection::EXACT_WIDTH_FILTER) {
@@ -307,6 +569,21 @@ PdbLevelSets::PdbLevelSets(
         map<vector<int>, size_t> spec_by_pattern;
         auto add_spec = [&](const string &source, vector<int> candidate_pattern,
                             shared_ptr<pdbs::PatternDatabase> pdb = nullptr) {
+            if (select_value_cap) {
+                // Domain-one variables carry no information. Removing them is
+                // semantics preserving and, together with the 100k state
+                // bound, limits every cap-grid logged pattern to 16 entries.
+                // Leave fixed_pool_v1 byte-for-byte behavior unchanged.
+                candidate_pattern.erase(
+                    remove_if(
+                        candidate_pattern.begin(), candidate_pattern.end(),
+                        [&](int var) {
+                            return task_proxy.get_variables()[var]
+                                       .get_domain_size()
+                                   == 1;
+                        }),
+                    candidate_pattern.end());
+            }
             candidate_pattern = normalized_pattern(move(candidate_pattern));
             int64_t states =
                 abstract_state_count(task_proxy, candidate_pattern);
@@ -379,25 +656,76 @@ PdbLevelSets::PdbLevelSets(
             if (!spec.within_state_budget) {
                 log_selector_record(
                     "candidate", spec, nullptr, cofactor_width_budget,
-                    /*feasible=*/false, "abstract_state_budget");
+                    value_cap, select_value_cap, /*feasible=*/false,
+                    "abstract_state_budget");
                 spec.pdb.reset();
                 continue;
             }
 
-            unique_ptr<MaterializedCandidate> candidate =
-                materialize_candidate(vars, task_proxy, spec);
-            // Candidate now owns the only cached-PDB reference needed by the
-            // selector; release the specification's duplicate reference.
-            spec.pdb.reset();
-            bool feasible = candidate->add_stats.cofactor_width <=
-                            cofactor_width_budget;
-            log_selector_record(
-                "candidate", spec, candidate.get(), cofactor_width_budget,
-                feasible, feasible ? "" : "cofactor_width_budget");
-            if (feasible &&
-                (!winner || candidate_is_better(*candidate, *winner))) {
-                winner = move(candidate);
+            if (select_value_cap) {
+                unique_ptr<MaterializedCandidate> raw =
+                    materialize_raw_candidate(vars, task_proxy, spec);
+                if (!raw->raw_initial_dead_end) {
+                    raw->raw_initial_value_count =
+                        raw->finite_value_counts.at(raw->raw_initial_h);
+                }
+                raw->raw_value_histogram =
+                    encode_raw_value_histogram(raw->finite_value_counts);
+                unique_ptr<MaterializedCandidate> pattern_winner;
+                bool histogram_emitted = false;
+                // Derive every distinct transform from the one raw PDB/BDD
+                // materialization. Caps are ordered from weakest to strongest;
+                // the exact transform is last. Monotonic terminal refinement
+                // makes the last feasible cap the strongest transform for this
+                // pattern, independent of the cross-pattern quality score.
+                for (int cap : distinct_cap_grid(*raw)) {
+                    unique_ptr<MaterializedCandidate> transformed;
+                    MaterializedCandidate *candidate = nullptr;
+                    if (cap < 0) {
+                        candidate = raw.get();
+                    } else {
+                        transformed = cap_candidate(vars, *raw, cap);
+                        candidate = transformed.get();
+                    }
+                    bool feasible = candidate->add_stats.cofactor_width <=
+                                    cofactor_width_budget;
+                    log_selector_record(
+                        "candidate", spec, candidate,
+                        cofactor_width_budget, cap,
+                        /*select_value_cap=*/true, feasible,
+                        feasible ? "" : "cofactor_width_budget",
+                        /*emit_raw_value_histogram=*/!histogram_emitted);
+                    histogram_emitted = true;
+                    if (feasible) {
+                        if (cap < 0) {
+                            pattern_winner = move(raw);
+                        } else {
+                            pattern_winner = move(transformed);
+                        }
+                    }
+                }
+                if (pattern_winner &&
+                    (!winner ||
+                     candidate_is_better(*pattern_winner, *winner))) {
+                    winner = move(pattern_winner);
+                }
+            } else {
+                unique_ptr<MaterializedCandidate> candidate =
+                    materialize_candidate(vars, task_proxy, spec, value_cap);
+                bool feasible = candidate->add_stats.cofactor_width <=
+                                cofactor_width_budget;
+                log_selector_record(
+                    "candidate", spec, candidate.get(),
+                    cofactor_width_budget, value_cap,
+                    /*select_value_cap=*/false, feasible,
+                    feasible ? "" : "cofactor_width_budget");
+                if (feasible &&
+                    (!winner || candidate_is_better(*candidate, *winner))) {
+                    winner = move(candidate);
+                }
             }
+            // Candidate objects retain their own shared PDB reference.
+            spec.pdb.reset();
         }
 
         if (!winner) {
@@ -411,16 +739,19 @@ PdbLevelSets::PdbLevelSets(
             /*within_state_budget=*/true, nullptr};
         log_selector_record(
             "selected", selected_spec, winner.get(), cofactor_width_budget,
-            /*feasible=*/true, "");
+            winner->value_cap, select_value_cap, /*feasible=*/true, "");
 
         pattern = winner->pattern;
         selected_source = winner->sources.front();
         num_abstract_states = winner->abstract_states;
         selected_initial_dead_end = winner->initial_dead_end;
+        this->value_cap = winner->value_cap;
         level_sets = move(winner->level_sets);
         dead_ends = winner->dead_ends;
         add_stats = move(winner->add_stats);
-        selection_name = "exact_width_filter";
+        selection_name = select_value_cap
+                             ? "exact_width_cap_filter"
+                             : "exact_width_filter";
 
         pdbs::Projection selected_projection(task_proxy, pattern);
         verify_against_pdb(
@@ -430,7 +761,11 @@ PdbLevelSets::PdbLevelSets(
                      << pattern.size() << " vars, " << num_abstract_states
                      << " abstract states, exact width="
                      << add_stats.cofactor_width << " <= "
-                     << cofactor_width_budget << "): " << pattern << endl;
+                     << cofactor_width_budget;
+        if (value_cap >= 0 || select_value_cap) {
+            utils::g_log << ", value_cap=" << value_cap;
+        }
+        utils::g_log << "): " << pattern << endl;
         return;
     }
 
@@ -567,9 +902,10 @@ PdbLevelSets::PdbLevelSets(
         if (distance == numeric_limits<int>::max()) {
             dead_ends += abstract_state;
         } else {
-            auto it = level_sets.find(distance);
+            int value = value_cap >= 0 ? min(distance, value_cap) : distance;
+            auto it = level_sets.find(value);
             if (it == level_sets.end()) {
-                level_sets[distance] = abstract_state;
+                level_sets[value] = abstract_state;
             } else {
                 it->second += abstract_state;
             }
@@ -617,6 +953,9 @@ void PdbLevelSets::verify_against_pdb(
                 ABORT("PDB self-check: dead-end state not in dead_ends set.");
             }
         } else {
+            if (value_cap >= 0) {
+                expected = min(expected, value_cap);
+            }
             auto it = level_sets.find(expected);
             if (it == level_sets.end() ||
                 !(state_bdd * !it->second).IsZero()) {

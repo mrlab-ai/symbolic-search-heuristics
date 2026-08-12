@@ -23,6 +23,8 @@ SymbolicPdbForwardSearch::SymbolicPdbForwardSearch(const plugins::Options &opts)
       cegar_max_time(opts.get<double>("cegar_max_time")),
       cegar_seed(opts.get<int>("cegar_seed")),
       cofactor_width_budget(opts.get<int>("cofactor_width_budget")),
+      value_cap(opts.get<int>("value_cap")),
+      select_value_cap(opts.get<bool>("select_value_cap")),
       dynamic_reordering(opts.get<bool>("dynamic_reordering")),
       prune_only(opts.get<bool>("prune_only")),
       batch_f_window(opts.get<int>("batch_f_window")) {
@@ -40,6 +42,21 @@ void SymbolicPdbForwardSearch::initialize() {
             << endl;
         utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
     }
+    if (select_value_cap &&
+        pattern_selection != PdbPatternSelection::EXACT_WIDTH_FILTER) {
+        utils::g_log
+            << "select_value_cap=true requires "
+               "pattern_selection=exact_width_filter."
+            << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+    }
+    if (select_value_cap && value_cap != -1) {
+        utils::g_log
+            << "select_value_cap=true cannot be combined with a fixed "
+               "value_cap."
+            << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+    }
     mgr =
         make_shared<SymStateSpaceManager>(vars.get(), sym_params, search_task);
 
@@ -48,7 +65,7 @@ void SymbolicPdbForwardSearch::initialize() {
         make_shared<PdbLevelSets>(
             vars.get(), search_task, state_budget, pattern_selection,
             goal_directed, cegar_max_time, cegar_seed,
-            cofactor_width_budget);
+            cofactor_width_budget, value_cap, select_value_cap);
     if (level_sets->uses_exact_width_filter()) {
         utils::g_log << "wbh PDB heuristic: pattern_size="
                      << level_sets->get_pattern().size()
@@ -57,8 +74,11 @@ void SymbolicPdbForwardSearch::initialize() {
                      << ", abstract_states="
                      << level_sets->get_num_abstract_states()
                      << ", cofactor_width_budget="
-                     << level_sets->get_cofactor_width_budget()
-                     << ", values=" << level_sets->get_level_sets().size()
+                     << level_sets->get_cofactor_width_budget();
+        if (level_sets->get_value_cap() >= 0 || select_value_cap) {
+            utils::g_log << ", value_cap=" << level_sets->get_value_cap();
+        }
+        utils::g_log << ", values=" << level_sets->get_level_sets().size()
                      << ", cofactor_width="
                      << level_sets->get_cofactor_width()
                      << ", width_upper_bound="
@@ -66,7 +86,11 @@ void SymbolicPdbForwardSearch::initialize() {
     } else {
         utils::g_log << "wbh PDB heuristic: pattern_size="
                      << level_sets->get_pattern().size()
-                     << ", values=" << level_sets->get_level_sets().size()
+                     << ", values=" << level_sets->get_level_sets().size();
+        if (level_sets->get_value_cap() >= 0) {
+            utils::g_log << ", value_cap=" << level_sets->get_value_cap();
+        }
+        utils::g_log
                      << ", cofactor_width="
                      << level_sets->get_cofactor_width()
                      << ", width_upper_bound="
@@ -93,7 +117,8 @@ void SymbolicPdbForwardSearch::initialize() {
         if (construction_prelogged) {
             sym_params.stats->log_construction(
                 "pdb_" + level_sets->get_selection_name(),
-                construction_timer(), state_budget, -1, true);
+                construction_timer(), state_budget,
+                level_sets->get_value_cap(), true);
         }
     }
 
@@ -106,7 +131,7 @@ void SymbolicPdbForwardSearch::initialize() {
     if (!construction_prelogged && sym_params.stats) {
         sym_params.stats->log_construction(
             "pdb_" + level_sets->get_selection_name(),
-            construction_time, state_budget, -1, true);
+            construction_time, state_budget, level_sets->get_value_cap(), true);
     }
 
     auto sym_trs = search_ptr->getStateSpaceShared()->get_transition_relations();
@@ -172,6 +197,21 @@ public:
             "deterministic for the materialized pool; a finite "
             "cegar_max_time remains a wall-clock generator limit.",
             "infinity", plugins::Bounds("1", "infinity"));
+        add_option<int>(
+            "value_cap",
+            "Apply the safe terminal transform min(h_PDB, K) to every finite "
+            "PDB value before exact-width filtering and search. K >= 0 "
+            "preserves admissibility, consistency, and abstract dead ends "
+            "while using at most K+1 finite values; -1 keeps exact values.",
+            "-1", plugins::Bounds("-1", "infinity"));
+        add_option<bool>(
+            "select_value_cap",
+            "With pattern_selection=exact_width_filter, materialize each raw "
+            "PDB once and test the distinct safe transforms with caps "
+            "0,1,2,4,...,256 plus the exact values. For each pattern retain "
+            "its strongest feasible transform under the exact width budget, "
+            "then apply the frozen quality score across patterns.",
+            "false");
         add_option<bool>(
             "prune_only",
             "Use the heuristic only for pruning (dead ends and, once an "

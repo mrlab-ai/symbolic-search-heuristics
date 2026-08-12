@@ -947,7 +947,9 @@ def _expected_static_properties(
     return {**generated, **metadata}
 
 
-def _expected_run_script(argv) -> str:
+def _expected_run_script(
+    argv, *, soft_stdout_limit=1024, hard_stdout_limit=10240
+) -> str:
     """Render the exact Lab 8.0 run wrapper reviewed by this protocol."""
     template = '''#! /usr/bin/env python
 
@@ -969,7 +971,7 @@ redirects = {"stdout": run_log, "stderr": run_err}
 # Make sure we're in the run directory.
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-Call(__ARGV__, hard_stderr_limit=10240, hard_stdout_limit=10240, memory_limit=None, name='planner', soft_stderr_limit=64, soft_stdout_limit=1024, time_limit=None, **redirects).wait()
+Call(__ARGV__, hard_stderr_limit=10240, hard_stdout_limit=__HARD_STDOUT__, memory_limit=None, name='planner', soft_stderr_limit=64, soft_stdout_limit=__SOFT_STDOUT__, time_limit=None, **redirects).wait()
 
 
 for f in [run_log, run_err]:
@@ -977,7 +979,11 @@ for f in [run_log, run_err]:
     if os.path.getsize(f.name) == 0:
         os.remove(f.name)
 '''
-    return template.replace("__ARGV__", repr(argv))
+    return (
+        template.replace("__ARGV__", repr(argv))
+        .replace("__SOFT_STDOUT__", str(soft_stdout_limit))
+        .replace("__HARD_STDOUT__", str(hard_stdout_limit))
+    )
 
 
 def _git_tree_python_files(revision: str, prefix: str):
@@ -1342,7 +1348,15 @@ def attest_existing_start_grid(
                 raise ProtocolError(
                     "cannot read run wrapper {}: {}".format(run_script, err)
                 ) from err
-            expected_script = _expected_run_script(argv)
+            expected_script = _expected_run_script(
+                argv,
+                soft_stdout_limit=metadata.get(
+                    "planner_soft_stdout_limit_kib", 1024
+                ),
+                hard_stdout_limit=metadata.get(
+                    "planner_hard_stdout_limit_kib", 10240
+                ),
+            )
             if actual_script != expected_script:
                 raise ProtocolError(
                     "run {} wrapper differs from the reviewed Lab 8.0 "

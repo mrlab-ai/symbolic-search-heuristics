@@ -23,6 +23,8 @@ class SymbolicPdbForwardSearch : public SymbolicSearch {
     const double cegar_max_time;
     const int cegar_seed;
     const int cofactor_width_budget;
+    const int value_cap;
+    const bool select_value_cap;
     const bool dynamic_reordering;
     const bool prune_only;
     const int batch_f_window;
