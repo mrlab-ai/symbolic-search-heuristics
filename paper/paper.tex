@@ -62,37 +62,33 @@ Heuristic Symbolic Search}
 
 % ============================== abstract =================================
 \begin{abstract}
-Cost-optimal symbolic planners represent state sets with binary decision
-diagrams (BDDs), yet mostly search blind: slicing a frontier by heuristic value
-can make even the perfect heuristic increase representation effort
-exponentially.  We introduce \emph{cofactor width} $W$---the maximum number of
-residual functions after any prefix of the fixed Boolean variable order---as
-a sufficient condition for representation safety.  For a state-set BDD $B$
-over $n$ variables and a heuristic with $T$ terminals, all value slices have
-total size at most $TWn(|B|+2)$.  On a positive-cost task of optimal cost
-$\copt$, a consistent width-$W$ heuristic taking $\values$ finite values yields
-product-at-evaluation forward \bddastar\ effort at most
-$\values Wn(\effort(\task,\hblind)+2\copt)$ and a ratio to blind effort of at
-most $3\values Wn\leq3W^2n$.  The known exponential pathology has exponential
-width; a separate family realizes an $\Omega(W^2)$ ratio, while joint
-$\values Wn$ tightness remains open.  Integer potentials, bounded-state
-pattern databases (PDBs), and aligned linear merge-and-shrink instantiate the
-class.  In an image-aware model, pruning-only search removes the factor
-$\values$ by retaining one high-level image per active $g$-layer.
+Cost-optimal symbolic search uses binary decision diagrams (BDDs), yet
+heuristic slicing can exponentially increase effort even for the perfect
+heuristic. We introduce \emph{cofactor width} $W$, the maximum
+residual-function count after a prefix of the fixed Boolean order. A width-$W$,
+$T$-terminal heuristic gives total slice size at most $TWn(|B|+2)$ for any
+$n$-variable state-set BDD $B$. For positive-cost tasks with optimum \copt,
+product-at-evaluation forward \bddastar\ with a consistent width-$W$,
+$\values$-valued heuristic has effort at most
+$\values Wn(\effort(\task,\hblind)+2\copt)$ and blind-effort
+ratio at most $3\values Wn\leq3W^2n$. The known exponential pathology has
+exponential width; an $\Omega(W^2)$ family leaves joint $\values Wn$ tightness
+open. Integer potentials, bounded-state PDBs, and aligned linear
+merge-and-shrink satisfy it. Image-aware pruning-only search removes the factor
+\values\ with one image per active $g$-layer.
 
-We implement an exact-width selector over a fixed PDB pool, same-$g$ image
-batching, and a construction-bounded merge-and-shrink safeguard.  On a
-50-task screen, uncapped and capped merge-and-shrink each solve 43 tasks; the
-uncapped variant wins the frozen PAR2 tie-break, while the selector-family
-winner is the empty width-one PDB (30/50).  On the 24--27 complete pairs per
-batching treatment,
-batching reduces completed image calls but increases image time, and it lowers
-overall coverage.  On 92 disjoint held-out tasks, the selector solves 41
-tasks against CEGAR's 40, but the predeclared domain-resampling interval spans
-zero; the safeguard solves 43 tasks with five blind fallbacks.  Width thus
-certifies representational safety but neither ranks heuristic quality nor
-predicts runtime.  Pruning-only search and potentials are outside the frozen
-empirical matrix; its 1377-task census remains pending.
+We implement an exact-width selector, same-$g$ batching, and a
+construction-bounded merge-and-shrink safeguard. On a 50-task screen, capped
+and uncapped merge-and-shrink each solve 43; uncapped wins the frozen
+PAR2 tie-break; the selector-family winner is the empty width-one PDB
+(30/50). Batching lowers coverage; over 24--27 complete pairs per treatment,
+completed image calls fall but image time rises. On 92 held-out tasks,
+the selector solves 41 versus
+CEGAR's 40, but its domain-resampling interval spans zero; the safeguard solves
+43 with five blind fallbacks. Width certifies representation safety, not
+quality or runtime.
+Potentials and pruning-only lie outside the matrix; the 1377-task census
+remains pending.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -137,60 +133,41 @@ guarantees for symbolic search relative to explicit search, but their
 analysis concerns the representation of transition relations and goal
 formulas and explicitly leaves heuristics aside.
 
-In this paper we address this gap. We introduce \emph{width-bounded
-heuristics}: a heuristic has cofactor width $W$ under a variable order
-if its value can be determined by reading the Boolean encoding variables once in
-that order while maintaining at most $W$ distinct cases at any point,
-i.e., if every cut through its quasi-reduced ADD in the search's variable
-order contains at most $W$ distinct residual functions. (A reduced ADD may
-skip levels, so its displayed node count at one level is not equivalent.) Our
-contributions are as follows.
-First, we prove a \emph{fragmentation theorem}: partitioning an arbitrary
-state-set BDD $B$ by a width-$W$ heuristic with $T\leq W$ terminals yields
-buckets of total size at most $TWn(|B|+2)$, where $n$ is the number of binary
-variables---for every state set, every layer and every task. The bound
-covers both known failure modes of heuristic symbolic search, the
-fragmentation of the frontier and the fact that a subset of a state set
-can have an exponentially larger BDD. Second, we prove a
-\emph{search-effort theorem}: \bddastar\ with a consistent width-$W$
-heuristic and $\values$ finite values has cumulative BDD size at most
-$\values Wn$ times
-blind effort plus the stated layer-additive term, and hence a factor at most
-$3\values Wn\leq3W^{2}n$, where $n$ is the number of binary variables.
-Third, we delimit the bound from both sides: the pathological
-heuristic in the construction of \citet{speck-et-al-icaps2020} has width
-$2^{\Omega(n)}$, so exponential width is necessary for their exponential
-deterioration, and an explicit family of tasks and width-$W$ heuristics
-realizes an $\Omega(W^2)$ overhead. Because that family has
-$\values=W$ and $n=\Omega(W)$, it leaves open whether the joint
-$\values Wn$ upper bound can be improved. Fourth, we identify natural
-width-bounded families:
-integer potential heuristics, pattern databases with a bounded abstract
-state space, and merge-and-shrink heuristics whose linear merge order is
-aligned with the search order---in that aligned case, the shrink size limit
-implies width at most $d(N+1)$. This yields a
-representation-effort guarantee for integer potential level sets;
-delta-partitioned operator-potential search requires a separate analysis.
-Fifth, we refine the cost model of symbolic
-search to count high-level image operations, which the node-based effort
-measure cannot see, and analyze a \emph{pruning-only} search that
-keeps the layer structure of blind search, uses the heuristic solely for
-provably sound discards, and removes the factor $\values$ due to value
-partitioning from the effort bound.
-Finally, we turn the sufficient condition into a selector rather than a
-post-hoc diagnostic. In SymK \citep{speck-et-al-jair2025}, we compute exact
-width from the total heuristic ADD, materialize a fixed pool of PDB
-candidates, reject candidates beyond a declared width budget, and rank the
-feasible remainder by a deterministic score whose leading criteria measure
-informativeness. We combine this selector with same-$g$ speculative batching
-and compare it with blind search, conventional PDB construction, and
-merge-and-shrink controls under a frozen screen and predeclared held-out
-protocol. P5's seven-configuration held-out matrix is carried unchanged into
-the pending P6 full-suite stage under a separately attested producer identity.
-The held-out result is reported below and the full-suite result remains
-pending. Archived outcomes informed
-only the composition of the selection screen; every performance observation
-reported here comes from Arrhenius under a compatible logging protocol.
+In this paper we introduce \emph{width-bounded heuristics}. Under the search
+variable order, cofactor width $W$ is the largest number of distinct residual
+functions after any prefix, equivalently the largest cut through the
+heuristic's quasi-reduced total ADD. Reduced ADDs may skip levels, so displayed
+level size need not equal width.
+
+We make six contributions. First, the \emph{fragmentation theorem}
+bounds the total size of the slices of every state-set BDD $B$ by
+$TWn(|B|+2)$ for a width-$W$, $T$-terminal heuristic. It covers
+frontier fragmentation and the exponential BDD growth possible under subsets.
+Second, product-at-evaluation forward \bddastar\ with a consistent width-$W$
+heuristic taking \values\ finite values has cumulative BDD size at most
+$\values Wn$ times blind effort plus the layer-additive term, and a blind-effort
+ratio at most
+$3\values Wn\leq3W^2n$. Third, the pathology of
+\citet{speck-et-al-icaps2020} has width $2^{\Omega(n)}$, while a new family
+realizes $\Omega(W^2)$ overhead; because it has $\values=W$ and
+$n=\Omega(W)$, joint $\values Wn$ tightness remains open. Fourth, integer
+potentials, bounded-state PDBs, and linear merge-and-shrink aligned with the
+search order are width-bounded; the last has width at most $d(N+1)$. This
+certifies integer-potential level sets, not delta-partitioned operator-potential
+search. Fifth, an image-aware model counts high-level image operations, and
+pruning-only search removes the factor \values\ by preserving blind layers and
+using heuristics only for sound discards.
+
+Sixth, we operationalize safety as an exact-width selector in SymK
+\citep{speck-et-al-jair2025}: it filters a fixed PDB pool by a declared budget
+before deterministic informativeness ranking. We also implement same-$g$
+speculative batching and a construction-bounded merge-and-shrink safeguard,
+then compare
+against blind, conventional PDB, and merge-and-shrink controls in frozen
+screen and predeclared held-out stages. P5's seven-configuration held-out
+matrix carries unchanged into the separately attested, pending P6 full-suite
+stage. Archived outcomes shaped only the screen composition; all reported
+performance observations come from compatible Arrhenius logs.
 
 % ============================ background =================================
 \section{Background}
@@ -1858,64 +1835,42 @@ meeting points, and direction choices remains open.
 % ============================ conclusions ================================
 \section{Conclusions}
 
-For product-at-evaluation forward \bddastar\ on positive-cost tasks under a
-fixed variable order, bounded cofactor width provides a worst-case
-representation-effort certificate. Partitioning an arbitrary state-set BDD by a width-$W$
-heuristic with $T$ terminals costs at most $TWn$ times its augmented size.
-For search, a consistent width-$W$ heuristic with $\values$ finite values
-satisfies
-$\effort(\task,h)\leq \values Wn
-(\effort(\task,\hblind)+2\copt)$ and, consequently, a $3\values Wn$
-multiplicative bound; $T,\values\leq W$ recover the simpler $W^2n$ and
-$3W^2n$ statements. The known exponential pathology requires
-exponential width, while a separate construction realizes a
-$\Omega(W^2)$ ratio; whether the joint $\values Wn$ upper bound can be
-improved remains open. Integer potentials, bounded-state PDBs, and aligned
-linear M\&S abstractions connect the definition to familiar heuristic
-parameters. These results bound possible representational harm; they do not
-rank heuristics, pay their construction cost, or predict wall-clock time.
+For positive-cost product-at-evaluation forward \bddastar\ under a fixed
+variable order, cofactor width is a representation-safety certificate. A
+width-$W$, $T$-terminal heuristic's slices total at most $TWn$ times any BDD's
+augmented size. For a consistent width-$W$, $\values$-valued heuristic, effort
+is at most $\values Wn(\effort(\task,\hblind)+2\copt)$ and at most
+$3\values Wn\leq3W^2n$ times blind effort, using $T,\values\leq W$. The known
+exponential pathology has exponential width; an $\Omega(W^2)$ family leaves
+joint $\values Wn$ tightness open. Integer potentials, bounded-state PDBs, and
+aligned linear M\&S are width-bounded. The certificate bounds harm, not
+quality, construction cost, or runtime.
 
-The implementation therefore enforces width while optimizing other concerns
-separately. It measures exact residual-frontier width on the total ADD, filters
-a fixed and deduplicated PDB pool, ranks only feasible candidates by a
-predeclared deterministic score, optionally batches same-$g$ images without
-advancing logical expansion order, and lets M\&S fall back to blind when its
-construction deadline expires or its factorization remains incomplete. The
-a priori $d(N+1)$ M\&S bound applies only
-to aligned merge and search orders; the evaluated
-\texttt{align\_merge\_order=false} control is explicitly outside it.
-The image-aware model additionally exposes the call overhead of value
-partitioning, and pruning-only search removes the factor $\values$ from the
-representation bound by retaining one image per active $g$-layer; that variant
-is not part of the present empirical matrix.
+We measure exact total-ADD width, filter a fixed PDB pool before deterministic
+informativeness ranking, batch same-$g$ images without changing logical order,
+and give construction-bounded M\&S a blind fallback. The $d(N+1)$ M\&S bound
+requires aligned merge and search orders; the evaluated
+\texttt{align\_merge\_order=false} control lies outside it. In an image-aware
+model, pruning-only search removes the factor \values\ from the representation
+bound using one image per active $g$-layer, but lies outside the empirical
+matrix.
 
-The outcome-enriched Arrhenius screen yields a deterministic but deliberately
-local selection decision.
-Uncapped M\&S is the 20-configuration screen winner; the selector-family winner
-is the width-one empty PDB, semantically $h\equiv0$, which ties blind coverage
-but is slower. The tested batching policies lower coverage on the 50-task
-screen; on the certified complete pairs they reduce image-call counts but
-increase image time. Thus the width certificate bounds the
-targeted representation blow-up but is neither an informativeness criterion
-nor a performance predictor. On the disjoint held-out set the selector gains
-one task over CEGAR, but its predeclared domain-resampling interval spans zero
-and the selected heuristic remains blind-equivalent; the construction-limited
-capped M\&S safeguard instead has the highest descriptive coverage among the
-seven evaluated forward configurations, with five fallbacks. The full
-supported-suite census must still fill its placeholder in
-Section~\ref{sec-experiments} before these observations are generalized.
-The central design lesson remains the separation of roles: width is the safety
-constraint; abstraction information, image-call amortization, and bounded
-setup cost are distinct optimization objectives.
+The 50-task screen is local: uncapped M\&S wins among 20 configurations; the
+selector-family winner is the width-one empty PDB, semantically
+$h\equiv0$, which ties blind coverage but is slower. Batching lowers coverage;
+on complete pairs it cuts image calls but raises image time. On 92 disjoint
+held-out tasks, the selector solves 41 against CEGAR's 40, but its
+domain-resampling interval spans zero and it remains blind-equivalent. Capped
+M\&S descriptively heads the seven-configuration matrix, solving 43 with
+five fallbacks. The pending 1377-task full-suite census must fill its
+placeholder in Section~\ref{sec-experiments} before generalization. Width is
+the safety constraint; information, image amortization, and bounded setup cost
+are separate objectives.
 
-Open questions include learning better informativeness scores without
-adapting them to held-out results, enlarging the fixed candidate pool without
-making width measurement the construction bottleneck, analyzing the adaptive
-batching gates, extending the effort theorem to zero-cost strata, and deriving
-a bidirectional bound that accounts for incumbent and meeting-point feedback.
-Jointly choosing the abstraction, merge order, and BDD variable order is
-especially promising because it couples heuristic quality to the parameter
-that certifies safety.
+Open questions include better scores without held-out adaptation, larger pools
+without width bottlenecks, adaptive batching, zero-cost and bidirectional
+bounds, and joint $\values Wn$ tightness. Joint abstraction, merge-order, and
+BDD-order selection could couple quality to certified safety.
 % ------------------------------------------------------------------------
 % Bibliography from the shared aibasel/bib repo (make update-bib).
 \bibliographystyle{plainnat}
