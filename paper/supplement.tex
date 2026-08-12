@@ -24,12 +24,16 @@
 \newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
 \newcommand{\img}{\ensuremath{\mathrm{img}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
+\newcommand{\ghseta}{GHSETA\ensuremath{^{*}}}
 
 \theoremstyle{plain}
 \newtheorem{theorem}{Theorem}
 \newtheorem{lemma}{Lemma}
 \newtheorem{proposition}{Proposition}
 \newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
@@ -40,7 +44,7 @@
 \begin{document}
 \maketitle
 
-\section{Setup and Full Proof}
+\section{Search Setup and Bucket Identity}
 
 Let \task\ be a finite deterministic planning task with positive integer
 operator costs, initial state \sinit, and optimal solution cost
@@ -233,38 +237,106 @@ $\pi$, and $\bddsize{f}$ counts its inner nodes.  For a heuristic $h$,
 $\img(h)$ is its attained value set.  The blind heuristic $\hblind$ is
 identically zero, and $\effort(\task,h)$ is the cumulative number of inner
 nodes in the BDDs expanded by product-at-evaluation forward \bddastar\ before
-optimal termination.  We use the following elementary facts from the main
-paper: terminal cofactors imply
-$|\img(h)|\leq\width_\pi(h)$; applying a deterministic pointwise terminal
-mapping cannot increase cofactor width; and a consistent width-$W$
-heuristic taking $\values$ finite values satisfies the effort-ratio bound
-\begin{equation}
-  \effort(\task,h)
-  \leq 3\values Wn\,\effort(\task,\hblind).
-  \label{eq-supp-effort-ratio}
-\end{equation}
-The planning-state encoding may leave invalid Boolean assignments.  As in
-the main paper, a heuristic on states is equipped with a fixed total
-extension to the full Boolean cube; where relevant below, the statements
-specify that extension.
+optimal termination.
+Each SAS$^+$ variable $v$ is encoded using
+$\lceil\log_2|D_v|\rceil$ Boolean bits; the order $\pi$ is
+variable-contiguous when all bits of each variable are consecutive. This
+encoding may leave invalid Boolean assignments. A heuristic on states is
+equipped with a fixed total extension to the full Boolean cube; where
+relevant below, the statements specify that extension.
 
 \begin{proposition}[value range]
 \label{prop-range}
 If $\width_\pi(h) \leq W$, then $|\img(h)| \leq W$.
 \end{proposition}
 
-\begin{proposition}[terminal mapping]
-\label{prop-transform}
-For every deterministic pointwise map $\phi$,
-$\width_\pi(\phi\circ h)\leq\width_\pi(h)$.
+\begin{proof}
+The elements of $\sub{n}{h}$ are constant functions, one for each attained
+value. Hence $|\img(h)|=|\sub{n}{h}|\leq\width_\pi(h)$.
+\end{proof}
+
+\begin{proposition}[closure]
+\label{prop-closure}
+Let $h_1,h_2$ have widths $W_1,W_2$ under $\pi$ and let
+$\oplus\in\{+,\max,\min\}$. Then
+$\width_\pi(h_1\oplus h_2)\leq W_1W_2$.
 \end{proposition}
 
-\begin{corollary}[search-effort ratio]
-\label{cor-effort}
-Under the positive-cost, solvable-task, consistent-heuristic assumptions
-of the main paper, a width-$W$ heuristic with $\values$ finite values obeys
-Equation~\eqref{eq-supp-effort-ratio}.
-\end{corollary}
+\begin{proof}
+At cut $i$, each cofactor of $h_1\oplus h_2$ is the pointwise combination
+of a realized pair $(h_1|_\rho,h_2|_\rho)$. There are at most
+$|\sub{i}{h_1}|\,|\sub{i}{h_2}|\leq W_1W_2$ such pairs. Maximizing over
+$i$ proves the claim.
+\end{proof}
+
+Call $q\colon\states\to\mathbb Z\cup\{\infty\}$ a \emph{raw admissible
+and consistent estimate} if $q\leq\hstar$, if
+$q(s)\leq c+q(s')$ for every transition $s\xrightarrow{c}s'$, and if
+$q\leq0$ on goals.
+
+\begin{proposition}[safe terminal transforms]
+\label{prop-transform}
+Let $q$ be a raw admissible and consistent estimate, equipped with a total
+extension $q\colon\{0,1\}^n\to\mathbb Z\cup\{\infty\}$. Let
+$\phi\colon\mathbb Z\cup\{\infty\}\to
+\mathbb Z_{\geq0}\cup\{\infty\}$ be nondecreasing, satisfy
+$\phi(0)=0$, $\phi(\infty)=\infty$, and
+\[
+  \phi(a+c)\leq\phi(a)+c
+  \quad\text{for every $a\in\mathbb Z$ and integer $c\geq0$.}
+\]
+Then $h=\phi\circ q$ is admissible and consistent and
+$\width_\pi(h)\leq\width_\pi(q)$.
+\end{proposition}
+
+\begin{proof}
+For a transition $s\xrightarrow{c}s'$ with finite $q(s')$,
+\[
+  \phi(q(s))\leq\phi(c+q(s'))\leq c+\phi(q(s'));
+\]
+if $q(s')=\infty$, consistency is immediate. Monotonicity,
+nonnegativity, and $\phi(0)=0$ give $\phi(a)=0$ for $a\leq0$, while the
+cost condition with $a=0$ gives $\phi(a)\leq a$ for $a\geq0$. Thus, for
+finite $q(s)$,
+$\phi(q(s))\leq\max(0,q(s))\leq\hstar(s)$. If $q(s)=\infty$, raw
+admissibility implies $\hstar(s)=\infty$. The transformed heuristic is
+therefore admissible, consistent, and zero on goals. Finally,
+$(\phi\circ q)|_\rho=\phi\circ(q|_\rho)$, so the terminal map may merge
+cofactors but cannot create any.
+\end{proof}
+
+Rectification $\phi_+(a)=\max(0,a)$ is one instance. For
+$\kappa\in\mathbb Z_{\geq0}$, define
+\[
+\phi_\kappa(a)=
+\begin{cases}
+\min(\max(0,a),\kappa),&a<\infty,\\
+\infty,&a=\infty.
+\end{cases}
+\]
+It satisfies the proposition and has at most $\kappa+1$ finite values.
+Moreover, it is pointwise strongest among transforms satisfying the
+proposition whose finite outputs lie in $\{0,\ldots,\kappa\}$: the proof
+above and the output ceiling give
+$\phi(a)\leq\min(\max(0,a),\kappa)=\phi_\kappa(a)$.
+
+Let $\mathrm{ADD}_\pi(h)$ be the reduced ordered ADD of $h$ under $\pi$
+\citep{bahar-et-al-iccad1993}, and let $|\mathrm{ADD}_\pi(h)|$ count
+inner nodes.
+
+\begin{proposition}[ADD characterization]
+\label{prop-add}
+$\width_\pi(h)\leq|\mathrm{ADD}_\pi(h)|+|\img(h)|$ and
+$|\mathrm{ADD}_\pi(h)|\leq n\width_\pi(h)$.
+\end{proposition}
+
+\begin{proof}
+Every cofactor at a cut is either a constant or the function computed by a
+unique inner ADD node below the cut, giving the first inequality. Every
+inner node labeled $x_{i+1}$ computes a distinct element of
+$\sub{i}{h}$, so there are at most $\width_\pi(h)$ nodes at each of the
+$n$ levels, giving the second.
+\end{proof}
 
 \begin{remark}[total extensions]
 \label{rem-encoding}
@@ -301,6 +373,280 @@ by canonicity this node is unique. Hence
 $|\sub{i}{f}| \leq \bddsize{f} + 2$ for every $i$, and summing over the
 $n$ levels yields the claim.
 \end{proof}
+
+\section{Fragmentation Bounds}
+
+Fix a heuristic $h$ of width $W$ under $\pi$ and let
+$T=|\img(h)|$.
+
+\begin{lemma}[pair identity]
+\label{lem-pair}
+Let $S\subseteq\{0,1\}^n$, let $U\subseteq\img(h)$, and let
+$\rho,\rho'\in\{0,1\}^i$ satisfy
+$\chi_S|_\rho=\chi_S|_{\rho'}$ and $h|_\rho=h|_{\rho'}$. Then
+$\chi_{S\cap h^{-1}(U)}|_\rho=
+\chi_{S\cap h^{-1}(U)}|_{\rho'}$.
+\end{lemma}
+
+\begin{proof}
+For every suffix $\sigma\in\{0,1\}^{n-i}$,
+\[
+ \chi_{S\cap h^{-1}(U)}|_\rho(\sigma)
+ =\chi_S|_\rho(\sigma)[h|_\rho(\sigma)\in U].
+\]
+Both factors are unchanged when $\rho$ is replaced by $\rho'$, proving
+equality of the residual functions.
+\end{proof}
+
+\begin{theorem}[bucket bound]
+\label{thm-bucket}
+Let $S\subseteq\{0,1\}^n$ and $U\subseteq\img(h)$. Then
+\[
+\bddsize{S\cap h^{-1}(U)}
+\leq\cofcount(\chi_{S\cap h^{-1}(U)})
+\leq W\cofcount(\chi_S)
+\leq Wn(\bddsize{S}+2).
+\]
+\end{theorem}
+
+\begin{proof}
+The first and last inequalities follow from Lemma~\ref{lem-qsize}. Fix a
+cut $i$ and let
+\[
+ R_i=\{(\chi_S|_\rho,h|_\rho)\mid\rho\in\{0,1\}^i\}.
+\]
+For each $u\in\sub{i}{\chi_{S\cap h^{-1}(U)}}$, choose a witnessing
+prefix $\rho_u$ and map $u$ to
+$(\chi_S|_{\rho_u},h|_{\rho_u})\in R_i$. This map is injective by
+Lemma~\ref{lem-pair}. Consequently,
+\[
+ |\sub{i}{\chi_{S\cap h^{-1}(U)}}|
+ \leq|R_i|
+ \leq|\sub{i}{\chi_S}|\,|\sub{i}{h}|
+ \leq W|\sub{i}{\chi_S}|.
+\]
+Summing over $i=0,\ldots,n-1$ proves the middle inequality.
+\end{proof}
+
+\begin{theorem}[partition bound]
+\label{thm-partition}
+Let $S\subseteq\{0,1\}^n$. Then
+\[
+ \sum_{v\in\img(h)}\bddsize{S\cap\level{h}{v}}
+ \leq TW\cofcount(\chi_S)
+ \leq TWn(\bddsize{S}+2)
+ \leq W^2n(\bddsize{S}+2).
+\]
+If $S\subseteq\states$ and the sum ranges only over finite values attained
+on planning states, the first two bounds hold with $T$ replaced by
+$\values=|h(\states)\setminus\{\infty\}|$.
+\end{theorem}
+
+\begin{proof}
+Theorem~\ref{thm-bucket} with $U=\{v\}$ bounds every bucket by
+$W\cofcount(\chi_S)$. Sum over the $T$ terminals and use
+$T\leq W$ from Proposition~\ref{prop-range}; Lemma~\ref{lem-qsize}
+converts cofactor count to reduced size. If only finite values attained on
+planning states are included, there are at most $\values$ nonempty
+buckets.
+\end{proof}
+
+\begin{example}[the factor $n$ is necessary]
+\label{ex-parity}
+For $n\geq2$, let $S=\{s\mid s(x_1)=1\}$ and
+$h(s)=(\sum_{i=1}^ns(x_i))\bmod2$. Then $\bddsize{S}=1$ and $h$ has
+width two under any order. The bucket $S\cap\level{h}{0}$ fixes
+$x_1=1$ and requires odd parity on $x_2,\ldots,x_n$. Its reduced BDD has
+one node for $x_1$, one for $x_2$, and two for each of
+$x_3,\ldots,x_n$, hence $2n-2$ inner nodes. Thus a width-two slice can be
+$\Theta(n)$ times larger than its source set. In cofactor count,
+$\cofcount(\chi_S)=2n-1$, so Theorem~\ref{thm-bucket} is within a
+constant factor.
+\end{example}
+
+\section{Search-Effort Bound}
+
+By Lemma~\ref{lem-identity}, expansion size is exactly
+\[
+ \effort(\task,h)
+ =\sum_{g<\copt}\ \sum_{\substack{v\in\img(h)\\g+v\leq\copt}}
+   \bddsize{L_g\cap\level{h}{v}}.
+\]
+
+\begin{theorem}[effort bound]
+\label{thm-effort}
+Let $h$ be consistent with $\width_\pi(h)\leq W$, and let
+$\values=|h(\states)\setminus\{\infty\}|$. Then
+\[
+ \effort(\task,h)
+ \leq\values Wn\bigl(\effort(\task,\hblind)+2\copt\bigr)
+ \leq W^2n\bigl(\effort(\task,\hblind)+2\copt\bigr).
+\]
+\end{theorem}
+
+\begin{proof}
+The bucket identity permits enlarging the inner sum to all finite values
+attained on planning states. The finite-state form of
+Theorem~\ref{thm-partition} therefore gives
+\[
+ \effort(\task,h)
+ \leq\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
+       \values Wn(\bddsize{L_g}+2).
+\]
+Let $N$ be the number of nonempty layers below $\copt$. Since blind
+search expands each such layer once,
+\begin{equation}
+ \effort(\task,h)
+ \leq\values Wn\bigl(\effort(\task,\hblind)+2N\bigr).
+ \label{eq-effort-nonempty}
+\end{equation}
+Positive integer costs imply $N\leq\copt$: the possible layer indices are
+$0,\ldots,\copt-1$. This proves the first inequality, and
+$\values\leq W$ proves the second.
+\end{proof}
+
+\begin{corollary}[search-effort ratio]
+\label{cor-effort}
+Under the assumptions of Theorem~\ref{thm-effort},
+\begin{equation}
+ \effort(\task,h)
+ \leq3\values Wn\,\effort(\task,\hblind)
+ \leq3W^2n\,\effort(\task,\hblind).
+ \label{eq-supp-effort-ratio}
+\end{equation}
+\end{corollary}
+
+\begin{proof}
+Positive costs give $L_0=\{\sinit\}$. Because
+$0<\copt<\infty$, this is a proper subset of the Boolean cube. Every
+nonempty $L_g$ with $0<g<\copt$ is also proper because it omits
+\sinit. Its characteristic function is therefore nonconstant and its
+reduced OBDD has at least one inner node. Hence
+$N\leq\effort(\task,\hblind)$ in
+Equation~\eqref{eq-effort-nonempty}, which proves both inequalities.
+\end{proof}
+
+This is a one-sided bound on expanded frontier representations in forward
+product-at-evaluation \bddastar. It neither bounds the primitive relational
+products of delta-partitioned methods nor gives a cumulative bidirectional
+guarantee; it does allow unbounded savings through $f$-cutoff and dead-end
+pruning.
+
+\section{Image Calls and Pruning-Only Search}
+
+\begin{definition}[image-aware effort]
+For $\alpha\geq0$, the \emph{$\alpha$-effort} of a symbolic run is
+\[
+ \effort_\alpha=\sum_B(\alpha+|B|),
+\]
+where the sum ranges over high-level image calls before termination and
+$B$ is the argument of the call.
+\end{definition}
+
+For $\alpha=0$, this is the expansion-size measure when the high-level
+image routine is called once for each expanded bucket.
+
+\begin{proposition}[image-call counts]
+\label{prop-calls}
+Let $h$ be consistent with $\width_\pi(h)\leq W$, and let $N_\ell$ be
+the number of nonempty semantic blind layers $L_g$ with $g<\copt$. An
+idealized blind implementation storing each $L_g$ in one BDD performs
+$N_\ell$ counted high-level image calls. Product-at-evaluation
+\bddastar\ performing one call per expanded nonempty $(g,v)$ bucket
+performs $\sum_g\values_g$ calls, where $\values_g$ is the number of
+nonempty expanded buckets in layer $g$ and
+$\values_g\leq\values\leq W$; hence it performs at most
+$\values N_\ell\leq WN_\ell$ calls.
+\end{proposition}
+
+\begin{proof}
+Blind search invokes image once for each nonempty semantic layer.
+Lemma~\ref{lem-identity} makes every active heuristic layer a blind layer
+below $\copt$, and partitions it into exactly $\values_g$ nonempty
+buckets. Proposition~\ref{prop-range} gives
+$\values_g\leq\values\leq W$.
+\end{proof}
+
+Thus the call-overhead term is at most $\alpha WN_\ell$, but width does
+not provide a width-independent one-call-per-layer guarantee. Here one
+call means one invocation of the high-level cost-image routine, not every
+relational product it performs. In particular, the proposition does not
+apply verbatim to SetA$^*$ or cost-general \ghseta: operator-potential
+implementations partition transition relations by operator-cost and
+heuristic-delta pairs, so their relational-product count also depends on
+those partitions. The exact finite value count $\values$ can therefore be
+a much sharper operational parameter than an ADD-derived width bound, while
+delta-integrated search requires a separate analysis
+\citep{fiser-et-al-aij2024}. On the quadratic construction below,
+product-at-evaluation \bddastar\ makes $\Theta(W)$ calls on each of
+$\Theta(k)$ late layers, so the factor is realizable.
+
+\emph{Pruning-only search} instead maintains one BDD per uniform-cost
+layer and an incumbent solution bound $c$ ($c=\infty$ initially). It
+discards $h=\infty$ and states satisfying $g+h\geq c$, and reapplies the
+current bound when a layer is expanded. It stops when the next layer cannot
+improve the incumbent.
+
+\begin{lemma}[slice identity]
+\label{lem-slice}
+Let $h$ be consistent, and let $c_g$ be the incumbent when pruning-only
+search expands layer $g$. The expanded layer is exactly
+\[
+ L_g\cap h^{-1}(\{v\mid v<c_g-g\}).
+\]
+\end{lemma}
+
+\begin{proof}
+Applying $c_g$ at expansion gives containment in the displayed slice. For
+the converse, let $s\in L_g$ satisfy $g+h(s)<c_g$, and take a cheapest
+path $p_0=\sinit,\ldots,p_k=s$. Consistency gives
+$\gstar(p_j)+h(p_j)\leq g+h(s)<c_g$ for every prefix state. Its layer was
+expanded no later than $g$, when the nonincreasing incumbent was at least
+$c_g$, so $p_j$ survived generation-time and expansion-time pruning.
+Induction along the path shows that $s$ is generated at cost $g$ and
+survives into the expanded layer.
+\end{proof}
+
+\begin{corollary}[pruning bound]
+\label{cor-prune}
+Let $h$ be admissible and consistent with $\width_\pi(h)\leq W$. The
+cumulative size of the layers expanded by pruning-only search is at most
+\[
+ Wn\bigl(\effort(\task,\hblind)+2\copt\bigr),
+\]
+and it performs one image operation per expanded layer. With $c=\infty$
+throughout and no recognized dead ends, its semantic layers and expansions
+coincide with blind forward search, although heuristic construction and
+evaluation can still consume time.
+\end{corollary}
+
+\begin{proof}
+By Lemma~\ref{lem-slice}, every expanded BDD is a single threshold slice
+of $L_g$. Theorem~\ref{thm-bucket} bounds it by
+$Wn(\bddsize{L_g}+2)$. Summing over the at most $\copt$ nonempty layers
+below the optimal goal cost proves the node bound. Because no layer is
+partitioned, exactly one image is invoked for each expanded layer. If the
+incumbent stays infinite and no state has $h=\infty$, the retained slice
+is all of $L_g$, proving the final claim.
+\end{proof}
+
+For every $\alpha\geq0$, pruning-only $\alpha$-effort is therefore at
+most
+\[
+ Wn\bigl(\effort(\task,\hblind)+2\copt\bigr)+\alpha N_\ell.
+\]
+The discard is also pointwise sound in bidirectional blind search if the
+forward direction uses an admissible goal-distance estimate and the
+backward direction an admissible distance-from-initial estimate. We do not
+lift this pointwise fact to a cumulative bidirectional bound: pruning
+changes both closed sets and their meeting points, which can alter solution
+discovery, incumbent updates, and an adaptive direction schedule. Those
+feedback effects prevent identification with fixed blind reference
+frontiers. A single linear merge-and-shrink abstraction can supply both
+goal-distance and distance-from-initial estimates from the same shrunk
+transition system. Pointwise incumbent pruning itself uses only
+admissibility and, unlike the cumulative layer argument above, does not
+require positive operator costs.
 
 \section{Quadratic Width-Ratio Construction}
 
@@ -468,8 +814,8 @@ $\sum_{j'\leq j}P(v_{j'},\rho(v_{j'}))$, an integer in $[-mM,mM]$,
 and by the assignment to the $b$ read bits of $v_{j+1}$. There are at
 most $2mM+1$ sums and at most $2^b\leq d$ bit prefixes, so
 $\width_\pi(p)\leq d(2mM+1)$. The raw total lies in $[-mM,mM]$;
-rectification maps it to $\{0,\dots,mM\}$ and cannot increase width by
-Proposition~\ref{prop-transform}.
+rectification maps it to $\{0,\dots,mM\}$ and, as a terminal mapping,
+cannot create cofactors.
 \end{proof}
 
 \begin{corollary}
@@ -541,6 +887,7 @@ most $N$, or the distinguished sink, together with the $b$-bit buffer,
 at most $d$ cases: the
 remaining computation applies the fixed tables
 $\tau_{j+1}, \dots, \tau_m$ and the final distance table to the suffix.
+Thus at every cut there are at most $d(N+1)$ distinct cofactors.
 \end{proof}
 
 \bibliographystyle{plainnat}
