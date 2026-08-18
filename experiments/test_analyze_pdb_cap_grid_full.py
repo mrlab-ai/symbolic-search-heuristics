@@ -13,7 +13,104 @@ import pdb_cap_grid_full_protocol as P
 import pdb_cap_grid_full_secondary_contract as secondary
 
 
+_MISSING = object()
+
+
+def _synthetic_static_records(repo):
+    task = ("synthetic-domain", "p01.pddl")
+    records = []
+    for index, label in enumerate(P.LABELS):
+        record = {
+            "id": [label, task[0], task[1]],
+            "algorithm": label,
+            "domain": task[0],
+            "problem": task[1],
+            "component_options": analyzer._expected_component_options(
+                P.SEARCHES[label]
+            ),
+            "driver_options": [
+                "--overall-time-limit",
+                "30m",
+                "--overall-memory-limit",
+                "3584M",
+                "--build",
+                "release_no_lp",
+                "--overall-time-limit",
+                "300s",
+                "--overall-memory-limit",
+                "8G",
+            ],
+            "build_options": ["release_no_lp"],
+            "local_revision": P.PLANNER_REVISION,
+            "global_revision": P.PLANNER_REVISION,
+            "experiment_name": "exp_pdb_cap_grid_full",
+            "run_dir": analyzer.full_analysis._run_relative_path(index + 1),
+            "benchmark_worktree": "/synthetic/downward-benchmarks",
+            "planner_time_limit": 300.0,
+            "planner_memory_limit": 8192.0,
+        }
+        if repo is not _MISSING:
+            record["repo"] = repo
+        records.append(record)
+    return records, [task]
+
+
 class FocusedFullAnalysisTests(unittest.TestCase):
+    def _validate_synthetic_static_records(self, records, tasks):
+        with mock.patch.object(
+            P, "EXPECTED_CELLS", len(records)
+        ), mock.patch.object(
+            analyzer, "_expected_static", return_value={}
+        ), mock.patch.object(
+            analyzer.full_analysis, "_validate_completion"
+        ), mock.patch.object(
+            analyzer.full_analysis.heldout.pilot_analyzer,
+            "_validate_outcome",
+        ), mock.patch.object(
+            analyzer.full_analysis.heldout,
+            "_validate_metric_certification",
+        ), mock.patch.object(
+            analyzer.full_analysis.heldout, "_validate_heuristic"
+        ), mock.patch.object(
+            analyzer.cap_analysis, "_validate_heuristic_stats"
+        ), mock.patch.object(
+            analyzer.cap_analysis, "_validate_cap_trace"
+        ):
+            return analyzer.validate_records(records, tasks)
+
+    def test_repo_accepts_consistent_absolute_launch_worktree(self):
+        launch_repo = "/synthetic/launch-worktree"
+        self.assertNotEqual(launch_repo, str(analyzer.runner.C.REPO))
+        records, tasks = _synthetic_static_records(launch_repo)
+        matrix = self._validate_synthetic_static_records(records, tasks)
+        self.assertEqual(len(matrix), len(P.LABELS))
+
+    def test_repo_rejects_missing_empty_and_relative_values(self):
+        for repo in (_MISSING, "", "relative/launch-worktree"):
+            with self.subTest(repo=repo):
+                records, tasks = _synthetic_static_records(
+                    "/synthetic/launch-worktree"
+                )
+                if repo is _MISSING:
+                    records[-1].pop("repo")
+                else:
+                    records[-1]["repo"] = repo
+                with self.assertRaisesRegex(
+                    analyzer.AnalysisError, "repo is not absolute"
+                ):
+                    self._validate_synthetic_static_records(records, tasks)
+
+    def test_repo_rejects_multiple_absolute_values(self):
+        records, tasks = _synthetic_static_records(
+            "/synthetic/launch-worktree"
+        )
+        records[-1]["repo"] = "/synthetic/other-launch-worktree"
+        with self.assertRaisesRegex(
+            analyzer.AnalysisError,
+            "one consistent absolute planner repo",
+        ):
+            self._validate_synthetic_static_records(records, tasks)
+
     def test_secondary_contract_is_frozen(self):
         self.assertEqual(
             secondary.validate_contract(),

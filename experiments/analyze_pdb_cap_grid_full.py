@@ -233,7 +233,6 @@ def _validate_static_record(
         "build_options": ["release_no_lp"],
         "local_revision": P.PLANNER_REVISION,
         "global_revision": P.PLANNER_REVISION,
-        "repo": str(runner.C.REPO),
         "experiment_name": "exp_pdb_cap_grid_full",
         "run_dir": full_analysis._run_relative_path(run_id),
     }
@@ -336,6 +335,7 @@ def validate_records(records, tasks):
 
     costs = defaultdict(list)
     proofs = defaultdict(list)
+    repos = set()
     for config_index, label in enumerate(P.LABELS):
         for task_index, task in enumerate(tasks):
             record = matrix.get((label, task))
@@ -343,6 +343,15 @@ def validate_records(records, tasks):
                 continue
             run_id = config_index * len(tasks) + task_index + 1
             prefix = _cell(label, task)
+            repo = record.get("repo")
+            if (
+                not isinstance(repo, str)
+                or not repo
+                or not Path(repo).is_absolute()
+            ):
+                _append(errors, prefix, "repo is not absolute")
+            else:
+                repos.add(repo)
             _validate_static_record(
                 record, label, task, run_id, expected_static, errors
             )
@@ -369,6 +378,8 @@ def validate_records(records, tasks):
             if record.get("coverage") == 0 and record.get("unsolvable") == 1:
                 proofs[task].append(label)
 
+    if len(repos) != 1:
+        errors.append("records do not have one consistent absolute planner repo")
     for task in tasks:
         distinct = {cost for _, cost in costs.get(task, [])}
         if len(distinct) > 1:
