@@ -1800,6 +1800,21 @@ def _summary(observed, value):
     }
 
 
+def _synthetic_half_count_summary(observed, lower):
+    """Return a plausible integer-count fixture with a half-integral median."""
+    if observed <= 0 or observed % 2 != 0:
+        raise AssertionError("synthetic half-integral summary requires positive even n")
+    total = (2 * lower + 1) * observed // 2
+    return {
+        "observed": observed,
+        "minimum": lower,
+        "median": lower + 0.5,
+        "maximum": lower + 1,
+        "mean": lower + 0.5,
+        "total": total,
+    }
+
+
 def _fraction(value, fixed=None):
     value = Fraction(value)
     return {
@@ -1881,20 +1896,29 @@ def _synthetic_contrast(tasks, role, full=False):
 
 def _synthetic_selector(tasks, config, semantic):
     cap_histogram = {"exact": tasks} if config == EXACT else {"8": 900, "exact": tasks - 900}
-    sources = {
-        "empty": 100,
-        "bdd_prefix": 200,
-        "goal_prefix": 300,
-        "goal_fill": 400,
-        "cegar": tasks - 1000,
-    }
     if config == EXACT:
+        sources = {
+            "empty": 100,
+            "bdd_prefix": 200,
+            "goal_prefix": 300,
+            "goal_fill": 400,
+            "cegar": tasks - 1000,
+        }
         a = _summary(tasks, 100)
         t = _summary(tasks, 3)
         u = _summary(tasks, 103)
         v = _summary(tasks, 10)
     else:
-        a = _summary(tasks - 1, 80)
+        # Deliberately distinct from exact so selector-key mixups are observable.
+        sources = {
+            "empty": 110,
+            "bdd_prefix": 210,
+            "goal_prefix": 310,
+            "goal_fill": 410,
+            "cegar": tasks - 1040,
+        }
+        # A half-integral median distinct from the minimum catches field reuse.
+        a = _synthetic_half_count_summary(tasks - 1, 80)
         t = _summary(tasks - 2, 3)
         u = _summary(tasks, 83)
         v = _summary(tasks - 3, 9)
@@ -2011,6 +2035,14 @@ def _synthetic_analysis():
         EXACT: exact_solved,
         CAP: cap_solved,
     }
+    # Distinct positive summaries make cross-configuration row reuse observable.
+    construction_by_label = {
+        "blind_fw": _summary(0, 0),
+        "ms_exact": _summary(TASKS - 10, 1.0),
+        "pdb_cegar_b100k": _summary(TASKS - 11, 2.0),
+        EXACT: _summary(TASKS - 12, 3.0),
+        CAP: _summary(TASKS - 13, 4.0),
+    }
     for label, _, _, role in CONFIGS:
         solved = solved_by_label[label]
         solved_cpu_per_task = 9.0 if label == CAP else 10.0
@@ -2029,9 +2061,7 @@ def _synthetic_analysis():
                 "solved_planner_cpu_seconds": _summary(
                     solved, solved_cpu_per_task
                 ),
-                "completed_construction_seconds": (
-                    _summary(0, 0) if label == "blind_fw" else _summary(TASKS - 10, 1.0)
-                ),
+                "completed_construction_seconds": construction_by_label[label],
             }
         )
     result = {

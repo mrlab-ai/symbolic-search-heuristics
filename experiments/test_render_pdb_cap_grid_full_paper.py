@@ -62,11 +62,11 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
     def test_synthetic_fixture_and_tex_are_byte_deterministic(self):
         self.assertEqual(
             self.digest,
-            "8e3b9b582eceb793394ea3f18ca2bd86ba7fa664f0a3b0c71eedb4b01fb9a1e9",
+            "715e6a6f611b0027429b18af4e1735f8484ea8ddaf9a3493a010fdb9f196bbfa",
         )
         self.assertEqual(
             hashlib.sha256(self.tex).hexdigest(),
-            "c0909990c91a5c2e0046a4d2157cff3919366cf65f08f895d69f86a88a4873c6",
+            "435162c8dd8307a36fbaa865e2a25d86906ffe840ce42ae0a4ea50da958a3dbc",
         )
         self.assertEqual(
             self.tex,
@@ -78,6 +78,53 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         self.assertEqual(report["self_test"], "PASS")
         self.assertEqual(report["synthetic_analysis_sha256"], self.digest)
         self.assertEqual(report["synthetic_tex_sha256"], hashlib.sha256(self.tex).hexdigest())
+
+    def test_synthetic_fixture_is_deliberately_asymmetric(self):
+        primary_selectors = self.analysis["secondary_descriptive"][
+            "primary_development_complement"
+        ]["selector_summary"]
+        cap_a = primary_selectors[renderer.CAP]["A"]
+        self.assertEqual(
+            (cap_a["minimum"], cap_a["median"], cap_a["maximum"]),
+            (80, 80.5, 81),
+        )
+        self.assertEqual(cap_a["total"], 106743)
+
+        for scope_name in (
+            "primary_development_complement",
+            "full_census_sensitivity",
+        ):
+            selectors = self.analysis["secondary_descriptive"][scope_name][
+                "selector_summary"
+            ]
+            exact_sources = selectors[renderer.EXACT][
+                "selected_first_provenance_source"
+            ]
+            cap_sources = selectors[renderer.CAP][
+                "selected_first_provenance_source"
+            ]
+            self.assertNotEqual(exact_sources, cap_sources)
+            for config, sources in (
+                (renderer.EXACT, exact_sources),
+                (renderer.CAP, cap_sources),
+            ):
+                self.assertEqual(
+                    sum(sources.values()),
+                    selectors[config]["complete_certified_traces"],
+                )
+
+        construction = [
+            config["completed_construction_seconds"]
+            for config in self.analysis["descriptive_full_census_configs"][1:]
+        ]
+        observed_totals = [
+            (summary["observed"], summary["total"]) for summary in construction
+        ]
+        self.assertEqual(
+            observed_totals,
+            [(1367, 1367.0), (1366, 2732.0), (1365, 4095.0), (1364, 5456.0)],
+        )
+        self.assertEqual(len(set(observed_totals)), len(observed_totals))
 
     def test_production_gate_precedes_any_artifact_read(self):
         self.assertIsNone(renderer.EXPECTED_FULL_ANALYSIS_SHA256)
@@ -701,9 +748,9 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             [
                 "Blind forward & 0/1377 & --" + row_end,
                 r"Uncapped M\&S & 1367/1377 & 1367" + row_end,
-                "CEGAR PDB & 1367/1377 & 1367" + row_end,
-                "Exact selector $K=8$ & 1367/1377 & 1367" + row_end,
-                "Cap-aware selector $K=8$ & 1367/1377 & 1367" + row_end,
+                "CEGAR PDB & 1366/1377 & 2732" + row_end,
+                "Exact selector $K=8$ & 1365/1377 & 4095" + row_end,
+                "Cap-aware selector $K=8$ & 1364/1377 & 5456" + row_end,
             ],
         )
 
@@ -716,7 +763,12 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         )
         self.assertEqual(
             summaries[8],
-            "Primary & Cap-aware & A & 1326/1327 & 80 & 80 & 80 & 106080"
+            "Primary & Cap-aware & A & 1326/1327 & 80 & 80.5 & 81 & 106743"
+            + row_end,
+        )
+        self.assertEqual(
+            summaries[20],
+            "Full census & Cap-aware & A & 1376/1377 & 80 & 80.5 & 81 & 110768"
             + row_end,
         )
         self.assertEqual(
@@ -730,7 +782,13 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         self.assertEqual(sources[0], "Primary & Exact & Empty & 100/1327" + row_end)
         self.assertEqual(sources[4], "Primary & Exact & CEGAR & 327/1327" + row_end)
         self.assertEqual(
-            sources[-1], "Full census & Cap-aware & CEGAR & 377/1377" + row_end
+            sources[6], "Primary & Cap-aware & BDD prefix & 210/1327" + row_end
+        )
+        self.assertEqual(
+            sources[9], "Primary & Cap-aware & CEGAR & 287/1327" + row_end
+        )
+        self.assertEqual(
+            sources[-1], "Full census & Cap-aware & CEGAR & 337/1377" + row_end
         )
 
         caps = self.macro_rows("CapEffectiveCapRows")
