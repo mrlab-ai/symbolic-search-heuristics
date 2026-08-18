@@ -10,6 +10,7 @@ import re
 import sys
 import tempfile
 import unittest
+from fractions import Fraction
 from pathlib import Path
 from unittest import mock
 
@@ -17,6 +18,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import render_pdb_cap_grid_full_paper as renderer
+import analyze_pdb_cap_grid_full as analyzer
 
 
 class FocusedCapGridPaperRendererTests(unittest.TestCase):
@@ -48,11 +50,11 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
     def test_synthetic_fixture_and_tex_are_byte_deterministic(self):
         self.assertEqual(
             self.digest,
-            "4f49b5ac76d634a7baed8f7094107be3c2ac56bd1fd7407d2d19d1546f91c1ab",
+            "8e3b9b582eceb793394ea3f18ca2bd86ba7fa664f0a3b0c71eedb4b01fb9a1e9",
         )
         self.assertEqual(
             hashlib.sha256(self.tex).hexdigest(),
-            "c786c9b582f7349e1cb6ef21e5f86dc9f11f13801919ce66219a07c88a60023c",
+            "20ad1d959c8e9a959c4ae3a015d157117a6b8d00c39e698e6b5bdcdcfc3c48fa",
         )
         self.assertEqual(
             self.tex,
@@ -204,6 +206,23 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             "claim_policy changed",
         )
 
+        def impossible_contingency(value):
+            mechanism = value["primary"]["mechanism"]
+            mechanism["cap_semantic_nontrivial"] = 0
+            mechanism["exact_semantic_nontrivial"] = 1
+            mechanism["semantic_pair_wins"] = 1
+            mechanism["semantic_pair_losses"] = 2
+            selectors = value["secondary_descriptive"][
+                "primary_development_complement"
+            ]["selector_summary"]
+            selectors[renderer.CAP]["semantic_nontrivial"] = 0
+            selectors[renderer.EXACT]["semantic_nontrivial"] = 1
+
+        self.assert_rejected(
+            impossible_contingency,
+            "primary.mechanism semantic contingency table is impossible",
+        )
+
         def make_not_certified(value):
             value["primary"]["mechanism"]["same_k_raw_pool_identity_pairs"] -= 1
             value["primary"]["mechanism"]["status"] = "not-certified"
@@ -222,6 +241,12 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         self.assertEqual(cap["A"]["observed"], renderer.PRIMARY_TASKS - 1)
         self.assertEqual(cap["T"]["observed"], renderer.PRIMARY_TASKS - 2)
         self.assertEqual(cap["V"]["observed"], renderer.PRIMARY_TASKS - 3)
+        producer_summary = analyzer._count_summary([1, 2, 3])
+        self.assertIs(type(producer_summary["total"]), int)
+        validated = renderer._validate_count_summary(
+            producer_summary, "producer-count-summary", 3, 3
+        )
+        self.assertEqual(validated["total"], 6)
 
         self.assert_rejected(
             lambda value: value["secondary_descriptive"]["primary_development_complement"][
@@ -317,6 +342,155 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
                 "candidate_over_reference", 0.5
             ),
             "construction_time.candidate_over_reference arithmetic changed",
+        )
+
+    def test_par2_is_reconstructed_from_solved_counts_and_runtime_totals(self):
+        primary_par2 = lambda value: value["secondary_descriptive"][
+            "primary_development_complement"
+        ]["paired_operational"]["micro_par2_seconds"]
+        self.assert_rejected(
+            lambda value: primary_par2(value).__setitem__(
+                "candidate_solved", primary_par2(value)["candidate_solved"] - 1
+            ),
+            "candidate PAR2 solved count disagrees with coverage",
+        )
+        self.assert_rejected(
+            lambda value: primary_par2(value).__setitem__(
+                "reference_solved", primary_par2(value)["reference_solved"] - 1
+            ),
+            "reference PAR2 solved count disagrees with coverage",
+        )
+        self.assert_rejected(
+            lambda value: primary_par2(value).__setitem__(
+                "candidate_solved_planner_cpu_total_seconds",
+                primary_par2(value)[
+                    "candidate_solved_planner_cpu_total_seconds"
+                ]
+                + 1.0,
+            ),
+            "par2.candidate arithmetic changed",
+        )
+        self.assert_rejected(
+            lambda value: primary_par2(value).__setitem__(
+                "reference_solved_planner_cpu_total_seconds",
+                primary_par2(value)[
+                    "reference_solved_planner_cpu_total_seconds"
+                ]
+                + 1.0,
+            ),
+            "par2.reference arithmetic changed",
+        )
+        self.assert_rejected(
+            lambda value: value["secondary_descriptive"][
+                "primary_development_complement"
+            ]["paired_operational"]["micro_par2_seconds"].__setitem__(
+                "candidate",
+                math.nextafter(
+                    value["secondary_descriptive"][
+                        "primary_development_complement"
+                    ]["paired_operational"]["micro_par2_seconds"]["candidate"],
+                    math.inf,
+                ),
+            ),
+            "secondary.primary_development_complement.par2.candidate arithmetic changed",
+        )
+        self.assert_rejected(
+            lambda value: value["descriptive_full_census_configs"][0].__setitem__(
+                "micro_par2_seconds", 0.0
+            ),
+            "descriptive_full_census_configs[0].micro_par2_seconds arithmetic changed",
+        )
+
+    def test_primary_subset_relations_fail_closed(self):
+        def histogram_exceeds_census(value):
+            histogram = value["secondary_descriptive"][
+                "primary_development_complement"
+            ]["selector_summary"][renderer.CAP]["effective_cap_histogram"]
+            histogram["8"] += 1
+            histogram["exact"] -= 1
+
+        self.assert_rejected(
+            histogram_exceeds_census,
+            "primary-subset.selector.cap.cap_histogram.8 primary count exceeds full census",
+        )
+
+        def paired_image_exceeds_census(value):
+            paired = value["secondary_descriptive"][
+                "primary_development_complement"
+            ]["paired_operational"]
+            paired["complete_certified_image_time"]["eligible_pair_count"] = 521
+            paired["complete_certified_expanded_bdd_nodes"][
+                "eligible_pair_count"
+            ] = 521
+
+        self.assert_rejected(
+            paired_image_exceeds_census,
+            "primary-subset.image.pairs primary count exceeds full census",
+        )
+
+        def coverage_exceeds_census(value):
+            contrast = value["full_census_sensitivity"]
+            for index in (2, 3):
+                row = contrast["per_domain"][index]
+                row["cap_solved"] -= 1
+                row["cap_minus_exact_rate"] = renderer._fraction(
+                    Fraction(row["cap_solved"] - row["exact_solved"], row["tasks"])
+                )
+            cap_macro = sum(
+                Fraction(row["cap_solved"], row["tasks"])
+                for row in contrast["per_domain"]
+            ) / renderer.DOMAINS
+            exact_macro = sum(
+                Fraction(row["exact_solved"], row["tasks"])
+                for row in contrast["per_domain"]
+            ) / renderer.DOMAINS
+            contrast["equal_domain_macro_coverage"]["cap"] = renderer._fraction(
+                cap_macro, renderer.DOMAINS
+            )
+            contrast["equal_domain_macro_coverage"]["exact"] = renderer._fraction(
+                exact_macro, renderer.DOMAINS
+            )
+            contrast["equal_domain_macro_coverage"][
+                "cap_minus_exact"
+            ] = renderer._fraction(cap_macro - exact_macro, renderer.DOMAINS)
+            micro = contrast["task_micro_discordance"]
+            micro["cap_wins"] = 2
+            micro["wins_minus_losses"] = 0
+            micro["discordant"] = 4
+            micro["both_unsolved"] = (
+                renderer.TASKS
+                - micro["cap_wins"]
+                - micro["cap_losses"]
+                - micro["both_solved"]
+            )
+            cap_solved = micro["cap_wins"] + micro["both_solved"]
+            cap_runtime_total = cap_solved * 9.0
+            cap_par2 = (
+                cap_runtime_total
+                + renderer.PAR2_PENALTY * (renderer.TASKS - cap_solved)
+            ) / renderer.TASKS
+            cap_config = value["descriptive_full_census_configs"][4]
+            cap_config["solved"] = cap_solved
+            cap_config["coverage_rate"] = cap_solved / renderer.TASKS
+            cap_config["solved_planner_cpu_seconds"] = renderer._summary(
+                cap_solved, 9.0
+            )
+            cap_config["micro_par2_seconds"] = cap_par2
+            secondary_par2 = value["secondary_descriptive"][
+                "full_census_sensitivity"
+            ]["paired_operational"]["micro_par2_seconds"]
+            secondary_par2["candidate_solved"] = cap_solved
+            secondary_par2[
+                "candidate_solved_planner_cpu_total_seconds"
+            ] = cap_runtime_total
+            secondary_par2["candidate"] = cap_par2
+            secondary_par2["candidate_minus_reference"] = (
+                cap_par2 - secondary_par2["reference"]
+            )
+
+        self.assert_rejected(
+            coverage_exceeds_census,
+            "primary-subset.per_domain[2].cap_solved primary count exceeds full census",
         )
 
     def test_contract_and_canonical_finite_json_fail_closed(self):

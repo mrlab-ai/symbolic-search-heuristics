@@ -57,7 +57,7 @@ EXPECTED_PREDECLARATION_SHA256 = (
     "54ee45b88a6a1ca1507971919ad8f3d168abfcbb690857f5900618d407182c5b"
 )
 EXPECTED_SECONDARY_CONTRACT_SHA256 = (
-    "4541c95a67f82e1c5fc025e151b1df3d624334c8441f168fa264016708bdfee2"
+    "1df86a1255cb301ffe2b6eb0db52ba81ca7f8c511e5a011cd028d8eff2dfc862"
 )
 EXPECTED_PLANNER_REVISION = "e04d56cc61d00c954f2369e9fb74bd469277d52e"
 EXPECTED_PLANNER_BINARY_SHA256 = (
@@ -294,6 +294,23 @@ def _number(value, label, minimum=None, maximum=None):
     return result
 
 
+def _exact_integral_numeric(value, label, minimum=0, maximum=MAX_INTEGER):
+    """Validate a derived numeric quantity that must be exactly integral."""
+    if type(value) is int:
+        return _integer(value, label, minimum, maximum)
+    if (
+        type(value) is not float
+        or not math.isfinite(value)
+        or not value.is_integer()
+        or abs(value) > 2**53
+    ):
+        raise RenderError("{} must be an exact integral number".format(label))
+    result = int(value)
+    if result < minimum or result > maximum:
+        raise RenderError("{} is outside [{}, {}]".format(label, minimum, maximum))
+    return result
+
+
 def _close(actual, expected, label, tolerance=1e-12):
     actual = _number(actual, label)
     expected = float(expected)
@@ -347,11 +364,21 @@ def _validate_summary(value, label, maximum_observed, expected_observed=None):
 
 def _validate_count_summary(value, label, maximum_observed, expected_observed=None):
     observed = _validate_summary(value, label, maximum_observed, expected_observed)
+    result = {
+        "observed": observed,
+        "minimum": None,
+        "maximum": None,
+        "total": None,
+    }
     if observed:
-        _integer(value["minimum"], label + ".minimum")
-        _integer(value["maximum"], label + ".maximum")
-        _integer(value["total"], label + ".total")
-    return observed
+        result["minimum"] = _integer(value["minimum"], label + ".minimum")
+        result["maximum"] = _integer(value["maximum"], label + ".maximum")
+        result["total"] = _integer(value["total"], label + ".total")
+        _exact_integral_numeric(
+            2 * _number(value["median"], label + ".median", 0),
+            label + ".twice_median",
+        )
+    return result
 
 
 def _validate_execution(value, pins):
@@ -472,6 +499,12 @@ def _validate_mechanism(value, label, tasks):
         raise RenderError("{} semantic discordance exceeds paired traces".format(label))
     if cap_nontrivial - exact_nontrivial != wins - losses:
         raise RenderError("{} semantic counts do not conserve paired discordance".format(label))
+    semantic_both = cap_nontrivial - wins
+    if semantic_both != exact_nontrivial - losses:
+        raise RenderError("{} semantic shared-positive count is inconsistent".format(label))
+    semantic_neither = traces - wins - losses - semantic_both
+    if semantic_both < 0 or semantic_neither < 0:
+        raise RenderError("{} semantic contingency table is impossible".format(label))
     observed = wins + losses > 0
     if value["semantic_selection_difference_observed"] is not observed:
         raise RenderError("{}.semantic_selection_difference_observed changed".format(label))
@@ -492,6 +525,8 @@ def _validate_mechanism(value, label, tasks):
         "exact_nontrivial": exact_nontrivial,
         "semantic_wins": wins,
         "semantic_losses": losses,
+        "semantic_both": semantic_both,
+        "semantic_neither": semantic_neither,
     }
 
 
@@ -530,6 +565,7 @@ def _validate_contrast(value, label, tasks, role):
 
     per_domain = _sequence(value["per_domain"], label + ".per_domain", DOMAINS)
     names = set()
+    domain_rows = []
     task_total = cap_total = exact_total = 0
     recomputed_cap = Fraction(0)
     recomputed_exact = Fraction(0)
@@ -562,6 +598,14 @@ def _validate_contrast(value, label, tasks, role):
         exact_total += exact_solved
         recomputed_cap += Fraction(cap_solved, count)
         recomputed_exact += Fraction(exact_solved, count)
+        domain_rows.append(
+            {
+                "domain": domain,
+                "tasks": count,
+                "cap_solved": cap_solved,
+                "exact_solved": exact_solved,
+            }
+        )
     if task_total != tasks:
         raise RenderError("{} per-domain task counts do not conserve".format(label))
     recomputed_cap /= DOMAINS
@@ -612,6 +656,7 @@ def _validate_contrast(value, label, tasks, role):
         "both_solved": both_solved,
         "both_unsolved": both_unsolved,
         "mechanism": mechanism,
+        "domain_rows": domain_rows,
     }
 
 
@@ -657,7 +702,7 @@ def _validate_selector_summary(value, label, tasks, config):
         for source in SELECTOR_SOURCES
     ) != traces:
         raise RenderError("{} source histogram does not conserve".format(label))
-    observed = {
+    summaries = {
         "pattern_size": _validate_count_summary(
             value["pattern_size"], label + ".pattern_size", traces, traces
         ),
@@ -669,10 +714,36 @@ def _validate_selector_summary(value, label, tasks, config):
     }
     if traces and (value["W"]["minimum"] < 1 or value["W"]["maximum"] > WIDTH_BUDGET):
         raise RenderError("{} selected width exceeds the frozen K=8 budget".format(label))
-    if observed["A"] == observed["T"] == observed["U"] == traces:
-        if value["U"]["total"] != value["A"]["total"] + value["T"]["total"]:
+    if (
+        summaries["A"]["observed"]
+        == summaries["T"]["observed"]
+        == summaries["U"]["observed"]
+        == traces
+    ):
+        if summaries["U"]["total"] != (
+            summaries["A"]["total"] + summaries["T"]["total"]
+        ):
             raise RenderError("{} U total does not equal A plus T".format(label))
-    return {"traces": traces, "semantic": semantic, "observed": observed}
+    return {
+        "traces": traces,
+        "semantic": semantic,
+        "histogram": {
+            key: _integer(
+                count,
+                "{}.effective_cap_histogram.{}".format(label, key),
+                0,
+                traces,
+            )
+            for key, count in histogram.items()
+        },
+        "sources": {
+            source: _integer(
+                sources[source], "{}.source.{}".format(label, source), 0, traces
+            )
+            for source in SELECTOR_SOURCES
+        },
+        "summaries": summaries,
+    }
 
 
 def _validate_total_ratio(value, label, tasks, integer_totals=False):
@@ -729,17 +800,61 @@ def _validate_secondary_scope(value, label, tasks, contrast):
     par2 = _mapping(
         operational["micro_par2_seconds"],
         label + ".micro_par2_seconds",
-        {"fixed_task_denominator", "candidate", "reference", "candidate_minus_reference"},
+        {
+            "fixed_task_denominator",
+            "candidate_solved",
+            "reference_solved",
+            "candidate_solved_planner_cpu_total_seconds",
+            "reference_solved_planner_cpu_total_seconds",
+            "candidate",
+            "reference",
+            "candidate_minus_reference",
+        },
     )
     if par2["fixed_task_denominator"] != tasks:
         raise RenderError("{} PAR2 denominator changed".format(label))
+    candidate_solved = _integer(
+        par2["candidate_solved"], label + ".par2.candidate_solved", 0, tasks
+    )
+    reference_solved = _integer(
+        par2["reference_solved"], label + ".par2.reference_solved", 0, tasks
+    )
+    if candidate_solved != contrast["cap_solved"]:
+        raise RenderError("{} candidate PAR2 solved count disagrees with coverage".format(label))
+    if reference_solved != contrast["exact_solved"]:
+        raise RenderError("{} reference PAR2 solved count disagrees with coverage".format(label))
+    candidate_runtime_total = _number(
+        par2["candidate_solved_planner_cpu_total_seconds"],
+        label + ".par2.candidate_solved_runtime_total",
+        0,
+        PAR2_PENALTY * candidate_solved,
+    )
+    reference_runtime_total = _number(
+        par2["reference_solved_planner_cpu_total_seconds"],
+        label + ".par2.reference_solved_runtime_total",
+        0,
+        PAR2_PENALTY * reference_solved,
+    )
     candidate_par2 = _number(par2["candidate"], label + ".par2.candidate", 0, PAR2_PENALTY)
     reference_par2 = _number(par2["reference"], label + ".par2.reference", 0, PAR2_PENALTY)
-    _close(
+    expected_candidate_par2 = (
+        candidate_runtime_total + PAR2_PENALTY * (tasks - candidate_solved)
+    ) / tasks
+    expected_reference_par2 = (
+        reference_runtime_total + PAR2_PENALTY * (tasks - reference_solved)
+    ) / tasks
+    if candidate_par2 != expected_candidate_par2:
+        raise RenderError("{}.par2.candidate arithmetic changed".format(label))
+    if reference_par2 != expected_reference_par2:
+        raise RenderError("{}.par2.reference arithmetic changed".format(label))
+    par2_difference = _number(
         par2["candidate_minus_reference"],
-        candidate_par2 - reference_par2,
         label + ".par2.candidate_minus_reference",
     )
+    if par2_difference != candidate_par2 - reference_par2:
+        raise RenderError(
+            "{}.par2.candidate_minus_reference arithmetic changed".format(label)
+        )
     cpu = _mapping(
         operational["jointly_solved_planner_cpu"],
         label + ".jointly_solved_planner_cpu",
@@ -788,6 +903,12 @@ def _validate_secondary_scope(value, label, tasks, contrast):
         "candidate_par2": candidate_par2,
         "reference_par2": reference_par2,
         "par2_difference": candidate_par2 - reference_par2,
+        "par2": {
+            "candidate_solved": candidate_solved,
+            "reference_solved": reference_solved,
+            "candidate_runtime_total": candidate_runtime_total,
+            "reference_runtime_total": reference_runtime_total,
+        },
         "cpu": {"joint": joint, "eligible": eligible, "excluded": excluded, "ratio": cpu_ratio},
         "image": image,
         "effort": effort,
@@ -823,12 +944,28 @@ def _validate_config(value, index):
     solved = _integer(value["solved"], prefix + ".solved", 0, TASKS)
     _close(value["coverage_rate"], solved / TASKS, prefix + ".coverage_rate")
     par2 = _number(value["micro_par2_seconds"], prefix + ".micro_par2_seconds", 0, PAR2_PENALTY)
+    solved_cpu_summary = value["solved_planner_cpu_seconds"]
     _validate_summary(
-        value["solved_planner_cpu_seconds"],
+        solved_cpu_summary,
         prefix + ".solved_planner_cpu_seconds",
         TASKS,
         solved,
     )
+    solved_runtime_total = (
+        0.0
+        if solved == 0
+        else _number(
+            solved_cpu_summary["total"],
+            prefix + ".solved_planner_cpu_seconds.total",
+            0,
+            PAR2_PENALTY * solved,
+        )
+    )
+    expected_par2 = (
+        solved_runtime_total + PAR2_PENALTY * (TASKS - solved)
+    ) / TASKS
+    if par2 != expected_par2:
+        raise RenderError("{}.micro_par2_seconds arithmetic changed".format(prefix))
     _validate_summary(
         value["completed_construction_seconds"],
         prefix + ".completed_construction_seconds",
@@ -841,7 +978,133 @@ def _validate_config(value, index):
         "paper_label": paper_label,
         "solved": solved,
         "par2": par2,
+        "solved_runtime_total": solved_runtime_total,
     }
+
+
+def _require_count_subset(primary, census, label):
+    if primary > census:
+        raise RenderError("{} primary count exceeds full census".format(label))
+
+
+def _require_total_subset(primary, census, label):
+    if primary > census and not math.isclose(
+        primary, census, rel_tol=1e-12, abs_tol=1e-12
+    ):
+        raise RenderError("{} primary total exceeds full census".format(label))
+
+
+def _validate_count_summary_subset(primary, census, label):
+    _require_count_subset(primary["observed"], census["observed"], label + ".observed")
+    if primary["observed"] == 0:
+        return
+    if census["observed"] == 0:
+        raise RenderError("{} primary observations lack census observations".format(label))
+    if census["minimum"] > primary["minimum"]:
+        raise RenderError("{} census minimum excludes a primary value".format(label))
+    if primary["maximum"] > census["maximum"]:
+        raise RenderError("{} census maximum excludes a primary value".format(label))
+    _require_count_subset(primary["total"], census["total"], label + ".total")
+
+
+def _validate_ratio_subset(primary, census, label):
+    _require_count_subset(primary["pairs"], census["pairs"], label + ".pairs")
+    _require_total_subset(primary["candidate"], census["candidate"], label + ".candidate")
+    _require_total_subset(primary["reference"], census["reference"], label + ".reference")
+
+
+def _validate_primary_subset(primary, census, primary_secondary, census_secondary):
+    for index, (primary_domain, census_domain) in enumerate(
+        zip(primary["domain_rows"], census["domain_rows"])
+    ):
+        prefix = "primary-subset.per_domain[{}]".format(index)
+        if primary_domain["domain"] != census_domain["domain"]:
+            raise RenderError("{} domain identity differs".format(prefix))
+        for field in ("tasks", "cap_solved", "exact_solved"):
+            _require_count_subset(
+                primary_domain[field], census_domain[field], prefix + "." + field
+            )
+
+    for field in ("wins", "losses", "both_solved", "both_unsolved"):
+        _require_count_subset(
+            primary[field], census[field], "primary-subset.coverage." + field
+        )
+
+    for field in (
+        "traces",
+        "raw",
+        "cap_nontrivial",
+        "exact_nontrivial",
+        "semantic_wins",
+        "semantic_losses",
+        "semantic_both",
+        "semantic_neither",
+    ):
+        _require_count_subset(
+            primary["mechanism"][field],
+            census["mechanism"][field],
+            "primary-subset.mechanism." + field,
+        )
+
+    for config, paper_label in ((EXACT, "exact"), (CAP, "cap")):
+        primary_selector = (
+            primary_secondary["exact_selector"]
+            if config == EXACT
+            else primary_secondary["cap_selector"]
+        )
+        census_selector = (
+            census_secondary["exact_selector"]
+            if config == EXACT
+            else census_secondary["cap_selector"]
+        )
+        prefix = "primary-subset.selector." + paper_label
+        for field in ("traces", "semantic"):
+            _require_count_subset(
+                primary_selector[field], census_selector[field], prefix + "." + field
+            )
+        for key in CAP_KEYS:
+            _require_count_subset(
+                primary_selector["histogram"].get(key, 0),
+                census_selector["histogram"].get(key, 0),
+                prefix + ".cap_histogram." + key,
+            )
+        for source in SELECTOR_SOURCES:
+            _require_count_subset(
+                primary_selector["sources"][source],
+                census_selector["sources"][source],
+                prefix + ".source." + source,
+            )
+        for field in ("pattern_size", "W", "A", "T", "U", "V"):
+            _validate_count_summary_subset(
+                primary_selector["summaries"][field],
+                census_selector["summaries"][field],
+                prefix + "." + field,
+            )
+
+    for field in ("candidate_solved", "reference_solved"):
+        _require_count_subset(
+            primary_secondary["par2"][field],
+            census_secondary["par2"][field],
+            "primary-subset.par2." + field,
+        )
+    for field in ("candidate_runtime_total", "reference_runtime_total"):
+        _require_total_subset(
+            primary_secondary["par2"][field],
+            census_secondary["par2"][field],
+            "primary-subset.par2." + field,
+        )
+    for field in ("joint", "eligible", "excluded"):
+        _require_count_subset(
+            primary_secondary["cpu"][field],
+            census_secondary["cpu"][field],
+            "primary-subset.cpu." + field,
+        )
+    for field in ("image", "effort", "construction"):
+        _validate_ratio_subset(
+            primary_secondary[field],
+            census_secondary[field],
+            "primary-subset." + field,
+        )
 
 
 def _validate_analysis_with_pins(value, analysis_sha256, pins):
@@ -897,6 +1160,9 @@ def _validate_analysis_with_pins(value, analysis_sha256, pins):
         TASKS,
         sensitivity,
     )
+    _validate_primary_subset(
+        primary, sensitivity, primary_secondary, sensitivity_secondary
+    )
     configs = [
         _validate_config(item, index)
         for index, item in enumerate(
@@ -914,16 +1180,18 @@ def _validate_analysis_with_pins(value, analysis_sha256, pins):
         raise RenderError("full cap solved count disagrees with sensitivity contrast")
     if by_label[EXACT]["solved"] != sensitivity["exact_solved"]:
         raise RenderError("full exact solved count disagrees with sensitivity contrast")
-    _close(
-        by_label[CAP]["par2"],
-        sensitivity_secondary["candidate_par2"],
-        "full cap PAR2 cross-check",
-    )
-    _close(
-        by_label[EXACT]["par2"],
-        sensitivity_secondary["reference_par2"],
-        "full exact PAR2 cross-check",
-    )
+    if by_label[CAP]["par2"] != sensitivity_secondary["candidate_par2"]:
+        raise RenderError("full cap PAR2 cross-check changed")
+    if by_label[EXACT]["par2"] != sensitivity_secondary["reference_par2"]:
+        raise RenderError("full exact PAR2 cross-check changed")
+    if by_label[CAP]["solved_runtime_total"] != (
+        sensitivity_secondary["par2"]["candidate_runtime_total"]
+    ):
+        raise RenderError("full cap solved-runtime total cross-check changed")
+    if by_label[EXACT]["solved_runtime_total"] != (
+        sensitivity_secondary["par2"]["reference_runtime_total"]
+    ):
+        raise RenderError("full exact solved-runtime total cross-check changed")
 
     inference = _mapping(
         value["inference"],
@@ -1337,9 +1605,10 @@ def _synthetic_contrast(tasks, role, full=False):
     per_domain = []
     cap_total = exact_total = 0
     cap_macro = exact_macro = Fraction(0)
+    loss_domains = set(range(10, 10 + losses))
     for index, count in enumerate(counts):
         exact = min(10, count)
-        cap = exact + (1 if index < wins else -1 if index < wins + losses else 0)
+        cap = exact + (1 if index < wins else -1 if index in loss_domains else 0)
         cap_total += cap
         exact_total += exact
         cap_macro += Fraction(cap, count)
@@ -1433,8 +1702,18 @@ def _synthetic_selector(tasks, config, semantic):
 
 
 def _synthetic_secondary(tasks, contrast, full=False):
-    cap_par2, exact_par2 = ((279.0, 284.0) if full else (280.0, 285.0))
-    joint = contrast["task_micro_discordance"]["both_solved"]
+    micro = contrast["task_micro_discordance"]
+    joint = micro["both_solved"]
+    cap_solved = micro["cap_wins"] + joint
+    exact_solved = micro["cap_losses"] + joint
+    candidate_runtime_total = cap_solved * 9.0
+    reference_runtime_total = exact_solved * 10.0
+    cap_par2 = (
+        candidate_runtime_total + PAR2_PENALTY * (tasks - cap_solved)
+    ) / tasks
+    exact_par2 = (
+        reference_runtime_total + PAR2_PENALTY * (tasks - exact_solved)
+    ) / tasks
     image_pairs = 520 if full else 500
     construction_pairs = tasks - 20
     return {
@@ -1450,6 +1729,14 @@ def _synthetic_secondary(tasks, contrast, full=False):
         "paired_operational": {
             "micro_par2_seconds": {
                 "fixed_task_denominator": tasks,
+                "candidate_solved": cap_solved,
+                "reference_solved": exact_solved,
+                "candidate_solved_planner_cpu_total_seconds": (
+                    candidate_runtime_total
+                ),
+                "reference_solved_planner_cpu_total_seconds": (
+                    reference_runtime_total
+                ),
                 "candidate": cap_par2,
                 "reference": exact_par2,
                 "candidate_minus_reference": cap_par2 - exact_par2,
@@ -1512,15 +1799,13 @@ def _synthetic_analysis():
         EXACT: exact_solved,
         CAP: cap_solved,
     }
-    par2_by_label = {
-        "blind_fw": 300.0,
-        "ms_exact": 290.0,
-        "pdb_cegar_b100k": 295.0,
-        EXACT: 284.0,
-        CAP: 279.0,
-    }
     for label, _, _, role in CONFIGS:
         solved = solved_by_label[label]
+        solved_cpu_per_task = 9.0 if label == CAP else 10.0
+        solved_runtime_total = solved * solved_cpu_per_task
+        par2 = (
+            solved_runtime_total + PAR2_PENALTY * (TASKS - solved)
+        ) / TASKS
         configs.append(
             {
                 "label": label,
@@ -1528,8 +1813,10 @@ def _synthetic_analysis():
                 "cells": TASKS,
                 "solved": solved,
                 "coverage_rate": solved / TASKS,
-                "micro_par2_seconds": par2_by_label[label],
-                "solved_planner_cpu_seconds": _summary(solved, 10.0),
+                "micro_par2_seconds": par2,
+                "solved_planner_cpu_seconds": _summary(
+                    solved, solved_cpu_per_task
+                ),
                 "completed_construction_seconds": (
                     _summary(0, 0) if label == "blind_fw" else _summary(TASKS - 10, 1.0)
                 ),
@@ -1627,6 +1914,18 @@ def self_test():
         "secondary-contract",
         lambda item: item["secondary_descriptive_contract"]["contract"].__setitem__(
             "role", "changed"
+        ),
+    )
+    reject(
+        "par2-reconstruction",
+        lambda item: item["secondary_descriptive"]["primary_development_complement"]
+        ["paired_operational"]["micro_par2_seconds"].__setitem__("candidate", 0.0),
+    )
+    reject(
+        "primary-subset",
+        lambda item: item["secondary_descriptive"]["primary_development_complement"]
+        ["selector_summary"][CAP]["effective_cap_histogram"].update(
+            {"8": 901, "exact": PRIMARY_TASKS - 901}
         ),
     )
 
