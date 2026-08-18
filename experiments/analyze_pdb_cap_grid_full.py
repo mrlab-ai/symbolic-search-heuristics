@@ -28,6 +28,7 @@ import analyze_arrhenius_selector_full as full_analysis
 import analyze_pdb_cap_grid_pilot as cap_analysis
 import exp_pdb_cap_grid_full as runner
 import pdb_cap_grid_full_protocol as P
+import pdb_cap_grid_full_secondary_contract as secondary
 import pdb_cap_selector_parser as cap_parser
 
 
@@ -79,6 +80,7 @@ def _cell(label, task):
 
 def validate_runner_contract(check_analysis_pins=True):
     P.validate_prospective_contract()
+    secondary.validate_contract()
     exact = (
         (runner.P.PROTOCOL, P.PROTOCOL, "protocol"),
         (runner.P.PLANNER_REVISION, P.PLANNER_REVISION, "planner revision"),
@@ -429,6 +431,12 @@ def _par2(record):
 def summarize_config(matrix, tasks, label):
     records = [matrix[(label, task)] for task in tasks]
     solved = [record for record in records if record.get("coverage") == 1]
+    constructed = [
+        record
+        for record in records
+        if record.get("construction_completed") is True
+        and _number(record.get("construction_time")) is not None
+    ]
     return {
         "label": label,
         "role": (
@@ -441,6 +449,165 @@ def summarize_config(matrix, tasks, label):
         "solved_planner_cpu_seconds": _summary(
             record["planner_time"] for record in solved
         ),
+        "completed_construction_seconds": _summary(
+            record["construction_time"] for record in constructed
+        ),
+    }
+
+
+def _certified_complete_trace(record):
+    return (
+        record.get("pdb_selector_trace_complete") is True
+        and record.get("pdb_selector_trace_certified") is True
+        and record.get("pdb_selector_validation_error") is None
+        and isinstance(record.get("pdb_selector_selected"), dict)
+    )
+
+
+def _cap_histogram(selected):
+    counts = defaultdict(int)
+    for item in selected:
+        cap = item.get("value_cap", -1)
+        key = "exact" if cap == -1 else str(cap)
+        counts[key] += 1
+    return {
+        key: counts[key]
+        for key in sorted(
+            counts,
+            key=lambda value: (
+                value == "exact",
+                int(value) if value != "exact" else 0,
+            ),
+        )
+    }
+
+
+def selector_summary(matrix, tasks, label):
+    records = [matrix[(label, task)] for task in tasks]
+    selected_pairs = [
+        (record, record["pdb_selector_selected"])
+        for record in records
+        if _certified_complete_trace(record)
+    ]
+    selected = [item for _, item in selected_pairs]
+    return {
+        "eligible_cells": len(records),
+        "complete_certified_traces": len(selected),
+        "semantic_nontrivial": sum(
+            item["finite_sum"] > 0 or item["dead_count"] > 0
+            for item in selected
+        ),
+        "effective_cap_histogram": _cap_histogram(selected),
+        "selected_first_provenance_source": {
+            source: sum(item["sources"][0] == source for item in selected)
+            for source in cap_analysis.common.PDB_SELECTOR_SOURCES
+        },
+        "pattern_size": _summary(len(item["pattern"]) for item in selected),
+        "W": _summary(item["cofactor_width"] for item in selected),
+        "A": _summary(
+            item.get("add_nodes", record.get("add_nodes"))
+            for record, item in selected_pairs
+        ),
+        "T": _summary(
+            item.get("num_terminals", record.get("num_terminals"))
+            for record, item in selected_pairs
+        ),
+        "U": _summary(item["width_upper_bound"] for item in selected),
+        "V": _summary(
+            item.get("transformed_num_values", record.get("num_values"))
+            for record, item in selected_pairs
+        ),
+    }
+
+
+def _ratio(candidate_total, reference_total):
+    return None if reference_total == 0 else candidate_total / reference_total
+
+
+def _paired_total_ratio(matrix, tasks, field, predicate):
+    pairs = [
+        (matrix[(P.CAP, task)], matrix[(P.EXACT, task)])
+        for task in tasks
+        if predicate(matrix[(P.CAP, task)])
+        and predicate(matrix[(P.EXACT, task)])
+    ]
+    candidate_total = sum(candidate[field] for candidate, _ in pairs)
+    reference_total = sum(reference[field] for _, reference in pairs)
+    return {
+        "eligible_pair_count": len(pairs),
+        "candidate_total": candidate_total,
+        "reference_total": reference_total,
+        "candidate_over_reference": _ratio(candidate_total, reference_total),
+    }
+
+
+def _jointly_solved_cpu_ratio(matrix, tasks):
+    pairs = [
+        (matrix[(P.CAP, task)], matrix[(P.EXACT, task)])
+        for task in tasks
+        if matrix[(P.CAP, task)].get("coverage") == 1
+        and matrix[(P.EXACT, task)].get("coverage") == 1
+    ]
+    positive = all(
+        _number(candidate.get("planner_time")) is not None
+        and _number(reference.get("planner_time")) is not None
+        and candidate["planner_time"] > 0
+        and reference["planner_time"] > 0
+        for candidate, reference in pairs
+    )
+    ratio = None
+    if pairs and positive:
+        ratio = math.exp(
+            statistics.fmean(
+                math.log(candidate["planner_time"])
+                - math.log(reference["planner_time"])
+                for candidate, reference in pairs
+            )
+        )
+    return {
+        "eligible_pair_count": len(pairs),
+        "candidate_over_reference": ratio,
+    }
+
+
+def secondary_descriptive_scope(matrix, tasks):
+    complete_image = cap_analysis.legacy.certified_image_cell
+    constructed = lambda record: (
+        record.get("construction_completed") is True
+        and _number(record.get("construction_time")) is not None
+    )
+    candidate_par2 = statistics.fmean(
+        _par2(matrix[(P.CAP, task)]) for task in tasks
+    )
+    reference_par2 = statistics.fmean(
+        _par2(matrix[(P.EXACT, task)]) for task in tasks
+    )
+    return {
+        "tasks": len(tasks),
+        "selector_summary": {
+            P.EXACT: selector_summary(matrix, tasks, P.EXACT),
+            P.CAP: selector_summary(matrix, tasks, P.CAP),
+        },
+        "paired_operational": {
+            "micro_par2_seconds": {
+                "fixed_task_denominator": len(tasks),
+                "candidate": candidate_par2,
+                "reference": reference_par2,
+                "candidate_minus_reference": candidate_par2 - reference_par2,
+            },
+            "jointly_solved_planner_cpu": _jointly_solved_cpu_ratio(
+                matrix, tasks
+            ),
+            "complete_certified_image_time": _paired_total_ratio(
+                matrix, tasks, "image_time", complete_image
+            ),
+            "complete_certified_expanded_bdd_nodes": _paired_total_ratio(
+                matrix, tasks, "expanded_bdd_nodes", complete_image
+            ),
+            "observed_completed_construction_time": _paired_total_ratio(
+                matrix, tasks, "construction_time", constructed
+            ),
+        },
     }
 
 
@@ -587,10 +754,22 @@ def make_analysis(records, matrix, tasks, primary, properties_sha256):
                 runner.Full.FULL_COMPLETION_MARKER_PROTOCOL
             ),
         },
+        "secondary_descriptive_contract": {
+            "sha256": secondary.validate_contract(),
+            "contract": copy.deepcopy(secondary.CONTRACT),
+        },
         "primary": contrast(matrix, primary, "primary-development-complement"),
         "full_census_sensitivity": contrast(
             matrix, tasks, "prespecified-scope-sensitivity"
         ),
+        "secondary_descriptive": {
+            "primary_development_complement": secondary_descriptive_scope(
+                matrix, primary
+            ),
+            "full_census_sensitivity": secondary_descriptive_scope(
+                matrix, tasks
+            ),
+        },
         "descriptive_full_census_configs": [
             summarize_config(matrix, tasks, label) for label in P.LABELS
         ],

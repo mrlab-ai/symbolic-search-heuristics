@@ -57,6 +57,10 @@ CONTRACT = {
         "candidate": "pdb_cap_grid_k8",
         "reference": "pdb_selector_k8",
         "ratio_direction": "candidate-over-reference",
+        "micro_par2_seconds": (
+            "candidate-reference-and-candidate-minus-reference-arithmetic-"
+            "means-over-the-fixed-task-denominator-with-unsolved-equal-600/v1"
+        ),
         "jointly_solved_planner_cpu": (
             "geometric-mean-of-paired-positive-candidate-over-reference-ratios/v1"
         ),
@@ -104,7 +108,7 @@ CONTRACT = {
 
 
 EXPECTED_CONTRACT_SHA256 = (
-    "3a067e1a0767bdf9e9f842806f292596fe80c11347c145afb63bec69d2f3df90"
+    "4541c95a67f82e1c5fc025e151b1df3d624334c8441f168fa264016708bdfee2"
 )
 
 
