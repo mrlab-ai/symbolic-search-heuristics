@@ -507,15 +507,22 @@ def selector_summary(matrix, tasks, label):
         "A": _summary(
             item.get("add_nodes", record.get("add_nodes"))
             for record, item in selected_pairs
+            if type(item.get("add_nodes", record.get("add_nodes"))) is int
         ),
         "T": _summary(
             item.get("num_terminals", record.get("num_terminals"))
             for record, item in selected_pairs
+            if type(item.get("num_terminals", record.get("num_terminals")))
+            is int
         ),
         "U": _summary(item["width_upper_bound"] for item in selected),
         "V": _summary(
             item.get("transformed_num_values", record.get("num_values"))
             for record, item in selected_pairs
+            if type(
+                item.get("transformed_num_values", record.get("num_values"))
+            )
+            is int
         ),
     }
 
@@ -542,30 +549,37 @@ def _paired_total_ratio(matrix, tasks, field, predicate):
 
 
 def _jointly_solved_cpu_ratio(matrix, tasks):
-    pairs = [
+    jointly_solved = [
         (matrix[(P.CAP, task)], matrix[(P.EXACT, task)])
         for task in tasks
         if matrix[(P.CAP, task)].get("coverage") == 1
         and matrix[(P.EXACT, task)].get("coverage") == 1
     ]
-    positive = all(
-        _number(candidate.get("planner_time")) is not None
-        and _number(reference.get("planner_time")) is not None
-        and candidate["planner_time"] > 0
-        and reference["planner_time"] > 0
-        for candidate, reference in pairs
-    )
+    positive_pairs = [
+        (candidate, reference)
+        for candidate, reference in jointly_solved
+        if (
+            _number(candidate.get("planner_time")) is not None
+            and _number(reference.get("planner_time")) is not None
+            and candidate["planner_time"] > 0
+            and reference["planner_time"] > 0
+        )
+    ]
     ratio = None
-    if pairs and positive:
+    if positive_pairs:
         ratio = math.exp(
             statistics.fmean(
                 math.log(candidate["planner_time"])
                 - math.log(reference["planner_time"])
-                for candidate, reference in pairs
+                for candidate, reference in positive_pairs
             )
         )
     return {
-        "eligible_pair_count": len(pairs),
+        "jointly_solved_pair_count": len(jointly_solved),
+        "eligible_pair_count": len(positive_pairs),
+        "excluded_nonpositive_pair_count": (
+            len(jointly_solved) - len(positive_pairs)
+        ),
         "candidate_over_reference": ratio,
     }
 

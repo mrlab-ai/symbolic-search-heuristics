@@ -171,6 +171,44 @@ class FocusedFullAnalysisTests(unittest.TestCase):
             paired["jointly_solved_planner_cpu"]["eligible_pair_count"], 2
         )
 
+    def test_width_only_certified_trace_has_fieldwise_denominators(self):
+        task = ("d", "p")
+        exact, _ = analyzer._synthetic_pool_records(False, True)
+        exact["pdb_selector_selected"].update(
+            {
+                "sources": ["empty"],
+                "pattern": [],
+                "cofactor_width": 1,
+                "width_upper_bound": 1,
+            }
+        )
+        summary = analyzer.selector_summary(
+            {(P.EXACT, task): exact}, [task], P.EXACT
+        )
+        self.assertEqual(summary["complete_certified_traces"], 1)
+        self.assertEqual(summary["W"]["observed"], 1)
+        self.assertEqual(summary["U"]["observed"], 1)
+        self.assertEqual(summary["A"]["observed"], 0)
+        self.assertEqual(summary["T"]["observed"], 0)
+        self.assertEqual(summary["V"]["observed"], 0)
+
+    def test_cpu_geomean_excludes_and_discloses_zero_time_pairs(self):
+        tasks = [("d", "p1"), ("d", "p2")]
+        matrix = {}
+        for index, task in enumerate(tasks):
+            exact = {
+                "coverage": 1,
+                "planner_time": 0.0 if index == 0 else 4.0,
+            }
+            cap = {"coverage": 1, "planner_time": 0.0 if index == 0 else 2.0}
+            matrix[(P.EXACT, task)] = exact
+            matrix[(P.CAP, task)] = cap
+        result = analyzer._jointly_solved_cpu_ratio(matrix, tasks)
+        self.assertEqual(result["jointly_solved_pair_count"], 2)
+        self.assertEqual(result["eligible_pair_count"], 1)
+        self.assertEqual(result["excluded_nonpositive_pair_count"], 1)
+        self.assertAlmostEqual(result["candidate_over_reference"], 0.5)
+
 
 if __name__ == "__main__":
     unittest.main()
