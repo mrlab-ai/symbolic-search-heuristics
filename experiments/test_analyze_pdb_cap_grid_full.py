@@ -17,8 +17,18 @@ class FocusedFullAnalysisTests(unittest.TestCase):
     def test_secondary_contract_is_frozen(self):
         self.assertEqual(
             secondary.validate_contract(),
-            "4541c95a67f82e1c5fc025e151b1df3d624334c8441f168fa264016708bdfee2",
+            "1df86a1255cb301ffe2b6eb0db52ba81ca7f8c511e5a011cd028d8eff2dfc862",
         )
+
+    def test_count_summary_preserves_exact_integer_total(self):
+        summary = analyzer._count_summary([1, 2, 3])
+        self.assertIs(type(summary["total"]), int)
+        self.assertEqual(summary["total"], 6)
+        self.assertIsNone(analyzer._count_summary([])["total"])
+        with self.assertRaisesRegex(
+            analyzer.AnalysisError, "exact nonnegative integers"
+        ):
+            analyzer._count_summary([1, 2.0])
 
     def test_self_test(self):
         analyzer.self_test()
@@ -143,6 +153,10 @@ class FocusedFullAnalysisTests(unittest.TestCase):
             paired["micro_par2_seconds"],
             {
                 "fixed_task_denominator": 2,
+                "candidate_solved": 2,
+                "reference_solved": 2,
+                "candidate_solved_planner_cpu_total_seconds": 5.0,
+                "reference_solved_planner_cpu_total_seconds": 9.0,
                 "candidate": 2.5,
                 "reference": 4.5,
                 "candidate_minus_reference": -2.0,
@@ -170,6 +184,36 @@ class FocusedFullAnalysisTests(unittest.TestCase):
         self.assertEqual(
             paired["jointly_solved_planner_cpu"]["eligible_pair_count"], 2
         )
+
+    def test_secondary_par2_carries_exact_solved_runtime_identity(self):
+        tasks = [("d", "solved"), ("d", "unsolved")]
+        matrix = {
+            (P.CAP, tasks[0]): {"coverage": 1, "planner_time": 2.0},
+            (P.CAP, tasks[1]): {"coverage": 0},
+            (P.EXACT, tasks[0]): {"coverage": 1, "planner_time": 4.0},
+            (P.EXACT, tasks[1]): {"coverage": 0},
+        }
+        with mock.patch.object(
+            analyzer,
+            "selector_summary",
+            side_effect=lambda *args: {"synthetic": True},
+        ), mock.patch.object(
+            analyzer.cap_analysis.legacy,
+            "certified_image_cell",
+            return_value=False,
+        ):
+            result = analyzer.secondary_descriptive_scope(matrix, tasks)
+        par2 = result["paired_operational"]["micro_par2_seconds"]
+        self.assertEqual(par2["candidate_solved"], 1)
+        self.assertEqual(par2["reference_solved"], 1)
+        self.assertEqual(
+            par2["candidate_solved_planner_cpu_total_seconds"], 2.0
+        )
+        self.assertEqual(
+            par2["reference_solved_planner_cpu_total_seconds"], 4.0
+        )
+        self.assertEqual(par2["candidate"], 301.0)
+        self.assertEqual(par2["reference"], 302.0)
 
     def test_width_only_certified_trace_has_fieldwise_denominators(self):
         task = ("d", "p")

@@ -16,7 +16,11 @@ import json
 CONTRACT = {
     "status": (
         "frozen-during-active-full-execution-before-properties-fetch-or-"
-        "scientific-outcome-aggregation/v1"
+        "scientific-outcome-aggregation/v2"
+    ),
+    "amendment": (
+        "v2-adds-scope-specific-solved-count-and-solved-runtime-total-"
+        "identities-so-every-reported-micro-par2-value-is-reconstructed/v1"
     ),
     "role": "secondary-descriptive-only-no-primary-or-promotion-effect/v1",
     "task_scopes": [
@@ -52,6 +56,9 @@ CONTRACT = {
             "mean",
             "total",
         ],
+        "count_summary_total_type": (
+            "exact-nonnegative-integer-when-observed-else-null/v1"
+        ),
     },
     "paired_operational": {
         "candidate": "pdb_cap_grid_k8",
@@ -59,7 +66,8 @@ CONTRACT = {
         "ratio_direction": "candidate-over-reference",
         "micro_par2_seconds": (
             "candidate-reference-and-candidate-minus-reference-arithmetic-"
-            "means-over-the-fixed-task-denominator-with-unsolved-equal-600/v1"
+            "means-over-the-fixed-task-denominator-with-unsolved-equal-600-"
+            "reconstructed-from-solved-counts-and-solved-runtime-totals/v2"
         ),
         "jointly_solved_planner_cpu": (
             "geometric-mean-of-paired-positive-candidate-over-reference-ratios/v1"
@@ -81,6 +89,16 @@ CONTRACT = {
             "candidate_total-when-additive",
             "reference_total-when-additive",
             "candidate_over_reference",
+        ],
+        "micro_par2_required_output": [
+            "fixed_task_denominator",
+            "candidate_solved",
+            "reference_solved",
+            "candidate_solved_planner_cpu_total_seconds",
+            "reference_solved_planner_cpu_total_seconds",
+            "candidate",
+            "reference",
+            "candidate_minus_reference",
         ],
     },
     "config_context": {
@@ -108,7 +126,7 @@ CONTRACT = {
 
 
 EXPECTED_CONTRACT_SHA256 = (
-    "4541c95a67f82e1c5fc025e151b1df3d624334c8441f168fa264016708bdfee2"
+    "1df86a1255cb301ffe2b6eb0db52ba81ca7f8c511e5a011cd028d8eff2dfc862"
 )
 
 

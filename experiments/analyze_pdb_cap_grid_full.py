@@ -40,6 +40,7 @@ ANALYSIS_SCHEMA = "symbolic-search-heuristics/pdb-cap-grid-focused-full/v1"
 EXPECTED_PROTOCOL_REVISION = None
 EXPECTED_PROPERTIES_CANONICAL_SHA256 = None
 EXPECTED_PROSPECTIVE_JOB_SHA256 = None
+PAR2_UNSOLVED_SECONDS = cap_analysis.PAR2_UNSOLVED_SECONDS
 
 
 def canonical_json(value):
@@ -105,6 +106,7 @@ def validate_runner_contract(check_analysis_pins=True):
             16384,
             "hard stdout limit",
         ),
+        (PAR2_UNSOLVED_SECONDS, 600.0, "PAR2 unsolved penalty"),
     )
     errors = [
         label + " changed"
@@ -419,13 +421,27 @@ def _summary(values):
     }
 
 
-def _par2(record):
-    if record.get("coverage") == 1:
-        value = _number(record.get("planner_time"))
-        if value is None:
-            raise AnalysisError("solved cell lacks finite planner_time")
-        return value
-    return 600.0
+def _count_summary(values):
+    values = list(values)
+    if any(type(value) is not int or value < 0 for value in values):
+        raise AnalysisError("count summary requires exact nonnegative integers")
+    if not values:
+        return {
+            "observed": 0,
+            "minimum": None,
+            "median": None,
+            "maximum": None,
+            "mean": None,
+            "total": None,
+        }
+    return {
+        "observed": len(values),
+        "minimum": min(values),
+        "median": statistics.median(values),
+        "maximum": max(values),
+        "mean": statistics.fmean(values),
+        "total": sum(values),
+    }
 
 
 def summarize_config(matrix, tasks, label):
@@ -437,6 +453,12 @@ def summarize_config(matrix, tasks, label):
         if record.get("construction_completed") is True
         and _number(record.get("construction_time")) is not None
     ]
+    solved_cpu = _summary(record["planner_time"] for record in solved)
+    solved_cpu_total = 0.0 if solved_cpu["total"] is None else solved_cpu["total"]
+    micro_par2 = (
+        solved_cpu_total
+        + PAR2_UNSOLVED_SECONDS * (len(records) - len(solved))
+    ) / len(records)
     return {
         "label": label,
         "role": (
@@ -445,10 +467,8 @@ def summarize_config(matrix, tasks, label):
         "cells": len(records),
         "solved": len(solved),
         "coverage_rate": len(solved) / len(records),
-        "micro_par2_seconds": statistics.fmean(_par2(record) for record in records),
-        "solved_planner_cpu_seconds": _summary(
-            record["planner_time"] for record in solved
-        ),
+        "micro_par2_seconds": micro_par2,
+        "solved_planner_cpu_seconds": solved_cpu,
         "completed_construction_seconds": _summary(
             record["construction_time"] for record in constructed
         ),
@@ -502,21 +522,21 @@ def selector_summary(matrix, tasks, label):
             source: sum(item["sources"][0] == source for item in selected)
             for source in cap_analysis.common.PDB_SELECTOR_SOURCES
         },
-        "pattern_size": _summary(len(item["pattern"]) for item in selected),
-        "W": _summary(item["cofactor_width"] for item in selected),
-        "A": _summary(
+        "pattern_size": _count_summary(len(item["pattern"]) for item in selected),
+        "W": _count_summary(item["cofactor_width"] for item in selected),
+        "A": _count_summary(
             item.get("add_nodes", record.get("add_nodes"))
             for record, item in selected_pairs
             if type(item.get("add_nodes", record.get("add_nodes"))) is int
         ),
-        "T": _summary(
+        "T": _count_summary(
             item.get("num_terminals", record.get("num_terminals"))
             for record, item in selected_pairs
             if type(item.get("num_terminals", record.get("num_terminals")))
             is int
         ),
-        "U": _summary(item["width_upper_bound"] for item in selected),
-        "V": _summary(
+        "U": _count_summary(item["width_upper_bound"] for item in selected),
+        "V": _count_summary(
             item.get("transformed_num_values", record.get("num_values"))
             for record, item in selected_pairs
             if type(
@@ -590,12 +610,28 @@ def secondary_descriptive_scope(matrix, tasks):
         record.get("construction_completed") is True
         and _number(record.get("construction_time")) is not None
     )
-    candidate_par2 = statistics.fmean(
-        _par2(matrix[(P.CAP, task)]) for task in tasks
+    candidate_records = [matrix[(P.CAP, task)] for task in tasks]
+    reference_records = [matrix[(P.EXACT, task)] for task in tasks]
+    candidate_solved = [
+        record for record in candidate_records if record.get("coverage") == 1
+    ]
+    reference_solved = [
+        record for record in reference_records if record.get("coverage") == 1
+    ]
+    candidate_runtime_total = math.fsum(
+        record["planner_time"] for record in candidate_solved
     )
-    reference_par2 = statistics.fmean(
-        _par2(matrix[(P.EXACT, task)]) for task in tasks
+    reference_runtime_total = math.fsum(
+        record["planner_time"] for record in reference_solved
     )
+    candidate_par2 = (
+        candidate_runtime_total
+        + PAR2_UNSOLVED_SECONDS * (len(tasks) - len(candidate_solved))
+    ) / len(tasks)
+    reference_par2 = (
+        reference_runtime_total
+        + PAR2_UNSOLVED_SECONDS * (len(tasks) - len(reference_solved))
+    ) / len(tasks)
     return {
         "tasks": len(tasks),
         "selector_summary": {
@@ -605,6 +641,14 @@ def secondary_descriptive_scope(matrix, tasks):
         "paired_operational": {
             "micro_par2_seconds": {
                 "fixed_task_denominator": len(tasks),
+                "candidate_solved": len(candidate_solved),
+                "reference_solved": len(reference_solved),
+                "candidate_solved_planner_cpu_total_seconds": (
+                    candidate_runtime_total
+                ),
+                "reference_solved_planner_cpu_total_seconds": (
+                    reference_runtime_total
+                ),
                 "candidate": candidate_par2,
                 "reference": reference_par2,
                 "candidate_minus_reference": candidate_par2 - reference_par2,
