@@ -102,6 +102,183 @@ class FocusedFullProtocolTests(unittest.TestCase):
         finally:
             P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256 = old
 
+    def test_promotion_rule_and_implementation_are_literal_pins(self):
+        old_rule = P.PROMOTION_RULE[
+            "cap_k8_coverage_wins_minus_losses_minimum"
+        ]
+        P.PROMOTION_RULE["cap_k8_coverage_wins_minus_losses_minimum"] = 99
+        try:
+            with self.assertRaisesRegex(P.ProtocolError, "promotion rule"):
+                P.validate_prospective_contract()
+        finally:
+            P.PROMOTION_RULE[
+                "cap_k8_coverage_wins_minus_losses_minimum"
+            ] = old_rule
+
+        old_function = P.promotion_checks
+
+        def changed_promotion(*args, **kwargs):
+            return {"changed": True}
+
+        P.promotion_checks = changed_promotion
+        try:
+            with self.assertRaisesRegex(
+                P.ProtocolError, "promotion implementation"
+            ):
+                P.validate_prospective_contract()
+        finally:
+            P.promotion_checks = old_function
+
+    def test_check_never_reads_screen_before_committed_launch_gate(self):
+        with mock.patch.object(
+            runner,
+            "inspect_launch_blockers",
+            return_value=["pins unset"],
+        ), mock.patch.object(
+            P,
+            "validate_prospective_contract",
+            return_value=True,
+        ), mock.patch.object(
+            P,
+            "load_and_evaluate_promotion",
+            side_effect=AssertionError("promotion wrapper must not run"),
+        ) as loader, mock.patch.object(
+            P,
+            "load_full_tasks",
+            return_value=(
+                [("d", "p")],
+                {"task_sources_sha256": "x"},
+            ),
+        ), mock.patch.object(
+            runner.Full,
+            "require_pinned_benchmark_worktree",
+            return_value=Path("/synthetic/benchmarks"),
+        ), mock.patch.object(
+            runner.Full,
+            "attest_task_sources",
+            return_value={"task_sources_sha256": "x"},
+        ), mock.patch.object(
+            runner,
+            "prospective_job",
+            return_value=("job", "0" * 64),
+        ):
+            runner.check_protocol(Path("/outcome/path"))
+            loader.assert_not_called()
+
+    def test_start_never_reads_screen_before_committed_launch_gate(self):
+        with mock.patch.object(
+            runner,
+            "require_protocol_and_job_pins",
+            side_effect=P.ProtocolError("pins or clean revision missing"),
+        ), mock.patch.object(
+            P,
+            "validate_prospective_contract",
+            return_value=True,
+        ), mock.patch.object(
+            P,
+            "load_and_evaluate_promotion",
+            side_effect=AssertionError("promotion wrapper must not run"),
+        ) as loader:
+            with self.assertRaisesRegex(P.ProtocolError, "clean revision"):
+                runner.main(
+                    ["--screen-properties", "/outcome/path", "start"]
+                )
+            loader.assert_not_called()
+
+    def test_pin_source_replacement_is_exact_and_preserves_line_endings(self):
+        source = (
+            b"header\r\n"
+            b"PROTOCOL_IMPLEMENTATION_REVISION = None\r\n"
+            b"EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256 = None\r\n"
+            b"rule = 0\r\n"
+            b"EXPECTED_PROSPECTIVE_JOB_SHA256 = None\r\n"
+        )
+        old = (
+            P.PROTOCOL_IMPLEMENTATION_REVISION,
+            P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256,
+            P.EXPECTED_PROSPECTIVE_JOB_SHA256,
+        )
+        P.PROTOCOL_IMPLEMENTATION_REVISION = "1" * 40
+        P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256 = "2" * 64
+        P.EXPECTED_PROSPECTIVE_JOB_SHA256 = "3" * 64
+        try:
+            expected = runner._expected_pinned_protocol_source(source)
+        finally:
+            (
+                P.PROTOCOL_IMPLEMENTATION_REVISION,
+                P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256,
+                P.EXPECTED_PROSPECTIVE_JOB_SHA256,
+            ) = old
+        self.assertIn(b'PROTOCOL_IMPLEMENTATION_REVISION = "' + b"1" * 40, expected)
+        self.assertIn(b'EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256 = "' + b"2" * 64, expected)
+        self.assertTrue(expected.endswith(b'"\r\n'))
+        self.assertIn(b"rule = 0\r\n", expected)
+
+    def test_launch_descendant_seal_allows_only_pin_literals(self):
+        source = (
+            b"PROTOCOL_IMPLEMENTATION_REVISION = None\n"
+            b"EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256 = None\n"
+            b"rule = 0\n"
+            b"EXPECTED_PROSPECTIVE_JOB_SHA256 = None\n"
+        )
+        old = (
+            P.PROTOCOL_IMPLEMENTATION_REVISION,
+            P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256,
+            P.EXPECTED_PROSPECTIVE_JOB_SHA256,
+        )
+        P.PROTOCOL_IMPLEMENTATION_REVISION = "1" * 40
+        P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256 = "2" * 64
+        P.EXPECTED_PROSPECTIVE_JOB_SHA256 = "3" * 64
+        try:
+            expected = runner._expected_pinned_protocol_source(source)
+            with mock.patch.object(
+                runner.C,
+                "_git_output",
+                side_effect=[
+                    runner.PIN_MUTABLE_PROTOCOL_PATH,
+                    "100644 blob " + "a" * 40 + "\t"
+                    + runner.PIN_MUTABLE_PROTOCOL_PATH,
+                    "100644 blob " + "b" * 40 + "\t"
+                    + runner.PIN_MUTABLE_PROTOCOL_PATH,
+                ],
+            ), mock.patch.object(
+                runner, "_git_bytes", side_effect=[source, expected]
+            ):
+                runner.require_implementation_seal("2" * 40)
+            with mock.patch.object(
+                runner.C,
+                "_git_output",
+                return_value="experiments/exp_pdb_cap_grid_full.py",
+            ):
+                with self.assertRaisesRegex(
+                    P.ProtocolError, "outside the pin module"
+                ):
+                    runner.require_implementation_seal("2" * 40)
+            changed_rule = expected.replace(b"rule = 0", b"rule = 99")
+            with mock.patch.object(
+                runner.C,
+                "_git_output",
+                side_effect=[
+                    runner.PIN_MUTABLE_PROTOCOL_PATH,
+                    "100644 blob " + "a" * 40 + "\t"
+                    + runner.PIN_MUTABLE_PROTOCOL_PATH,
+                    "100644 blob " + "b" * 40 + "\t"
+                    + runner.PIN_MUTABLE_PROTOCOL_PATH,
+                ],
+            ), mock.patch.object(
+                runner, "_git_bytes", side_effect=[source, changed_rule]
+            ):
+                with self.assertRaisesRegex(
+                    P.ProtocolError, "outcome-independent protocol bytes"
+                ):
+                    runner.require_implementation_seal("2" * 40)
+        finally:
+            (
+                P.PROTOCOL_IMPLEMENTATION_REVISION,
+                P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256,
+                P.EXPECTED_PROSPECTIVE_JOB_SHA256,
+            ) = old
+
     def test_complete_synthetic_screen_is_revalidated_and_promotes(self):
         old = P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256
         P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256 = self.synthetic_digest
@@ -143,8 +320,12 @@ class FocusedFullProtocolTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first_digest, second_digest)
         self.assertRegex(first_digest, r"^[0-9a-f]{64}$")
-        self.assertIsNone(P.EXPECTED_PROSPECTIVE_JOB_SHA256)
-        self.assertIsNone(P.PROTOCOL_IMPLEMENTATION_REVISION)
+        if P.EXPECTED_PROSPECTIVE_JOB_SHA256 is not None:
+            self.assertEqual(first_digest, P.EXPECTED_PROSPECTIVE_JOB_SHA256)
+        if P.PROTOCOL_IMPLEMENTATION_REVISION is not None:
+            self.assertRegex(
+                P.PROTOCOL_IMPLEMENTATION_REVISION, r"^[0-9a-f]{40}$"
+            )
 
 
 if __name__ == "__main__":

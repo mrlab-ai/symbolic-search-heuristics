@@ -21,11 +21,13 @@ class FocusedFullAnalysisTests(unittest.TestCase):
             analyzer.EXPECTED_PROTOCOL_REVISION,
             analyzer.EXPECTED_PROPERTIES_CANONICAL_SHA256,
             analyzer.EXPECTED_PROSPECTIVE_JOB_SHA256,
+            P.PROTOCOL_IMPLEMENTATION_REVISION,
             P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256,
         )
         analyzer.EXPECTED_PROTOCOL_REVISION = None
         analyzer.EXPECTED_PROPERTIES_CANONICAL_SHA256 = None
         analyzer.EXPECTED_PROSPECTIVE_JOB_SHA256 = None
+        P.PROTOCOL_IMPLEMENTATION_REVISION = None
         P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256 = None
         try:
             with mock.patch.object(
@@ -43,6 +45,7 @@ class FocusedFullAnalysisTests(unittest.TestCase):
                 analyzer.EXPECTED_PROTOCOL_REVISION,
                 analyzer.EXPECTED_PROPERTIES_CANONICAL_SHA256,
                 analyzer.EXPECTED_PROSPECTIVE_JOB_SHA256,
+                P.PROTOCOL_IMPLEMENTATION_REVISION,
                 P.EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256,
             ) = old
 

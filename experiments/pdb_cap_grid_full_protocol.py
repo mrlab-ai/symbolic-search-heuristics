@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import inspect
 import json
 import math
 import re
@@ -136,6 +137,12 @@ PROMOTION_RULE = {
     "cap_k8_coverage_wins_minus_losses_minimum": 0,
     "k32_may_substitute": False,
 }
+PROMOTION_RULE_SHA256 = (
+    "2c19a90e46eeda33ca5b0d2325efc95b7ff3a51e3d055996a92143d935539a8c"
+)
+PROMOTION_IMPLEMENTATION_SHA256 = (
+    "3af338448139607e8e69bceb7a3d6e6584edf453d04f53e799bbae6fd37a90b4"
+)
 
 ANALYSIS_PREDECLARATION = {
     "status": "prospective-before-development-screen-aggregate-inspection",
@@ -379,7 +386,10 @@ def promotion_checks(primary, *, record_count, matrix_count):
         "cap_k8_coverage_wins_minus_losses_nonnegative": (
             type(coverage.get("wins")) is int
             and type(coverage.get("losses")) is int
-            and coverage["wins"] - coverage["losses"] >= 0
+            and coverage["wins"] - coverage["losses"]
+            >= PROMOTION_RULE[
+                "cap_k8_coverage_wins_minus_losses_minimum"
+            ]
         ),
         "k32_not_substituted": True,
     }
@@ -487,6 +497,20 @@ def validate_prospective_contract():
         raise ProtocolError(str(err)) from err
     if option_matrix_digest() != OPTION_MATRIX_SHA256:
         raise ProtocolError("focused option matrix digest changed")
+    if sha256_json(PROMOTION_RULE) != PROMOTION_RULE_SHA256:
+        raise ProtocolError("promotion rule changed")
+    promotion_source = "".join(
+        inspect.getsource(function)
+        for function in (
+            promotion_checks,
+            evaluate_promotion,
+            load_and_evaluate_promotion,
+        )
+    )
+    if hashlib.sha256(promotion_source.encode("utf-8")).hexdigest() != (
+        PROMOTION_IMPLEMENTATION_SHA256
+    ):
+        raise ProtocolError("promotion implementation changed")
     if sha256_json(ANALYSIS_PREDECLARATION) != (
         "54ee45b88a6a1ca1507971919ad8f3d168abfcbb690857f5900618d407182c5b"
     ):

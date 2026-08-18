@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -57,7 +59,12 @@ PROTOCOL_FILES = tuple(
     )
 )
 
-
+PIN_MUTABLE_PROTOCOL_PATH = "experiments/pdb_cap_grid_full_protocol.py"
+PIN_ASSIGNMENTS = (
+    "PROTOCOL_IMPLEMENTATION_REVISION",
+    "EXPECTED_SCREEN_PROPERTIES_CANONICAL_SHA256",
+    "EXPECTED_PROSPECTIVE_JOB_SHA256",
+)
 def _expected_limited_run_script(argv):
     return ScreenRunner.Base._expected_run_script(
         argv,
@@ -403,6 +410,96 @@ def validate_metadata(metadata, benchmark_root, source_attestation, promotion):
         raise ProtocolError("focused full protocol metadata changed")
 
 
+def _git_bytes(*args):
+    try:
+        return subprocess.run(
+            ["git", "-C", str(C.REPO), *args],
+            check=True,
+            capture_output=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as err:
+        raise ProtocolError(
+            "could not attest focused implementation bytes: {}".format(
+                " ".join(args)
+            )
+        ) from err
+
+
+def _pin_literal(name):
+    value = getattr(P, name)
+    if name == "PROTOCOL_IMPLEMENTATION_REVISION":
+        if type(value) is not str or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+            raise ProtocolError("focused implementation pin is not a full revision")
+    elif value is not None and (
+        type(value) is not str or re.fullmatch(r"[0-9a-f]{64}", value) is None
+    ):
+        raise ProtocolError("{} is not None or a SHA-256".format(name))
+    if value is None:
+        return b"None"
+    return ('"{}"'.format(value)).encode("ascii")
+
+
+def _expected_pinned_protocol_source(reviewed):
+    """Construct the only permitted descendant blob, byte for byte."""
+    expected = reviewed
+    for name in PIN_ASSIGNMENTS:
+        old = (name + " = None").encode("ascii")
+        if expected.count(old) != 1:
+            raise ProtocolError(
+                "reviewed implementation must contain exactly one unset {}".
+                format(name)
+            )
+        new = name.encode("ascii") + b" = " + _pin_literal(name)
+        expected = expected.replace(old, new, 1)
+    return expected
+
+
+def require_implementation_seal(head):
+    """Allow descendants to change only the three reviewed pin literals."""
+    try:
+        changed_output = C._git_output(
+            "diff",
+            "--name-only",
+            P.PROTOCOL_IMPLEMENTATION_REVISION + ".." + head,
+        )
+    except Exception as err:
+        raise ProtocolError("could not attest focused descendant paths") from err
+    changed = set(changed_output.splitlines()) if changed_output else set()
+    if changed != {PIN_MUTABLE_PROTOCOL_PATH}:
+        raise ProtocolError(
+            "focused launch descendant changed files outside the pin module: {}".
+            format(", ".join(sorted(changed)) if changed else "none")
+        )
+    try:
+        reviewed_tree = C._git_output(
+            "ls-tree",
+            P.PROTOCOL_IMPLEMENTATION_REVISION,
+            "--",
+            PIN_MUTABLE_PROTOCOL_PATH,
+        )
+        current_tree = C._git_output(
+            "ls-tree", head, "--", PIN_MUTABLE_PROTOCOL_PATH
+        )
+    except Exception as err:
+        raise ProtocolError("could not attest focused protocol tree entries") from err
+    tree_pattern = re.compile(
+        r"100644 blob [0-9a-f]{40}\t" + re.escape(PIN_MUTABLE_PROTOCOL_PATH)
+    )
+    if tree_pattern.fullmatch(reviewed_tree) is None or (
+        tree_pattern.fullmatch(current_tree) is None
+    ):
+        raise ProtocolError("focused protocol pin module mode or type changed")
+    reviewed = _git_bytes(
+        "show",
+        P.PROTOCOL_IMPLEMENTATION_REVISION + ":" + PIN_MUTABLE_PROTOCOL_PATH,
+    )
+    current = _git_bytes("show", head + ":" + PIN_MUTABLE_PROTOCOL_PATH)
+    if current != _expected_pinned_protocol_source(reviewed):
+        raise ProtocolError(
+            "focused launch descendant changed outcome-independent protocol bytes"
+        )
+
+
 def require_protocol_and_job_pins():
     P.require_revision(
         P.PROTOCOL_IMPLEMENTATION_REVISION,
@@ -412,6 +509,7 @@ def require_protocol_and_job_pins():
         P.EXPECTED_PROSPECTIVE_JOB_SHA256,
         "focused prospective job SHA-256",
     )
+    C.require_clean_committed_revision(P.PLANNER_REVISION, PROTOCOL_FILES)
     head = C.require_revision_ancestor_of_head(P.PLANNER_REVISION)
     try:
         C._git_output(
@@ -425,6 +523,7 @@ def require_protocol_and_job_pins():
             "focused implementation revision {} is not an ancestor of launch "
             "HEAD {}".format(P.PROTOCOL_IMPLEMENTATION_REVISION, head)
         ) from err
+    require_implementation_seal(head)
     if C.cached_revision(P.PLANNER_REVISION).name != (
         P.PLANNER_REVISION + P.CACHE_NAME_SUFFIX
     ):
@@ -492,12 +591,6 @@ def parse_args(argv=None):
 def inspect_launch_blockers():
     checks = (
         ("prospective protocol/job pins", require_protocol_and_job_pins),
-        (
-            "clean committed protocol revision",
-            lambda: C.require_clean_committed_revision(
-                P.PLANNER_REVISION, PROTOCOL_FILES
-            ),
-        ),
         ("requirements Lab version", C.require_pinned_lab_version),
         ("pinned revision cache", require_revision_cache),
         ("screen properties pin", P._require_screen_properties_pin),
@@ -569,14 +662,20 @@ def check_protocol(screen_properties=None):
         "task_sources_sha256"
     ]:
         raise ProtocolError("source-record and source-byte attestations differ")
+    blockers = inspect_launch_blockers()
     promotion = None
     promotion_error = None
     if screen_properties is not None:
-        try:
-            promotion = P.load_and_evaluate_promotion(screen_properties)
-        except ProtocolError as err:
-            promotion_error = str(err)
-    blockers = inspect_launch_blockers()
+        if blockers:
+            promotion_error = (
+                "committed launch identity is not ready; refusing to read "
+                "screen outcomes"
+            )
+        else:
+            try:
+                promotion = P.load_and_evaluate_promotion(screen_properties)
+            except ProtocolError as err:
+                promotion_error = str(err)
     _, job_digest = prospective_job()
     print("Focused cap-grid full read-only check: PASS")
     print("tasks/configs/cells: 1377/5/6885")
@@ -606,6 +705,9 @@ def main(argv=None):
 
     configure_completion_base()
     P.validate_prospective_contract()
+    # This clean committed identity gate must precede any inspection or load
+    # of the outcome-bearing development-screen properties.
+    require_protocol_and_job_pins()
     tasks, record_attestation = P.load_full_tasks()
     matrix = P.validate_matrix(tasks)
     benchmark_root = Full.require_pinned_benchmark_worktree()
@@ -624,7 +726,6 @@ def main(argv=None):
         raise ProtocolError("--screen-properties is accepted only by --check/start")
     # Every Lab action, including parse/fetch/report, is tied to the reviewed
     # launch revision and exact prospective job bytes.
-    require_protocol_and_job_pins()
     cache_info = C.require_launch_prerequisites(
         P.PLANNER_REVISION,
         P.CACHE_BINARY_SHA256,
