@@ -1008,6 +1008,16 @@ def _cap_pool_details(candidates, pool_must_be_complete, prefix, errors):
     return representatives, source_owner, groups
 
 
+def _normalize_fetched_cap_record(value, kind, prefix, errors):
+    """Restore protocol order after Lab serializes JSON objects by key."""
+    if type(value) is not dict:
+        return value
+    if set(value) != set(cap_parser.RECORD_KEYS):
+        _append(errors, prefix, "{} cap-grid payload keys changed".format(kind))
+        return value
+    return {key: value[key] for key in cap_parser.RECORD_KEYS}
+
+
 def _validate_cap_trace(record, label, prefix, errors):
     initial_error_count = len(errors)
     budget = _selector_budget(label)
@@ -1035,6 +1045,13 @@ def _validate_cap_trace(record, label, prefix, errors):
     if type(candidates) is not list or not candidates:
         _append(errors, prefix, "cap-grid candidate list is empty/malformed")
         return None
+    candidates = [
+        _normalize_fetched_cap_record(item, "candidate", prefix, errors)
+        for item in candidates
+    ]
+    selected = _normalize_fetched_cap_record(
+        selected, "selected", prefix, errors
+    )
     pool_must_be_complete = selected is not None or final is not None or constructed
     representatives, source_owner, _ = _cap_pool_details(
         candidates, pool_must_be_complete, prefix, errors

@@ -79,6 +79,27 @@ class CapGridAnalyzerTest(unittest.TestCase):
         backward = self.analyze(list(reversed(self.records)))
         self.assertEqual(A.canonical_json(forward), A.canonical_json(backward))
 
+    def test_fetched_cap_object_key_order_is_semantically_irrelevant(self):
+        records = copy.deepcopy(self.records)
+        for label in A.CAP_LABELS.values():
+            for record in (item for item in records if item["algorithm"] == label):
+                candidates = record[C.PDB_SELECTOR_CANDIDATES_PROPERTY]
+                record[C.PDB_SELECTOR_CANDIDATES_PROPERTY] = [
+                    dict(sorted(candidate.items())) for candidate in candidates
+                ]
+                selected = record.get(C.PDB_SELECTOR_SELECTED_PROPERTY)
+                if selected is not None:
+                    record[C.PDB_SELECTOR_SELECTED_PROPERTY] = dict(
+                        sorted(selected.items())
+                    )
+        self.assertEqual(self.errors(records), [])
+        reordered = A.analyze_with_pins(
+            records, self.tasks, self.pins, self.digest
+        )
+        self.assertEqual(
+            A.canonical_json(reordered), A.canonical_json(self.analyze())
+        )
+
     def test_missing_and_duplicate_cells_reject(self):
         missing = copy.deepcopy(self.records[:-1])
         self.assertTrue(any("missing" in error for error in self.errors(missing)))
