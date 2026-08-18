@@ -108,7 +108,7 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         )
         self.assert_rejected(
             lambda value: value["execution"].__setitem__("cell_count", 6884),
-            "execution.cell_count changed",
+            "execution.cell_count is outside",
         )
         self.assert_rejected(
             lambda value: value["execution"].__setitem__("all_cells_validated", False),
@@ -129,6 +129,57 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
                 "role", "descriptive-context"
             ),
             "descriptive_full_census_configs[3].role changed",
+        )
+
+    def test_integer_schema_counts_reject_equal_floats(self):
+        mutations = (
+            lambda value: value["execution"].__setitem__("cell_count", 6885.0),
+            lambda value: value["primary"]["population"].__setitem__(
+                "tasks", 1327.0
+            ),
+            lambda value: value["primary"]["mechanism"].__setitem__(
+                "required_pairs", 1327.0
+            ),
+            lambda value: value["primary"]["task_micro_discordance"].__setitem__(
+                "task_pairs", 1327.0
+            ),
+            lambda value: value["secondary_descriptive"][
+                "primary_development_complement"
+            ].__setitem__("tasks", 1327.0),
+            lambda value: value["secondary_descriptive"][
+                "primary_development_complement"
+            ]["selector_summary"][renderer.CAP].__setitem__(
+                "eligible_cells", 1327.0
+            ),
+            lambda value: value["secondary_descriptive"][
+                "primary_development_complement"
+            ]["paired_operational"]["micro_par2_seconds"].__setitem__(
+                "fixed_task_denominator", 1327.0
+            ),
+            lambda value: value["descriptive_full_census_configs"][0].__setitem__(
+                "cells", 1377.0
+            ),
+            lambda value: value["primary"]["equal_domain_macro_coverage"][
+                "cap"
+            ].__setitem__("fixed_estimand_denominator", 46.0),
+            lambda value: value["primary"]["task_micro_discordance"].__setitem__(
+                "wins_minus_losses",
+                float(
+                    value["primary"]["task_micro_discordance"][
+                        "wins_minus_losses"
+                    ]
+                ),
+            ),
+        )
+        for mutate in mutations:
+            with self.subTest(mutation=mutate):
+                self.assert_rejected(mutate, "must be an exact integer")
+
+        self.assert_rejected(
+            lambda value: value["inference"].__setitem__(
+                "fixed_population_census", 1
+            ),
+            "inference policy changed",
         )
 
     def test_fraction_domain_and_task_conservation_fail_closed(self):
@@ -178,7 +229,7 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             lambda value: value["primary"]["mechanism"].__setitem__(
                 "required_pairs", renderer.PRIMARY_TASKS - 1
             ),
-            "primary.mechanism.required_pairs changed",
+            "primary.mechanism.required_pairs is outside",
         )
         self.assert_rejected(
             lambda value: value["primary"]["mechanism"].__setitem__(
@@ -247,6 +298,13 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             producer_summary, "producer-count-summary", 3, 3
         )
         self.assertEqual(validated["total"], 6)
+        large = analyzer._count_summary([2**53 + 2])
+        self.assertEqual(
+            renderer._validate_count_summary(
+                large, "large-producer-count-summary", 1, 1
+            )["total"],
+            2**53 + 2,
+        )
 
         self.assert_rejected(
             lambda value: value["secondary_descriptive"]["primary_development_complement"][
@@ -284,6 +342,29 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             ][renderer.CAP].__setitem__("semantic_nontrivial", 999),
             "cap nontrivial count disagrees with mechanism",
         )
+
+    def test_zero_complete_trace_selector_summary_is_valid(self):
+        summary = copy.deepcopy(
+            self.analysis["secondary_descriptive"][
+                "primary_development_complement"
+            ]["selector_summary"][renderer.CAP]
+        )
+        summary["complete_certified_traces"] = 0
+        summary["semantic_nontrivial"] = 0
+        summary["effective_cap_histogram"] = {}
+        summary["selected_first_provenance_source"] = {
+            source: 0 for source in renderer.SELECTOR_SOURCES
+        }
+        for field in ("pattern_size", "W", "A", "T", "U", "V"):
+            summary[field] = renderer._summary(0, 0)
+        validated = renderer._validate_selector_summary(
+            summary,
+            "zero-trace-selector",
+            renderer.PRIMARY_TASKS,
+            renderer.CAP,
+        )
+        self.assertEqual(validated["traces"], 0)
+        self.assertEqual(validated["summaries"]["U"]["observed"], 0)
 
     def test_secondary_ratio_directions_pair_sets_and_censoring_fail_closed(self):
         base = self.analysis["secondary_descriptive"]["primary_development_complement"][

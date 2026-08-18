@@ -302,7 +302,6 @@ def _exact_integral_numeric(value, label, minimum=0, maximum=MAX_INTEGER):
         type(value) is not float
         or not math.isfinite(value)
         or not value.is_integer()
-        or abs(value) > 2**53
     ):
         raise RenderError("{} must be an exact integral number".format(label))
     result = int(value)
@@ -329,8 +328,12 @@ def _validate_fraction(value, label, fixed_denominator=None):
     if math.gcd(numerator, denominator) != 1:
         raise RenderError("{} fraction is not reduced".format(label))
     if fixed_denominator is not None:
-        if value["fixed_estimand_denominator"] != fixed_denominator:
-            raise RenderError("{}.fixed_estimand_denominator changed".format(label))
+        _integer(
+            value["fixed_estimand_denominator"],
+            label + ".fixed_estimand_denominator",
+            fixed_denominator,
+            fixed_denominator,
+        )
     elif value["fixed_estimand_denominator"] is not None:
         raise RenderError("{}.fixed_estimand_denominator must be null".format(label))
     result = Fraction(numerator, denominator)
@@ -442,8 +445,7 @@ def _validate_execution(value, pins):
         "execution.option_matrix_sha256",
         EXPECTED_OPTION_MATRIX_SHA256,
     )
-    if value["cell_count"] != CELLS:
-        raise RenderError("execution.cell_count changed")
+    _integer(value["cell_count"], "execution.cell_count", CELLS, CELLS)
     if value["all_cells_validated"] is not True:
         raise RenderError("execution.all_cells_validated must be true")
     if value["solved_cost_agreement_validated_across_all_configs"] is not True:
@@ -468,8 +470,7 @@ def _validate_mechanism(value, label, tasks):
     value = _mapping(value, label, keys)
     if value["status"] not in ("certified", "not-certified"):
         raise RenderError("{}.status changed".format(label))
-    if value["required_pairs"] != tasks:
-        raise RenderError("{}.required_pairs changed".format(label))
+    _integer(value["required_pairs"], label + ".required_pairs", tasks, tasks)
     traces = _integer(
         value["paired_complete_certified_traces"],
         label + ".paired_complete_certified_traces",
@@ -543,8 +544,8 @@ def _validate_contrast(value, label, tasks, role):
     if value["role"] != role:
         raise RenderError("{}.role changed".format(label))
     population = _mapping(value["population"], label + ".population", {"tasks", "domains"})
-    if population != {"tasks": tasks, "domains": DOMAINS}:
-        raise RenderError("{}.population changed".format(label))
+    _integer(population["tasks"], label + ".population.tasks", tasks, tasks)
+    _integer(population["domains"], label + ".population.domains", DOMAINS, DOMAINS)
 
     macro = _mapping(
         value["equal_domain_macro_coverage"],
@@ -632,11 +633,16 @@ def _validate_contrast(value, label, tasks, role):
     both_unsolved = _integer(
         micro["both_unsolved"], label + ".micro.both_unsolved", 0, tasks
     )
-    if micro["task_pairs"] != tasks:
-        raise RenderError("{}.micro.task_pairs changed".format(label))
-    if micro["wins_minus_losses"] != wins - losses:
+    _integer(micro["task_pairs"], label + ".micro.task_pairs", tasks, tasks)
+    wins_minus_losses = _integer(
+        micro["wins_minus_losses"], label + ".micro.wins_minus_losses", -tasks, tasks
+    )
+    discordant = _integer(
+        micro["discordant"], label + ".micro.discordant", 0, tasks
+    )
+    if wins_minus_losses != wins - losses:
         raise RenderError("{}.micro.wins_minus_losses changed".format(label))
-    if micro["discordant"] != wins + losses:
+    if discordant != wins + losses:
         raise RenderError("{}.micro.discordant changed".format(label))
     if wins + losses + both_solved + both_unsolved != tasks:
         raise RenderError("{} task discordance does not conserve".format(label))
@@ -675,8 +681,7 @@ def _validate_selector_summary(value, label, tasks, config):
         "V",
     }
     value = _mapping(value, label, keys)
-    if value["eligible_cells"] != tasks:
-        raise RenderError("{}.eligible_cells changed".format(label))
+    _integer(value["eligible_cells"], label + ".eligible_cells", tasks, tasks)
     traces = _integer(
         value["complete_certified_traces"], label + ".complete_certified_traces", 0, tasks
     )
@@ -715,7 +720,8 @@ def _validate_selector_summary(value, label, tasks, config):
     if traces and (value["W"]["minimum"] < 1 or value["W"]["maximum"] > WIDTH_BUDGET):
         raise RenderError("{} selected width exceeds the frozen K=8 budget".format(label))
     if (
-        summaries["A"]["observed"]
+        traces > 0
+        and summaries["A"]["observed"]
         == summaries["T"]["observed"]
         == summaries["U"]["observed"]
         == traces
@@ -772,8 +778,7 @@ def _validate_total_ratio(value, label, tasks, integer_totals=False):
 
 def _validate_secondary_scope(value, label, tasks, contrast):
     value = _mapping(value, label, {"tasks", "selector_summary", "paired_operational"})
-    if value["tasks"] != tasks:
-        raise RenderError("{}.tasks changed".format(label))
+    _integer(value["tasks"], label + ".tasks", tasks, tasks)
     selectors = _mapping(value["selector_summary"], label + ".selector_summary", {EXACT, CAP})
     exact = _validate_selector_summary(selectors[EXACT], label + ".selector.exact", tasks, EXACT)
     cap = _validate_selector_summary(selectors[CAP], label + ".selector.cap", tasks, CAP)
@@ -811,8 +816,12 @@ def _validate_secondary_scope(value, label, tasks, contrast):
             "candidate_minus_reference",
         },
     )
-    if par2["fixed_task_denominator"] != tasks:
-        raise RenderError("{} PAR2 denominator changed".format(label))
+    _integer(
+        par2["fixed_task_denominator"],
+        label + ".par2.fixed_task_denominator",
+        tasks,
+        tasks,
+    )
     candidate_solved = _integer(
         par2["candidate_solved"], label + ".par2.candidate_solved", 0, tasks
     )
@@ -939,8 +948,7 @@ def _validate_config(value, index):
         raise RenderError("{}.label changed".format(prefix))
     if value["role"] != role:
         raise RenderError("{}.role changed".format(prefix))
-    if value["cells"] != TASKS:
-        raise RenderError("{}.cells changed".format(prefix))
+    _integer(value["cells"], prefix + ".cells", TASKS, TASKS)
     solved = _integer(value["solved"], prefix + ".solved", 0, TASKS)
     _close(value["coverage_rate"], solved / TASKS, prefix + ".coverage_rate")
     par2 = _number(value["micro_par2_seconds"], prefix + ".micro_par2_seconds", 0, PAR2_PENALTY)
@@ -1198,11 +1206,11 @@ def _validate_analysis_with_pins(value, analysis_sha256, pins):
         "inference",
         {"confidence_intervals", "p_values", "fixed_population_census"},
     )
-    if inference != {
-        "confidence_intervals": None,
-        "p_values": None,
-        "fixed_population_census": True,
-    }:
+    if (
+        inference["confidence_intervals"] is not None
+        or inference["p_values"] is not None
+        or inference["fixed_population_census"] is not True
+    ):
         raise RenderError("inference policy changed")
     return {
         "primary": primary,
