@@ -47,6 +47,18 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         data = renderer._validate_analysis_with_pins(changed, changed_digest, pins)
         return changed, changed_digest, pins, data
 
+    def macro_rows(self, name, payload=None):
+        text = (self.tex if payload is None else payload).decode("utf-8")
+        prefix = "\\newcommand{{\\{}}}{{%\n".format(name)
+        start = text.find(prefix)
+        self.assertNotEqual(start, -1, name)
+        start += len(prefix)
+        end = text.find("\n\\newcommand{", start)
+        self.assertNotEqual(end, -1, name)
+        declaration_tail = text[start:end]
+        self.assertTrue(declaration_tail.endswith("}"), name)
+        return declaration_tail[:-1].splitlines()
+
     def test_synthetic_fixture_and_tex_are_byte_deterministic(self):
         self.assertEqual(
             self.digest,
@@ -54,7 +66,7 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(self.tex).hexdigest(),
-            "20ad1d959c8e9a959c4ae3a015d157117a6b8d00c39e698e6b5bdcdcfc3c48fa",
+            "c0909990c91a5c2e0046a4d2157cff3919366cf65f08f895d69f86a88a4873c6",
         )
         self.assertEqual(
             self.tex,
@@ -298,6 +310,11 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             producer_summary, "producer-count-summary", 3, 3
         )
         self.assertEqual(validated["total"], 6)
+        self.assertEqual(validated["median"], 2)
+        half_median = renderer._validate_count_summary(
+            analyzer._count_summary([1, 2]), "half-median-count-summary", 2, 2
+        )
+        self.assertEqual(half_median["median"], 1.5)
         large = analyzer._count_summary([2**53 + 2])
         self.assertEqual(
             renderer._validate_count_summary(
@@ -365,6 +382,7 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         )
         self.assertEqual(validated["traces"], 0)
         self.assertEqual(validated["summaries"]["U"]["observed"], 0)
+        self.assertIsNone(validated["summaries"]["U"]["median"])
 
     def test_secondary_ratio_directions_pair_sets_and_censoring_fail_closed(self):
         base = self.analysis["secondary_descriptive"]["primary_development_complement"][
@@ -480,6 +498,15 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
                 "micro_par2_seconds", 0.0
             ),
             "descriptive_full_census_configs[0].micro_par2_seconds arithmetic changed",
+        )
+        self.assert_rejected(
+            lambda value: value["descriptive_full_census_configs"][1][
+                "completed_construction_seconds"
+            ].__setitem__("total", renderer.TASKS - 9),
+            (
+                "descriptive_full_census_configs[1].completed_construction_seconds."
+                "total arithmetic changed"
+            ),
         )
 
     def test_primary_subset_relations_fail_closed(self):
@@ -625,6 +652,11 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             "CapPrimaryMechanismRows",
             "CapPrimarySecondaryRows",
             "CapCensusSecondaryRows",
+            "CapCensusContrastRows",
+            "CapFullConstructionRows",
+            "CapSelectorSummaryRows",
+            "CapSelectorSourceRows",
+            "CapEffectiveCapRows",
             "CapPrimaryText",
             "CapMechanismText",
             "CapSensitivityText",
@@ -635,6 +667,8 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             self.assertIn(name, macro_names)
         for _, _, paper_label, _ in renderer.CONFIGS:
             self.assertIn(paper_label, text)
+        for identifier in renderer.CONFIG_LABELS + renderer.SELECTOR_SOURCES:
+            self.assertNotIn(identifier, text)
         self.assertLessEqual(len(self.tex), renderer.MAX_TEX_BYTES)
         self.assertNotIn("Arrhenius", text)
         self.assertNotIn("/nobackup", text)
@@ -651,6 +685,104 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
             "option_matrix_sha256",
         ):
             self.assertNotIn(execution[key], text)
+
+    def test_supplement_row_macros_have_exact_bounded_interfaces(self):
+        row_end = " " + chr(92) * 2
+        self.assertEqual(
+            self.macro_rows("CapCensusContrastRows"),
+            [
+                "Exact selector $K=8$ & 33.41 & 460/1377" + row_end,
+                "Cap-aware selector $K=8$ & 33.56 & 462/1377" + row_end,
+                "Cap-aware minus exact & +0.14 pp & --" + row_end,
+            ],
+        )
+        self.assertEqual(
+            self.macro_rows("CapFullConstructionRows"),
+            [
+                "Blind forward & 0/1377 & --" + row_end,
+                r"Uncapped M\&S & 1367/1377 & 1367" + row_end,
+                "CEGAR PDB & 1367/1377 & 1367" + row_end,
+                "Exact selector $K=8$ & 1367/1377 & 1367" + row_end,
+                "Cap-aware selector $K=8$ & 1367/1377 & 1367" + row_end,
+            ],
+        )
+
+        summaries = self.macro_rows("CapSelectorSummaryRows")
+        self.assertEqual(len(summaries), 24)
+        self.assertEqual(
+            summaries[0],
+            "Primary & Exact & Pattern size & 1327/1327 & 5 & 5 & 5 & 6635"
+            + row_end,
+        )
+        self.assertEqual(
+            summaries[8],
+            "Primary & Cap-aware & A & 1326/1327 & 80 & 80 & 80 & 106080"
+            + row_end,
+        )
+        self.assertEqual(
+            summaries[-1],
+            "Full census & Cap-aware & V & 1374/1377 & 9 & 9 & 9 & 12366"
+            + row_end,
+        )
+
+        sources = self.macro_rows("CapSelectorSourceRows")
+        self.assertEqual(len(sources), 20)
+        self.assertEqual(sources[0], "Primary & Exact & Empty & 100/1327" + row_end)
+        self.assertEqual(sources[4], "Primary & Exact & CEGAR & 327/1327" + row_end)
+        self.assertEqual(
+            sources[-1], "Full census & Cap-aware & CEGAR & 377/1377" + row_end
+        )
+
+        caps = self.macro_rows("CapEffectiveCapRows")
+        self.assertEqual(len(caps), 24)
+        self.assertEqual(caps[0], "Primary & Exact & Exact & 1327/1327" + row_end)
+        self.assertEqual(caps[1], "Primary & Cap-aware & 0 & 0/1327" + row_end)
+        self.assertEqual(caps[5], "Primary & Cap-aware & 8 & 900/1327" + row_end)
+        self.assertEqual(
+            caps[11], "Primary & Cap-aware & Exact & 427/1327" + row_end
+        )
+        self.assertEqual(
+            caps[-1], "Full census & Cap-aware & Exact & 477/1377" + row_end
+        )
+
+        def empty_primary_cap_a(value):
+            value["secondary_descriptive"]["primary_development_complement"][
+                "selector_summary"
+            ][renderer.CAP]["A"] = renderer._summary(0, 0)
+
+        changed, digest, pins, _ = self.validated_mutation(empty_primary_cap_a)
+        changed_tex = renderer._render_tex_with_pins(changed, digest, pins)
+        self.assertEqual(
+            self.macro_rows("CapSelectorSummaryRows", changed_tex)[8],
+            "Primary & Cap-aware & A & 0/1327 & -- & -- & -- & --" + row_end,
+        )
+
+    def test_tex_table_boundary_escapes_and_fails_closed(self):
+        self.assertEqual(
+            renderer._tex_escape(r"M&S_50%#{x}\^~"),
+            (
+                r"M\&S\_50\%\#\{x\}\textbackslash{}"
+                r"\textasciicircum{}\textasciitilde{}"
+            ),
+        )
+        for value, fragment in (
+            ("x" * (renderer.MAX_TEX_CELL_BYTES + 1), "too large"),
+            ("line\nbreak", "control character"),
+            ("non-ASCII: \N{SNOWMAN}", "plain ASCII"),
+        ):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(renderer.RenderError, fragment):
+                    renderer._tex_escape(value)
+        with self.assertRaisesRegex(renderer.RenderError, "column count changed"):
+            renderer._rows_macro("Rows", [("one",)], 2, 1)
+        with self.assertRaisesRegex(renderer.RenderError, "row count changed"):
+            renderer._rows_macro("Rows", [("one",)], 1, 2)
+        with self.assertRaisesRegex(renderer.RenderError, "multiline cell"):
+            renderer._rows_macro("Rows", [("one\ntwo",)], 1, 1)
+        with self.assertRaisesRegex(renderer.RenderError, "too large"):
+            renderer._macro("Rows", "x" * (renderer.MAX_TEX_MACRO_BYTES + 1))
+        with self.assertRaisesRegex(renderer.RenderError, "formatting bound"):
+            renderer._decimal(1e308)
 
     def test_atomic_output_and_stale_check(self):
         with tempfile.TemporaryDirectory(prefix="cap-render-atomic-") as directory:

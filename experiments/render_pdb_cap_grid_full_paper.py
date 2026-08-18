@@ -25,7 +25,7 @@ import re
 import stat
 import sys
 import tempfile
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from fractions import Fraction
 from pathlib import Path
 
@@ -88,6 +88,9 @@ WIDTH_BUDGET = 8
 PAR2_PENALTY = 600
 MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 MAX_TEX_BYTES = 256 * 1024
+MAX_TEX_MACRO_BYTES = 16 * 1024
+MAX_TEX_CELL_BYTES = 512
+MAX_TEX_TABLE_ROWS = 128
 MAX_INTEGER = 10**30
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -106,6 +109,21 @@ EXACT = "pdb_selector_k8"
 CAP = "pdb_cap_grid_k8"
 SELECTOR_SOURCES = ("empty", "bdd_prefix", "goal_prefix", "goal_fill", "cegar")
 CAP_KEYS = ("0", "1", "2", "4", "8", "16", "32", "64", "128", "256", "exact")
+SELECTOR_METRICS = (
+    ("pattern_size", "Pattern size"),
+    ("W", "W"),
+    ("A", "A"),
+    ("T", "T"),
+    ("U", "U"),
+    ("V", "V"),
+)
+SELECTOR_SOURCE_LABELS = {
+    "empty": "Empty",
+    "bdd_prefix": "BDD prefix",
+    "goal_prefix": "Goal prefix",
+    "goal_fill": "Goal fill",
+    "cegar": "CEGAR",
+}
 
 TOP_KEYS = {
     "schema",
@@ -370,11 +388,13 @@ def _validate_count_summary(value, label, maximum_observed, expected_observed=No
     result = {
         "observed": observed,
         "minimum": None,
+        "median": None,
         "maximum": None,
         "total": None,
     }
     if observed:
         result["minimum"] = _integer(value["minimum"], label + ".minimum")
+        result["median"] = value["median"]
         result["maximum"] = _integer(value["maximum"], label + ".maximum")
         result["total"] = _integer(value["total"], label + ".total")
         _exact_integral_numeric(
@@ -974,10 +994,19 @@ def _validate_config(value, index):
     ) / TASKS
     if par2 != expected_par2:
         raise RenderError("{}.micro_par2_seconds arithmetic changed".format(prefix))
-    _validate_summary(
+    construction_observed = _validate_summary(
         value["completed_construction_seconds"],
         prefix + ".completed_construction_seconds",
         TASKS,
+    )
+    construction_total = (
+        None
+        if construction_observed == 0
+        else _number(
+            value["completed_construction_seconds"]["total"],
+            prefix + ".completed_construction_seconds.total",
+            0,
+        )
     )
     return {
         "value": value,
@@ -987,6 +1016,10 @@ def _validate_config(value, index):
         "solved": solved,
         "par2": par2,
         "solved_runtime_total": solved_runtime_total,
+        "construction": {
+            "observed": construction_observed,
+            "total": construction_total,
+        },
     }
 
 
@@ -1226,9 +1259,12 @@ def validate_analysis(value, analysis_sha256):
 
 
 def _decimal(value, places=3, trim=True):
-    number = Decimal(str(_number(value, "rendered numeric value")))
-    quantum = Decimal(1).scaleb(-places)
-    rendered = format(number.quantize(quantum, rounding=ROUND_HALF_UP), "f")
+    try:
+        number = Decimal(str(_number(value, "rendered numeric value")))
+        quantum = Decimal(1).scaleb(-places)
+        rendered = format(number.quantize(quantum, rounding=ROUND_HALF_UP), "f")
+    except InvalidOperation as err:
+        raise RenderError("rendered number exceeds the decimal formatting bound") from err
     if trim and "." in rendered:
         rendered = rendered.rstrip("0").rstrip(".")
     if rendered == "-0":
@@ -1249,12 +1285,70 @@ def _ratio(value):
     return "--" if value is None else _decimal(value, 3)
 
 
+def _tex_escape(value):
+    """Escape one bounded, plain-ASCII table label for TeX."""
+    if type(value) is not str:
+        raise RenderError("TeX text must be a string")
+    try:
+        encoded = value.encode("ascii")
+    except UnicodeEncodeError as err:
+        raise RenderError("TeX text must be plain ASCII") from err
+    if len(encoded) > MAX_TEX_CELL_BYTES:
+        raise RenderError("TeX text is too large")
+    if any(byte < 32 or byte == 127 for byte in encoded):
+        raise RenderError("TeX text contains a control character")
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "{": r"\{",
+        "}": r"\}",
+        "#": r"\#",
+        "$": r"\$",
+        "%": r"\%",
+        "&": r"\&",
+        "_": r"\_",
+        "^": r"\textasciicircum{}",
+        "~": r"\textasciitilde{}",
+    }
+    return "".join(replacements.get(character, character) for character in value)
+
+
 def _macro(name, content):
     if MACRO_RE.fullmatch(name) is None:
         raise RenderError("invalid TeX macro name {!r}".format(name))
-    if type(content) is not str or len(content.encode("utf-8")) > 16384:
+    if type(content) is not str or len(content.encode("utf-8")) > MAX_TEX_MACRO_BYTES:
         raise RenderError("TeX macro {} is too large".format(name))
     return "\\newcommand{{\\{}}}{{{}}}".format(name, content)
+
+
+def _rows_macro(name, rows, columns, expected_rows):
+    """Render a bounded table-row macro with an exact structural contract."""
+    if type(columns) is not int or columns < 1 or columns > 16:
+        raise RenderError("TeX table column count is invalid")
+    if (
+        type(expected_rows) is not int
+        or expected_rows < 1
+        or expected_rows > MAX_TEX_TABLE_ROWS
+    ):
+        raise RenderError("TeX table row count is invalid")
+    if type(rows) not in (list, tuple) or len(rows) != expected_rows:
+        raise RenderError("TeX table {} row count changed".format(name))
+    rendered = []
+    for index, row in enumerate(rows):
+        if type(row) not in (list, tuple) or len(row) != columns:
+            raise RenderError(
+                "TeX table {} row {} column count changed".format(name, index)
+            )
+        cells = []
+        for cell in row:
+            if type(cell) is not str:
+                raise RenderError("TeX table {} contains a non-string cell".format(name))
+            if "\n" in cell or "\r" in cell:
+                raise RenderError("TeX table {} contains a multiline cell".format(name))
+            if len(cell.encode("utf-8")) > MAX_TEX_CELL_BYTES:
+                raise RenderError("TeX table {} contains an oversized cell".format(name))
+            cells.append(cell)
+        rendered.append(" & ".join(cells) + r" \\")
+    return _macro(name, "%\n" + "\n".join(rendered))
 
 
 def _render_tex_with_pins(value, analysis_sha256, pins):
@@ -1352,6 +1446,111 @@ def _render_tex_with_pins(value, analysis_sha256, pins):
         ]
     )
 
+    # Supplement interfaces (columns are stable and intentionally header-free):
+    # CapCensusContrastRows: selector, equal-domain macro coverage (%), solved/tasks.
+    census_contrast_rows = [
+        (
+            "Exact selector $K=8$",
+            _percent(sensitivity["exact_macro"]),
+            "{}/{}".format(sensitivity["exact_solved"], TASKS),
+        ),
+        (
+            "Cap-aware selector $K=8$",
+            _percent(sensitivity["cap_macro"]),
+            "{}/{}".format(sensitivity["cap_solved"], TASKS),
+        ),
+        (
+            _tex_escape("Cap-aware minus exact"),
+            _percent(sensitivity["difference"], signed=True) + " pp",
+            "--",
+        ),
+    ]
+
+    # CapFullConstructionRows: configuration, observed/tasks, total seconds.
+    full_construction_rows = []
+    for config in data["configs"]:
+        construction = config["construction"]
+        full_construction_rows.append(
+            (
+                config["paper_label"],
+                "{}/{}".format(construction["observed"], TASKS),
+                "--"
+                if construction["total"] is None
+                else _decimal(construction["total"]),
+            )
+        )
+
+    scope_specs = (
+        ("Primary", psecondary),
+        ("Full census", ssecondary),
+    )
+    selector_specs = (
+        ("Exact", "exact_selector"),
+        ("Cap-aware", "cap_selector"),
+    )
+
+    # CapSelectorSummaryRows: scope, selector, metric, observed/traces,
+    # minimum, median, maximum, total.  Empty summaries render explicit dashes.
+    selector_summary_rows = []
+    for scope_label, scope in scope_specs:
+        for selector_label, selector_key in selector_specs:
+            selector = scope[selector_key]
+            for metric_key, metric_label in SELECTOR_METRICS:
+                summary = selector["summaries"][metric_key]
+                if summary["observed"] == 0:
+                    statistics = ("--", "--", "--", "--")
+                else:
+                    statistics = (
+                        str(summary["minimum"]),
+                        _decimal(summary["median"], places=1),
+                        str(summary["maximum"]),
+                        str(summary["total"]),
+                    )
+                selector_summary_rows.append(
+                    (
+                        _tex_escape(scope_label),
+                        _tex_escape(selector_label),
+                        _tex_escape(metric_label),
+                        "{}/{}".format(summary["observed"], selector["traces"]),
+                    )
+                    + statistics
+                )
+
+    # CapSelectorSourceRows: scope, selector, friendly source, count/traces.
+    selector_source_rows = []
+    for scope_label, scope in scope_specs:
+        for selector_label, selector_key in selector_specs:
+            selector = scope[selector_key]
+            for source in SELECTOR_SOURCES:
+                selector_source_rows.append(
+                    (
+                        _tex_escape(scope_label),
+                        _tex_escape(selector_label),
+                        _tex_escape(SELECTOR_SOURCE_LABELS[source]),
+                        "{}/{}".format(selector["sources"][source], selector["traces"]),
+                    )
+                )
+
+    # CapEffectiveCapRows: scope, selector, effective cap, count/traces.  Exact
+    # selectors have one exact row; cap-aware selectors include every canonical
+    # cap category in frozen order, with absent histogram categories shown as zero.
+    effective_cap_rows = []
+    for scope_label, scope in scope_specs:
+        for selector_label, selector_key in selector_specs:
+            selector = scope[selector_key]
+            keys = ("exact",) if selector_key == "exact_selector" else CAP_KEYS
+            for key in keys:
+                effective_cap_rows.append(
+                    (
+                        _tex_escape(scope_label),
+                        _tex_escape(selector_label),
+                        _tex_escape("Exact" if key == "exact" else key),
+                        "{}/{}".format(
+                            selector["histogram"].get(key, 0), selector["traces"]
+                        ),
+                    )
+                )
+
     def secondary_rows(scope):
         return "\n".join(
             [
@@ -1403,6 +1602,11 @@ def _render_tex_with_pins(value, analysis_sha256, pins):
             _macro("CapPrimaryMechanismRows", "%\n" + mechanism_rows),
             _macro("CapPrimarySecondaryRows", "%\n" + secondary_rows(psecondary)),
             _macro("CapCensusSecondaryRows", "%\n" + secondary_rows(ssecondary)),
+            _rows_macro("CapCensusContrastRows", census_contrast_rows, 3, 3),
+            _rows_macro("CapFullConstructionRows", full_construction_rows, 3, CONFIG_COUNT),
+            _rows_macro("CapSelectorSummaryRows", selector_summary_rows, 8, 24),
+            _rows_macro("CapSelectorSourceRows", selector_source_rows, 4, 20),
+            _rows_macro("CapEffectiveCapRows", effective_cap_rows, 4, 24),
             _macro(
                 "CapPrimaryText",
                 (
