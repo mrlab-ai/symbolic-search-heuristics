@@ -35,7 +35,7 @@ ANALYSIS_PROTOCOL = "pdb-cap-grid-focused-full-analysis-v1"
 # Set in a descendant pin commit to the hash of this outcome-independent
 # implementation commit.  The launch revision itself is the clean descendant
 # HEAD containing reviewed screen/job pins, and is recorded dynamically.
-PROTOCOL_IMPLEMENTATION_REVISION = None
+PROTOCOL_IMPLEMENTATION_REVISION = "13026ed5e85f32fbdc5879a8348130a661e3b5a7"
 PLANNER_REVISION = "e04d56cc61d00c954f2369e9fb74bd469277d52e"
 CACHE_BINARY_SHA256 = (
     "77cf4950563be2d2a60aded13783a3ffe26c0c8391ac9d626f3bd618231941fa"
