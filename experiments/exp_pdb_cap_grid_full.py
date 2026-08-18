@@ -82,7 +82,7 @@ for run_id in $(seq $FIRST_RUN_ID $LAST_RUN_ID); do
     run_dir=$(print_run_dir ${run_id})
     (cd "__EXPERIMENT__/$run_dir" && execute_run ${run_id})
 done
-'''.replace("__EXPERIMENT__", str(EXPERIMENT_DATA_PATH))
+'''.replace("__EXPERIMENT__", "../" + experiment_name)
     full = '''# Execute runs in deterministic order and retain every wrapper failure.
 ARRAY_RETCODE=0
 for run_id in $(seq $FIRST_RUN_ID $LAST_RUN_ID); do
@@ -606,6 +606,7 @@ def inspect_launch_blockers():
 
 def self_test():
     configure_completion_base()
+    C.require_pinned_lab_version()
     P.validate_prospective_contract()
     validate_fixed_environment()
     tasks, attestation = P.load_full_tasks()
