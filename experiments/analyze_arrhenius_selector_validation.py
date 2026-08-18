@@ -434,7 +434,7 @@ def _parse_json_bytes(raw, label):
         )
     except AnalysisError:
         raise
-    except (UnicodeError, json.JSONDecodeError) as err:
+    except (UnicodeError, RecursionError, json.JSONDecodeError) as err:
         raise AnalysisError("cannot parse {}: {}".format(label, err)) from err
     # ``allow_nan=False`` also recursively rejects non-finite values produced
     # through unusual decoder extensions and verifies JSON serializability.

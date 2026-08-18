@@ -97,6 +97,57 @@ before adding results to the paper.  Their `--self-test` modes exercise the
 complete matrix plus provenance, outcome, parser, selector, recovery, and
 strict-JSON adversaries without reading experiment outcomes.
 
+P6 also has a separate, primary-result-neutral structural diagnostic:
+`analyze_arrhenius_selector_full_structure.py`. Its contract was frozen while
+the array was still running, after launch but before the canonical full-result
+analysis or any comparative structural summary, association, or correlation.
+Protocol-integrity audits had already parsed individual structural fields and
+displayed a few diagnostic records; the diagnostic is therefore not described
+as value-blind or launch-predeclared. It reuses the exact selection, runner,
+task, properties, and
+`validate_records` gates above, then emits schema
+`symbolic-search-heuristics/full-population-structure/v1`. Run it on the same
+accepted fetched properties and selection artifact, but freeze its stdout as a
+distinct `structure-v1.json` artifact rather than modifying `analysis-v4.json`:
+
+```
+env PYTHONDONTWRITEBYTECODE=1 \
+  WBH_ACCOUNT=naiss2025-5-561-cpu \
+  experiments/.venv/bin/python \
+  experiments/analyze_arrhenius_selector_full_structure.py \
+  /path/to/exp_arrhenius_selector_full-eval/properties \
+  --selection experiments/artifacts/arrhenius-selector-screen-p4/selection-v3.json
+```
+
+The output reports certified direct `(W,A,V,T,U=A+T)` tuples, a deduplicated
+selector-candidate `W/U` census, and logged operational partition ratios.
+Ratios from complete metric logs and accepted resource-killed prefixes remain
+separate; a complete metric log is not called a completed search. The
+diagnostic is explicitly secondary, cross-task-confounded, noninferential, and
+not a validation of the theorem. It neither changes the P6 matrix, primary
+estimand, sensitivity, ranking, nor any launch-predeclared acceptance rule.
+Its counted `(W,U,max,geomean)` input census lets the independent paper
+renderer recompute every reported tie-aware Spearman coefficient.
+`test_analyze_arrhenius_selector_full_structure.py` exercises its conservation,
+censoring, identity, selector-pool, arithmetic, and deterministic-output gates.
+
+Independent review froze both P6 JSON byte streams, their exact `sha256sum`
+sidecars, and the five mutable launch identities atomically in
+`render_arrhenius_selector_full_paper.py`; partial pinning remains rejected.
+The default command validates the primary analysis, the secondary diagnostic,
+and the fixed P5 analysis before comparing the generated TeX bytes:
+
+```
+env PYTHONDONTWRITEBYTECODE=1 experiments/.venv/bin/python \
+  experiments/render_arrhenius_selector_full_paper.py --check
+```
+
+Use the explicit `--write` action only after the same validation succeeds; it
+is confined to `paper/generated/arrhenius-selector-full-v4.tex` and writes the
+complete output atomically. The paper readiness gate additionally requires
+active uses of every structural table and of the timing, censoring, and
+noninferential caveats.
+
 The P4 artifact-freeze revision is
 `da50f09886bed8c09c73ec5358e49cdde2ce0832`. Regenerate its two canonical
 stdout objects with the required account binding:
@@ -121,9 +172,101 @@ have raw SHA-256 values
 `8b3e6862629a6a7b9234c13083e9840956be5bd973de49e6c9e7831627274dbb`
 and
 `d508298425b356023b589e643115ab482419c140da19b6744bbeff57a84bc10f`.
-Exact record-level inputs contain cluster paths and scheduler metadata; an
-anonymous public pack therefore needs a documented semantic projection and
-must not claim byte-for-byte reproduction of those private provenance hashes.
+Exact record-level inputs contain cluster paths and scheduler metadata. The
+projection below supports numerical audit after unblinding; it is not itself a
+double-blind package because other frozen protocol fields remain linkable to
+public source history.
+
+### Post-unblinding P4/P5 properties projection
+
+`project_arrhenius_public_properties.py` implements the reviewed audit
+projection. It retains every record and key, changing only these four
+top-level values in every record:
+
+```
+benchmark_worktree -> /artifact/downward-benchmarks
+repo               -> /artifact/symk
+node               -> artifact-node
+scheduler_account  -> artifact-account
+```
+
+The command rejects any source other than the byte-exact accepted P4/P5
+inputs, unknown or missing record fields, unstable or linked input files, and
+noncanonical projected output. It writes sorted compact JSON with one trailing
+newline. The pinned projected SHA-256 values are
+`6b7bfa9515105825e775e33356f61764ed1c555c5273514b87be591ab369529b`
+(P4, 10,714,087 bytes) and
+`4267f384cc6e23d634796fe33efd0054c103d8186df3d4f4fb44f7613c2ce45b`
+(P5, 7,966,555 bytes). Generate and verify them with Python 3.9.25:
+
+```
+experiments/.venv/bin/python experiments/project_arrhenius_public_properties.py \
+  project p4 /path/to/accepted-p4-properties > p4-public.properties
+experiments/.venv/bin/python experiments/project_arrhenius_public_properties.py \
+  project p5 /path/to/accepted-p5-properties > p5-public.properties
+experiments/.venv/bin/python experiments/project_arrhenius_public_properties.py \
+  verify-analysis p4-public.properties p5-public.properties
+experiments/.venv/bin/python experiments/project_arrhenius_public_properties.py \
+  --self-test
+experiments/.venv/bin/python -m unittest \
+  experiments/test_project_arrhenius_public_properties.py -v
+```
+
+`verify-analysis` runs byte-attested repository analyzer contracts and
+requires exact equality with the committed aggregate artifacts after removing
+only the property digest in the P4 selection, the corresponding property and
+derived selection digests in the P4 report, and the property digest in the P5
+analysis. All numerical, scientific, validation, and remaining provenance
+fields must match exactly. P6 is intentionally unsupported until its accepted
+input and analyzer output are frozen and independently reviewed.
+
+### Analysis-only post-unblinding source snapshot
+
+`build_arrhenius_public_source_snapshot.py` creates the complementary
+historical source layer. Its private build contract pins the exact P4/P5
+artifact-freeze commits, Git blobs, raw sizes, and raw SHA-256 values. The
+canonical manifest omits those audit-only commit/blob identities and
+contains transformed-file hashes instead. The deterministic uncompressed tar
+is 1,853,440 bytes with SHA-256
+`4abbda181734bbe37b89c9aab53771b4e78875c6e4a11280a919fc9bdd671602`;
+its 17-file content identity is
+`8d0f34d6e05f73ffa55d29327e0bef4cd1ddffb1b7f80afed6718233c87e3a2d`.
+
+The snapshot replaces only reviewed allocation and institutional node-host
+literals, binds the shared common module explicitly to the P4 or P5 launch
+protocol for each analyzer invocation, rejects a mismatched analyzer/stage,
+and disables both runner `main` entry points. It is for
+numerical/scientific reanalysis only and cannot be used to build or launch
+experiments. It contains no `.git`, symlinks, hardlinks, bytecode,
+unallowlisted files, private-token hits, or variable tar metadata. Build twice
+and verification produce byte-identical archives:
+
+```
+experiments/.venv/bin/python \
+  experiments/build_arrhenius_public_source_snapshot.py \
+  build arrhenius-public-analysis-source.tar
+experiments/.venv/bin/python \
+  experiments/build_arrhenius_public_source_snapshot.py \
+  verify arrhenius-public-analysis-source.tar
+experiments/.venv/bin/python \
+  experiments/build_arrhenius_public_source_snapshot.py verify-analysis \
+  arrhenius-public-analysis-source.tar \
+  p4-public.properties p5-public.properties \
+  --python experiments/.venv/bin/python
+experiments/.venv/bin/python -m unittest \
+  experiments/test_build_arrhenius_public_source_snapshot.py -v
+```
+
+Revision identities necessarily remain in the preserved scientific
+provenance and validation fields: the exact projected tree contains 30
+occurrences of six historical 40-hex identities plus seven occurrences of
+four synthetic self-test identities. Therefore manifest redaction alone does
+not make the pack unlinkable to published Git objects. Matching source history
+is already public, so this archive and the projected records must not be
+attached to a double-blind submission. Publish them, the audit refs, and the
+private provenance sidecar only after unblinding. A blind numerical package
+would require a separate neutral schema and checker plus a venue ruling about
+the prior public source disclosure.
 
 The first P4 downstream starts were canceled after a producer-ordering defect
 was exposed by an initial-dead heuristic.  None of their stable or partial

@@ -504,14 +504,15 @@ def _validate_selector_whole_trace(candidates, selected, final):
         errors.append("selector candidates violate fixed first-source order")
     if first_source_positions:
         # All candidate specifications are created in fixed source order before
-        # any record is logged. A later source may deduplicate into an earlier
-        # candidate, but a newly introduced candidate cannot skip an earlier
-        # source: that source would already own an earlier candidate or appear
-        # in one of the records seen so far.
+        # any record is logged. A later source may therefore deduplicate into
+        # an earlier candidate even when intervening new candidates have not
+        # yet been materialized/logged. Prefix reach is determined by the last
+        # emitted group's first source; earlier sources must already have an
+        # owner, while later attached sources do not extend the prefix.
         observed_positions = {
             PDB_SELECTOR_SOURCES.index(source) for source in source_owner
         }
-        required_positions = set(range(max(observed_positions) + 1))
+        required_positions = set(range(max(first_source_positions) + 1))
         missing_prefix = sorted(required_positions - observed_positions)
         if missing_prefix:
             errors.append(
@@ -2014,6 +2015,7 @@ class ProtocolFastDownwardExperiment(FastDownwardExperiment):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.protocol_run_properties = {}
+        self.planner_stdout_limits_kib = None
 
     def add_algorithm(self, *args, **kwargs):
         """Add an algorithm after removing only Lab's unavailable VAL flag."""
@@ -2036,6 +2038,17 @@ class ProtocolFastDownwardExperiment(FastDownwardExperiment):
         first_new_run = len(self.runs)
         super()._add_runs()
         for run in self.runs[first_new_run:]:
+            if self.planner_stdout_limits_kib is not None:
+                soft, hard = self.planner_stdout_limits_kib
+                if (
+                    type(soft) is not int
+                    or type(hard) is not int
+                    or not 1 <= soft < hard
+                    or "planner" not in run.commands
+                ):
+                    raise RuntimeError("invalid protocol planner stdout limits")
+                run.commands["planner"][1]["soft_stdout_limit"] = soft
+                run.commands["planner"][1]["hard_stdout_limit"] = hard
             for name, value in self.protocol_run_properties.items():
                 run.set_property(name, value)
 
@@ -2124,7 +2137,11 @@ def validate_common_protocol_metadata(metadata: dict) -> None:
         raise RuntimeError("common protocol metadata mismatch: " + details)
 
 
-def new_experiment(protocol_metadata: dict) -> ProtocolFastDownwardExperiment:
+def new_experiment(
+    protocol_metadata: dict,
+    *,
+    pdb_selector_parser: Parser | None = None,
+) -> ProtocolFastDownwardExperiment:
     validate_common_protocol_metadata(protocol_metadata)
     environment = get_environment()
     experiment = ProtocolFastDownwardExperiment(
@@ -2137,7 +2154,7 @@ def new_experiment(protocol_metadata: dict) -> ProtocolFastDownwardExperiment:
     experiment.add_parser(experiment.PLANNER_PARSER)
     experiment.add_parser(wbh_parser.get_parser())
     experiment.add_parser(get_cofactor_width_parser())
-    experiment.add_parser(get_pdb_selector_parser())
+    experiment.add_parser(pdb_selector_parser or get_pdb_selector_parser())
     experiment.add_parser(get_run_log_plan_cost_parser())
     experiment.add_parser(get_plan_file_parser())
     experiment.add_parser(get_outcome_reconciliation_parser())
@@ -2706,8 +2723,11 @@ def self_test_pdb_selector_parser():
     # Resource kills can leave a valid candidate-only prefix, or all
     # candidates plus selected but no final. They remain explicit and
     # uncertified without becoming parser infrastructure errors.
+    late_dedup_empty = copy.deepcopy(empty)
+    late_dedup_empty["sources"] = ["empty", "cegar"]
     partials = (
         selector_line("candidate", empty),
+        selector_line("candidate", late_dedup_empty),
         candidate_lines + selected_line,
     )
     for partial in partials:
@@ -2799,12 +2819,6 @@ def self_test_pdb_selector_parser():
         "skipped partial source prefix",
         selector_line("candidate", empty)
         + selector_line("candidate", skipped_prefix),
-    )
-    merged_skip = copy.deepcopy(empty)
-    merged_skip["sources"] = ["empty", "cegar"]
-    assert_rejected(
-        "deduplicated later source skips partial prefix",
-        selector_line("candidate", merged_skip),
     )
     assert_rejected(
         "wrong selected winner",

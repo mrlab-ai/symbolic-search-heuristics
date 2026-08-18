@@ -24,11 +24,30 @@ class FullPaperRendererTest(unittest.TestCase):
     def setUpClass(cls):
         cls.launch_pins = renderer.CURRENT_ANALYZER_FIXTURE_LAUNCH_PINS
         cls.analysis, cls.raw, cls.digest = renderer._current_analyzer_fixture()
+        cls.structure, cls.structure_raw, cls.structure_digest = (
+            renderer._current_structure_fixture()
+        )
+        cls.p5_analysis, cls.p5_digest = renderer.load_p5_analysis()
+        cls.p5_raw = renderer._read_regular(
+            renderer.DEFAULT_P5_ANALYSIS, renderer.MAX_ARTIFACT_BYTES
+        )
         cls.tex = renderer._render_tex_with_test_pins(
-            cls.analysis, cls.digest, launch_pins=cls.launch_pins
+            cls.analysis,
+            cls.digest,
+            launch_pins=cls.launch_pins,
+            structure=cls.structure,
+            structure_sha256=cls.structure_digest,
+            p5_analysis=cls.p5_analysis,
+            p5_analysis_sha256=cls.p5_digest,
         )
         cls.paper_data = renderer._paper_data_with_test_pins(
-            cls.analysis, cls.digest, launch_pins=cls.launch_pins
+            cls.analysis,
+            cls.digest,
+            launch_pins=cls.launch_pins,
+            structure=cls.structure,
+            structure_sha256=cls.structure_digest,
+            p5_analysis=cls.p5_analysis,
+            p5_analysis_sha256=cls.p5_digest,
         )
 
     def assert_rejected(self, mutation, fragment):
@@ -41,19 +60,45 @@ class FullPaperRendererTest(unittest.TestCase):
                 changed, changed_digest, launch_pins=self.launch_pins
             )
 
+    def assert_p5_rejected(self, mutation, fragment):
+        changed = copy.deepcopy(self.p5_analysis)
+        mutation(changed)
+        changed_raw = renderer.canonical_json(changed).encode("ascii") + b"\n"
+        changed_digest = hashlib.sha256(changed_raw).hexdigest()
+        with self.assertRaisesRegex(renderer.RenderError, re.escape(fragment)):
+            renderer._validate_p5_analysis(changed, changed_digest)
+
+    def assert_structure_rejected(self, mutation, fragment):
+        changed = copy.deepcopy(self.structure)
+        mutation(changed)
+        changed_raw = renderer.canonical_json(changed).encode("ascii") + b"\n"
+        changed_digest = hashlib.sha256(changed_raw).hexdigest()
+        with self.assertRaisesRegex(renderer.RenderError, re.escape(fragment)):
+            renderer._validate_structure_with_test_pins(
+                changed,
+                changed_digest,
+                analysis=self.analysis,
+                analysis_sha256=self.digest,
+                launch_pins=self.launch_pins,
+            )
+
     def test_current_analyzer_fixture_is_stable_and_deterministic(self):
         self.assertEqual(
             self.digest,
             "605c2bb61dbed30a82d490dbe38d29c750cc70fc47731cf3e9a97c143a52c9f9",
         )
         self.assertEqual(
+            self.structure_digest,
+            "da0029621cb9c4a20092158d2c4cd9016d3dd46a57a8ba18f22acca17312e9b3",
+        )
+        self.assertEqual(
             hashlib.sha256(self.tex).hexdigest(),
-            "e9c2634f7ff1027654ea1d0655d50246a9cc9def2cf3596a9ae5ab2e273213b2",
+            "44f64ff5093bbf3907aace1b1aabca054fba0b5b410606bf9bc13013281fb6fa",
         )
         paper_json = renderer.canonical_json(self.paper_data).encode("ascii")
         self.assertEqual(
             hashlib.sha256(paper_json).hexdigest(),
-            "94f61d1879265731151eb2a67bd9a1557446f195ed17b0913cffb95cbcb0b2b5",
+            "8305e8ae7bb518040c329a3eef58aa438b37fae903c72a565b58f04886fab2e6",
         )
         self.assertEqual(
             self.tex,
@@ -61,6 +106,10 @@ class FullPaperRendererTest(unittest.TestCase):
                 copy.deepcopy(self.analysis),
                 self.digest,
                 launch_pins=self.launch_pins,
+                structure=copy.deepcopy(self.structure),
+                structure_sha256=self.structure_digest,
+                p5_analysis=copy.deepcopy(self.p5_analysis),
+                p5_analysis_sha256=self.p5_digest,
             ),
         )
         self.assertEqual(
@@ -70,9 +119,746 @@ class FullPaperRendererTest(unittest.TestCase):
                     copy.deepcopy(self.analysis),
                     self.digest,
                     launch_pins=self.launch_pins,
+                    structure=copy.deepcopy(self.structure),
+                    structure_sha256=self.structure_digest,
+                    p5_analysis=copy.deepcopy(self.p5_analysis),
+                    p5_analysis_sha256=self.p5_digest,
                 )
             ),
         )
+
+    def test_p5_pin_identity_and_label_index_are_exact(self):
+        self.assertEqual(
+            self.p5_digest,
+            "7c598f068164224272b8ba035b987973f35d0d45e695f90c9083931790908cea",
+        )
+        self.assertEqual(
+            self.p5_raw,
+            renderer.canonical_json(self.p5_analysis).encode("ascii") + b"\n",
+        )
+        self.assertEqual(
+            renderer.DEFAULT_P5_SIDECAR.read_bytes(),
+            (
+                self.p5_digest
+                + "  "
+                + renderer.DEFAULT_P5_ANALYSIS.name
+                + "\n"
+            ).encode("ascii"),
+        )
+        p5_data = self.paper_data["p5_heldout"]
+        self.assertEqual(p5_data["schema"], renderer.P5_PAPER_INPUT_SCHEMA)
+        self.assertEqual(p5_data["analysis_sha256"], self.p5_digest)
+        self.assertEqual(p5_data["task_count"], 92)
+        self.assertEqual(p5_data["domain_count"], 46)
+        self.assertEqual(p5_data["config_count"], 7)
+        self.assertEqual(p5_data["cell_count"], 644)
+        self.assertEqual(
+            [row["label"] for row in p5_data["configs"]],
+            list(renderer.CONFIG_LABELS),
+        )
+        self.assertEqual(
+            [row["solved"] for row in p5_data["configs"]],
+            [40, 42, 42, 41, 40, 43, 41],
+        )
+
+    def test_structure_schema_identity_and_interpretation_are_fail_closed(self):
+        self.assertEqual(self.structure["schema"], renderer.STRUCTURE_SCHEMA)
+        self.assertIn(b"\\ArrFullStructureDirectRows", self.tex)
+        self.assertIn(b"\\ArrFullStructurePartitionRows", self.tex)
+        self.assertIn(b"\\ArrFullStructureCorrelationRows", self.tex)
+        self.assertIn(b"\\ArrFullStructureCandidateRows", self.tex)
+        self.assertIn(b"\\ArrFullStructureSourceRows", self.tex)
+        for caveat in (
+            renderer.STRUCTURE_TIMING_CAVEAT,
+            renderer.STRUCTURE_INFERENCE_CAVEAT,
+            renderer.STRUCTURE_RESOURCE_PREFIX_CAVEAT,
+        ):
+            self.assertIn(renderer._tex_escape(caveat).encode("ascii"), self.tex)
+        self.assertIn(
+            "Protocol audits had already parsed individual structural fields",
+            renderer.STRUCTURE_TIMING_CAVEAT,
+        )
+        self.assertNotIn(
+            "before any structural value", renderer.STRUCTURE_TIMING_CAVEAT
+        )
+        self.assertEqual(self.tex.count(b" & Complete WBH log & "), 7)
+        self.assertEqual(self.tex.count(b" & Certified resource prefix & "), 7)
+        self.assertEqual(
+            self.tex.count(b" / maximum partition ratio & ")
+            + self.tex.count(b" / geometric-mean partition ratio & "),
+            28,
+        )
+        self.assert_structure_rejected(
+            lambda value: value.__setitem__("schema", "changed"),
+            "structure.schema",
+        )
+        self.assert_structure_rejected(
+            lambda value: value.__setitem__("unexpected", 1),
+            "structure keys changed",
+        )
+        self.assert_structure_rejected(
+            lambda value: value.__setitem__("decision_label", "prospective"),
+            "structure.decision_label",
+        )
+        self.assert_structure_rejected(
+            lambda value: value["interpretation"].__setitem__(
+                "theorem_validation", True
+            ),
+            "structure.interpretation",
+        )
+        self.assert_structure_rejected(
+            lambda value: value["input_identity"].__setitem__(
+                "properties_canonical_sha256", hashlib.sha256(b"drift").hexdigest()
+            ),
+            "structure.input_identity",
+        )
+        self.assert_structure_rejected(
+            lambda value: value["input_identity"]["config_order"].reverse(),
+            "structure.input_identity",
+        )
+        self.assert_structure_rejected(
+            lambda value: value["configs"][1].__setitem__("label", "blind_fw"),
+            "unexpected or duplicate label",
+        )
+
+    def test_structure_direct_tuple_and_partition_arithmetic_are_fail_closed(self):
+        direct = lambda value: value["configs"][1]["direct_W_A_V_T_U"]
+        self.assert_structure_rejected(
+            lambda value: direct(value).__setitem__("observed_cells", 1376),
+            "direct-tuple denominator arithmetic",
+        )
+        self.assert_structure_rejected(
+            lambda value: direct(value)["tuple_census"][0].__setitem__("U", 1),
+            "violates W >= T >= V",
+        )
+        self.assert_structure_rejected(
+            lambda value: direct(value)["summaries"]["W"].__setitem__("total", 1.0),
+            "summaries.W.mean arithmetic",
+        )
+        self.assert_structure_rejected(
+            lambda value: value["configs"][5]["direct_W_A_V_T_U"][
+                "unobserved_reason_counts"
+            ].update(construction_fallback=37, resource_before_direct_tuple=1),
+            "construction-fallback census disagrees",
+        )
+        self.assert_structure_rejected(
+            lambda value: value["configs"][1]["partition_ratios"][
+                "raw_complete_logs_not_necessarily_complete_searches"
+            ].__setitem__("eligible_logs", 1376),
+            "logs_without_partition_ratios exceeds",
+        )
+        self.assert_structure_rejected(
+            lambda value: value["configs"][1]["partition_ratios"][
+                "raw_complete_logs_not_necessarily_complete_searches"
+            ]["terminal_outcome_counts"][0].__setitem__("count", 1376),
+            "outcome counts do not conserve",
+        )
+
+        def undercount_partition_strata(value):
+            raw = value["configs"][1]["partition_ratios"][
+                "raw_complete_logs_not_necessarily_complete_searches"
+            ]
+            raw["eligible_logs"] -= 1
+            raw["logs_without_partition_ratios"] -= 1
+            raw["terminal_outcome_counts"][0]["count"] -= 1
+
+        self.assert_structure_rejected(
+            undercount_partition_strata,
+            "partition strata do not equal completed constructions",
+        )
+
+        def impossible_resource_prefix_stratum(value):
+            partition = value["configs"][1]["partition_ratios"]
+            raw = partition["raw_complete_logs_not_necessarily_complete_searches"]
+            prefix = partition["certified_resource_prefixes"]
+            raw["eligible_logs"] -= 1
+            raw["logs_without_partition_ratios"] -= 1
+            raw["terminal_outcome_counts"][10]["count"] -= 1
+            prefix["eligible_logs"] = 1
+            prefix["logs_without_partition_ratios"] = 1
+            prefix["terminal_outcome_counts"][10]["count"] = 1
+
+        self.assert_structure_rejected(
+            impossible_resource_prefix_stratum,
+            "resource-prefix structural logs exceed canonical incomplete prefixes",
+        )
+        analysis_config = copy.deepcopy(self.analysis["primary"]["configs"][1])
+        analysis_config["image"]["complete_certified"]["certified_cells"] -= 1
+        outcome_counts = {
+            row["planner_exit_code"]: row["cell_records"]
+            for row in self.analysis["terminal_outcome_census"]["per_config"][1]["outcomes"]
+        }
+        with self.assertRaisesRegex(
+            renderer.RenderError, "raw-complete structural logs exceed canonical complete logs"
+        ):
+            renderer._validate_structure_config(
+                self.structure["configs"][1],
+                renderer.CONFIGS[1],
+                analysis_config,
+                outcome_counts,
+            )
+
+        def paired_width_not_in_direct_census(value):
+            raw = value["configs"][1]["partition_ratios"][
+                "raw_complete_logs_not_necessarily_complete_searches"
+            ]
+            raw["logs_with_partition_ratios"] = 1
+            raw["logs_without_partition_ratios"] -= 1
+            raw["ratio_observation_terminal_outcome_counts"][0]["count"] = 1
+            raw["partition_ratio_census"] = [
+                {
+                    "partition_ratio_max": 2.0,
+                    "partition_ratio_geomean": 1.0,
+                    "count": 1,
+                }
+            ]
+            raw["summaries"]["partition_ratio_max"] = renderer._expected_structure_summary([2.0])
+            raw["summaries"]["partition_ratio_geomean"] = renderer._expected_structure_summary([1.0])
+            raw["paired_direct_tuple_and_ratio_cells"] = 1
+            raw["paired_W_U_partition_ratio_census"] = [
+                {
+                    "W": 6,
+                    "U": 26,
+                    "partition_ratio_max": 2.0,
+                    "partition_ratio_geomean": 1.0,
+                    "count": 1,
+                }
+            ]
+            for key, _display in renderer.STRUCTURE_CORRELATIONS:
+                raw["cross_task_descriptive_confounded_correlations"][key] = {
+                    "n": 1,
+                    "coefficient": None,
+                    "null_reason": "fewer-than-two-pairs",
+                }
+
+        self.assert_structure_rejected(
+            paired_width_not_in_direct_census,
+            "paired W/U census exceeds the direct-tuple census",
+        )
+
+        def width_only_prefix_outside_selector(value):
+            direct_config = value["configs"][1]["direct_W_A_V_T_U"]
+            direct_config["observed_cells"] -= 1
+            direct_config["unobserved_cells"] += 1
+            direct_config["observation_source_counts"]["completed_construction"] -= 1
+            direct_config["unobserved_reason_counts"][
+                "selector_width_only_resource_prefix"
+            ] += 1
+            direct_config["tuple_census"][0]["count"] -= 1
+            direct_config["tuple_census"][0]["completed_construction_cells"] -= 1
+            for key in (
+                "W", "A", "V", "T", "U", "U_over_W", "A_over_W", "V_over_W", "T_over_W"
+            ):
+                summary = direct_config["summaries"][key]
+                summary["observed"] -= 1
+                summary["total"] -= summary["mean"]
+
+        self.assert_structure_rejected(
+            width_only_prefix_outside_selector,
+            "has a selector-width-only prefix outside the selector",
+        )
+
+        def validate_selector_config(structure_config, analysis_config):
+            outcome_counts = {
+                row["planner_exit_code"]: row["cell_records"]
+                for row in self.analysis["terminal_outcome_census"]["per_config"][6][
+                    "outcomes"
+                ]
+            }
+            return renderer._validate_structure_config(
+                structure_config,
+                renderer.CONFIGS[6],
+                analysis_config,
+                outcome_counts,
+            )
+
+        # Reclassifying completed cells as certified heuristic-only resource
+        # prefixes used to pass when all local source and partition counts were
+        # changed consistently.  There are no canonical incomplete prefixes in
+        # this fixture, so even one such cell is impossible.
+        structure_config = copy.deepcopy(self.structure["configs"][6])
+        analysis_config = copy.deepcopy(self.analysis["primary"]["configs"][6])
+        direct_config = structure_config["direct_W_A_V_T_U"]
+        direct_config["observation_source_counts"]["completed_construction"] -= 1
+        direct_config["observation_source_counts"][
+            "heuristic_event_only_resource_prefix"
+        ] += 1
+        direct_config["tuple_census"][0]["completed_construction_cells"] -= 1
+        direct_config["tuple_census"][0][
+            "heuristic_event_only_resource_prefix_cells"
+        ] += 1
+        raw = structure_config["partition_ratios"][
+            "raw_complete_logs_not_necessarily_complete_searches"
+        ]
+        raw["eligible_logs"] -= 1
+        raw["logs_without_partition_ratios"] -= 1
+        raw["terminal_outcome_counts"][0]["count"] -= 1
+        analysis_config["construction"]["certification"]["certified_cells"] -= 1
+        with self.assertRaisesRegex(
+            renderer.RenderError,
+            "certified structural resource-prefix categories exceed",
+        ):
+            validate_selector_config(structure_config, analysis_config)
+
+        # The resource-outcome constraint is independent of the incomplete-log
+        # constraint: allow 107 hypothetical incomplete prefixes, but retain the
+        # canonical 106 resource outcomes.  The 106 raw resource outcomes plus
+        # 107 heuristic-only prefixes cannot describe disjoint cells.
+        structure_config = copy.deepcopy(self.structure["configs"][6])
+        analysis_config = copy.deepcopy(self.analysis["primary"]["configs"][6])
+        direct_config = structure_config["direct_W_A_V_T_U"]
+        direct_config["observation_source_counts"]["completed_construction"] -= 107
+        direct_config["observation_source_counts"][
+            "heuristic_event_only_resource_prefix"
+        ] += 107
+        direct_config["tuple_census"][0]["completed_construction_cells"] -= 107
+        direct_config["tuple_census"][0][
+            "heuristic_event_only_resource_prefix_cells"
+        ] += 107
+        raw = structure_config["partition_ratios"][
+            "raw_complete_logs_not_necessarily_complete_searches"
+        ]
+        raw["eligible_logs"] -= 107
+        raw["logs_without_partition_ratios"] -= 107
+        raw["terminal_outcome_counts"][0]["count"] -= 107
+        analysis_config["construction"]["certification"]["certified_cells"] -= 107
+        analysis_config["image"]["certified_prefix"]["certified_cells"] += 107
+        with self.assertRaisesRegex(
+            renderer.RenderError,
+            "structural resource categories exceed the canonical resource-outcome census",
+        ):
+            validate_selector_config(structure_config, analysis_config)
+
+        # A width-only selector prefix contributes to the canonical width total
+        # but not the direct W/A/V/T/U tuple census.  Its omitted total must be
+        # feasible under the canonical integer width range.
+        structure_config = copy.deepcopy(self.structure["configs"][6])
+        analysis_config = copy.deepcopy(self.analysis["primary"]["configs"][6])
+        direct_config = structure_config["direct_W_A_V_T_U"]
+        direct_config["observed_cells"] -= 1
+        direct_config["unobserved_cells"] += 1
+        direct_config["observation_source_counts"]["completed_construction"] -= 1
+        direct_config["unobserved_reason_counts"][
+            "selector_width_only_resource_prefix"
+        ] += 1
+        direct_config["tuple_census"][0]["count"] -= 1
+        direct_config["tuple_census"][0]["completed_construction_cells"] -= 1
+        for key in ("W", "A", "V", "T", "U", "U_over_W", "A_over_W", "V_over_W", "T_over_W"):
+            summary = direct_config["summaries"][key]
+            summary["observed"] -= 1
+            summary["total"] -= summary["mean"]
+        analysis_config["exact_cofactor_width"]["summary"]["total"] += 1
+        with self.assertRaisesRegex(
+            renderer.RenderError, "omitted selector-width total is infeasible"
+        ):
+            validate_selector_config(structure_config, analysis_config)
+        analysis_config["exact_cofactor_width"]["summary"].update(
+            minimum=0,
+            total=direct_config["summaries"]["W"]["total"],
+        )
+        with self.assertRaisesRegex(
+            renderer.RenderError, "omitted selector-width total is infeasible"
+        ):
+            validate_selector_config(structure_config, analysis_config)
+
+    def test_structure_ratio_correlation_and_candidate_censuses_are_fail_closed(self):
+        raw = copy.deepcopy(self.structure["configs"][1]["partition_ratios"][
+            "raw_complete_logs_not_necessarily_complete_searches"
+        ])
+        raw["logs_with_partition_ratios"] = 2
+        raw["logs_without_partition_ratios"] = raw["eligible_logs"] - 2
+        raw["ratio_observation_terminal_outcome_counts"][0]["count"] = 2
+        raw["partition_ratio_census"] = [
+            {"partition_ratio_max": 2.0, "partition_ratio_geomean": 1.0, "count": 1},
+            {"partition_ratio_max": 4.0, "partition_ratio_geomean": 2.0, "count": 1},
+        ]
+        for key, values in (
+            ("partition_ratio_max", [2.0, 4.0]),
+            ("partition_ratio_geomean", [1.0, 2.0]),
+        ):
+            raw["summaries"][key] = renderer._expected_structure_summary(values)
+        raw["paired_direct_tuple_and_ratio_cells"] = 2
+        raw["paired_W_U_partition_ratio_census"] = [
+            {"W": 2, "U": 4, "partition_ratio_max": 2.0, "partition_ratio_geomean": 1.0, "count": 1},
+            {"W": 4, "U": 8, "partition_ratio_max": 4.0, "partition_ratio_geomean": 2.0, "count": 1},
+        ]
+        for key in (
+            "W_vs_partition_ratio_max", "U_vs_partition_ratio_max",
+            "W_vs_partition_ratio_geomean", "U_vs_partition_ratio_geomean",
+        ):
+            raw["cross_task_descriptive_confounded_correlations"][key] = {
+                "n": 2, "coefficient": 1.0, "null_reason": None
+            }
+        renderer._validate_structure_stratum(
+            raw, "synthetic.raw_complete", resource_prefix=False
+        )
+
+        projection_drift = copy.deepcopy(raw)
+        projection_drift["paired_W_U_partition_ratio_census"][0][
+            "partition_ratio_max"
+        ] = 3.0
+        with self.assertRaisesRegex(renderer.RenderError, "does not project"):
+            renderer._validate_structure_stratum(
+                projection_drift,
+                "synthetic.raw_complete",
+                resource_prefix=False,
+            )
+
+        changed = copy.deepcopy(raw)
+        changed["cross_task_descriptive_confounded_correlations"][
+            "W_vs_partition_ratio_max"
+        ]["coefficient"] = -1.0
+        with self.assertRaisesRegex(renderer.RenderError, "coefficient arithmetic"):
+            renderer._validate_structure_stratum(
+                changed, "synthetic.raw_complete", resource_prefix=False
+            )
+
+        pool = lambda value: value["selector_candidate_pool"]
+        self.assert_structure_rejected(
+            lambda value: pool(value)["deduplicated_candidate_counts"].__setitem__(
+                "total", 4130
+            ),
+            "candidate materialization arithmetic",
+        )
+        self.assert_structure_rejected(
+            lambda value: pool(value)["materialized_W_U_census"][0].__setitem__(
+                "deduplicated_candidate_count", 1376
+            ),
+            "materialized W/U census does not conserve",
+        )
+        self.assert_structure_rejected(
+            lambda value: pool(value)["source_status_counts"][0].__setitem__(
+                "materialized_task_pools", 1376
+            ),
+            "source status does not conserve",
+        )
+
+    def test_structure_identity_arrays_are_order_insensitive_and_normalized(self):
+        shuffled = copy.deepcopy(self.structure)
+        shuffled["configs"].reverse()
+        for config in shuffled["configs"]:
+            direct = config["direct_W_A_V_T_U"]
+            direct["tuple_census"].reverse()
+            for stratum in config["partition_ratios"].values():
+                stratum["terminal_outcome_counts"].reverse()
+                stratum["ratio_observation_terminal_outcome_counts"].reverse()
+                stratum["partition_ratio_census"].reverse()
+                if "paired_W_U_partition_ratio_census" in stratum:
+                    stratum["paired_W_U_partition_ratio_census"].reverse()
+        pool = shuffled["selector_candidate_pool"]
+        pool["deduplicated_candidates_per_pool_histogram"].reverse()
+        pool["source_status_counts"].reverse()
+        pool["materialized_W_U_census"].reverse()
+        raw = renderer.canonical_json(shuffled).encode("ascii") + b"\n"
+        digest = hashlib.sha256(raw).hexdigest()
+        shuffled_data = renderer._paper_data_with_test_pins(
+            self.analysis,
+            self.digest,
+            launch_pins=self.launch_pins,
+            structure=shuffled,
+            structure_sha256=digest,
+            p5_analysis=self.p5_analysis,
+            p5_analysis_sha256=self.p5_digest,
+        )
+        shuffled_tex = renderer._render_tex_with_test_pins(
+            self.analysis,
+            self.digest,
+            launch_pins=self.launch_pins,
+            structure=shuffled,
+            structure_sha256=digest,
+            p5_analysis=self.p5_analysis,
+            p5_analysis_sha256=self.p5_digest,
+        )
+        normalized_tex = shuffled_tex.replace(
+            digest.encode("ascii"), self.structure_digest.encode("ascii")
+        ).replace(
+            renderer.sha256_json(shuffled_data).encode("ascii"),
+            renderer.sha256_json(self.paper_data).encode("ascii"),
+        )
+        self.assertEqual(normalized_tex, self.tex)
+        shuffled_data["structure_sha256"] = self.structure_digest
+        self.assertEqual(
+            renderer.canonical_json(shuffled_data),
+            renderer.canonical_json(self.paper_data),
+        )
+
+    def test_p5_schema_identity_matrix_count_and_arithmetic_fail_closed(self):
+        self.assert_p5_rejected(
+            lambda value: value.__setitem__("schema", "changed"),
+            "P5 analysis.schema",
+        )
+        self.assert_p5_rejected(
+            lambda value: value["execution"].__setitem__(
+                "properties_canonical_sha256", hashlib.sha256(b"drift").hexdigest()
+            ),
+            "P5 execution identity",
+        )
+        self.assert_p5_rejected(
+            lambda value: value["execution"].__setitem__(
+                "option_matrix_sha256", hashlib.sha256(b"matrix drift").hexdigest()
+            ),
+            "P5 execution identity",
+        )
+        for key, changed in (
+            ("task_count", 91),
+            ("domain_count", 45),
+            ("config_count", 6),
+            ("cell_count", 643),
+        ):
+            self.assert_p5_rejected(
+                lambda value, key=key, changed=changed: value["execution"].__setitem__(
+                    key, changed
+                ),
+                "P5 execution identity",
+            )
+        self.assert_p5_rejected(
+            lambda value: value["secondary"]["configs"][0]["coverage"].__setitem__(
+                "rate", 0.0
+            ),
+            "coverage.rate arithmetic",
+        )
+        self.assert_p5_rejected(
+            lambda value: value["secondary"]["configs"][0].__setitem__(
+                "micro_par2_seconds", 0.0
+            ),
+            "micro_par2_seconds arithmetic",
+        )
+        self.assert_p5_rejected(
+            lambda value: value["secondary"]["configs"][-1][
+                "cofactor_width"
+            ].__setitem__("maximum", 2),
+            "width maximum changed",
+        )
+        self.assert_p5_rejected(
+            lambda value: value["primary"]["domain_contributions"][0][
+                "difference"
+            ].__setitem__("numerator", 9),
+            "exact fraction",
+        )
+
+        stale = copy.deepcopy(self.p5_analysis)
+        stale["execution"]["properties_canonical_sha256"] = hashlib.sha256(
+            b"changed in-memory P5"
+        ).hexdigest()
+        with self.assertRaisesRegex(renderer.RenderError, "in-memory P5 analysis"):
+            renderer._paper_data_with_test_pins(
+                self.analysis,
+                self.digest,
+                launch_pins=self.launch_pins,
+                structure=self.structure,
+                structure_sha256=self.structure_digest,
+                p5_analysis=stale,
+                p5_analysis_sha256=self.p5_digest,
+            )
+        stale_raw = renderer.canonical_json(stale).encode("ascii") + b"\n"
+        stale_digest = hashlib.sha256(stale_raw).hexdigest()
+        with self.assertRaisesRegex(renderer.RenderError, "pinned digest"):
+            renderer._paper_data_with_test_pins(
+                self.analysis,
+                self.digest,
+                launch_pins=self.launch_pins,
+                structure=self.structure,
+                structure_sha256=self.structure_digest,
+                p5_analysis=stale,
+                p5_analysis_sha256=stale_digest,
+            )
+        with self.assertRaisesRegex(renderer.RenderError, "supplied together"):
+            renderer._paper_data_with_test_pins(
+                self.analysis,
+                self.digest,
+                launch_pins=self.launch_pins,
+                structure=self.structure,
+                structure_sha256=self.structure_digest,
+                p5_analysis=self.p5_analysis,
+            )
+
+    def test_p5_rows_are_indexed_by_label_and_reject_duplicate_or_missing(self):
+        shuffled = copy.deepcopy(self.p5_analysis)
+        shuffled["secondary"]["configs"].reverse()
+        shuffled["secondary"]["comparisons"].reverse()
+        raw = renderer.canonical_json(shuffled).encode("ascii") + b"\n"
+        digest = hashlib.sha256(raw).hexdigest()
+        renderer._validate_p5_analysis(shuffled, digest)
+        shuffled_data = renderer._p5_paper_input(shuffled, digest)
+        self.assertEqual(
+            [row["label"] for row in shuffled_data["configs"]],
+            list(renderer.CONFIG_LABELS),
+        )
+        original_data = renderer._p5_paper_input(
+            self.p5_analysis, self.p5_digest
+        )
+        for row in shuffled_data["configs"]:
+            row_original = next(
+                entry
+                for entry in original_data["configs"]
+                if entry["label"] == row["label"]
+            )
+            self.assertEqual(
+                {key: value for key, value in row.items()},
+                {key: value for key, value in row_original.items()},
+            )
+        p6_by_label = {row["label"]: row for row in self.paper_data["configs"]}
+        shuffled_rows = [
+            renderer._combined_stage_row(row, p6_by_label[row["label"]])
+            for row in shuffled_data["configs"]
+        ]
+        original_rows = [
+            renderer._combined_stage_row(row, p6_by_label[row["label"]])
+            for row in original_data["configs"]
+        ]
+        self.assertEqual(shuffled_rows, original_rows)
+
+        self.assert_p5_rejected(
+            lambda value: value["secondary"]["configs"][-1].__setitem__(
+                "label", value["secondary"]["configs"][0]["label"]
+            ),
+            "duplicate label",
+        )
+        self.assert_p5_rejected(
+            lambda value: value["secondary"]["configs"].pop(),
+            "must contain 7 entries",
+        )
+        self.assert_p5_rejected(
+            lambda value: value["secondary"]["comparisons"][-1].__setitem__(
+                "name", value["secondary"]["comparisons"][0]["name"]
+            ),
+            "duplicate name",
+        )
+
+    def test_p5_loader_rejects_hash_sidecar_canonical_and_symlink_drift(self):
+        with tempfile.TemporaryDirectory(prefix="renderer-p5-loader-") as raw_dir:
+            root = Path(raw_dir)
+            artifact = root / "analysis-v3.json"
+            sidecar = Path(str(artifact) + ".sha256")
+            artifact.write_bytes(self.p5_raw)
+            sidecar.write_bytes(
+                "{}  {}\n".format(self.p5_digest, artifact.name).encode("ascii")
+            )
+            loaded, digest = renderer._load_p5_analysis_with_expected_sha(
+                artifact, expected_analysis_sha256=self.p5_digest
+            )
+            self.assertEqual(loaded, self.p5_analysis)
+            self.assertEqual(digest, self.p5_digest)
+
+            artifact.write_bytes(self.p5_raw[:-2] + b" \n")
+            with self.assertRaisesRegex(renderer.RenderError, "pinned digest"):
+                renderer._load_p5_analysis_with_expected_sha(
+                    artifact, expected_analysis_sha256=self.p5_digest
+                )
+
+            artifact.write_bytes(self.p5_raw)
+            sidecar.write_bytes(
+                "{} *{}\n".format(self.p5_digest, artifact.name).encode("ascii")
+            )
+            with self.assertRaisesRegex(renderer.RenderError, "sidecar"):
+                renderer._load_p5_analysis_with_expected_sha(
+                    artifact, expected_analysis_sha256=self.p5_digest
+                )
+
+            noncanonical = self.p5_raw[:-1] + b" \n"
+            noncanonical_digest = hashlib.sha256(noncanonical).hexdigest()
+            artifact.write_bytes(noncanonical)
+            sidecar.write_bytes(
+                "{}  {}\n".format(noncanonical_digest, artifact.name).encode(
+                    "ascii"
+                )
+            )
+            with self.assertRaisesRegex(renderer.RenderError, "canonical ASCII JSON"):
+                renderer._load_p5_analysis_with_expected_sha(
+                    artifact, expected_analysis_sha256=noncanonical_digest
+                )
+
+            target = root / "real-analysis-v3.json"
+            target.write_bytes(self.p5_raw)
+            artifact.unlink()
+            artifact.symlink_to(target)
+            sidecar.write_bytes(
+                "{}  {}\n".format(self.p5_digest, artifact.name).encode("ascii")
+            )
+            with self.assertRaises(renderer.RenderError):
+                renderer._load_p5_analysis_with_expected_sha(
+                    artifact, expected_analysis_sha256=self.p5_digest
+                )
+
+    def test_p5_path_is_fixed_confined_and_symlink_safe(self):
+        with tempfile.TemporaryDirectory(prefix="renderer-p5-path-") as raw_dir:
+            root = Path(raw_dir)
+            expected = root / "artifacts" / "p5" / "analysis-v3.json"
+            expected.parent.mkdir(parents=True)
+            expected.write_bytes(self.p5_raw)
+            self.assertEqual(
+                renderer._validate_p5_input_path(
+                    expected, expected=expected, root=root
+                ),
+                expected,
+            )
+            with self.assertRaisesRegex(renderer.RenderError, "restricted"):
+                renderer._validate_p5_input_path(
+                    root / "other.json", expected=expected, root=root
+                )
+            outside = root.parent / "p5-outside.json"
+            with self.assertRaisesRegex(renderer.RenderError, "outside"):
+                renderer._validate_p5_input_path(
+                    outside, expected=outside, root=root
+                )
+
+            expected.unlink()
+            target = root / "target.json"
+            target.write_bytes(self.p5_raw)
+            expected.symlink_to(target)
+            with self.assertRaisesRegex(renderer.RenderError, "symlink component"):
+                renderer._validate_p5_input_path(
+                    expected, expected=expected, root=root
+                )
+
+        with tempfile.TemporaryDirectory(prefix="renderer-p5-parent-") as raw_dir:
+            root = Path(raw_dir)
+            real = root / "real"
+            real.mkdir()
+            (root / "linked").symlink_to(real, target_is_directory=True)
+            expected = root / "linked" / "analysis-v3.json"
+            (real / "analysis-v3.json").write_bytes(self.p5_raw)
+            with self.assertRaisesRegex(renderer.RenderError, "symlink component"):
+                renderer._validate_p5_input_path(
+                    expected, expected=expected, root=root
+                )
+
+    def test_cli_p5_input_defaults_to_fixed_path_and_self_test_rejects_override(self):
+        args = renderer.parse_args(["--self-test"])
+        self.assertEqual(args.p5_analysis, renderer.DEFAULT_P5_ANALYSIS)
+        self.assertEqual(args.structure, renderer.DEFAULT_STRUCTURE)
+        self.assertEqual(args.structure_sidecar, renderer.DEFAULT_STRUCTURE_SIDECAR)
+        with mock.patch("sys.stderr"):
+            with self.assertRaises(SystemExit):
+                renderer.parse_args(
+                    [
+                        "--self-test",
+                        "--p5-analysis",
+                        "elsewhere/analysis-v3.json",
+                    ]
+                )
+        with mock.patch("sys.stderr"):
+            with self.assertRaises(SystemExit):
+                renderer.parse_args(
+                    ["--self-test", "--structure", "elsewhere/structure-v1.json"]
+                )
+        with self.assertRaisesRegex(renderer.RenderError, "restricted"):
+            renderer.load_p5_analysis(Path("elsewhere/analysis-v3.json"))
+        with self.assertRaisesRegex(renderer.RenderError, "restricted"):
+            renderer._validate_structure_input_path(
+                Path("elsewhere/structure-v1.json")
+            )
+        with tempfile.TemporaryDirectory(prefix="structure-path-") as raw_dir:
+            root = Path(raw_dir)
+            real = root / "real"
+            real.mkdir()
+            (real / "structure-v1.json").write_bytes(self.structure_raw)
+            (root / "linked").symlink_to(real, target_is_directory=True)
+            expected = root / "linked" / "structure-v1.json"
+            with self.assertRaisesRegex(renderer.RenderError, "symlink component"):
+                renderer._validate_structure_input_path(
+                    expected, expected=expected, root=root
+                )
 
     def test_output_uses_exact_label_index_and_unique_tex_macros(self):
         labels = [entry["label"] for entry in self.paper_data["configs"]]
@@ -83,12 +869,82 @@ class FullPaperRendererTest(unittest.TestCase):
         macros = re.findall(r"\\newcommand\{\\([A-Za-z]+)\}", text)
         self.assertEqual(len(macros), len(set(macros)))
         self.assertIn("ArrFullConfigRows", macros)
+        self.assertIn("ArrFullCombinedStageRows", macros)
         self.assertIn("ArrFullPairedMetricRows", macros)
         self.assertIn("ArrFullDomainCoverageRows", macros)
         self.assertIn("ArrFullTerminalOutcomeRows", macros)
         self.assertIn("ArrFullTerminalOutcomePerConfigRows", macros)
         for expected in renderer.CONFIGS:
             self.assertIn(expected["paper_label"], text)
+
+    def test_combined_stage_rows_have_exact_descriptive_five_column_schema(self):
+        text = self.tex.decode("utf-8")
+        match = re.search(
+            r"\\newcommand\{\\ArrFullCombinedStageRows\}\{%\n(.*?)\n\}",
+            text,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        rows = match.group(1).splitlines()
+        self.assertEqual(len(rows), len(renderer.CONFIGS))
+        p5_by_label = {
+            row["label"]: row for row in self.paper_data["p5_heldout"]["configs"]
+        }
+        p6_by_label = {row["label"]: row for row in self.paper_data["configs"]}
+        expected_rows = [
+            renderer._combined_stage_row(p5_by_label[label], p6_by_label[label])
+            for label in renderer.CONFIG_LABELS
+        ]
+        self.assertEqual(rows, expected_rows)
+        for row in rows:
+            self.assertEqual(len(row.removesuffix(" \\\\%").split(" & ")), 5)
+        self.assertEqual(
+            rows[0],
+            "Blind forward & $40/92$ & 348.1627 & ${}/1{{,}}377$ & {} \\\\%".format(
+                renderer._tex_int(p6_by_label["blind_fw"]["coverage"]["solved"]),
+                renderer._decimal(
+                    p6_by_label["blind_fw"]["micro_par2_seconds"], 4
+                ),
+            ),
+        )
+        self.assertIn(
+            "% Combined-stage rows are within-stage descriptive summaries only; "
+            "no between-stage causal contrast.",
+            text,
+        )
+        self.assertIn(renderer.COMBINED_STAGE_CAVEAT, text)
+        self.assertNotIn("between-stage delta", match.group(0).lower())
+
+        macros = set(re.findall(r"\\newcommand\{\\([A-Za-z]+)\}", text))
+        for name in (
+            "ArrFullPfiveTaskDenominator",
+            "ArrFullPsixTaskDenominator",
+            "ArrFullPfiveDomainDenominator",
+            "ArrFullPsixDomainDenominator",
+            "ArrFullPfiveCellDenominator",
+            "ArrFullPsixCellDenominator",
+            "ArrFullCombinedStageCaveat",
+            "ArrFullPfiveAnalysisSha",
+            "ArrFullPfivePropertiesSha",
+            "ArrFullPfiveAnalysisSchema",
+            "ArrFullPfiveProtocol",
+            "ArrFullPfiveProtocolRevision",
+        ):
+            self.assertIn(name, macros)
+        self.assertIn(
+            "\\newcommand{\\ArrFullPfiveTaskDenominator}{92}", text
+        )
+        self.assertIn(
+            "\\newcommand{\\ArrFullPsixTaskDenominator}{1{,}377}", text
+        )
+        for expected in renderer.CONFIGS:
+            for stage in ("Pfive", "Psix"):
+                self.assertIn(
+                    "ArrFull{}{}Solved".format(stage, expected["suffix"]), macros
+                )
+                self.assertIn(
+                    "ArrFull{}{}ParTwo".format(stage, expected["suffix"]), macros
+                )
 
     def test_identity_layout_and_order_mutations_fail_closed(self):
         self.assert_rejected(
@@ -280,10 +1136,22 @@ class FullPaperRendererTest(unittest.TestCase):
         shuffled_raw = renderer.canonical_json(shuffled).encode("ascii") + b"\n"
         shuffled_digest = hashlib.sha256(shuffled_raw).hexdigest()
         shuffled_data = renderer._paper_data_with_test_pins(
-            shuffled, shuffled_digest, launch_pins=self.launch_pins
+            shuffled,
+            shuffled_digest,
+            launch_pins=self.launch_pins,
+            structure=self.structure,
+            structure_sha256=self.structure_digest,
+            p5_analysis=self.p5_analysis,
+            p5_analysis_sha256=self.p5_digest,
         )
         shuffled_tex = renderer._render_tex_with_test_pins(
-            shuffled, shuffled_digest, launch_pins=self.launch_pins
+            shuffled,
+            shuffled_digest,
+            launch_pins=self.launch_pins,
+            structure=self.structure,
+            structure_sha256=self.structure_digest,
+            p5_analysis=self.p5_analysis,
+            p5_analysis_sha256=self.p5_digest,
         )
         normalized_tex = shuffled_tex.replace(
             shuffled_digest.encode("ascii"), self.digest.encode("ascii")
@@ -518,6 +1386,37 @@ class FullPaperRendererTest(unittest.TestCase):
                     launch_pins=self.launch_pins,
                 )
 
+            structure_artifact = root / "structure-v1.json"
+            structure_sidecar = Path(str(structure_artifact) + ".sha256")
+            structure_artifact.write_bytes(self.structure_raw)
+            structure_sidecar.write_text(
+                "{}  {}\n".format(self.structure_digest, structure_artifact.name),
+                encoding="ascii",
+            )
+            loaded_structure, loaded_structure_digest = (
+                renderer._load_frozen_structure_with_test_pin(
+                    structure_artifact,
+                    expected_structure_sha256=self.structure_digest,
+                    analysis=self.analysis,
+                    analysis_sha256=self.digest,
+                    launch_pins=self.launch_pins,
+                )
+            )
+            self.assertEqual(loaded_structure, self.structure)
+            self.assertEqual(loaded_structure_digest, self.structure_digest)
+            structure_sidecar.write_text(
+                "{} *{}\n".format(self.structure_digest, structure_artifact.name),
+                encoding="ascii",
+            )
+            with self.assertRaisesRegex(renderer.RenderError, "structure sidecar"):
+                renderer._load_frozen_structure_with_test_pin(
+                    structure_artifact,
+                    expected_structure_sha256=self.structure_digest,
+                    analysis=self.analysis,
+                    analysis_sha256=self.digest,
+                    launch_pins=self.launch_pins,
+                )
+
     def test_noncanonical_and_duplicate_json_are_rejected(self):
         value = {"a": 1}
         with self.assertRaisesRegex(renderer.RenderError, "one newline"):
@@ -698,12 +1597,13 @@ class FullPaperRendererTest(unittest.TestCase):
 
     def test_production_pin_state_is_atomic_and_public_contract_is_v4(self):
         partial = renderer._production_pin_values()
-        partial["analysis_sha256"] = self.digest
+        partial["analysis_sha256"] = None
         with self.assertRaisesRegex(renderer.RenderError, "partially set"):
             renderer._reviewed_production_pins_from(partial)
 
         overrides = {
             "EXPECTED_FULL_ANALYSIS_SHA256": self.digest,
+            "EXPECTED_FULL_STRUCTURE_SHA256": self.structure_digest,
             "EXPECTED_PROTOCOL_REVISION": self.launch_pins["protocol_revision"],
             "EXPECTED_FULL_RUNNER_SHA256": self.launch_pins[
                 "full_runner_source_sha256"
@@ -719,19 +1619,82 @@ class FullPaperRendererTest(unittest.TestCase):
             ],
         }
         with mock.patch.multiple(renderer, **overrides):
-            renderer.validate_analysis(self.analysis, self.digest)
-            self.assertEqual(renderer.paper_data(self.analysis, self.digest), self.paper_data)
-            self.assertEqual(renderer.render_tex(self.analysis, self.digest), self.tex)
+            for call in (
+                lambda: renderer.validate_analysis(self.analysis, self.digest),
+                lambda: renderer.paper_data(self.analysis, self.digest),
+                lambda: renderer.render_tex(self.analysis, self.digest),
+            ):
+                with self.assertRaisesRegex(renderer.RenderError, "structure value"):
+                    call()
+            renderer.validate_analysis(
+                self.analysis,
+                self.digest,
+                structure=self.structure,
+                structure_sha256=self.structure_digest,
+            )
+            self.assertEqual(
+                renderer.paper_data(
+                    self.analysis,
+                    self.digest,
+                    structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                ),
+                self.paper_data,
+            )
+            self.assertEqual(
+                renderer.render_tex(
+                    self.analysis,
+                    self.digest,
+                    structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                ),
+                self.tex,
+            )
             stale = copy.deepcopy(self.analysis)
             stale["execution"]["properties_canonical_sha256"] = hashlib.sha256(
                 b"different in-memory value"
             ).hexdigest()
             for call in (
-                lambda: renderer.validate_analysis(stale, self.digest),
-                lambda: renderer.paper_data(stale, self.digest),
-                lambda: renderer.render_tex(stale, self.digest),
+                lambda: renderer.validate_analysis(
+                    stale, self.digest, structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                ),
+                lambda: renderer.paper_data(
+                    stale, self.digest, structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                ),
+                lambda: renderer.render_tex(
+                    stale, self.digest, structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                ),
             ):
                 with self.assertRaisesRegex(renderer.RenderError, "in-memory canonical"):
+                    call()
+            stale_p5 = copy.deepcopy(self.p5_analysis)
+            stale_p5["execution"]["properties_canonical_sha256"] = hashlib.sha256(
+                b"different in-memory P5 value"
+            ).hexdigest()
+            for call in (
+                lambda: renderer.paper_data(
+                    self.analysis,
+                    self.digest,
+                    structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                    p5_analysis=stale_p5,
+                    p5_analysis_sha256=self.p5_digest,
+                ),
+                lambda: renderer.render_tex(
+                    self.analysis,
+                    self.digest,
+                    structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                    p5_analysis=stale_p5,
+                    p5_analysis_sha256=self.p5_digest,
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    renderer.RenderError, "in-memory P5 analysis"
+                ):
                     call()
             with tempfile.TemporaryDirectory(prefix="renderer-public-v4-") as raw_dir:
                 artifact = Path(raw_dir) / "analysis-v4.json"
@@ -773,9 +1736,18 @@ class FullPaperRendererTest(unittest.TestCase):
         canceled_overrides["EXPECTED_FULL_ANALYSIS_SHA256"] = canceled_digest
         with mock.patch.multiple(renderer, **canceled_overrides):
             for call in (
-                lambda: renderer.validate_analysis(canceled, canceled_digest),
-                lambda: renderer.paper_data(canceled, canceled_digest),
-                lambda: renderer.render_tex(canceled, canceled_digest),
+                lambda: renderer.validate_analysis(
+                    canceled, canceled_digest, structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                ),
+                lambda: renderer.paper_data(
+                    canceled, canceled_digest, structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                ),
+                lambda: renderer.render_tex(
+                    canceled, canceled_digest, structure=self.structure,
+                    structure_sha256=self.structure_digest,
+                ),
             ):
                 with self.assertRaisesRegex(renderer.RenderError, "execution.protocol"):
                     call()
@@ -789,35 +1761,54 @@ class FullPaperRendererTest(unittest.TestCase):
                 with self.assertRaisesRegex(renderer.RenderError, "execution.protocol"):
                     renderer.load_frozen_analysis(artifact)
 
-    def test_ordinary_gate_remains_unset(self):
-        self.assertIsNone(renderer.EXPECTED_FULL_ANALYSIS_SHA256)
+    def test_ordinary_gate_uses_the_atomically_reviewed_production_pins(self):
+        expected = {
+            "analysis_sha256": (
+                "39958f1984d9c33fc2717ef221881751e24dc68434932b6ea9b92e4dd3f2b1c5"
+            ),
+            "structure_sha256": (
+                "bde07d0d2e279b5f8e06b5e59eb67aa7f513a1fae58f101fa0e87bc01030cc69"
+            ),
+            "protocol": "arrhenius-selector-full-population-v4",
+            "protocol_revision": "0cb19e111da36fbb32d1b3bc0f07a52b733fbbe9",
+            "full_runner_source_sha256": (
+                "3a7cfd4307217db13a8ec42d9157cd2290b0e8fba962f9aa40815af80d06058f"
+            ),
+            "planner_revision": "a3486a027a0f281e762cb6d66d72311455b66b33",
+            "planner_binary_sha256": (
+                "2887194c74acc88273702b807dba28e4fd8f7ae3d916562bcf1b83ec79632758"
+            ),
+            "planner_preprocess_sha256": (
+                "40e1d5580ec447cb606ead447317469bd861bd8cda398095df3fbf22922d0d23"
+            ),
+            "prospective_start_job_sha256": (
+                "c83c880c1bfaa503cfffab69c91abb037e58b4424b7216480aa551631aed043f"
+            ),
+        }
+        self.assertEqual(renderer._production_pin_values(), expected)
+        reviewed = renderer.reviewed_production_pins()
+        self.assertEqual(reviewed["analysis_sha256"], expected["analysis_sha256"])
+        self.assertEqual(reviewed["structure_sha256"], expected["structure_sha256"])
         self.assertEqual(
-            renderer.FULL_PROTOCOL,
-            "arrhenius-selector-full-population-v4",
+            reviewed["launch"],
+            {key: expected[key] for key in renderer.LAUNCH_PIN_KEYS},
         )
-        for value in (
-            renderer.EXPECTED_PROTOCOL_REVISION,
-            renderer.EXPECTED_FULL_RUNNER_SHA256,
-            renderer.EXPECTED_PLANNER_BINARY_SHA256,
-            renderer.EXPECTED_PLANNER_PREPROCESS_SHA256,
-            renderer.EXPECTED_PROSPECTIVE_JOB_SHA256,
-        ):
-            self.assertIsNone(value)
-        self.assertEqual(
-            renderer.EXPECTED_PLANNER_REVISION,
-            "a3486a027a0f281e762cb6d66d72311455b66b33",
+
+        analysis, analysis_sha256 = renderer.load_frozen_analysis(
+            renderer.DEFAULT_ANALYSIS
         )
-        with self.assertRaisesRegex(renderer.RenderError, "all unset"):
-            renderer.reviewed_production_pins()
-        public_calls = (
-            lambda: renderer.load_frozen_analysis(Path("does-not-need-to-exist.json")),
-            lambda: renderer.validate_analysis(self.analysis, self.digest),
-            lambda: renderer.paper_data(self.analysis, self.digest),
-            lambda: renderer.render_tex(self.analysis, self.digest),
+        structure_value, structure_sha256 = renderer.load_frozen_structure(
+            analysis=analysis,
+            analysis_sha256=analysis_sha256,
         )
-        for call in public_calls:
-            with self.assertRaisesRegex(renderer.RenderError, "all unset"):
-                call()
+        self.assertEqual(analysis_sha256, expected["analysis_sha256"])
+        self.assertEqual(structure_sha256, expected["structure_sha256"])
+        renderer.validate_analysis(
+            analysis,
+            analysis_sha256,
+            structure=structure_value,
+            structure_sha256=structure_sha256,
+        )
 
 
 if __name__ == "__main__":
