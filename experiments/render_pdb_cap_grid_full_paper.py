@@ -43,10 +43,16 @@ DEFAULT_OUTPUT = REPOSITORY_ROOT / "paper" / "generated" / "pdb-cap-grid-full-v1
 
 # Freeze these four values together only after independent review of the final
 # canonical analysis artifact.  All remain unset prospectively by design.
-EXPECTED_FULL_ANALYSIS_SHA256 = None
-EXPECTED_PROTOCOL_REVISION = None
-EXPECTED_PROPERTIES_CANONICAL_SHA256 = None
-EXPECTED_PROSPECTIVE_JOB_SHA256 = None
+EXPECTED_FULL_ANALYSIS_SHA256 = (
+    "fb8db53b4f5eea7306961351d110b0d331abc87fa2a31242321de429f32ad60a"
+)
+EXPECTED_PROTOCOL_REVISION = "0fa5ecc1d93884e9cf35b433bacfe684765ba112"
+EXPECTED_PROPERTIES_CANONICAL_SHA256 = (
+    "bddc69b2eedcc1442e6a42517d4d294e9a6ae0ab7dbf4aebc49714b152c0f215"
+)
+EXPECTED_PROSPECTIVE_JOB_SHA256 = (
+    "24efc07fc6fdfd19d2a7532d4e717f072b1f5a2e893b946b529aedf4158ebc81"
+)
 
 ANALYSIS_SCHEMA = "symbolic-search-heuristics/pdb-cap-grid-focused-full/v1"
 ANALYSIS_PROTOCOL = "pdb-cap-grid-focused-full-analysis-v1"

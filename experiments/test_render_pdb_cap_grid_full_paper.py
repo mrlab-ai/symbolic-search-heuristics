@@ -127,18 +127,21 @@ class FocusedCapGridPaperRendererTests(unittest.TestCase):
         self.assertEqual(len(set(observed_totals)), len(observed_totals))
 
     def test_production_gate_precedes_any_artifact_read(self):
-        self.assertIsNone(renderer.EXPECTED_FULL_ANALYSIS_SHA256)
-        self.assertIsNone(renderer.EXPECTED_PROTOCOL_REVISION)
-        self.assertIsNone(renderer.EXPECTED_PROPERTIES_CANONICAL_SHA256)
-        self.assertIsNone(renderer.EXPECTED_PROSPECTIVE_JOB_SHA256)
-        with mock.patch.object(
+        with mock.patch.multiple(
             renderer,
-            "_read_regular",
-            side_effect=AssertionError("artifact must not be inspected"),
-        ) as reader:
-            with self.assertRaisesRegex(renderer.RenderError, "pins are unset"):
-                renderer.load_frozen_analysis(Path("/outcome-bearing/path"))
-            reader.assert_not_called()
+            EXPECTED_FULL_ANALYSIS_SHA256=None,
+            EXPECTED_PROTOCOL_REVISION=None,
+            EXPECTED_PROPERTIES_CANONICAL_SHA256=None,
+            EXPECTED_PROSPECTIVE_JOB_SHA256=None,
+        ):
+            with mock.patch.object(
+                renderer,
+                "_read_regular",
+                side_effect=AssertionError("artifact must not be inspected"),
+            ) as reader:
+                with self.assertRaisesRegex(renderer.RenderError, "pins are unset"):
+                    renderer.load_frozen_analysis(Path("/outcome-bearing/path"))
+                reader.assert_not_called()
 
     def test_schema_provenance_counts_and_config_order_fail_closed(self):
         self.assert_rejected(
