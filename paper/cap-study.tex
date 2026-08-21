@@ -1,0 +1,342 @@
+\section{Cap-Aware Width-Constrained PDB Selection}
+\label{sec:supp-cap-selection}
+
+This section specifies the focused implementation evaluated by the frozen
+protocol.  It uses the safe finite-value ceiling from
+Proposition~\ref{prop-transform}: for a PDB distance \(d<\infty\),
+
+\[
+  \phi_\kappa(d)=\min(d,\kappa),
+  \qquad \phi_\kappa(\infty)=\infty.
+\]
+
+Thus each tested transform remains admissible and consistent, preserves
+abstract dead ends, and cannot have larger cofactor width than its exact-value
+parent.  The empirical comparison concerns whether selecting this transform
+inside a fixed exact-width budget is useful; it does not modify the formal
+safety results in Sections~1--9.
+
+\subsection{Shared Pattern Generators and Options}
+
+Both compared selectors use the same abstract-state budget
+\(B=100{,}000\), exact cofactor-width budget \(K=8\), fixed BDD variable
+order, disabled dynamic reordering, CEGAR seed 2011, and
+\texttt{cegar\_max\_time=10}.  Their fixed generator list, in protocol order,
+is: the empty pattern; the longest BDD-order prefix fitting \(B\); the longest
+goal/causal-order prefix fitting \(B\); a goal fill that skips a variable that
+does not fit and continues down the same order; and one CEGAR pattern.  Patterns
+are sorted and deduplicated while all generator-source labels are retained.
+The empty pattern guarantees a feasible width-one member.
+
+The two complete search strings are
+
+\begin{sloppypar}
+\small
+\raggedright
+\begin{description}
+  \item[Exact \(K=8\)]
+    \url{sym_fw_pdb(budget=100000,pattern_selection=exact_width_filter,cofactor_width_budget=8,cegar_max_time=10,cegar_seed=2011)};
+  \item[Cap-aware \(K=8\)] the same string with
+    \url{select_value_cap=true} appended.
+\end{description}
+\end{sloppypar}
+
+There is one implementation-level normalization asymmetry that must not be
+hidden by the shared generator description.  Only the cap-aware path deletes
+domain-size-one variables from each generated pattern before sorting and pool
+deduplication.  Such variables carry no state information, so this rewrite is
+semantics preserving, but the exact-selector path is deliberately left
+byte-for-byte unchanged.  Consequently, nominally identical generators and
+options do \emph{not} by themselves establish identical raw candidate pools.
+Any attribution to value capping is conditional on complete certified paired
+traces having identical normalized uncapped-pool fingerprints in the stated
+scope.
+
+\subsection{Discrete Cap Ladder and Per-Pattern Choice}
+
+The cap-aware selector materializes each raw PDB and its exact finite-value
+histogram once.  It tests
+
+\[
+  \kappa\in\{0,1,2,4,8,16,32,64,128,256\}
+\]
+
+in increasing order, followed by the exact transform.  A finite cap at or
+above that pattern's maximum finite distance is identical to exact values and
+is omitted, so the emitted sequence is precisely the strict prefix below the
+maximum followed by ``exact.''  All transforms reuse the one raw PDB;
+infinity remains a separate dead-end set.
+
+Feasibility means that the transformed total heuristic ADD has exact cofactor
+width at most \(K\).  Lower caps are terminal relabelings of higher caps, so
+width is monotone under this ordered refinement.  The retained representative
+for a pattern is the \emph{last feasible tested member}: exact values when
+feasible, otherwise the largest feasible ladder cap.  This strongest-feasible
+step occurs before patterns are compared; the cap is not an extra cross-pattern
+tie-breaker.
+
+\subsection{Exact Width, Frozen Score, and Trace Certification}
+
+For every tested member, the implementation constructs the same total ADD that
+is reported for the selected heuristic.  Ordinary finite distances are
+terminals, abstract dead ends receive a distinct terminal, and invalid binary
+codes retain the default-zero extension.  Beginning with the root frontier, at
+each manager level the exact-width procedure replaces residuals rooted at that
+level by their two children, retains terminals and residuals that skip the
+level, deduplicates by CUDD node identity, and records the largest frontier.
+Primed transition variables do not occur in the heuristic ADD and therefore
+only repeat a frontier.  Dynamic reordering is disabled, binding the measured
+width to the order later used by search.
+
+After taking one strongest feasible representative per pattern, the frozen
+lexicographic score prefers: an initial-state dead-end proof; then larger
+\(h(s_{\mathrm I})\); larger mean transformed finite distance; larger
+abstract dead-end fraction; smaller measured cofactor width \(W\); fewer
+abstract states; and the lexicographically smaller sorted pattern.  The means
+and fractions are compared as exact integer ratios.  This is a deterministic
+ranking surrogate, not a runtime-optimality claim.
+
+The cap-aware whole-trace certificate records each tested transform, its cap,
+feasibility decision, transformed \(W\), ADD inner nodes \(A\), terminal count
+\(T\), total ADD nodes \(U=A+T\), finite-value count \(V\), and the raw
+counterparts.  The exact raw histogram is emitted once per materialized
+pattern.  The fail-closed parser reconstructs the capped initial value, finite
+sum, and value count; checks the cap order, within-pattern raw identity,
+monotonicity of \(W,A,T,U,V\), the last-feasible representative, the frozen
+score winner, and agreement among the selected record, final heuristic record,
+and whole-trace hashes.  Cross-protocol raw-pool equality is then a separate
+paired certification condition, for the domain-one normalization reason above.
+
+\section{Focused Development Gate and Full Evaluation Protocol}
+\label{sec:supp-cap-protocol}
+
+\subsection{Outcome-Informed Development Screen}
+
+The launch gate used a fixed 50-task, 25-domain development manifest with two
+tasks per domain.  Its composition had been assembled during earlier
+development using archived outcome summaries to enrich difficult or
+discriminating cases.  It is therefore neither a held-out sample nor an
+independent population estimate.  None of those archived measurements is a
+cell in this study.
+
+All six gate configurations were rerun under one pinned planner, protocol, and
+environment: blind forward search; the \(B=100{,}000\) CEGAR PDB; exact and
+cap-aware selectors at \(K=8\); and exact and cap-aware selectors at \(K=32\).
+This is a new \(50\times6=300\)-cell mechanism screen.  \(K=8\) is the fixed
+primary comparison; \(K=32\) is a non-promotable sensitivity and cannot replace
+it.
+
+The Boolean promotion rule opens the full launch gate if and only if all of the
+following hold:
+
+\begin{enumerate}
+  \item all 300 screen cells are present and validate;
+  \item all 50 exact-versus-cap-aware \(K=8\) pairs have complete certified
+    traces and identical normalized raw-pool fingerprints;
+  \item every solved cost agrees across screen configurations, with no
+    solved/proved-unsolvable contradiction;
+  \item the cap-aware \(K=8\) selector has strictly more semantically
+    nontrivial selections than exact \(K=8\), where nontrivial means a positive
+    finite-distance sum or a positive abstract-dead-end count; and
+  \item cap-aware \(K=8\) has coverage wins minus losses at least zero.
+\end{enumerate}
+
+The gate is conjunctive, contains no tunable threshold beyond those stated,
+and never consults \(K=32\) for promotion.  The full protocol recomputes the
+digest-pinned gate certificate before launch rather than accepting a manually
+transcribed decision.
+
+\subsection{Frozen Population, Matrix, and Environment}
+
+The source inventory contains 1697 optimal sequential IPC tasks through 2023.
+Disjoint frozen exclusions remove 290 tasks with zero-cost operators and 30
+with normalized axioms, leaving 1377 positive-cost, axiom-free tasks in 46
+domains.  The exclusions align the empirical population with the positive-cost
+assumption of Lemma~\ref{lem-identity} and the abstraction implementation's
+axiom restriction.  Task order, source bytes, operator-cost support, normalized
+axiom status, and the complete source manifest are digest-attested before
+launch.
+
+The full matrix is exactly \(1377\times5=6885\) cells:
+
+\begin{enumerate}
+  \item blind forward symbolic search;
+  \item causal-graph linear merge-and-shrink with
+    \url{max_states=10000,value_cap=-1,align_merge_order=false};
+  \item the \(B=100{,}000\), seed-2011, 10-second-option CEGAR PDB;
+  \item the exact-value \(K=8\) selector; and
+  \item the cap-aware \(K=8\) selector.
+\end{enumerate}
+
+The first three are descriptive context; the last two define the primary
+contrast.  All five use the same pinned \texttt{release\_no\_lp} binary and
+preprocessor, the same task-specific fixed BDD order, one CPU on homogeneous
+AMD EPYC 9755 nodes, an aggregate-process CPU limit of 300 seconds, and an
+8-GiB planner memory limit.  Construction is inside those limits and is
+charged to planner time.  There is one run per cell.  The scheduler groups at
+most seven runs per array task inside a reviewed 45-minute envelope with 9 GiB
+per CPU; this envelope is not represented as a per-cell wall-clock watchdog.
+
+Every retained cell must have one atomic completion marker and a recognized,
+reconciled terminal outcome.  Missing, duplicate, starved, unrecognized, or
+infrastructure-failed cells invalidate the census; there is no post-hoc cell
+fill.  Solved costs must agree across all five configurations, and no solved
+record may conflict with a proved-unsolvable record.  Micro-PAR2 is the
+arithmetic mean of planner CPU seconds with 600 seconds assigned to every
+unsolved cell.
+
+\subsection{Primary Estimand and Prespecified Sensitivity}
+
+The primary population is the frozen 1327-task complement obtained by deleting
+the 50 development tasks from the full census while retaining all 46 domains.
+The primary estimand is cap-aware minus exact \(K=8\) equal-domain macro
+coverage: compute each selector's coverage within each domain of this
+complement, average the 46 domain rates equally, and subtract exact from
+cap-aware.  The paired task-micro disclosure reports cap-aware wins, losses,
+both solved, both unsolved, and discordance on the same fixed complement.
+
+The sole prespecified sensitivity repeats the contrast on all 1377 tasks,
+including the development set.  It is a fixed-population census sensitivity,
+not a replacement primary analysis.  Neither scope uses confidence intervals,
+\(p\)-values, or population-generalization claims.  Mechanism attribution also
+requires complete certified traces and identical raw-pool fingerprints for
+every compared task in the scope; selection differences are required before a
+mechanism claim.
+
+\subsection{Secondary Descriptive Contract and Its Timing}
+
+The primary estimand and launch rule were frozen before the development
+aggregate was inspected.  The secondary descriptive contract was frozen later,
+while full execution was active but before full properties were fetched and
+before any scientific outcome or aggregate was read; only completion-marker
+and error-file health monitoring had begun.  Its version-2 amendment added
+scope-specific solved counts and solved-runtime totals solely so every reported
+micro-PAR2 value can be reconstructed.  The contract is explicitly
+secondary-descriptive and cannot change promotion, the primary scope, or the
+primary estimand.
+
+For both the 1327-task primary complement and the 1377-task sensitivity, the
+contract reports complete-certified selector-trace counts; semantic
+nontriviality; effective-cap and first-provenance-source histograms; and
+pattern-size, \(W,A,T,U,V\) summaries.  Paired operational descriptions use
+cap-aware over exact and state their own eligible denominator: fixed-scope
+micro-PAR2; jointly solved positive-time CPU geometric mean; ratios of image
+time and expanded-BDD-node totals on the same complete-certified image pairs;
+and construction-time totals on pairs with observed completed constructions.
+The five-configuration full-census context additionally reports solved counts,
+micro-PAR2, solved-runtime summaries, and completed-construction summaries.
+Missing observations are never imputed.
+
+\section{Focused Full-Evaluation Results}
+\label{sec:supp-cap-tables}
+
+\CapPrimaryText\ \CapSensitivityText\ \CapMechanismText\ The mechanism status
+is deliberately strict: paired trace coverage is incomplete
+(\CapPrimaryTracePairs/\CapPrimaryTasks), so the matching raw pools and the
+large observed semantic-nontrivial difference are descriptive trace evidence,
+not a certified mechanism attribution.  \CapScopeCaveat
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Prespecified all-task census sensitivity. The main-paper primary
+    contrast excludes the 50 development tasks.}
+  \label{tab:supp-cap-census}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Selector & Equal-domain macro coverage (\%) & Solved/tasks \\
+    \midrule
+    \CapCensusContrastRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\CapPrimarySecondaryText\ \CapRatioCaveat\ \CapCensoringCaveat
+
+\begin{table}[htbp]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{3.5pt}
+  \caption{Paired operational summaries for the primary complement and the
+    all-task sensitivity. The final column is cap-aware minus exact for
+    micro-PAR2 and cap-aware over exact for every ratio; dashes mark cells that
+    are not separately meaningful for a geometric-mean ratio.}
+  \label{tab:supp-cap-operational}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    Metric & Eligible & Cap-aware & Exact & $\Delta$/ratio \\
+    \midrule
+    \multicolumn{5}{@{}l}{\textit{Primary development complement}} \\
+    \CapPrimarySecondaryRows
+    \midrule
+    \multicolumn{5}{@{}l}{\textit{All-task census sensitivity}} \\
+    \CapCensusSecondaryRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Completed-construction observations for the five full-census
+    configurations. Missing constructions are not imputed.}
+  \label{tab:supp-cap-construction}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Configuration & Observed/tasks & Total seconds \\
+    \midrule
+    \CapFullConstructionRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[p]
+  \centering
+  \small
+  \setlength{\tabcolsep}{3.5pt}
+  \caption{Selector representation summaries. \(A\) is ADD inner nodes,
+    \(T\) terminals, \(U=A+T\), and \(V\) finite values. Each metric carries
+    its observed-trace denominator.}
+  \label{tab:supp-cap-selector-summary}
+  \begin{tabular}{@{}lllrrrrr@{}}
+    \toprule
+    Scope & Selector & Metric & Observed/traces & Min & Median & Max & Total \\
+    \midrule
+    \CapSelectorSummaryRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{landscape}
+\begin{table}[p]
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \caption{First-provenance source and effective-cap histograms. Counts are
+    shown against the complete-certified trace denominator of that scope and
+    selector.}
+  \label{tab:supp-cap-histograms}
+  \begin{minipage}[t]{0.48\linewidth}
+    \centering
+    \textbf{First-provenance source}\\[2pt]
+    \begin{tabular}{@{}lllr@{}}
+      \toprule
+      Scope & Selector & Source & Count/traces \\
+      \midrule
+      \CapSelectorSourceRows
+      \bottomrule
+    \end{tabular}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.48\linewidth}
+    \centering
+    \textbf{Effective cap}\\[2pt]
+    \begin{tabular}{@{}lllr@{}}
+      \toprule
+      Scope & Selector & Cap & Count/traces \\
+      \midrule
+      \CapEffectiveCapRows
+      \bottomrule
+    \end{tabular}
+  \end{minipage}
+\end{table}
+\end{landscape}

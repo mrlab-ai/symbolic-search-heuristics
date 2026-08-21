@@ -1,146 +1,175 @@
-# Reproducibility manifest
+# Private reproducibility audit manifest (release after unblinding)
 
-This manifest contains the exact identities intentionally omitted from the
-main narrative. It is part of the anonymous artifact. Each SHA-256 value is a
-lowercase hexadecimal digest of the byte sequence named by its entry: JSON
-artifacts explicitly say “raw,” while task, source-record, and matrix entries
-refer to their protocol-defined normalized or canonical streams.
+This internal manifest binds the exact execution and analysis records used by
+the paper. It is deliberately excluded from the double-blind review bundle:
+revision, scheduler, account, path, and source identities can link the
+submission to its authors. The review bundle is PDF-only. After unblinding,
+this manifest accompanies the source, record, and analysis verification pack.
 
-## Executable protocol sources
+The paper does **not** combine runtimes or coverage from the earlier P4/P5/P6
+study. The focused cap-grid pilot and the focused full evaluation use one
+planner revision and one execution environment. The 50 pilot tasks are a
+development screen only. Every one of the 1,377 tasks, including those 50, is
+rerun in every full-evaluation configuration; no pilot record substitutes for
+a full-census cell.
 
-- Stage-1 runner and analyzer:
-  `experiments/exp_arrhenius_selector_pilot.py` and
-  `experiments/analyze_arrhenius_selector_pilot.py`
-- Stage-2 runner and analyzer:
-  `experiments/exp_arrhenius_selector_validation.py` and
-  `experiments/analyze_arrhenius_selector_validation.py`
-- Stage-3 runner and analyzer:
-  `experiments/exp_arrhenius_selector_full.py` and
-  `experiments/analyze_arrhenius_selector_full.py`
-- Fail-closed Stage-3 paper-data and TeX renderer:
-  `experiments/render_arrhenius_selector_full_paper.py`
+## Executable sources
 
-The screen analyzer has separate canonical selection and descriptive-report
-modes. The full renderer accepts only the pinned canonical analysis artifact
-and SHA-256 sidecar; its production pins remain unset until that artifact is
-accepted.
+- Pilot runner and parser:
+  `experiments/exp_pdb_cap_grid_pilot.py` and
+  `experiments/pdb_cap_selector_parser.py`
+- Pilot analyzer:
+  `experiments/analyze_pdb_cap_grid_pilot.py`
+- Focused full protocol and runner:
+  `experiments/pdb_cap_grid_full_protocol.py` and
+  `experiments/exp_pdb_cap_grid_full.py`
+- Focused full analyzer and frozen secondary contract:
+  `experiments/analyze_pdb_cap_grid_full.py` and
+  `experiments/pdb_cap_grid_full_secondary_contract.py`
+- Fail-closed paper renderer:
+  `experiments/render_pdb_cap_grid_full_paper.py`
 
-## Common benchmark identity
+## Common benchmark and planner identity
 
 - Benchmark repository revision:
   `48d6a00d482de2384a9e751f9343df58bf5582be`
 - Benchmark origin: `https://github.com/aibasel/downward-benchmarks`
-- Every selected PDDL source is byte-attested before grid construction.
-- Every run receives independent, read-only, single-link copies of its domain
-  and problem files; the launch gate rechecks their content hashes.
-
-## Stage 1: P4 screen
-
-- Planner revision: `58a3f742d7ac63f391d06c237573f14ad590c187`
-- Stripped planner binary:
-  `59b97e8b1e777f700c255932271604393f60ec9aeba5c0151d0b7415a3a58511`
-- Copied preprocessor:
-  `acf2fc66c0b189095111a9d227ccb5b7acc564f1a6cb7bfd557904fa3c76798c`
-- Launch-protocol revision:
-  `d6d98ad42f3976cd5cf0c9b17d8fa255354fbfbf`
-- Normalized task sequence:
-  `3195dac7e62a34e5ac4cbeb715ab7f9b99e2ee64341082dd7d718ea2820751ca`
-- Selected task-source records:
-  `dbb7730c257472c07f7946f0434949449169e06d1faa2174a92a6d13c48cb8ba`
-- Complete 20-configuration option matrix:
-  `e16f6e34af5101a3549bfbf98ebaba23371c645f9166c884bfdf07b3b65e7442`
-- Selection artifact:
-  `experiments/artifacts/arrhenius-selector-screen-p4/selection-v3.json`
-  with raw SHA-256
-  `d35a1df68eebbd099fe81f86e6e0f6a96ce770572574f9ae013ab4eb0b2c8eb2`
-- Certified descriptive report:
-  `experiments/artifacts/arrhenius-selector-screen-p4/certified-report-v2.json`
-  with raw SHA-256
-  `e75daadefc6cf3cad3121ffb28959659dbc78523970945d575a97b18a319252c`
-- Experiment protocol: `arrhenius-exact-width-selector-screening-v2`
-- Selector pool: `fixed_pool_v1`
-- Candidate score:
-  `init_dead_init_h_mean_dead_fraction_width_states_pattern_v1`
-- Whole-trace parser:
-  `run.log/pdb-final-and-width-selector-v1-whole-trace/v3`
-- Metric validation: `wbh-exact-schema-semantic-v3`
-- Outcome certification:
-  `direct-search-raw-effective-plan-reconciliation/v1`
-
-## Stage 2: P5 held-out run
-
-- Planner revision: `165b6d2ee29d5d7b6e1bf4c52540c393ba19b54f`
-- Stripped planner binary:
-  `af2a19d236ecad9b747d2a1b9c49da73d98248c38d21cc60ad0ac7613d74bdbe`
-- Copied preprocessor:
-  `1b351a4a5f9380bf41fe9fd61b98c816505ebd8cf88b20afa0d81a9bfb2474bd`
-- Launch-protocol revision:
-  `a52488637a1c054b26dac93fe2eb1a556110a2dd`
-- Execution protocol: `arrhenius-selector-heldout-validation-v3`
-- Initial-dead construction protocol:
-  `pdb-ms-initial-dead-bdd-construction-prelog/v1`
-- Accepted analysis:
-  `experiments/artifacts/arrhenius-selector-heldout-p5/analysis-v3.json`
-  with raw SHA-256
-  `7c598f068164224272b8ba035b987973f35d0d45e695f90c9083931790908cea`
-
-## Stage 3: P6 full census
-
-- Planner revision: `a3486a027a0f281e762cb6d66d72311455b66b33`
-- Stripped planner binary:
-  `2887194c74acc88273702b807dba28e4fd8f7ae3d916562bcf1b83ec79632758`
-- Copied preprocessor:
-  `40e1d5580ec447cb606ead447317469bd861bd8cda398095df3fbf22922d0d23`
-- Launch-protocol revision:
-  `0cb19e111da36fbb32d1b3bc0f07a52b733fbbe9`
-- Full runner source:
-  `3a7cfd4307217db13a8ec42d9157cd2290b0e8fba962f9aa40815af80d06058f`
-- Execution protocol: `arrhenius-selector-full-population-v4`
-- Analysis schema:
-  `symbolic-search-heuristics/full-population-analysis/v4`
-- Analysis protocol: `full-supported-population-census-v1`
-- P5-to-P6 lineage protocol:
-  `git-merge-base-is-ancestor/p5-protocol-and-planner-to-p6-planner/v1`
-- Pre-search normalization protocol:
-  `driver-translate-and-legacy-preprocess-negative-sigxcpu-to-21/v1`
-- Retained-outcome census:
-  `protocol-recognized-final-cell-outcome-census/v1`, whose unit is
-  `final-retained-attested-cell-records`
-- Full task sequence:
+- Planner revision:
+  `e04d56cc61d00c954f2369e9fb74bd469277d52e`
+- Stripped planner binary SHA-256:
+  `77cf4950563be2d2a60aded13783a3ffe26c0c8391ac9d626f3bd618231941fa`
+- Copied preprocessor SHA-256:
+  `fc3233bfd260210cf4d0cce11146fe6f3198820d6e19a8b56740c1240039378b`
+- Full task-manifest SHA-256:
   `295bff030c51eaf39871714335ff9cb945ce39ebc556774eeb3bfad112681345`
-- Selected task-source records:
+- Full task-source-record SHA-256:
   `9ce25a012592bfb2557fe21cc4a3fdb3dbd24f9d2a4ed79ee16e75be183be5dd`
-- Seven-configuration matrix:
-  `b4a695874c1292a0a26cc72ab7ebeea2b6775eec71970cd1b91aaad1c8211354`
-- Submitted 9,639-cell job script:
-  `c83c880c1bfaa503cfffab69c91abb037e58b4424b7216480aa551631aed043f`
-- Arrhenius array: job `1203277`, submitted 2026-08-12 09:56 CEST; final
-  census acceptance is pending.
-- Final analysis artifact and rendered-paper hashes: pending acceptance of the
-  complete P6 census.
+- Source-manifest SHA-256:
+  `7b4f5934752f41792e3debd0a269286d28d7ee9f1242b87a4bc92b7066822168`
+- Domain-sequence SHA-256:
+  `b0d849f351ff6d5c793d9c209c67c11ab5a7d6963fed5666f5ad49ce73845811`
+- Domain-count-vector SHA-256:
+  `5db83d994be7d9145233adb0a3839a69f8717145878d08b138f328b19fc9d9e2`
+- Primary 1,327-task complement manifest SHA-256:
+  `1e126791b438d903cb6adcc441391b92d76a7e14cf46f6a89465a066823a986f`
+- Primary task-source-record SHA-256:
+  `158e5446e3b97ddd63095441c518ecbe6d2e3ce3529aa9a8fd412df23e706068`
 
-The P6 runner requires both P5 revisions above to be Git ancestors of the P6
-planner. A scheduled compute-node smoke forced legacy preprocessing to its CPU
-limit and verified canonical pre-search outcome 21, with no search process,
-metric stream, plan, or stderr, before the P6 launch pins were committed.
+Every selected PDDL source is byte-attested before grid construction. Each run
+receives a separate read-only single-link domain/problem copy, and the launch
+gate rechecks all copied bytes and both executables.
 
-## Fail-closed exclusions
+## Development mechanism screen
 
-Protocol failures trigger whole-grid replacement, never outcome-dependent cell
-replacement.
+- Protocol: `pdb-cap-grid-development-screen-v3`
+- Launch revision:
+  `6fb512eb6b0359b38f23e4f72053d0027b697e00`
+- Analysis revision:
+  `91c60fa37c6c32e070df92db7037e5c651fdf90f`
+- Screen task-manifest SHA-256:
+  `3195dac7e62a34e5ac4cbeb715ab7f9b99e2ee64341082dd7d718ea2820751ca`
+- Matrix: 50 tasks x 6 configurations = 300 fresh cells
+- Fetched properties: 6,910,178 raw bytes; raw SHA-256
+  `f7d4b3142ac974ebf3949864f4a6c5651aa14ba9f67655bc6b758175a29380ba`;
+  protocol-canonical logical SHA-256
+  `cfb7ddca779c3d5645635057b9ae5f9bafbb65a91d1de89d026b879e6196ca22`
+- Accepted artifact:
+  `experiments/artifacts/pdb-cap-grid-development-p4/analysis-v3.json`
+  (9,515 raw bytes), SHA-256
+  `d28ae76392d0befb9ec927a519dc52aef61bc76e2aa1f12f6197549f853f4656`
 
-1. Two pre-P4 diagnostic screens exposed an overbroad zero-cost admission gate
-   and a durable plan followed by a raw search CPU-limit exit. Neither grid
-   contributes a score or performance observation.
-2. The first downstream start exposed a missing construction event when a PDB
-   proved the initial state dead. Both arrays were canceled; 53 stable held-out
-   cells and 20 full-suite completion markers were excluded. The producer was
-   corrected prospectively and both grids were rebuilt.
-3. The subsequent P5 full start exposed four legacy-preprocessor `SIGXCPU`
-   returns surfaced by the shell as 232 among 1,650 completion-marked cells.
-   The entire array was canceled. P6 canonicalizes child return `-24` to
-   pre-search outcome 21 and reruns all 9,639 cells from scratch.
+The prospective promotion rule required a complete certified screen, matching
+same-K raw pools, solved-cost agreement, strictly more cap-aware
+semantic-nontrivial selections, and nonnegative K=8 coverage wins minus losses.
+K=32 was a fixed sensitivity and could not replace K=8. The observed K=8
+screen passed that rule. No screen performance observation enters either the
+1,327-task primary complement or the full-census performance rows.
 
-No completed cell, partial cell, or archived attempt from an excluded grid is
-reused. These amendments do not change the selection artifact, matrix,
-ranking, contrasts, or statistical analysis.
+## Focused full evaluation
+
+- Protocol: `pdb-cap-grid-focused-full-evaluation-v1`
+- Outcome-independent implementation revision:
+  `af483cab87a9e2cc6873f8aae1bcc34294bcd4c3`
+- Clean launch revision:
+  `0fa5ecc1d93884e9cf35b433bacfe684765ba112`
+- Configurations: blind forward search; uncapped unaligned M&S (10,000
+  states); CEGAR PDB (100,000 states, seed 2011, 10-second pattern-generation
+  limit); exact-width PDB selector K=8; cap-aware PDB selector K=8
+- Matrix: 1,377 tasks x 5 configurations = 6,885 fresh cells
+- Option-matrix SHA-256:
+  `94238d64a699142ef81cc4a35489467af8b78dcdf46973536556eb7e3f6b6f78`
+- Array assignment: 984 tasks, at most seven cells each; SHA-256
+  `977a1cac30b027990c8ed5f23803032a351c9497b26a837b303ba9604fc4f775`
+- Prospective start-job SHA-256:
+  `24efc07fc6fdfd19d2a7532d4e717f072b1f5a2e893b946b529aedf4158ebc81`
+- Private scheduler job: `1363335`; account:
+  `naiss2025-5-561-cpu`
+- Completion: all 984 array elements `COMPLETED` with exit `0:0`; all 6,885
+  cells have canonical completion markers, wrapper exit 0, restart count 0,
+  and regular driver logs; zero partial archives, temp markers, nonempty driver
+  errors, or Slurm-log bytes
+- Fetched properties: 151,753,705 raw bytes; raw SHA-256
+  `0e97eb3a18271f149874f49ec1c0efbd362ad5a863665e7a0600c0ad8cdbbc12`;
+  protocol-canonical logical SHA-256
+  `bddc69b2eedcc1442e6a42517d4d294e9a6ae0ab7dbf4aebc49714b152c0f215`
+- Lab collected exactly 6,885 records with zero unexplained parser errors
+
+The primary population is the fixed 1,327-task development complement with all
+46 domains. The primary estimand is cap-aware minus exact K=8 equal-domain
+macro coverage. The all-1,377-task contrast is a prespecified census
+sensitivity. Blind, M&S, CEGAR, full-census rows, and all operational ratios
+are descriptive. There are no confidence intervals, p-values, adaptive
+reranking, or superpopulation claims.
+
+## Analysis, secondary contract, and paper data
+
+- Analysis schema:
+  `symbolic-search-heuristics/pdb-cap-grid-focused-full/v1`
+- Analysis protocol: `pdb-cap-grid-focused-full-analysis-v1`
+- Analyzer input-pin commit:
+  `1c44fc197d0804141f3a941347fc2b8d7d267974`
+- Accepted canonical artifact commit:
+  `a9fbfc6b0c3935bb124ae93b79d9d94ec2704fca`
+- Accepted artifact:
+  `experiments/artifacts/pdb-cap-grid-focused-full/analysis-v1.json`
+  (31,495 raw bytes), SHA-256
+  `fb8db53b4f5eea7306961351d110b0d331abc87fa2a31242321de429f32ad60a`
+- Artifact sidecar:
+  `experiments/artifacts/pdb-cap-grid-focused-full/analysis-v1.json.sha256`
+- The analyzer was run twice from the clean pin commit; both byte streams were
+  identical to the committed artifact
+- Secondary descriptive contract SHA-256:
+  `1df86a1255cb301ffe2b6eb0db52ba81ca7f8c511e5a011cd028d8eff2dfc862`
+- Secondary timing status:
+  `frozen-during-active-full-execution-before-properties-fetch-or-scientific-outcome-aggregation/v2`
+- Renderer pin commit:
+  `fbe8f4f4875daf4b96fa130602018e9ad1ad2c6b`
+- Generated-paper-data commit:
+  `dd8037db2d949ef55d1435696001805d4134b34e`
+- Generated paper input:
+  `paper/generated/pdb-cap-grid-full-v1.tex` (9,146 raw bytes), SHA-256
+  `6bed124d4972bb76c87739cb96bf09d65f65c0a70818072f131f794d3421fb65`
+- Two independent renderer invocations were byte-identical; restricted atomic
+  `--write` and subsequent `--check` both passed
+
+The renderer reads only the committed canonical artifact and its exact
+sha256sum sidecar. It validates schema, provenance, population conservation,
+all primary-within-census relations, mechanism contingencies, PAR2 identities,
+paired denominators, selector summaries, and generated table dimensions. It
+never reads Lab properties or run directories.
+
+## Exclusions and claim boundary
+
+Earlier cluster runs and the earlier P4/P5/P6 study are not used by this paper.
+The development screen determines only whether the cap-aware method advances
+to the already frozen full protocol. The full matrix reruns all controls and
+both selector variants under one environment. No missing cell is filled and no
+old cell is reused.
+
+The accepted primary result favors cap-aware over same-K exact selection, but
+uncapped unaligned M&S is the best descriptive full-census coverage row.
+Moreover, strict mechanism attribution is not certified because paired trace
+coverage is incomplete, even though every observed paired raw-pool identity
+matches. The paper reports these boundaries explicitly and does not claim that
+cap-aware selection is a universally best heuristic or that the experiment
+validates the worst-case theorem.

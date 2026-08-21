@@ -4,9 +4,9 @@
 This is a prospective, fail-closed consumer of
 ``analyze_pdb_cap_grid_full.py``.  It reads only the canonical analysis JSON
 and its sha256sum-style sidecar; it never opens Lab properties or run data.
-Ordinary rendering remains disabled until the final artifact digest and the
-three outcome-dependent analysis pins below have been reviewed and set
-together.  ``--self-test`` uses a complete synthetic analysis instead.
+Ordinary rendering is enabled only when the final artifact digest and the
+three outcome-dependent analysis pins below are reviewed and set together.
+``--self-test`` uses a complete synthetic analysis instead.
 
 The TeX payload is intentionally anonymous.  Provenance identities are
 validated but never rendered: only scientific aggregates, table-row
@@ -41,8 +41,8 @@ DEFAULT_ANALYSIS = (
 )
 DEFAULT_OUTPUT = REPOSITORY_ROOT / "paper" / "generated" / "pdb-cap-grid-full-v1.tex"
 
-# Freeze these four values together only after independent review of the final
-# canonical analysis artifact.  All remain unset prospectively by design.
+# These four values were frozen together after independent review of the final
+# canonical analysis artifact.
 EXPECTED_FULL_ANALYSIS_SHA256 = (
     "fb8db53b4f5eea7306961351d110b0d331abc87fa2a31242321de429f32ad60a"
 )
@@ -2200,7 +2200,19 @@ def self_test():
         "synthetic_tex_sha256": sha256_bytes(first),
         "synthetic_tex_bytes": len(first),
         "adversarial": adversarial,
-        "ordinary_render_gate": "BLOCKED_UNTIL_FINAL_ANALYSIS_HASH_AND_PINS_ARE_REVIEWED",
+        "ordinary_render_gate": (
+            "FINAL_ANALYSIS_HASH_AND_PINS_REVIEWED"
+            if all(
+                value is not None
+                for value in (
+                    EXPECTED_FULL_ANALYSIS_SHA256,
+                    EXPECTED_PROTOCOL_REVISION,
+                    EXPECTED_PROPERTIES_CANONICAL_SHA256,
+                    EXPECTED_PROSPECTIVE_JOB_SHA256,
+                )
+            )
+            else "BLOCKED_UNTIL_FINAL_ANALYSIS_HASH_AND_PINS_ARE_REVIEWED"
+        ),
     }
 
 
