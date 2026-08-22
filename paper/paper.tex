@@ -75,8 +75,8 @@
 
 \input{generated/pdb-cap-grid-full-v1.tex}
 
-\title{Bounding Heuristic Fragmentation in Forward Symbolic \astar{}
-with Cofactor Width}
+\title{Cofactor Width: Bounding and Controlling Heuristic Fragmentation
+in Forward Symbolic \astar{}}
 \ifdefined\ICAPSAAAIProxy
   \author{Anonymous Submission}
   \affiliations{Anonymous}
@@ -117,7 +117,11 @@ semantic-nontrivial
 selection occurs in \CapPrimaryCapNontrivial\ cap-aware versus
 \CapPrimaryExactNontrivial\ exact traces, but incomplete coverage leaves
 mechanism attribution uncertified.  The all-task sensitivity is
-\CapCensusMacroDeltaPoints\ points.  These are fixed-census diagnostics.
+\CapCensusMacroDeltaPoints\ points.  The cap-aware selector improves its exact
+comparator but is not the strongest descriptive control: uncapped, unaligned
+M\&S solves \CapFullMsExactSolved/\CapFullTasks\ tasks versus
+\CapFullCapSolved/\CapFullTasks\ for cap-aware selection.  These are
+fixed-census diagnostics.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -172,7 +176,9 @@ underlying product-graph argument for binary synthesis is standard
 \citep[Thm.~3.3.6]{wegener-2000}. Our contribution is to
 couple it to exact symbolic-search bucket semantics across cost layers, derive
 cumulative effort bounds and separations, and instantiate them for
-planning-heuristic families.
+planning-heuristic families. Operationally, width is measured on the same
+total ADD used by search, so it can serve as a pre-search acceptance
+certificate and guide safe terminal coarsening.
 
 Our contributions have three parts. First, a fragmentation theorem bounds the
 total size of the slices of a state-set BDD $B$ by $TWn(|B|+2)$ for a width-$W$,
@@ -298,8 +304,8 @@ The cofactors are precisely the states of a deterministic layered automaton
 that reads $\pi$; hence width is also the largest level of the heuristic's
 quasi-reduced multi-terminal BDD \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}. It is a
 standard fixed-order residual/MTBDD representation property applied here to
-heuristics, not a newly proposed width measure and not planning novelty width
-\citep{lipovetzky-geffner-ecai2012}.
+heuristics. It is neither a newly proposed width measure nor the unrelated
+planning notion of novelty width \citep{lipovetzky-geffner-ecai2012}.
 
 \begin{proposition}[value range]
 \label{prop-range}
@@ -779,6 +785,23 @@ is the exact cofactor width of the total extension used by search.  A candidate
 is feasible exactly when its measured width is at most the fixed budget
 $K=8$.
 
+\begin{figure}[tb]
+  \centering
+  \small
+  \fbox{\begin{minipage}{0.91\columnwidth}
+    \centering
+    generator recipes $\longrightarrow$ one raw PDB per pattern\\[-1pt]
+    $\downarrow$\\[-3pt]
+    exact transform $+$ cap ladder $\longrightarrow$ exact-width test\\[-1pt]
+    $\downarrow$\\[-3pt]
+    strongest feasible transform per pattern
+    $\longrightarrow$ frozen cross-pattern score
+  \end{minipage}}
+  \caption{Cap-aware selection pipeline. Only terminal labels change within a
+    pattern; generators and the final cross-pattern score remain fixed.}
+  \label{fig:cap-pipeline}
+\end{figure}
+
 The exact selector tests only the uncapped PDB.  For each pattern, the
 cap-aware selector materializes one raw PDB and derives
 \[
@@ -793,8 +816,9 @@ maximum finite value, followed by the exact transform.  Proposition
 \ref{prop-transform} preserves admissibility and consistency, and the nested
 cap order is nondecreasing in both information and width.  The selector
 therefore retains the strongest feasible tested ladder member of each pattern
-before comparing patterns.  This per-pattern step prevents a weak cap of one pattern
-from defeating a stronger feasible transform of that same pattern.
+before comparing patterns (Figure~\ref{fig:cap-pipeline}). This per-pattern
+step prevents a weak cap of one pattern from defeating a stronger feasible
+transform of that same pattern.
 
 Both selectors then apply the same frozen lexicographic score: initial-state
 dead-end recognition, initial value, mean finite value, and abstract dead-end
@@ -873,7 +897,8 @@ bound directly.
   \setlength{\tabcolsep}{4pt}
   \caption{Focused cap-aware evaluation. Panel (a) gives descriptive
     full-census context; panel (b) gives the primary fixed-set contrast and
-    its mechanism denominators. PAR2 is in seconds.}
+    its mechanism denominators; panel (c) gives the separately frozen primary
+    operational summaries. PAR2 and time totals are in seconds.}
   \label{tab:cap-aware-main}
   \begin{minipage}[t]{0.46\textwidth}
     \centering
@@ -906,21 +931,37 @@ bound directly.
       \bottomrule
     \end{tabular}
   \end{minipage}
-  \vspace{3pt}
+  \vspace{6pt}
+
+  \textbf{(c) Primary operational summaries}\\[2pt]
+  \footnotesize
+  \begin{tabular}{lrrrr}
+    \toprule
+    Metric & Eligible & Cap-aware & Exact & $\Delta$/ratio \\
+    \midrule
+    \CapPrimarySecondaryRows
+    \bottomrule
+  \end{tabular}
+  \vspace{4pt}
 
   \begin{minipage}{0.98\textwidth}
-    \footnotesize \CapScopeCaveat\ \CapCensoringCaveat
+    \footnotesize \CapScopeCaveat\ \CapRatioCaveat\ \CapCensoringCaveat
   \end{minipage}
 \end{table*}
 
 \CapPrimaryText\ \CapMechanismText\ \CapSensitivityText
 
+Trace incompleteness blocks only mechanism attribution: every task still has
+a retained final record, so the fixed coverage and PAR2 denominators remain
+complete.
+
 The five full-census rows in Table~\ref{tab:cap-aware-main} retain their fixed
 denominator and are not used to select a configuration.  The separately frozen
 secondary summaries retain their own eligibility rules.
-\CapPrimarySecondaryText\ \CapRatioCaveat\ The supplement reports the
-corresponding image-time, expanded-node, and construction estimates as well as
-their exact denominators.
+\CapPrimarySecondaryText\ Panel~(c) additionally shows lower paired image time
+and expanded-node totals for cap-aware selection, alongside slightly higher
+construction time. The supplement reports the all-task sensitivity and full
+representation summaries.
 
 The descriptive controls delimit the claim.  Uncapped, unaligned M\&S solved
 \CapFullMsExactSolved/\CapFullTasks\ tasks, compared with

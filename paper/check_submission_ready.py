@@ -271,6 +271,7 @@ REQUIRED_MAIN = (
     r"\CapFullContextRows",
     r"\CapPrimaryContrastRows",
     r"\CapPrimaryMechanismRows",
+    r"\CapPrimarySecondaryRows",
     r"\CapPrimarySecondaryText",
     r"\CapScopeCaveat",
 )
