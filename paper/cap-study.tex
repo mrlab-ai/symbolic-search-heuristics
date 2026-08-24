@@ -98,17 +98,18 @@ ranking surrogate, not a runtime-optimality claim.
 
 \begin{proposition}[selector dominance]
 \label{prop-selector-dominance}
-Suppose the exact and cap-aware selectors complete on the same normalized
-raw-PDB pool with the same width budget. The cap-aware candidate set after
+Suppose the exact and cap-aware selectors complete on the same score-bearing
+normalized raw-PDB pool with the same width budget. The cap-aware candidate set after
 per-pattern selection contains every exact-feasible candidate. Hence its
 winner has lexicographic score no smaller than the exact winner. It preserves
 initial-state dead-end recognition and semantic nontriviality; if neither
 winner recognizes the initial state as a dead end, its initial value is no
-smaller.
+smaller. If the cap-aware winner is an exact endpoint, both selectors return
+the same pattern and heuristic.
 \end{proposition}
 
 \begin{proof}
-Consider any raw PDB whose exact transform has width at most (K). Exact is
+Consider any raw PDB whose exact transform has width at most $K$. Exact is
 the final endpoint of that PDB's cap-aware ladder. Since it is feasible, the
 last-feasible rule retains it as the per-pattern representative. It therefore
 enters the cap-aware cross-pattern comparison with exactly the score it has in
@@ -123,10 +124,33 @@ initial dead end or a positive finite value---or matches the earlier
 components and cannot reduce the component witnessing nontriviality. Finally,
 when both winners have a finite initial value, equality of the first component
 forces the second component to be nondecreasing.
+
+For the final statement, let $e$ and $p$ be the exact-selector and cap-aware
+winners, and suppose $p$ is an exact endpoint. Candidate containment gives
+$\mathrm{score}(p)\geq\mathrm{score}(e)$. Since $p$ also belongs to the exact
+candidate set, optimality of $e$ gives the reverse inequality. The score is a
+deterministic total order whose final pattern tie breaker is part of the
+score-bearing pool identity, so $p=e$.
 \end{proof}
 
 This is a backward-compatibility result for the frozen information score, not
 a coverage or runtime guarantee.
+
+\begin{corollary}[selector safety]
+\label{cor-selector-safety}
+Under the assumptions of Theorem~\ref{thm-effort}, every completed selection
+by either selector has effort at most $2K^2n$ times blind effort. If a selected
+transform has finite cap $\kappa$, the sharper factor is
+$2K\min\{K,\kappa+1\}n$. Thus $K=8$ gives at most $128n$ for every output,
+and caps 2 and 4 give at most $48n$ and $80n$, respectively.
+\end{corollary}
+
+Every selected transform is admissible and consistent, passes the measured
+width test $W\leq K$, and has at most $W\leq K$ finite values by
+Proposition~\ref{prop-range}. A cap has at most $\kappa+1$ finite values.
+Substitution in Corollary~\ref{cor-effort} proves the claim. This certificate
+does not require paired-pool identity and does not bound runtime or relational
+products.
 
 The cap-aware whole-trace certificate records each tested transform, its cap,
 feasibility decision, transformed \(W\), ADD inner nodes \(A\), terminal count
@@ -376,3 +400,116 @@ not certified. \CapScopeCaveat
   \end{minipage}
 \end{table}
 \end{landscape}
+
+\subsection{Post-Hoc Theorem-Guided Diagnostics}
+
+After completing the prospective analysis, we added a separate
+digest-pinned audit to answer the adversarial questions of whether the
+aggregate operational reduction is specific to actual cap interventions and
+whether it is dominated by a single domain. Its role is
+\CapPosthocAnalysisRole, with inferential policy
+\CapPosthocInferencePolicy: it changes neither the frozen estimand nor the
+secondary contract and reports no tests or intervals.
+
+The trace strata are exhaustive on each complete-certified paired denominator.
+All \CapPosthocPrimaryExactEndpointPairs\ primary exact endpoints have zero
+selected-heuristic identity mismatches. All
+\CapPosthocPrimaryFinitePairs\ primary finite-cap endpoints materially change
+the chosen raw PDB and have raw width above $K=8$; their raw-width range is
+\CapPosthocPrimaryRawWidthMinimum--\CapPosthocPrimaryRawWidthMaximum, with
+median \CapPosthocPrimaryRawWidthMedian. Among
+\CapPosthocPrimaryInitialNondeadPairs\ primary pairs without an initial
+dead-end proof, the cap-aware initial value is higher/equal/lower on
+\CapPosthocPrimaryInitialHigher/\CapPosthocPrimaryInitialEqual/
+\CapPosthocPrimaryInitialLower\ tasks.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Post-hoc exhaustive strata of complete-certified paired selector
+    traces. Coverage columns retain every paired trace, including timeouts.}
+  \label{tab:supp-posthoc-trace-strata}
+  \begin{tabular}{@{}llrrrrr@{}}
+    \toprule
+    Scope & Endpoint & Pairs & Wins & Losses & Both solved & Both unsolved \\
+    \midrule
+    \CapPosthocTraceStrataRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Post-hoc operational localization. Ratios are cap-aware over exact;
+    L/E/H counts pairs on which the cap-aware metric is lower/equal/higher.
+    Eligibility requires complete certified schema-v2 image metrics, so these
+    rows cannot explain coverage discordances or joint timeouts.}
+  \label{tab:supp-posthoc-operational}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}lllrrrrrrr@{}}
+    \toprule
+    Scope & Endpoint & Metric & Eligible & Cap-aware total & Exact total & Ratio
+      & L & E & H \\
+    \midrule
+    \CapPosthocOperationalRows
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+On the primary operational subset, every eligible exact-endpoint node count is
+identical, whereas finite caps give the full node reduction. Image
+time is not identical at exact endpoints because it includes the surrounding
+search process. The exact-endpoint coverage losses in
+Table~\ref{tab:supp-posthoc-trace-strata} likewise occur at the resource limit
+despite identity of the selected heuristic, so they are not evidence against
+Proposition~\ref{prop-selector-dominance}.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Post-hoc leave-one-domain-out descriptions. ``Base'' is the
+    unmodified scope; the last columns show the extremal omission and the
+    omitted domain. Coverage is in percentage points and nodes are ratios.}
+  \label{tab:supp-posthoc-lodo}
+  \begin{tabular}{@{}llrrr@{}}
+    \toprule
+    Scope & Metric & Base & Minimum & Maximum \\
+    \midrule
+    \CapPosthocLeaveOneDomainOutRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Post-hoc distribution of the selected universal coefficient
+    $c=2VW$ in the certificate $c n$, computed per completed selector trace.
+    This is a conservative structural certificate, not measured search
+    overhead.}
+  \label{tab:supp-posthoc-certificate}
+  \begin{tabular}{@{}llrrrrr@{}}
+    \toprule
+    Scope & Selector & Traces & Min & Median & P95 & Max \\
+    \midrule
+    \CapPosthocCertificateCoefficientRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Post-hoc distribution of the sharper finite-cap coefficient
+    $2K\min\{K,\kappa+1\}$. Selected caps yielding the same coefficient are
+    grouped. These counts were not used to choose the cap ladder.}
+  \label{tab:supp-posthoc-cap-certificate}
+  \begin{tabular}{@{}lrrl@{}}
+    \toprule
+    Scope & Coefficient & Selections & Selected caps \\
+    \midrule
+    \CapPosthocUniversalCoefficientRows
+    \bottomrule
+  \end{tabular}
+\end{table}

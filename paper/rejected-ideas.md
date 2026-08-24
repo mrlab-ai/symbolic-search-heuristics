@@ -103,6 +103,21 @@ substituting for it.
 fixed comparison into adaptive tuning. `K=32` remains sensitivity evidence
 only.
 
+### A New `K in {4,8,16,32}` Sweep After Reading the Census
+
+An adversarial review correctly identified a width-budget sweep as the most
+useful missing ablation. The accepted full matrix, however, contains only the
+prespecified exact and cap-aware `K=8` contrast; the earlier `K=32` screen is
+development evidence from a different scope and cannot reconstruct a common
+full-census sweep.
+
+**Decision:** defer the sweep to a new frozen experiment.
+
+**Reason:** running or selecting additional budgets after inspecting the
+`K=8` outcomes would answer a new tuning question. The current revision instead
+strengthens the theorem and reports an explicitly post-hoc audit of the fixed
+comparison without pretending that the missing ablation was prespecified.
+
 ### Construction-Bounded M&S with Blind Fallback
 
 A 60-second M&S construction deadline with fallback to blind search was an
@@ -211,21 +226,55 @@ two pre-relaxation bounds are incomparable.
 **Decision:** reject the claim that cofactor width is the superior operational
 budget.
 
-**Reason:** the accepted matrix contains no total-ADD-size budget ablation. The
-paper can present width as a sufficient certificate, but cannot rank the two
-constraints empirically.
+**Reason:** the accepted matrix contains no matched total-ADD-size budget
+ablation. The revised paper proves linear separations between the cut-sensitive
+cofactor-profile certificate and the ordinary Apply certificate in both
+directions, but it cannot rank the two constraints empirically.
 
 ### Direct Empirical Validation of the Worst-Case Bound
 
-The execution logs contain widths, ADD summaries and operational totals, but
-not the paired source cofactor profiles and theorem slice sizes needed to
-evaluate the bound instance by instance.
+The execution logs contain widths, ADD summaries, operational totals and the
+validated maximum ratio of summed bucket nodes to an unsplit layer. They do not
+contain the complete source cofactor profiles needed to evaluate the theorem's
+cut-sensitive numerical upper bound instance by instance.
 
 **Decision:** reject correlation or theorem-validation claims from these logs.
 
-**Reason:** aggregate width, image and node summaries do not reconstruct the
-quantities in the proof. The final paper limits the experiment to selector
-behavior, coverage and separately denominated operational descriptions.
+**Reason:** partition ratios directly describe observed fragmentation, but do
+not reconstruct $Q(\chi_{L_g})$ or certify tightness of the worst-case bound.
+The final paper labels this audit post hoc and limits its claim accordingly.
+
+### Promoting Post-Hoc Robustness Diagnostics to Confirmatory Results
+
+The preserved properties support useful exhaustive diagnostics: transform
+strata, per-pair signs, leave-one-domain-out ranges, initial-value changes and
+certificate coefficients. The audit artifact also retains partition-ratio
+distributions, which the next item rejects from manuscript interpretation.
+All were designed during adversarial review, after the frozen primary and
+secondary contracts.
+
+**Decision:** include them only in a separately checksum-bound post-hoc audit.
+
+**Reason:** the diagnostics answer reviewer objections about concentration and
+mechanism, but changing their label would erase their timing. They cannot alter
+promotion, the primary estimand, or the frozen secondary result.
+
+### Comparing Logged Partition-Ratio Quantiles Across Configurations
+
+The post-hoc artifact records each run's maximum observed ratio between the
+summed nodes of heuristic partitions and its unsplit layer. At first glance,
+the standalone cap-aware and exact quantiles look like a direct representation
+comparison.
+
+**Decision:** retain the values in the audit artifact, but reject the
+cross-configuration comparison from the paper.
+
+**Reason:** the standalone observation sets are unpaired and are dominated by
+incomplete searches. Restricting to complete paired searches changes the
+comparison: the 95th percentiles coincide and the cap-aware median is larger.
+Neither version contains the full cofactor profiles needed for the theorem's
+numerical certificate. Presenting the standalone quantiles as robustness or
+mechanism evidence would therefore exploit censoring rather than resolve it.
 
 ### A Joint Three-Factor Lower-Bound Claim
 

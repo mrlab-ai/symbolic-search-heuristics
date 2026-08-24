@@ -13,19 +13,36 @@ PAPER_PYTHON ?= python3
 PROXY_TARGET_CONTENT_PAGES ?= 8
 GENERATED_RESULT := generated/pdb-cap-grid-full-v1.tex
 ANALYSIS_ARTIFACT_DIR := ../experiments/artifacts/pdb-cap-grid-focused-full
+POSTHOC_GENERATED_RESULT := generated/pdb-cap-grid-posthoc-v1.tex
+POSTHOC_ANALYSIS_ARTIFACT_DIR := \
+	../experiments/artifacts/pdb-cap-grid-posthoc-review
+POSTHOC_ANALYSIS_ARTIFACT := \
+	$(POSTHOC_ANALYSIS_ARTIFACT_DIR)/analysis-v1.json
+POSTHOC_ANALYSIS_SIDECAR := \
+	$(POSTHOC_ANALYSIS_ARTIFACT_DIR)/analysis-v1.json.sha256
+POSTHOC_ANALYZER := ../experiments/analyze_pdb_cap_grid_posthoc_review.py
+POSTHOC_RENDERER := ../experiments/render_pdb_cap_grid_posthoc_review.py
 
 .PHONY: paper supplement proxy proxy-preflight submission-check submission-audit \
 	submission update-bib clean
 
 paper: paper.pdf
 
-paper.pdf: paper.tex $(GENERATED_RESULT) $(wildcard bib/*.bib)
+paper.pdf: paper.tex $(GENERATED_RESULT) $(POSTHOC_GENERATED_RESULT) \
+		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) $<
 
 supplement: supplement.pdf
 
-supplement.pdf: supplement.tex cap-study.tex $(GENERATED_RESULT) $(wildcard bib/*.bib)
+supplement.pdf: supplement.tex cap-study.tex $(GENERATED_RESULT) \
+		$(POSTHOC_GENERATED_RESULT) \
+		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) $<
+
+$(POSTHOC_GENERATED_RESULT): $(POSTHOC_RENDERER) \
+		$(POSTHOC_ANALYSIS_ARTIFACT) $(POSTHOC_ANALYSIS_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(POSTHOC_RENDERER) \
+		--analysis $(POSTHOC_ANALYSIS_ARTIFACT) --output $@ --write
 
 # ICAPS 2027 has not published its author kit.  This target deliberately uses
 # the preceding conference's AAAI 2026 format only as a page/layout stress
@@ -60,22 +77,32 @@ proxy-preflight:
 	}
 
 aaai2026-proxy.pdf: proxy-preflight aaai2026-proxy.tex paper.tex \
-		$(GENERATED_RESULT) $(wildcard bib/*.bib)
+		$(GENERATED_RESULT) $(POSTHOC_GENERATED_RESULT) \
+		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) aaai2026-proxy.tex
 
 # This gate binds the accepted focused full-study artifact and prevents a
 # submission build from silently retaining synthetic, stale, or unreviewed
 # result bytes.
-submission-check:
+submission-check: $(POSTHOC_GENERATED_RESULT)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		../experiments/analyze_pdb_cap_grid_full.py --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(POSTHOC_ANALYZER) --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		../experiments/render_pdb_cap_grid_full_paper.py --self-test
 	cd $(ANALYSIS_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		../experiments/render_pdb_cap_grid_full_paper.py --check
+	cd $(POSTHOC_ANALYSIS_ARTIFACT_DIR) && \
+		sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(POSTHOC_RENDERER) --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(POSTHOC_RENDERER) --analysis $(POSTHOC_ANALYSIS_ARTIFACT) \
+		--output $(POSTHOC_GENERATED_RESULT) --check
 
 # Provisional project audit assumption only, not an ICAPS 2027 requirement:
 # audit a two-PDF review bundle until the venue publishes its rules. The

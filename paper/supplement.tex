@@ -46,6 +46,7 @@
 
 % Paper-facing aggregates emitted by the reviewed, digest-pinned renderer.
 \input{generated/pdb-cap-grid-full-v1.tex}
+\input{generated/pdb-cap-grid-posthoc-v1.tex}
 
 \title{Cofactor Width Controls Heuristic Fragmentation
 in Forward Symbolic \astar{}: Supplementary Material}
@@ -77,9 +78,11 @@ For a state \(s\), let \(\gstar(s)\) be its cheapest-path cost from
 value are discarded; the remaining generated states are grouped by keys
 \((g,v)\), selected by increasing \(f=g+v\) and then increasing \(g\).
 Each bucket is a set union that remains resident until its exact key is
-selected. Generated states are removed only if already expanded at their best
-known $g$; selection closes the entire residual bucket before its successors
-are generated, and no state is reopened at an equal or higher $g$. Search
+selected. Immediately before expansion, its resident set is intersected with
+the complement of states already closed at their best known $g$; ``bucket''
+below means this residual set. Selection closes the entire residual bucket
+before its successors are generated, and no state is reopened at an equal or
+higher $g$. Search
 terminates when a selected bucket contains a goal. This is the setting of the
 following restatement.
 
@@ -357,7 +360,7 @@ $\phi_{\kappa_2}\circ q$ and
 $\width_\pi(\phi_{\kappa_1}\circ q)\leq
 \width_\pi(\phi_{\kappa_2}\circ q)$. Thus increasing $\kappa$ weakly
 strengthens the heuristic, whereas decreasing it weakly decreases both its
-finite-value count and width and therefore its coarse $3\values Wn$
+finite-value count and width and therefore its coarse $2\values Wn$
 certificate.
 
 Let $\mathrm{ADD}_\pi(h)$ be the reduced ordered ADD of $h$ under $\pi$
@@ -390,6 +393,8 @@ bound witnessed entirely by genuine states applies to every such extension.
 \label{lem-qsize}
 For every Boolean $f$ over $x_1, \dots, x_n$,
 $\bddsize{f} \leq \cofcount(f) \leq n \cdot (\bddsize{f} + 2)$.
+If $f$ is nonconstant, then also
+$\cofcount(f)\leq2n\bddsize{f}$.
 \end{lemma}
 
 \begin{proof}
@@ -411,7 +416,12 @@ such variable. Traversing $\bdd{f}$ from the root under any prefix
 witnessing $u$ ends at an inner node labeled $x_j$ that computes $u$, and
 by canonicity this node is unique. Hence
 $|\sub{i}{f}| \leq \bddsize{f} + 2$ for every $i$, and summing over the
-$n$ levels yields the claim.
+$n$ levels yields the second claim. For the final inequality, write
+$b=\bddsize{f}\geq1$. If $b\geq2$, then
+$n(b+2)\leq2nb$. If $b=1$, the unique inner node tests some $x_j$, so $f$
+is $x_j$ or $\neg x_j$. The cuts before $x_j$ have one residual and the
+remaining cuts have two constants. Thus
+$\cofcount(f)=j+2(n-j)=2n-j\leq2n=2nb$.
 \end{proof}
 
 \section{Fragmentation Bounds}
@@ -525,10 +535,12 @@ bucket-identity assumptions, gives
  \leq\values\bigl((A+1)\effort(\task,\hblind)+AN\bigr)
  \leq\values(2A+1)\effort(\task,\hblind),
 \]
-because $N\leq\effort(\task,\hblind)$. At each ADD level, its inner nodes
-represent distinct nonconstant residuals, so there are at most $W$ of them;
-hence $A\leq nW$. This reduced-size baseline is no worse than the coarse
-$3\values Wn$ ratio. A rooted binary ADD with $A$ inner nodes reaches at most
+because $N\leq\effort(\task,\hblind)$. A nonconstant ADD has one root and at
+most $W$ nodes at each of the other $n-1$ levels, so
+$A\leq1+(n-1)W$. Since a nonconstant function has $W\geq2$, this implies
+$2A+1\leq2nW$; for a constant function, $A=0$. The reduced-size baseline is
+therefore no worse than the coarse $2\values Wn$ ratio. A rooted binary ADD
+with $A$ inner nodes reaches at most
 $A+1$ terminals, so $\values\leq A+1$ also gives the ADD-only ratio
 $(A+1)(2A+1)$.
 
@@ -599,8 +611,8 @@ $\values\leq W$ proves the third.
 Under the assumptions of Theorem~\ref{thm-effort},
 \begin{equation}
  \effort(\task,h)
- \leq3\values Wn\,\effort(\task,\hblind)
- \leq3W^2n\,\effort(\task,\hblind).
+ \leq2\values Wn\,\effort(\task,\hblind)
+ \leq2W^2n\,\effort(\task,\hblind).
  \label{eq-supp-effort-ratio}
 \end{equation}
 \end{corollary}
@@ -609,10 +621,11 @@ Under the assumptions of Theorem~\ref{thm-effort},
 Positive costs give $L_0=\{\sinit\}$. Because
 $0<\copt<\infty$, this is a proper subset of the Boolean cube. Every
 nonempty $L_g$ with $0<g<\copt$ is also proper because it omits
-\sinit. Its characteristic function is therefore nonconstant and its
-reduced OBDD has at least one inner node. Hence
-$N\leq\effort(\task,\hblind)$ in
-Equation~\eqref{eq-effort-nonempty}, which proves both inequalities.
+\sinit. Hence each $\chi_{L_g}$ is nonconstant, and
+Lemma~\ref{lem-qsize} gives
+$\cofcount(\chi_{L_g})\leq2n\bddsize{L_g}$. Substitution in the first
+inequality of Theorem~\ref{thm-effort}, followed by summation over $g$,
+proves both inequalities.
 \end{proof}
 
 This is a one-sided bound on expanded frontier representations in forward
@@ -708,7 +721,7 @@ survives into the expanded layer.
 Let $h$ be admissible and consistent with $\width_\pi(h)\leq W$. The
 cumulative size of the layers expanded by pruning-only search is at most
 \[
- Wn\bigl(\effort(\task,\hblind)+2\copt\bigr),
+ 2Wn\,\effort(\task,\hblind),
 \]
 and it performs one idealized high-level cost-image invocation per expanded
 semantic layer. With $c=\infty$
@@ -720,12 +733,14 @@ evaluation can still consume time.
 \begin{proof}
 By Lemma~\ref{lem-slice}, every expanded BDD is a single threshold slice
 of $L_g$. Theorem~\ref{thm-bucket} bounds it by
-$Wn(\bddsize{L_g}+2)$. While $c>\copt$, admissibility preserves every prefix
+$W\cofcount(\chi_{L_g})\leq2Wn\bddsize{L_g}$, because every nonempty
+pre-goal $L_g$ is proper and Lemma~\ref{lem-qsize} applies. While
+$c>\copt$, admissibility preserves every prefix
 of an optimal plan because $g+h\leq\copt<c$. Imaging its final pre-goal prefix
 generates a goal of cost $\copt$ and updates $c$ before another layer is
 imaged. The stopping rule therefore prevents an image at $g\geq\copt$.
-Summing over the at most $\copt$ nonempty layers below the optimal goal cost
-proves the node bound. Because no layer is
+Summing over the expanded layers below the optimal goal cost, and enlarging
+to all blind pre-goal layers, proves the node bound. Because no layer is
 partitioned, exactly one modeled high-level cost-image invocation is made for
 each expanded semantic layer. If the incumbent stays infinite and no state
 has $h=\infty$, the retained slice
@@ -735,7 +750,7 @@ is all of $L_g$, proving the final claim.
 For every $\alpha\geq0$, pruning-only $\alpha$-effort is therefore at
 most
 \[
- Wn\bigl(\effort(\task,\hblind)+2\copt\bigr)+\alpha N_\ell.
+ 2Wn\,\effort(\task,\hblind)+\alpha N_\ell.
 \]
 The discard is also pointwise sound in bidirectional blind search if the
 forward direction uses an admissible goal-distance estimate and the
@@ -758,7 +773,7 @@ For all integers $W \geq 2$ and $k \geq 4W$ there are tasks
 $\task_{k,W}$ with $n=2k+2$ Boolean variables and consistent, admissible
 heuristics $h$ with $\width_\pi(h)=W$ such that
 $\effort(\task_{k,W},h)\geq
-(W^2/128)\effort(\task_{k,W},\hblind)$.
+(W^2/12)\effort(\task_{k,W},\hblind)$.
 \end{theorem}
 
 \begin{proof}
@@ -810,45 +825,49 @@ inequality and
 \emph{Blind effort.}
 For $i\leq k$, layer $L_i$ fixes the chain prefix, fixes
 $v_j=0$ for $j>i$ and $t=0$, and leaves $v_1,\dots,v_i$ free. Therefore
-$\bddsize{L_i}\leq2k+2$. There are $k+1$ such pre-goal layers and no
-intermediate layers between costs $k$ and $k+W$, so
+$L_i$ is the conjunction of $k+1$ chain literals, $k-i$ future-choice
+literals, and $\neg t$, so $\bddsize{L_i}=2k-i+2$. There are $k+1$ such
+pre-goal layers and no intermediate layers between costs $k$ and $k+W$, so
 \[
 \effort(\task_{k,W},\hblind)
- \leq(k+1)(2k+2)\leq8k^2.
+ =\sum_{i=0}^k(2k-i+2)=\frac{(k+1)(3k+4)}{2}.
 \]
 
 \emph{Heuristic effort.}
 On $L_i$, $h=q(\sum_{j\leq i}v_j\bmod W)$. For $i\geq W-1$ all $W$
 buckets are nonempty, and every bucket is selected because
-$i+h\leq k+W-1<\copt$. Fix a layer
-$i\in[\lceil3k/4\rceil,k]$ and one bucket. For every
+$i+h\leq k+W-1<\copt$. Fix a layer $i\in[2W,k]$ and one bucket. For every
 $W\leq j\leq i-W$, prefixes of $v_1,\dots,v_j$ with distinct partial
 residues induce distinct cofactors of the modular bucket: the already-fixed
 $x$-block and $t=0$ are common literals, and a suffix using
 at most $W-1$ of the remaining variables completes one residue to the
 required bucket and not another. Each such cofactor essentially depends
 on $v_{j+1}$ by the same argument. Consequently the reduced OBDD has
-$W$ distinct nodes at each of the $i-2W+1=\Omega(k)$ middle levels, and
-the bucket has at least $W(i-2W+1)\geq kW/4$ inner nodes. The interval
-$[\lceil3k/4\rceil,k]$ contains at least $k/4$ layers. Summing over these
-layers and their $W$ buckets gives
+$W$ distinct nodes at each of the $i-2W+1$ middle levels, and the bucket
+has at least $W(i-2W+1)$ inner nodes. Summing over these layers and their
+$W$ buckets gives
 \[
 \effort(\task_{k,W},h)
- \geq (k/4)\,W\,(kW/4)=k^2W^2/16.
+ \geq W^2\sum_{i=2W}^k(i-2W+1)
+ =\frac{W^2(k-2W+1)(k-2W+2)}{2}.
 \]
-Together with the blind upper bound, this proves the stated ratio.
+Writing $k=4W+d$ with $d\geq0$, the ratio is at least $W^2/12$ because
+\[
+12(k-2W+1)(k-2W+2)-(k+1)(3k+4)
+=9d^2+24Wd+29d+44W+20>0.
+\]
 \end{proof}
 
 \begin{corollary}[pairwise lower bounds]
 \label{cor-pairwise-lb}
 For every integer $W\geq2$, the construction contains an instance with
 $\values=W$ and $n=8W+2$ whose heuristic-to-blind effort ratio is at least
-$\values W/128$, $\values n/1152$, and $Wn/1152$.
+$\values W/12$, $\values n/108$, and $Wn/108$.
 \end{corollary}
 
 \begin{proof}
 Set $k=4W$ in Theorem~\ref{thm-tight}. Then $n=2k+2=8W+2\leq9W$ and the
-ratio is at least $W^2/128$. The three displayed bounds follow from
+ratio is at least $W^2/12$. The three displayed bounds follow from
 $\values=W$ and $n\leq9W$.
 \end{proof}
 
@@ -944,7 +963,7 @@ For rectified consistent integer potential heuristics with magnitudes at
 most $M$,
 \[
 \effort(\task,\hpot)
- \leq 3d(mM+1)(2mM+1)n\cdot\effort(\task,\hblind),
+ \leq 2d(mM+1)(2mM+1)n\cdot\effort(\task,\hblind),
 \]
 a factor polynomial in the task size and the numeric magnitude $M$.
 \end{corollary}
@@ -961,27 +980,37 @@ Corollary~\ref{cor-effort}.
 \label{prop-pdb}
 Let $P\subseteq\vars$ be any pattern under a variable-contiguous order
 $\pi$. Extend its table to invalid encodings by ignoring non-pattern
-bits and mapping an invalid pattern-variable code to a fixed sink
-terminal. Let
+bits and mapping an invalid pattern-variable code to $0$. Let
 $|\states^P|=\prod_{v\in P}|D_v|$. Then
 \[
-\width_\pi(h^P)\leq d\,|\states^P|.
+\width_\pi(h^P)\leq|\states^P|.
 \]
 \end{proposition}
 
 \begin{proof}
-Fix a bit-prefix $\rho$. Values read from variables outside $P$ are
-irrelevant to this extension. If an already read pattern code is
-invalid, the cofactor is the sink constant. Otherwise it is determined
-by the assignments to the fully read pattern variables and, if the
-current variable belongs to $P$, by its already-read bits. The number
-of valid partial abstract assignments and bit buffers is at most
-$|\states^P|$; adding the sink case still fits
-$d|\states^P|$ for $d\geq2$ (the degenerate $d=1$ encoding has no
-invalid bit code). Prefixes producing the same case have identical
-completions. Once every pattern variable has been read, the cofactor is
-a constant PDB value or the fixed sink, again within the stated bound.
+Write $M=|\states^P|$ and fix a bit cut. Bits of variables outside $P$ are
+irrelevant. Suppose first that the cut lies $b$ bits inside a pattern
+variable of domain size $D$, and that $A$ valid assignments to earlier
+pattern variables are possible. For
+$b<\lceil\log_2D\rceil$, we have $2^b<D$. Valid prefixes therefore induce
+at most $A2^b$ residuals. Prefixes containing an earlier invalid code all
+share the constant-zero residual, so there are at most
+$A2^b+1\leq AD\leq M$ residuals.
+
+At a boundary between pattern variables, let $F$ be the product of the
+unread pattern-domain sizes. If $F\geq2$, the same count is at most
+$A+1\leq AF=M$. If $F=1$, the valid residuals are constants and invalid
+codes map to $0$, which is already an attained PDB goal-distance terminal;
+there are at most $M$ of them. This includes the cut after the full pattern.
+Thus every cut has at most $M$ cofactors. An extension using a distinct
+invalid-code sink has the robust alternative bound $M+1$.
 \end{proof}
+
+Since a PDB has at most $M$ finite values,
+Corollary~\ref{cor-effort} gives
+$\effort(\task,h^P)\leq2M^2n\effort(\task,\hblind)$ under the default-zero
+extension. In particular, a raw PDB with at most $K$ abstract states is
+automatically exact-width feasible under a width budget $K$.
 
 \subsection{Linear Merge-and-Shrink}
 
@@ -1036,6 +1065,10 @@ PDB construction and symbolic PDB use are established techniques
 automatic CEGAR pattern generation is due to
 \citet{rovner-et-al-icaps2019}, and compiling PDBs and M\&S heuristics into
 BDD value sets predates this work \citep{edelkamp-et-al-ecai2012}.
+Relaxed BDD heuristics also use a width parameter to control a diagram over
+action choices for delete-free planning \citep{castro-et-al-icaps2019}. That
+construction width is distinct from the residual width of the total
+state-to-value heuristic ADD that partitions search frontiers here.
 \citet{torralba-phd2015} studied polynomial BDD representations of linear M\&S
 heuristics, while \citet{helmert-et-al-icaps2015} made their cascading
 factored mappings explicit. We do not claim the empty, BDD-prefix,
@@ -1072,6 +1105,6 @@ meeting points, and direction choices remains open.
 \label{sec:supp-references-start}
 {\small
 \bibliographystyle{plainnat}
-\bibliography{bib/abbrv,bib/literatur,bib/crossref}
+\bibliography{bib/abbrv,bib/literatur,bib/crossref,extra}
 }
 \end{document}

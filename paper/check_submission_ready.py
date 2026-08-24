@@ -32,6 +32,8 @@ PROXY = ROOT / "aaai2026-proxy.tex"
 MANIFEST = ROOT / "reproducibility-manifest.md"
 GENERATED = ROOT / "generated" / "pdb-cap-grid-full-v1.tex"
 GENERATED_INPUT = r"\input{generated/pdb-cap-grid-full-v1.tex}"
+POSTHOC_GENERATED = ROOT / "generated" / "pdb-cap-grid-posthoc-v1.tex"
+POSTHOC_GENERATED_INPUT = r"\input{generated/pdb-cap-grid-posthoc-v1.tex}"
 CAP_STUDY_INPUT = r"\input{cap-study.tex}"
 REFERENCES_START_LABEL = r"\label{paper:references-start}"
 
@@ -46,7 +48,7 @@ MAIN_REFERENCE_TAIL = re.compile(
     r"\\else\s*"
     r"\\bibliographystyle\{plainnat\}\s*"
     r"\\fi\s*"
-    r"\\bibliography\{bib/abbrv,bib/literatur,bib/crossref\}\s*"
+    r"\\bibliography\{bib/abbrv,bib/literatur,bib/crossref,extra\}\s*"
     r"\\end\{document\}\s*\Z"
 )
 
@@ -268,6 +270,7 @@ FORBIDDEN_REVIEW_MACROS = (
 
 REQUIRED_MAIN = (
     GENERATED_INPUT,
+    POSTHOC_GENERATED_INPUT,
     r"\CapFullContextRows",
     r"\CapPrimaryContrastRows",
     r"\CapPrimaryMechanismRows",
@@ -278,6 +281,7 @@ REQUIRED_MAIN = (
 
 REQUIRED_SUPPLEMENT = (
     GENERATED_INPUT,
+    POSTHOC_GENERATED_INPUT,
     CAP_STUDY_INPUT,
 )
 
@@ -303,6 +307,17 @@ REQUIRED_MANIFEST = (
     "`experiments/artifacts/pdb-cap-grid-focused-full/analysis-v1.json`",
     "`experiments/artifacts/pdb-cap-grid-focused-full/analysis-v1.json.sha256`",
     "paper/generated/pdb-cap-grid-full-v1.tex",
+    "experiments/requirements.txt",
+    "experiments/analyze_pdb_cap_grid_posthoc_review.py",
+    "experiments/render_pdb_cap_grid_posthoc_review.py",
+    "`experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json`",
+    "`experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json.sha256`",
+    "paper/generated/pdb-cap-grid-posthoc-v1.tex",
+    "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-pdb-cap-grid-full-protocol/experiments/data/exp_pdb_cap_grid_full-eval.tar.gz",
+    "logical basename `exp_pdb_cap_grid_full-eval.tar.gz`",
+    "`WBH_ACCOUNT=naiss2025-5-561-cpu`",
+    "`lab==8.0`",
+    "post-hoc-theorem-guided-descriptive",
     "pdb-cap-grid-development-screen-v3",
     "pdb-cap-grid-focused-full-evaluation-v1",
     "frozen-during-active-full-execution-before-properties-fetch-or-scientific-outcome-aggregation/v2",
@@ -320,10 +335,17 @@ REQUIRED_MANIFEST_DIGESTS = (
     "bddc69b2eedcc1442e6a42517d4d294e9a6ae0ab7dbf4aebc49714b152c0f215",
     "fb8db53b4f5eea7306961351d110b0d331abc87fa2a31242321de429f32ad60a",
     "1df86a1255cb301ffe2b6eb0db52ba81ca7f8c511e5a011cd028d8eff2dfc862",
+    "f2bf90dbc2e06ea109b221bb1de250bd7560776faf9d42f4955da8fef961e12d",
+    "7408736632aaa534614e319322fe09a5ca9bb8e0874d7b6e7096a940e4bcfb63",
+    "e944922a633c08594e48a2c667bf84cd35d6b8121d85d2b1c672aed4abea533e",
+    "195c209a8ba34a89c98fd0920c4f58753635cd3f375f6424ca49da017effc59d",
 )
 
 EXPECTED_GENERATED_SHA256 = (
     "6bed124d4972bb76c87739cb96bf09d65f65c0a70818072f131f794d3421fb65"
+)
+EXPECTED_POSTHOC_GENERATED_SHA256 = (
+    "c9d89687e2bf7c39b2d6d023b67f778097cf8517c6ca38370cc138d53333739e"
 )
 
 FORBIDDEN_MANIFEST = re.compile(
@@ -946,7 +968,9 @@ def _validate_source(name: str, text: str, required) -> None:
             raise SubmissionReadinessError(
                 f"{name}:{line}: unresolved submission marker ({description})"
             )
-    identity_text = active.replace(GENERATED_INPUT, "")
+    identity_text = active.replace(GENERATED_INPUT, "").replace(
+        POSTHOC_GENERATED_INPUT, ""
+    )
     for description, pattern in FORBIDDEN_IDENTITY:
         match = pattern.search(identity_text)
         if match:
@@ -970,8 +994,10 @@ def _validate_source(name: str, text: str, required) -> None:
 def _validate_manifest(
     manifest_text: str,
     generated_text: str,
+    posthoc_generated_text: str,
     *,
     expected_generated_sha256: str = EXPECTED_GENERATED_SHA256,
+    expected_posthoc_generated_sha256: str = EXPECTED_POSTHOC_GENERATED_SHA256,
 ) -> None:
     match = FORBIDDEN_MANIFEST.search(manifest_text)
     if match:
@@ -1004,6 +1030,18 @@ def _validate_manifest(
             "reproducibility-manifest.md must contain the exact rendered-TeX "
             "SHA-256"
         )
+    posthoc_generated_sha256 = hashlib.sha256(
+        posthoc_generated_text.encode("utf-8")
+    ).hexdigest()
+    if posthoc_generated_sha256 != expected_posthoc_generated_sha256:
+        raise SubmissionReadinessError(
+            "generated TeX does not match the accepted post-hoc-review bytes"
+        )
+    if manifest_text.count(posthoc_generated_sha256) != 1:
+        raise SubmissionReadinessError(
+            "reproducibility-manifest.md must contain the exact post-hoc "
+            "rendered-TeX SHA-256"
+        )
 
 
 def validate(
@@ -1012,8 +1050,10 @@ def validate(
     cap_study_text: str,
     manifest_text: str,
     generated_text: str,
+    posthoc_generated_text: str,
     *,
     expected_generated_sha256: str = EXPECTED_GENERATED_SHA256,
+    expected_posthoc_generated_sha256: str = EXPECTED_POSTHOC_GENERATED_SHA256,
 ) -> None:
     _validate_source("paper.tex", main_text, REQUIRED_MAIN)
     _validate_source("supplement.tex", supplement_text, REQUIRED_SUPPLEMENT)
@@ -1021,7 +1061,9 @@ def validate(
     _validate_manifest(
         manifest_text,
         generated_text,
+        posthoc_generated_text,
         expected_generated_sha256=expected_generated_sha256,
+        expected_posthoc_generated_sha256=expected_posthoc_generated_sha256,
     )
 
 
@@ -1042,12 +1084,16 @@ def check_repository() -> None:
     generated_text = _read_stable_regular(
         GENERATED, label="generated result source"
     )
+    posthoc_generated_text = _read_stable_regular(
+        POSTHOC_GENERATED, label="generated post-hoc result source"
+    )
     validate(
         main_text,
         supplement_text,
         cap_study_text,
         manifest_text,
         generated_text,
+        posthoc_generated_text,
     )
 
 
@@ -1401,7 +1447,7 @@ def self_test():
         + REFERENCES_START_LABEL
         + "\n\\ifdefined\\ICAPSAAAIProxy\n"
         + "\\else\n  \\bibliographystyle{plainnat}\n\\fi\n"
-        + "\\bibliography{bib/abbrv,bib/literatur,bib/crossref}\n"
+        + "\\bibliography{bib/abbrv,bib/literatur,bib/crossref,extra}\n"
         + "\\end{document}\n"
     )
     main = (
@@ -1413,19 +1459,27 @@ def self_test():
     cap_study = "\n".join(REQUIRED_CAP_STUDY) + "\nfinal tables accepted\n"
     generated = "\\newcommand{\\CapFixtureValue}{1}\n"
     generated_sha = hashlib.sha256(generated.encode("utf-8")).hexdigest()
+    posthoc_generated = "\\newcommand{\\CapPosthocFixtureValue}{2}\n"
+    posthoc_generated_sha = hashlib.sha256(
+        posthoc_generated.encode("utf-8")
+    ).hexdigest()
     manifest = (
         "\n".join(REQUIRED_MANIFEST)
         + "\n"
         + "\n".join(REQUIRED_MANIFEST_DIGESTS)
         + "\nrendered TeX SHA-256 "
         + generated_sha
+        + "\npost-hoc rendered TeX SHA-256 "
+        + posthoc_generated_sha
         + "\n"
     )
 
     def validate_fixture(candidate):
         validate(
             *candidate,
+            posthoc_generated,
             expected_generated_sha256=generated_sha,
+            expected_posthoc_generated_sha256=posthoc_generated_sha,
         )
 
     base = (main, supplement, cap_study, manifest, generated)
@@ -1506,6 +1560,13 @@ def self_test():
             supplement,
             cap_study,
             manifest.replace(generated_sha, "3" * 64),
+            generated,
+        ),
+        (
+            main,
+            supplement,
+            cap_study,
+            manifest.replace(posthoc_generated_sha, "4" * 64),
             generated,
         ),
         (main, supplement, cap_study, manifest, generated + "% drift\n"),
@@ -1610,6 +1671,23 @@ def self_test():
             rejected += 1
         else:
             raise AssertionError("submission-readiness adversary was accepted")
+    for posthoc_candidate in (
+        "",
+        posthoc_generated + "% drift\n",
+    ):
+        try:
+            validate(
+                *base,
+                posthoc_candidate,
+                expected_generated_sha256=generated_sha,
+                expected_posthoc_generated_sha256=posthoc_generated_sha,
+            )
+        except SubmissionReadinessError:
+            rejected += 1
+        else:
+            raise AssertionError(
+                "post-hoc generated-byte adversary was accepted"
+            )
     review_rejected = _review_bundle_self_test()
     return {
         "self_test": "PASS",

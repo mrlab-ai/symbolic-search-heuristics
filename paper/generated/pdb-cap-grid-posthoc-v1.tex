@@ -1,0 +1,78 @@
+% Generated from the pinned post-hoc cap-grid review artifact.
+% Descriptive diagnostics only: no tests, intervals, or generalization.
+\newcommand{\CapPosthocAnalysisRole}{post-hoc theorem-guided descriptive}
+\newcommand{\CapPosthocInferencePolicy}{none}
+\newcommand{\CapPosthocPrimaryFinitePairs}{1020}
+\newcommand{\CapPosthocPrimaryExactEndpointPairs}{286}
+\newcommand{\CapPosthocAllFinitePairs}{1066}
+\newcommand{\CapPosthocAllExactEndpointPairs}{290}
+\newcommand{\CapPosthocPrimaryExactIdentityMismatches}{0}
+\newcommand{\CapPosthocAllExactIdentityMismatches}{0}
+\newcommand{\CapPosthocPrimaryMaterialTransformViolations}{0}
+\newcommand{\CapPosthocAllMaterialTransformViolations}{0}
+\newcommand{\CapPosthocPrimaryInitialNondeadPairs}{1295}
+\newcommand{\CapPosthocPrimaryInitialHigher}{824}
+\newcommand{\CapPosthocPrimaryInitialEqual}{471}
+\newcommand{\CapPosthocPrimaryInitialLower}{0}
+\newcommand{\CapPosthocPrimaryRawWidthMinimum}{9}
+\newcommand{\CapPosthocPrimaryRawWidthMedian}{26}
+\newcommand{\CapPosthocPrimaryRawWidthMaximum}{7051}
+\newcommand{\CapPosthocPrimaryCoverageLodoMinimumPoints}{0.534}
+\newcommand{\CapPosthocPrimaryCoverageLodoMaximumPoints}{1.2}
+\newcommand{\CapPosthocPrimaryNodeLodoMinimumRatio}{0.869}
+\newcommand{\CapPosthocPrimaryNodeLodoMaximumRatio}{0.935}
+\newcommand{\CapPosthocPrimaryExactPartitionPninetyfive}{2.532}
+\newcommand{\CapPosthocPrimaryCapPartitionPninetyfive}{2.383}
+\newcommand{\CapPosthocTraceStrataRows}{%
+Primary & Finite cap & 1020 & 12 & 3 & 394 & 611 \\
+Primary & Exact endpoint & 286 & 0 & 2 & 185 & 99 \\
+All tasks & Finite cap & 1066 & 13 & 5 & 420 & 628 \\
+All tasks & Exact endpoint & 290 & 0 & 2 & 186 & 102 \\}
+\newcommand{\CapPosthocOperationalRows}{%
+Primary & Finite cap & BDD nodes & 394 & 984442173 & 1134649470 & 0.868 & 262 & 33 & 99 \\
+Primary & Finite cap & Image time (s) & 394 & 5397.819 & 6214.158 & 0.869 & 238 & 6 & 150 \\
+Primary & Exact endpoint & BDD nodes & 196 & 164558767 & 164558767 & 1 & 0 & 196 & 0 \\
+Primary & Exact endpoint & Image time (s) & 196 & 1301.887 & 1288.559 & 1.01 & 73 & 54 & 69 \\
+All tasks & Finite cap & BDD nodes & 420 & 1172761082 & 1346318592 & 0.871 & 281 & 34 & 105 \\
+All tasks & Finite cap & Image time (s) & 420 & 6252.644 & 7248.792 & 0.863 & 257 & 6 & 157 \\
+All tasks & Exact endpoint & BDD nodes & 197 & 164690313 & 164690313 & 1 & 0 & 197 & 0 \\
+All tasks & Exact endpoint & Image time (s) & 197 & 1301.95 & 1288.649 & 1.01 & 74 & 54 & 69 \\}
+\newcommand{\CapPosthocPrimaryOperationalStrataRows}{%
+Finite cap & 394 & 0.868 & 262/33/99 & 0.869 \\
+Exact endpoint & 196 & 1 & 0/196/0 & 1.01 \\}
+\newcommand{\CapPosthocInitialHRows}{%
+Primary & 1295 & 824 & 471 & 0 \\
+All tasks & 1345 & 865 & 480 & 0 \\}
+\newcommand{\CapPosthocCertificateCoefficientRows}{%
+Primary & Exact & 1308 & 2 & 8 & 80 & 128 \\
+Primary & Cap-aware & 1306 & 2 & 48 & 96 & 128 \\
+All tasks & Exact & 1358 & 2 & 4 & 80 & 128 \\
+All tasks & Cap-aware & 1356 & 2 & 48 & 96 & 128 \\}
+\newcommand{\CapPosthocRawWidthRows}{%
+Primary & 1020 & 9 & 26 & 652 & 7051 \\
+All tasks & 1066 & 9 & 26 & 633 & 7051 \\}
+\newcommand{\CapPosthocUniversalCoefficientRows}{%
+Primary & 32 & 83 & 1 \\
+Primary & 48 & 532 & 2 \\
+Primary & 80 & 355 & 4 \\
+Primary & 128 & 50 & 8,16,32,64,128 \\
+All tasks & 32 & 86 & 1 \\
+All tasks & 48 & 561 & 2 \\
+All tasks & 80 & 368 & 4 \\
+All tasks & 128 & 51 & 8,16,32,64,128 \\}
+\newcommand{\CapPosthocLeaveOneDomainOutRows}{%
+Primary & Coverage delta (pp) & 0.957 & 0.534 (grid) & 1.2 (transport-opt14-strips) \\
+Primary & Node ratio & 0.884 & 0.869 (gripper) & 0.935 (miconic) \\
+All tasks & Coverage delta (pp) & 0.852 & 0.426 (grid) & 1.093 (transport-opt14-strips) \\
+All tasks & Node ratio & 0.885 & 0.863 (gripper) & 0.937 (miconic) \\}
+\newcommand{\CapPosthocPartitionRatioRows}{%
+Primary & Blind & 0 & -- & -- & -- \\
+Primary & M\&S & 1258 & 1.642 & 3.1 & 4.779 \\
+Primary & CEGAR & 1297 & 1.625 & 2.667 & 4.259 \\
+Primary & Exact & 1281 & 1 & 2.532 & 3.333 \\
+Primary & Cap-aware & 1277 & 1.144 & 2.383 & 3.333 \\
+All tasks & Blind & 0 & -- & -- & -- \\
+All tasks & M\&S & 1308 & 1.661 & 3.1 & 4.779 \\
+All tasks & CEGAR & 1347 & 1.625 & 2.667 & 4.259 \\
+All tasks & Exact & 1331 & 1 & 2.526 & 3.333 \\
+All tasks & Cap-aware & 1327 & 1.15 & 2.333 & 3.333 \\}

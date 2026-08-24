@@ -28,6 +28,9 @@ a full-census cell.
   `experiments/pdb_cap_grid_full_secondary_contract.py`
 - Fail-closed paper renderer:
   `experiments/render_pdb_cap_grid_full_paper.py`
+- Independent post-hoc diagnostics analyzer and fail-closed renderer:
+  `experiments/analyze_pdb_cap_grid_posthoc_review.py` and
+  `experiments/render_pdb_cap_grid_posthoc_review.py`
 
 ## Common benchmark and planner identity
 
@@ -102,8 +105,8 @@ screen passed that rule. No screen performance observation enters either the
   `977a1cac30b027990c8ed5f23803032a351c9497b26a837b303ba9604fc4f775`
 - Prospective start-job SHA-256:
   `24efc07fc6fdfd19d2a7532d4e717f072b1f5a2e893b946b529aedf4158ebc81`
-- Private scheduler job: `1363335`; account:
-  `naiss2025-5-561-cpu`
+- Private scheduler job: `1363335`; account binding:
+  `WBH_ACCOUNT=naiss2025-5-561-cpu`
 - Completion: all 984 array elements `COMPLETED` with exit `0:0`; all 6,885
   cells have canonical completion markers, wrapper exit 0, restart count 0,
   and regular driver logs; zero partial archives, temp markers, nonempty driver
@@ -157,6 +160,54 @@ sha256sum sidecar. It validates schema, provenance, population conservation,
 all primary-within-census relations, mechanism contingencies, PAR2 identities,
 paired denominators, selector summaries, and generated table dimensions. It
 never reads Lab properties or run directories.
+
+## Preserved archive and post-hoc review diagnostics
+
+The exact preserved evaluation archive is
+`/nobackup/proj/disk/dfsplan/personal/jendrik/symk-pdb-cap-grid-full-protocol/experiments/data/exp_pdb_cap_grid_full-eval.tar.gz`;
+its logical basename `exp_pdb_cap_grid_full-eval.tar.gz` has SHA-256
+`f2bf90dbc2e06ea109b221bb1de250bd7560776faf9d42f4955da8fef961e12d`.
+The archive contains the fetched `exp_pdb_cap_grid_full-eval/properties`
+whose raw-file and canonical logical digests are recorded in the focused-full
+section above.
+
+Raw experiment regeneration requires the clean launch revision, planner,
+benchmark checkout, revision cache, scheduler envelope, and account binding
+declared above. The Python environment is installed exactly from
+`experiments/requirements.txt` (SHA-256
+`7408736632aaa534614e319322fe09a5ca9bb8e0874d7b6e7096a940e4bcfb63`),
+which pins `lab==8.0`; the archived records report Python 3.9.25, installed
+Lab 8.0, and required Lab 8.0. The common runner reads the scheduler account
+from `WBH_ACCOUNT` but has a different fallback account. The focused-full
+runner therefore rejects build or launch unless the exact account binding
+recorded above is supplied. Verifying the committed analysis artifacts does
+not recreate or authorize a raw cluster run.
+
+After extracting the archive, invoke the independent post-hoc analyzer listed
+under Executable sources with `--properties` pointing to that exact
+`properties` file. It uses no Lab imports and fails closed on the canonical
+logical properties digest already recorded above, the exact record/schema
+manifest SHA-256
+`e944922a633c08594e48a2c667bf84cd35d6b8121d85d2b1c672aed4abea533e`,
+and the accepted prospective artifact and execution pins. Its role is
+`post-hoc-theorem-guided-descriptive`: it reports no tests, intervals, or
+population generalization.
+
+- Canonical post-hoc artifact:
+  `experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json`
+  (13,064 raw bytes), SHA-256
+  `195c209a8ba34a89c98fd0920c4f58753635cd3f375f6424ca49da017effc59d`
+- Post-hoc artifact sidecar:
+  `experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json.sha256`
+- Generated post-hoc paper input:
+  `paper/generated/pdb-cap-grid-posthoc-v1.tex`, SHA-256
+  `c9d89687e2bf7c39b2d6d023b67f778097cf8517c6ca38370cc138d53333739e`
+
+The post-hoc renderer reads only that canonical artifact and sidecar. Its
+self-test and `--check` gate validate the artifact pin and the generated TeX
+byte for byte. Thus the committed diagnostics remain independently bound to
+the canonical logical properties digest even where the Lab/account environment
+needed for raw regeneration is unavailable.
 
 ## Exclusions and claim boundary
 
