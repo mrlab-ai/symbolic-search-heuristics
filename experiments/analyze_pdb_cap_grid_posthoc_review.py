@@ -55,6 +55,44 @@ MATERIAL_TRANSFORM_DEFINITION = (
 )
 SELECTED_COEFFICIENT_FORMULA = "c=2*V_selected*W_selected"
 SELECTED_COEFFICIENT_ELIGIBILITY = "complete-certified-selector-trace-per-config/v1"
+RAW_CAP_COEFFICIENT_FORMULA = "c=2*V*W"
+RAW_CAP_COEFFICIENT_ELIGIBILITY = (
+    "same-cap-selected-pdb-raw-versus-transformed-finite-cap-trace/v1"
+)
+COMPLETED_BUCKET_DEFINITION = (
+    "completed-single-piece-bucket-equals-completed-image-call/v1"
+)
+NODE_PER_BUCKET_ESTIMAND = (
+    "cap-over-exact-ratio-of-total-expanded-bdd-nodes-per-completed-bucket/v1"
+)
+IMAGE_TIME_PER_BUCKET_ESTIMAND = (
+    "cap-over-exact-ratio-of-total-image-seconds-per-completed-bucket/v1"
+)
+IMAGE_TIME_EXACT_ARITHMETIC = (
+    "sum-of-shortest-roundtrip-decimal-json-numbers/v1"
+)
+METRICS_VALIDATION_PROTOCOL = "wbh-exact-schema-semantic-v3"
+OUTCOME_RECONCILIATION_PROTOCOL = (
+    "direct-search-raw-effective-plan-reconciliation/v1"
+)
+TRIPLE_SOLVED_EFFORT_ELIGIBILITY = (
+    "complete-identical-pool-selector-traces-three-way-certified-solved-"
+    "cost-reconciled-single-piece-buckets-schema-v2/v1"
+)
+TRIPLE_SOLVED_EFFORT_ESTIMAND = (
+    "ratio-of-total-certified-wbh-solution-cutoff-effort-on-three-way-solved/v1"
+)
+FINITE_EFFORT_LODO_ESTIMANDS = {
+    "cap_over_blind": (
+        "cap-over-blind-total-certified-effort-on-finite-cap-three-way-solved/v1"
+    ),
+    "exact_over_blind": (
+        "exact-over-blind-total-certified-effort-on-finite-cap-three-way-solved/v1"
+    ),
+    "cap_over_exact": (
+        "cap-over-exact-total-certified-effort-on-finite-cap-three-way-solved/v1"
+    ),
+}
 COVERAGE_LODO_ESTIMAND = "cap-minus-exact-equal-domain-macro-coverage/v1"
 NODE_LODO_ESTIMAND = (
     "cap-over-exact-total-expanded-bdd-nodes-on-complete-certified-pairs/v1"
@@ -62,7 +100,7 @@ NODE_LODO_ESTIMAND = (
 PARTITION_ELIGIBILITY = "finite-nonnegative-observed-partition_ratio_max/v1"
 
 EXPECTED_ANALYSIS_SHA256 = (
-    "195c209a8ba34a89c98fd0920c4f58753635cd3f375f6424ca49da017effc59d"
+    "211ba15a3b15235175d5f98ec4d374dada5d00cacf8997a5f919543041a06312"
 )
 EXPECTED_PROPERTIES_CANONICAL_SHA256 = (
     "bddc69b2eedcc1442e6a42517d4d294e9a6ae0ab7dbf4aebc49714b152c0f215"
@@ -121,6 +159,7 @@ CONFIGS = (
 )
 EXACT = "pdb_selector_k8"
 CAP = "pdb_cap_grid_k8"
+BLIND = "blind_fw"
 
 SCOPE_ROLES = {
     "primary": "primary-development-complement-post-hoc-description",
@@ -129,6 +168,10 @@ SCOPE_ROLES = {
 EXPECTED_SELECTOR_TRACE_COUNTS = {
     "primary": {EXACT: 1308, CAP: 1306},
     "all_tasks": {EXACT: 1358, CAP: 1356},
+}
+EXPECTED_TRIPLE_SOLVED_EFFORT_COUNTS = {
+    "primary": {"overall": 575, "finite_cap": 393, "exact_endpoint": 182},
+    "all_tasks": {"overall": 602, "finite_cap": 419, "exact_endpoint": 183},
 }
 
 SCHEMA_V2_CONVENTIONS = {
@@ -156,6 +199,17 @@ SCHEMA_V2_REAL_METRICS = (
     "expanded_states",
     "attempted_states",
     "image_time",
+)
+COMPLETED_BUCKET_IDENTITY_FIELDS = (
+    "expanded_bdd_pieces",
+    "bucket_expansions",
+    "bucket_expansion_attempts",
+    "image_events",
+    "bucket_images",
+    "image_source_buckets",
+    "image_source_pieces",
+    "image_calls_attempted",
+    "image_calls_completed",
 )
 
 STATIC_RECORD_PINS = {
@@ -493,6 +547,8 @@ def certified_image_cell(record):
         record.get("raw_metrics_complete") is True
         and record.get("piece_metrics_certified") is True
         and record.get("metrics_validation_error") is None
+        and record.get("metrics_validation_protocol")
+        == METRICS_VALIDATION_PROTOCOL
         and all(_same(record.get(field), expected) for field, expected in SCHEMA_V2_CONVENTIONS.items())
         and all(type(record.get(field)) is int and record[field] >= 0 for field in SCHEMA_V2_INTEGER_METRICS)
         and all(
@@ -568,6 +624,42 @@ def _fraction_payload(value):
     }
 
 
+def _fraction_from_payload(value, label):
+    if not isinstance(value, dict):
+        raise AnalysisError("{} must be a fraction object".format(label))
+    numerator = value.get("numerator")
+    denominator = value.get("denominator")
+    decimal = value.get("value")
+    if type(numerator) is not int or type(denominator) is not int or denominator <= 0:
+        raise AnalysisError("{} has invalid fraction integers".format(label))
+    fraction = Fraction(numerator, denominator)
+    if fraction.numerator != numerator or fraction.denominator != denominator:
+        raise AnalysisError("{} fraction is not reduced".format(label))
+    _number(decimal, "{} decimal".format(label))
+    if not math.isclose(decimal, float(fraction), rel_tol=1e-14, abs_tol=1e-18):
+        raise AnalysisError("{} decimal disagrees with its exact fraction".format(label))
+    return fraction
+
+
+def _fraction_summary(values):
+    ordered = sorted(Fraction(value) for value in values)
+    if not ordered:
+        raise AnalysisError("exact fraction summary must not be empty")
+    count = len(ordered)
+    rank = max(1, math.ceil(0.95 * count))
+    if count % 2:
+        median = ordered[count // 2]
+    else:
+        median = (ordered[count // 2 - 1] + ordered[count // 2]) / 2
+    return {
+        "count": count,
+        "minimum": _fraction_payload(ordered[0]),
+        "median": _fraction_payload(median),
+        "nearest_rank_p95": _fraction_payload(ordered[rank - 1]),
+        "maximum": _fraction_payload(ordered[-1]),
+    }
+
+
 def _extreme_payload(values, choose):
     extreme = choose(value for _, value in values)
     return {
@@ -632,12 +724,48 @@ def _coverage_summary(pairs):
     }
 
 
-def _operational_metric(pairs, field):
-    eligible = [
-        pair
-        for pair in pairs
-        if certified_image_cell(pair["exact"]) and certified_image_cell(pair["cap"])
-    ]
+def _completed_bucket_count(record, label):
+    values = [record[field] for field in COMPLETED_BUCKET_IDENTITY_FIELDS]
+    if record.get("expanded_buckets_single_piece") is not True:
+        raise AnalysisError("{} does not certify single-piece expanded buckets".format(label))
+    if record.get("batched_images") != 0 or len(set(values)) != 1:
+        raise AnalysisError("{} does not identify completed buckets with image calls".format(label))
+    count = values[0]
+    if count == 0 and (record["expanded_bdd_nodes"] != 0 or record["image_time"] != 0):
+        raise AnalysisError("{} has work without a completed bucket".format(label))
+    return count
+
+
+def _operational_pairs(pairs):
+    eligible = []
+    for pair in pairs:
+        if not (
+            certified_image_cell(pair["exact"])
+            and certified_image_cell(pair["cap"])
+        ):
+            continue
+        for side in ("exact", "cap"):
+            _completed_bucket_count(
+                pair[side],
+                "{}:{} {}".format(*pair["task"], side),
+            )
+        eligible.append(pair)
+    return eligible
+
+
+def _comparison_counts(cap_values, exact_values):
+    comparisons = Counter(
+        "cap_lower" if cap < exact else "equal" if cap == exact else "cap_higher"
+        for cap, exact in zip(cap_values, exact_values)
+    )
+    return {
+        "cap_lower": comparisons["cap_lower"],
+        "equal": comparisons["equal"],
+        "cap_higher": comparisons["cap_higher"],
+    }
+
+
+def _operational_metric(eligible, field):
     exact_values = [pair["exact"][field] for pair in eligible]
     cap_values = [pair["cap"][field] for pair in eligible]
     if field == "expanded_bdd_nodes":
@@ -648,37 +776,237 @@ def _operational_metric(pairs, field):
         cap_total = math.fsum(cap_values)
     if not eligible or exact_total <= 0:
         raise AnalysisError("{} has no positive operational reference total".format(field))
-    comparisons = Counter(
-        "cap_lower" if cap < exact else "equal" if cap == exact else "cap_higher"
-        for cap, exact in zip(cap_values, exact_values)
-    )
-    return {
+    result = {
         "eligible_pair_count": len(eligible),
         "cap_total": cap_total,
         "exact_total": exact_total,
         "cap_over_exact": cap_total / exact_total,
-        "cap_lower": comparisons["cap_lower"],
-        "equal": comparisons["equal"],
-        "cap_higher": comparisons["cap_higher"],
     }
+    result.update(_comparison_counts(cap_values, exact_values))
+    return result
+
+
+def _completed_bucket_summary(eligible):
+    exact_values = [
+        _completed_bucket_count(pair["exact"], "exact completed bucket")
+        for pair in eligible
+    ]
+    cap_values = [
+        _completed_bucket_count(pair["cap"], "cap completed bucket")
+        for pair in eligible
+    ]
+    exact_total = sum(exact_values)
+    cap_total = sum(cap_values)
+    if not eligible or exact_total <= 0 or cap_total <= 0:
+        raise AnalysisError("completed buckets have no positive aggregate denominator")
+    result = {
+        "definition": COMPLETED_BUCKET_DEFINITION,
+        "eligible_pair_count": len(eligible),
+        "identity_checked_cells": 2 * len(eligible),
+        "identity_violations": 0,
+        "cap_total": cap_total,
+        "exact_total": exact_total,
+        "cap_over_exact": _fraction_payload(Fraction(cap_total, exact_total)),
+    }
+    result.update(_comparison_counts(cap_values, exact_values))
+    return result
+
+
+def _normalized_operational_metric(eligible, field, estimand):
+    if field == "expanded_bdd_nodes":
+        arithmetic = "exact-integer-ratio-of-totals/v1"
+        exact_metrics = [Fraction(pair["exact"][field]) for pair in eligible]
+        cap_metrics = [Fraction(pair["cap"][field]) for pair in eligible]
+    elif field == "image_time":
+        arithmetic = IMAGE_TIME_EXACT_ARITHMETIC
+        exact_metrics = [Fraction(str(pair["exact"][field])) for pair in eligible]
+        cap_metrics = [Fraction(str(pair["cap"][field])) for pair in eligible]
+    else:
+        raise AnalysisError("unsupported normalized operational metric {}".format(field))
+    exact_buckets = [pair["exact"]["image_calls_completed"] for pair in eligible]
+    cap_buckets = [pair["cap"]["image_calls_completed"] for pair in eligible]
+    cap_total = sum(cap_metrics, Fraction())
+    exact_total = sum(exact_metrics, Fraction())
+    cap_bucket_total = sum(cap_buckets)
+    exact_bucket_total = sum(exact_buckets)
+    if cap_total <= 0 or exact_total <= 0 or cap_bucket_total <= 0 or exact_bucket_total <= 0:
+        raise AnalysisError("{} has a nonpositive aggregate denominator".format(field))
+
+    positive = []
+    zero_counts = Counter()
+    for cap_metric, exact_metric, cap_bucket, exact_bucket in zip(
+        cap_metrics, exact_metrics, cap_buckets, exact_buckets
+    ):
+        if cap_bucket > 0 and exact_bucket > 0:
+            positive.append((cap_metric / cap_bucket, exact_metric / exact_bucket))
+        elif cap_bucket == 0 and exact_bucket == 0:
+            zero_counts["both_zero"] += 1
+        elif cap_bucket == 0:
+            zero_counts["cap_only_zero"] += 1
+        else:
+            zero_counts["exact_only_zero"] += 1
+    comparisons = _comparison_counts(
+        [cap for cap, _ in positive],
+        [exact for _, exact in positive],
+    )
+    zero_total = sum(zero_counts.values())
+    result = {
+        "estimand": estimand,
+        "arithmetic": arithmetic,
+        "eligible_pair_count": len(eligible),
+        "positive_denominator_pair_count": len(positive),
+        "zero_denominator_pair_count": zero_total,
+        "zero_denominator_pairs": {
+            "both_zero": zero_counts["both_zero"],
+            "cap_only_zero": zero_counts["cap_only_zero"],
+            "exact_only_zero": zero_counts["exact_only_zero"],
+        },
+        "cap_completed_bucket_total": cap_bucket_total,
+        "exact_completed_bucket_total": exact_bucket_total,
+        "cap_per_completed_bucket": _fraction_payload(cap_total / cap_bucket_total),
+        "exact_per_completed_bucket": _fraction_payload(exact_total / exact_bucket_total),
+        "cap_over_exact": _fraction_payload(
+            (cap_total * exact_bucket_total) / (exact_total * cap_bucket_total)
+        ),
+    }
+    if field == "expanded_bdd_nodes":
+        result["cap_metric_total"] = cap_total.numerator
+        result["exact_metric_total"] = exact_total.numerator
+    else:
+        result["cap_metric_total"] = _fraction_payload(cap_total)
+        result["exact_metric_total"] = _fraction_payload(exact_total)
+    result.update(comparisons)
+    return result
+
+
+def _validate_operational_summary_contract(operational):
+    if operational.get("eligibility") != OPERATIONAL_ELIGIBILITY:
+        raise AnalysisError("operational eligibility label changed")
+    node_count = operational["expanded_bdd_nodes"]["eligible_pair_count"]
+    if operational["image_time_seconds"]["eligible_pair_count"] != node_count:
+        raise AnalysisError("operational metric denominators disagree")
+    buckets = operational["completed_buckets"]
+    if not (
+        buckets.get("definition") == COMPLETED_BUCKET_DEFINITION
+        and buckets.get("eligible_pair_count") == node_count
+        and buckets.get("identity_checked_cells") == 2 * node_count
+        and buckets.get("identity_violations") == 0
+    ):
+        raise AnalysisError("completed-bucket identity contract changed")
+    if sum(buckets[field] for field in ("cap_lower", "equal", "cap_higher")) != node_count:
+        raise AnalysisError("completed-bucket comparisons do not partition pairs")
+    if _fraction_from_payload(
+        buckets["cap_over_exact"], "completed-bucket ratio"
+    ) != Fraction(buckets["cap_total"], buckets["exact_total"]):
+        raise AnalysisError("completed-bucket ratio drifted")
+
+    expected = (
+        (
+            "expanded_bdd_nodes_per_completed_bucket",
+            NODE_PER_BUCKET_ESTIMAND,
+            "exact-integer-ratio-of-totals/v1",
+            "expanded_bdd_nodes",
+        ),
+        (
+            "image_time_seconds_per_completed_bucket",
+            IMAGE_TIME_PER_BUCKET_ESTIMAND,
+            IMAGE_TIME_EXACT_ARITHMETIC,
+            "image_time_seconds",
+        ),
+    )
+    for key, estimand, arithmetic, old_key in expected:
+        item = operational[key]
+        if item.get("estimand") != estimand or item.get("arithmetic") != arithmetic:
+            raise AnalysisError("{} semantic contract changed".format(key))
+        if item.get("eligible_pair_count") != node_count:
+            raise AnalysisError("{} denominator disagrees".format(key))
+        zeros = item.get("zero_denominator_pairs")
+        if not isinstance(zeros, dict) or sum(zeros.values()) != item.get(
+            "zero_denominator_pair_count"
+        ):
+            raise AnalysisError("{} zero-denominator disclosure disagrees".format(key))
+        if (
+            item["positive_denominator_pair_count"]
+            + item["zero_denominator_pair_count"]
+            != node_count
+            or sum(item[field] for field in ("cap_lower", "equal", "cap_higher"))
+            != item["positive_denominator_pair_count"]
+        ):
+            raise AnalysisError("{} pairwise denominators disagree".format(key))
+        if not (
+            item["cap_completed_bucket_total"] == buckets["cap_total"]
+            and item["exact_completed_bucket_total"] == buckets["exact_total"]
+        ):
+            raise AnalysisError("{} bucket totals disagree".format(key))
+        if key.startswith("expanded"):
+            cap_metric = Fraction(item["cap_metric_total"])
+            exact_metric = Fraction(item["exact_metric_total"])
+            if not (
+                item["cap_metric_total"] == operational[old_key]["cap_total"]
+                and item["exact_metric_total"] == operational[old_key]["exact_total"]
+            ):
+                raise AnalysisError("{} metric totals disagree".format(key))
+        else:
+            cap_metric = _fraction_from_payload(
+                item["cap_metric_total"], "{} cap metric total".format(key)
+            )
+            exact_metric = _fraction_from_payload(
+                item["exact_metric_total"], "{} exact metric total".format(key)
+            )
+            if not (
+                math.isclose(
+                    float(cap_metric), operational[old_key]["cap_total"], rel_tol=1e-14
+                )
+                and math.isclose(
+                    float(exact_metric), operational[old_key]["exact_total"], rel_tol=1e-14
+                )
+            ):
+                raise AnalysisError("{} metric totals disagree".format(key))
+        cap_per = cap_metric / item["cap_completed_bucket_total"]
+        exact_per = exact_metric / item["exact_completed_bucket_total"]
+        if not (
+            _fraction_from_payload(
+                item["cap_per_completed_bucket"], "{} cap per bucket".format(key)
+            )
+            == cap_per
+            and _fraction_from_payload(
+                item["exact_per_completed_bucket"], "{} exact per bucket".format(key)
+            )
+            == exact_per
+            and _fraction_from_payload(
+                item["cap_over_exact"], "{} ratio".format(key)
+            )
+            == cap_per / exact_per
+        ):
+            raise AnalysisError("{} exact fraction drifted".format(key))
 
 
 def _operational_summary(pairs):
+    eligible = _operational_pairs(pairs)
     result = {
         "eligibility": OPERATIONAL_ELIGIBILITY,
-        "expanded_bdd_nodes": _operational_metric(pairs, "expanded_bdd_nodes"),
-        "image_time_seconds": _operational_metric(pairs, "image_time"),
+        "expanded_bdd_nodes": _operational_metric(eligible, "expanded_bdd_nodes"),
+        "image_time_seconds": _operational_metric(eligible, "image_time"),
+        "completed_buckets": _completed_bucket_summary(eligible),
+        "expanded_bdd_nodes_per_completed_bucket": _normalized_operational_metric(
+            eligible,
+            "expanded_bdd_nodes",
+            NODE_PER_BUCKET_ESTIMAND,
+        ),
+        "image_time_seconds_per_completed_bucket": _normalized_operational_metric(
+            eligible,
+            "image_time",
+            IMAGE_TIME_PER_BUCKET_ESTIMAND,
+        ),
     }
-    counts = {
-        result[metric]["eligible_pair_count"]
-        for metric in ("expanded_bdd_nodes", "image_time_seconds")
-    }
-    if len(counts) != 1:
-        raise AnalysisError("operational metric denominators disagree")
+    _validate_operational_summary_contract(result)
     return result
 
 
 def _validate_operational_conservation(overall, strata):
+    _validate_operational_summary_contract(overall)
+    for stratum in strata:
+        _validate_operational_summary_contract(stratum)
     for metric in ("expanded_bdd_nodes", "image_time_seconds"):
         whole = overall[metric]
         parts = [stratum[metric] for stratum in strata]
@@ -697,10 +1025,98 @@ def _validate_operational_conservation(overall, strata):
                 raise AnalysisError(
                     "{} {} does not conserve across trace strata".format(metric, field)
                 )
+    bucket_whole = overall["completed_buckets"]
+    bucket_parts = [stratum["completed_buckets"] for stratum in strata]
+    for field in (
+        "eligible_pair_count",
+        "identity_checked_cells",
+        "identity_violations",
+        "cap_total",
+        "exact_total",
+        "cap_lower",
+        "equal",
+        "cap_higher",
+    ):
+        if bucket_whole[field] != sum(part[field] for part in bucket_parts):
+            raise AnalysisError(
+                "completed buckets {} do not conserve across trace strata".format(field)
+            )
+    for key in (
+        "expanded_bdd_nodes_per_completed_bucket",
+        "image_time_seconds_per_completed_bucket",
+    ):
+        whole = overall[key]
+        parts = [stratum[key] for stratum in strata]
+        for field in (
+            "eligible_pair_count",
+            "positive_denominator_pair_count",
+            "zero_denominator_pair_count",
+            "cap_completed_bucket_total",
+            "exact_completed_bucket_total",
+            "cap_lower",
+            "equal",
+            "cap_higher",
+        ):
+            if whole[field] != sum(part[field] for part in parts):
+                raise AnalysisError(
+                    "{} {} does not conserve across trace strata".format(key, field)
+                )
+        for field in ("both_zero", "cap_only_zero", "exact_only_zero"):
+            if whole["zero_denominator_pairs"][field] != sum(
+                part["zero_denominator_pairs"][field] for part in parts
+            ):
+                raise AnalysisError(
+                    "{} zero-denominator counts do not conserve".format(key)
+                )
+        if key.startswith("expanded"):
+            for field in ("cap_metric_total", "exact_metric_total"):
+                if whole[field] != sum(part[field] for part in parts):
+                    raise AnalysisError("{} {} does not conserve".format(key, field))
+        else:
+            for field in ("cap_metric_total", "exact_metric_total"):
+                whole_fraction = _fraction_from_payload(
+                    whole[field], "{} overall {}".format(key, field)
+                )
+                part_total = sum(
+                    (
+                        _fraction_from_payload(
+                            part[field], "{} stratum {}".format(key, field)
+                        )
+                        for part in parts
+                    ),
+                    Fraction(),
+                )
+                if whole_fraction != part_total:
+                    raise AnalysisError("{} {} does not conserve".format(key, field))
+
+
+def _validate_exact_endpoint_operational_identity(operational):
+    buckets = operational["completed_buckets"]
+    nodes = operational["expanded_bdd_nodes"]
+    normalized = operational["expanded_bdd_nodes_per_completed_bucket"]
+    if not (
+        buckets["cap_total"] == buckets["exact_total"]
+        and buckets["cap_lower"] == buckets["cap_higher"] == 0
+        and nodes["cap_total"] == nodes["exact_total"]
+        and nodes["cap_lower"] == nodes["cap_higher"] == 0
+        and _fraction_from_payload(
+            normalized["cap_over_exact"], "exact-endpoint node/bucket identity"
+        )
+        == 1
+        and normalized["cap_lower"] == normalized["cap_higher"] == 0
+        and normalized["equal"] == normalized["positive_denominator_pair_count"]
+    ):
+        raise AnalysisError("exact-endpoint operational identity invariant failed")
 
 
 def _finite_cap_diagnostics(pairs):
     raw_widths = []
+    raw_coefficients = []
+    capped_coefficients = []
+    coefficient_ratios = []
+    strict_value_reductions = 0
+    strict_width_reductions = 0
+    strict_coefficient_reductions = 0
     material = 0
     cap_counts = Counter()
     coefficient_counts = Counter()
@@ -719,6 +1135,23 @@ def _finite_cap_diagnostics(pairs):
         prefix = "{}:{} finite-cap selection".format(*task)
         cap = _require_int(selected.get("value_cap"), "{} value_cap".format(prefix), 0)
         raw_width = _require_int(selected.get("raw_cofactor_width"), "{} raw W".format(prefix), 1)
+        capped_width = _require_int(
+            selected.get("cofactor_width"), "{} capped W".format(prefix), 1
+        )
+        raw_values = _require_int(
+            selected.get("raw_num_values"), "{} raw V".format(prefix), 1
+        )
+        capped_values = _require_int(
+            selected.get("transformed_num_values"), "{} capped V".format(prefix), 1
+        )
+        raw_coefficient = 2 * raw_values * raw_width
+        capped_coefficient = 2 * capped_values * capped_width
+        raw_coefficients.append(raw_coefficient)
+        capped_coefficients.append(capped_coefficient)
+        coefficient_ratios.append(Fraction(raw_coefficient, capped_coefficient))
+        strict_value_reductions += capped_values < raw_values
+        strict_width_reductions += capped_width < raw_width
+        strict_coefficient_reductions += capped_coefficient < raw_coefficient
         raw_widths.append(raw_width)
         cap_counts[cap] += 1
         coefficient = 2 * WIDTH_BUDGET * min(WIDTH_BUDGET, cap + 1)
@@ -750,6 +1183,14 @@ def _finite_cap_diagnostics(pairs):
             raise AnalysisError("{} is not a material finite-value transform".format(prefix))
         material += 1
 
+    if not (
+        strict_value_reductions
+        == strict_width_reductions
+        == strict_coefficient_reductions
+        == len(pairs)
+    ):
+        raise AnalysisError("finite-cap same-PDB coefficient compression is not strict")
+
     universal = [
         {
             "coefficient": coefficient,
@@ -764,6 +1205,17 @@ def _finite_cap_diagnostics(pairs):
         "selected_count": len(pairs),
         "selected_cap_histogram": {str(cap): count for cap, count in sorted(cap_counts.items())},
         "selected_raw_W": _summary(raw_widths),
+        "same_pdb_raw_to_cap_coefficient": {
+            "formula": RAW_CAP_COEFFICIENT_FORMULA,
+            "eligibility": RAW_CAP_COEFFICIENT_ELIGIBILITY,
+            "paired_count": len(pairs),
+            "raw": _summary(raw_coefficients),
+            "capped": _summary(capped_coefficients),
+            "raw_over_capped": _fraction_summary(coefficient_ratios),
+            "strict_value_reduction_count": strict_value_reductions,
+            "strict_width_reduction_count": strict_width_reductions,
+            "strict_coefficient_reduction_count": strict_coefficient_reductions,
+        },
         "material_transform": {
             "checked": len(pairs),
             "material": material,
@@ -830,6 +1282,300 @@ def _initial_h_summary(pairs):
     }
 
 
+def _certified_solved_effort(record, label):
+    if record.get("coverage") != 1:
+        raise AnalysisError("{} is not solved".format(label))
+    required = {
+        "raw_metrics_complete": True,
+        "piece_metrics_certified": True,
+        "metrics_validation_error": None,
+        "metrics_validation_protocol": METRICS_VALIDATION_PROTOCOL,
+        "expanded_buckets_single_piece": True,
+        "wbh_summary_solved": True,
+        "wbh_solved_summary_certified": True,
+        "plan_file_present": True,
+        "plan_file_canonical": True,
+        "plan_file_candidate_count": 1,
+        "outcome_reconciliation_certified": True,
+        "outcome_reconciliation_protocol": OUTCOME_RECONCILIATION_PROTOCOL,
+    }
+    for field, expected in required.items():
+        if not _same(record.get(field), expected):
+            raise AnalysisError("{} changed solved-effort field {}".format(label, field))
+    for field, expected in SCHEMA_V2_CONVENTIONS.items():
+        if not _same(record.get(field), expected):
+            raise AnalysisError("{} changed solved-effort convention {}".format(label, field))
+    effort = _require_int(record.get("effort"), "{} effort".format(label), 0)
+    expanded = _require_int(
+        record.get("expanded_bdd_nodes"), "{} expanded nodes".format(label), 0
+    )
+    expanded_pieces = _require_int(
+        record.get("expanded_bdd_pieces"), "{} expanded pieces".format(label), 0
+    )
+    bucket_expansions = _require_int(
+        record.get("bucket_expansions"), "{} bucket expansions".format(label), 0
+    )
+    if expanded_pieces != bucket_expansions:
+        raise AnalysisError("{} does not identify one piece per expanded bucket".format(label))
+    if effort != expanded:
+        raise AnalysisError("{} effort differs from certified expanded nodes".format(label))
+    cost_fields = (
+        "solution_cost",
+        "plan_file_cost",
+        "run_log_plan_cost",
+        "wbh_done_solution_cost",
+    )
+    costs = [
+        _require_int(record.get(field), "{} {}".format(label, field), 0)
+        for field in cost_fields
+    ]
+    if len(set(costs)) != 1:
+        raise AnalysisError("{} has unreconciled solved costs".format(label))
+    return {
+        "cost": costs[0],
+        "effort": effort,
+        "equals_expanded_bdd_nodes": effort == expanded,
+    }
+
+
+def _triple_solved_effort(matrix, pairs):
+    entries = []
+    for pair in pairs:
+        records = {
+            "blind": matrix[(BLIND, pair["task"])],
+            "exact": pair["exact"],
+            "cap": pair["cap"],
+        }
+        if not all(record["coverage"] == 1 for record in records.values()):
+            continue
+        certified = {
+            name: _certified_solved_effort(
+                record,
+                "{}:{} {}".format(*pair["task"], name),
+            )
+            for name, record in records.items()
+        }
+        if len({item["cost"] for item in certified.values()}) != 1:
+            raise AnalysisError(
+                "three-way solved costs disagree on {}:{}".format(*pair["task"])
+            )
+        entries.append(
+            {
+                "task": pair["task"],
+                "effort": {name: item["effort"] for name, item in certified.items()},
+                "expanded_node_equalities": sum(
+                    item["equals_expanded_bdd_nodes"] for item in certified.values()
+                ),
+            }
+        )
+    if not entries:
+        raise AnalysisError("three-way solved effort has no eligible tasks")
+    totals = {
+        name: sum(entry["effort"][name] for entry in entries)
+        for name in ("blind", "exact", "cap")
+    }
+    if any(total <= 0 for total in totals.values()):
+        raise AnalysisError("three-way solved effort has a nonpositive total")
+    ratio_sides = {
+        "cap_over_blind": ("cap", "blind"),
+        "exact_over_blind": ("exact", "blind"),
+        "cap_over_exact": ("cap", "exact"),
+    }
+    ratios = {}
+    for key, (numerator, denominator) in ratio_sides.items():
+        item = {
+            "ratio": _fraction_payload(Fraction(totals[numerator], totals[denominator]))
+        }
+        comparisons = Counter(
+            "numerator_lower"
+            if entry["effort"][numerator] < entry["effort"][denominator]
+            else "equal"
+            if entry["effort"][numerator] == entry["effort"][denominator]
+            else "numerator_higher"
+            for entry in entries
+        )
+        item.update(
+            {
+                "numerator_lower": comparisons["numerator_lower"],
+                "equal": comparisons["equal"],
+                "numerator_higher": comparisons["numerator_higher"],
+            }
+        )
+        ratios[key] = item
+    result = {
+        "eligibility": TRIPLE_SOLVED_EFFORT_ELIGIBILITY,
+        "estimand": TRIPLE_SOLVED_EFFORT_ESTIMAND,
+        "eligible_task_count": len(entries),
+        "certified_cell_count": 3 * len(entries),
+        "single_piece_bucket_certified_cell_count": 3 * len(entries),
+        "cost_reconciled_task_count": len(entries),
+        "effort_equals_expanded_bdd_nodes_cells": sum(
+            entry["expanded_node_equalities"] for entry in entries
+        ),
+        "totals": totals,
+        "ratios": ratios,
+    }
+    _validate_effort_summary_contract(result)
+    return result, entries
+
+
+def _validate_effort_summary_contract(summary):
+    if not (
+        summary.get("eligibility") == TRIPLE_SOLVED_EFFORT_ELIGIBILITY
+        and summary.get("estimand") == TRIPLE_SOLVED_EFFORT_ESTIMAND
+    ):
+        raise AnalysisError("three-way effort semantic contract changed")
+    count = _require_int(
+        summary.get("eligible_task_count"), "three-way effort count", 1
+    )
+    if not (
+        summary.get("certified_cell_count") == 3 * count
+        and summary.get("single_piece_bucket_certified_cell_count") == 3 * count
+        and summary.get("cost_reconciled_task_count") == count
+    ):
+        raise AnalysisError("three-way effort certification denominator changed")
+    equality_count = _require_int(
+        summary.get("effort_equals_expanded_bdd_nodes_cells"),
+        "three-way effort/node equality count",
+    )
+    if equality_count != 3 * count:
+        raise AnalysisError("three-way effort/node equality count changed")
+    totals = summary.get("totals")
+    if not isinstance(totals, dict) or set(totals) != {"blind", "exact", "cap"}:
+        raise AnalysisError("three-way effort totals changed")
+    for name in totals:
+        _require_int(totals[name], "three-way {} effort".format(name), 1)
+    expected = {
+        "cap_over_blind": Fraction(totals["cap"], totals["blind"]),
+        "exact_over_blind": Fraction(totals["exact"], totals["blind"]),
+        "cap_over_exact": Fraction(totals["cap"], totals["exact"]),
+    }
+    ratios = summary.get("ratios")
+    if not isinstance(ratios, dict) or set(ratios) != set(expected):
+        raise AnalysisError("three-way effort ratios changed")
+    for key, fraction in expected.items():
+        item = ratios[key]
+        if _fraction_from_payload(item.get("ratio"), "three-way {}".format(key)) != fraction:
+            raise AnalysisError("three-way effort ratio drifted for {}".format(key))
+        if sum(
+            _require_int(item.get(field), "three-way {} {}".format(key, field))
+            for field in ("numerator_lower", "equal", "numerator_higher")
+        ) != count:
+            raise AnalysisError("three-way effort comparisons disagree for {}".format(key))
+
+
+def _validate_effort_conservation(overall, strata):
+    _validate_effort_summary_contract(overall)
+    for stratum in strata:
+        _validate_effort_summary_contract(stratum)
+    for field in (
+        "eligible_task_count",
+        "certified_cell_count",
+        "single_piece_bucket_certified_cell_count",
+        "cost_reconciled_task_count",
+        "effort_equals_expanded_bdd_nodes_cells",
+    ):
+        if overall[field] != sum(stratum[field] for stratum in strata):
+            raise AnalysisError("three-way effort {} does not conserve".format(field))
+    for config in ("blind", "exact", "cap"):
+        if overall["totals"][config] != sum(
+            stratum["totals"][config] for stratum in strata
+        ):
+            raise AnalysisError("three-way {} effort does not conserve".format(config))
+    for ratio in ("cap_over_blind", "exact_over_blind", "cap_over_exact"):
+        for field in ("numerator_lower", "equal", "numerator_higher"):
+            if overall["ratios"][ratio][field] != sum(
+                stratum["ratios"][ratio][field] for stratum in strata
+            ):
+                raise AnalysisError(
+                    "three-way {} {} does not conserve".format(ratio, field)
+                )
+
+
+def _validate_exact_endpoint_effort_identity(summary):
+    ratio = summary["ratios"]["cap_over_exact"]
+    if not (
+        summary["totals"]["cap"] == summary["totals"]["exact"]
+        and _fraction_from_payload(ratio["ratio"], "exact-endpoint effort identity") == 1
+        and ratio["numerator_lower"] == ratio["numerator_higher"] == 0
+        and ratio["equal"] == summary["eligible_task_count"]
+    ):
+        raise AnalysisError("exact-endpoint cap/exact effort identity failed")
+
+
+def _effort_lodo(entries, tasks, ratio_key):
+    numerator, denominator = {
+        "cap_over_blind": ("cap", "blind"),
+        "exact_over_blind": ("exact", "blind"),
+        "cap_over_exact": ("cap", "exact"),
+    }[ratio_key]
+    totals = {
+        name: sum(entry["effort"][name] for entry in entries)
+        for name in ("blind", "exact", "cap")
+    }
+    by_domain = defaultdict(lambda: defaultdict(int))
+    contributing_domains = set()
+    for entry in entries:
+        domain = entry["task"][0]
+        contributing_domains.add(domain)
+        for name, value in entry["effort"].items():
+            by_domain[domain][name] += value
+    lodo = []
+    for domain in sorted({task[0] for task in tasks}):
+        remaining_denominator = totals[denominator] - by_domain[domain][denominator]
+        if remaining_denominator <= 0:
+            raise AnalysisError("effort LODO has no denominator without {}".format(domain))
+        lodo.append(
+            (
+                domain,
+                Fraction(
+                    totals[numerator] - by_domain[domain][numerator],
+                    remaining_denominator,
+                ),
+            )
+        )
+    minimum = _extreme_payload(lodo, min)
+    maximum = _extreme_payload(lodo, max)
+    result = {
+        "estimand": FINITE_EFFORT_LODO_ESTIMANDS[ratio_key],
+        "eligible_task_count": len(entries),
+        "contributing_domains": len(contributing_domains),
+        "omitted_domain_replicates": len(lodo),
+        "base": _fraction_payload(Fraction(totals[numerator], totals[denominator])),
+        "minimum": minimum,
+        "maximum": maximum,
+        "range_width": _fraction_payload(
+            Fraction(maximum["ratio"]["numerator"], maximum["ratio"]["denominator"])
+            - Fraction(minimum["ratio"]["numerator"], minimum["ratio"]["denominator"])
+        ),
+    }
+    _validate_effort_lodo(result, ratio_key, len(entries), len({task[0] for task in tasks}))
+    return result
+
+
+def _validate_effort_lodo(item, ratio_key, eligible_count, domain_count):
+    if item.get("estimand") != FINITE_EFFORT_LODO_ESTIMANDS[ratio_key]:
+        raise AnalysisError("finite effort LODO estimand changed")
+    if not (
+        item.get("eligible_task_count") == eligible_count
+        and item.get("omitted_domain_replicates") == domain_count
+        and 1 <= item.get("contributing_domains", 0) <= domain_count
+    ):
+        raise AnalysisError("finite effort LODO denominator changed")
+    base = _fraction_from_payload(item.get("base"), "finite effort LODO base")
+    minimum = _fraction_from_payload(
+        item.get("minimum", {}).get("ratio"), "finite effort LODO minimum"
+    )
+    maximum = _fraction_from_payload(
+        item.get("maximum", {}).get("ratio"), "finite effort LODO maximum"
+    )
+    width = _fraction_from_payload(
+        item.get("range_width"), "finite effort LODO range width"
+    )
+    if not minimum <= base <= maximum or width != maximum - minimum:
+        raise AnalysisError("finite effort LODO range is inconsistent")
+
+
 def _selector_coefficients(matrix, tasks):
     result = {}
     for label in (EXACT, CAP):
@@ -876,19 +1622,21 @@ def _coverage_lodo(matrix, tasks):
     }
 
 
-def _node_lodo(matrix, tasks):
-    pairs = []
-    for task in tasks:
-        exact = matrix[(EXACT, task)]
-        cap = matrix[(CAP, task)]
-        if certified_image_cell(exact) and certified_image_cell(cap):
-            pairs.append((task, exact["expanded_bdd_nodes"], cap["expanded_bdd_nodes"]))
-    exact_total = sum(exact for _, exact, _ in pairs)
-    cap_total = sum(cap for _, _, cap in pairs)
-    if not pairs or exact_total <= 0:
+def _node_lodo(operational_pairs, tasks):
+    entries = [
+        (
+            pair["task"],
+            pair["exact"]["expanded_bdd_nodes"],
+            pair["cap"]["expanded_bdd_nodes"],
+        )
+        for pair in operational_pairs
+    ]
+    exact_total = sum(exact for _, exact, _ in entries)
+    cap_total = sum(cap for _, _, cap in entries)
+    if not entries or exact_total <= 0:
         raise AnalysisError("node LODO has no positive reference total")
     by_domain = defaultdict(lambda: [0, 0])
-    for task, exact, cap in pairs:
+    for task, exact, cap in entries:
         by_domain[task[0]][0] += exact
         by_domain[task[0]][1] += cap
     scope_domains = sorted({task[0] for task in tasks})
@@ -903,7 +1651,9 @@ def _node_lodo(matrix, tasks):
     maximum = _extreme_payload(lodo, max)
     return {
         "estimand": NODE_LODO_ESTIMAND,
-        "eligible_pair_count": len(pairs),
+        "eligible_pair_count": len(entries),
+        "cap_total": cap_total,
+        "exact_total": exact_total,
         "base": _fraction_payload(Fraction(cap_total, exact_total)),
         "omitted_domain_replicates": len(lodo),
         "minimum": minimum,
@@ -938,6 +1688,7 @@ def _scope_analysis(matrix, tasks, scope_key):
     if len(finite) + len(exact_endpoint) != len(pairs):
         raise AnalysisError("trace endpoint partition is incomplete")
 
+    paired_operational_pairs = _operational_pairs(pairs)
     paired_operational = _operational_summary(pairs)
     finite_operational = _operational_summary(finite)
     exact_operational = _operational_summary(exact_endpoint)
@@ -945,12 +1696,45 @@ def _scope_analysis(matrix, tasks, scope_key):
         paired_operational,
         (finite_operational, exact_operational),
     )
+    _validate_exact_endpoint_operational_identity(exact_operational)
+    paired_effort, _ = _triple_solved_effort(matrix, pairs)
+    finite_effort, finite_effort_entries = _triple_solved_effort(matrix, finite)
+    exact_effort, _ = _triple_solved_effort(matrix, exact_endpoint)
+    finite_effort["leave_one_domain_out"] = {
+        ratio_key: _effort_lodo(finite_effort_entries, tasks, ratio_key)
+        for ratio_key in (
+            "cap_over_blind",
+            "exact_over_blind",
+            "cap_over_exact",
+        )
+    }
+    _validate_effort_conservation(paired_effort, (finite_effort, exact_effort))
+    _validate_exact_endpoint_effort_identity(exact_effort)
+    expected_effort_counts = EXPECTED_TRIPLE_SOLVED_EFFORT_COUNTS[scope_key]
+    actual_effort_counts = {
+        "overall": paired_effort["eligible_task_count"],
+        "finite_cap": finite_effort["eligible_task_count"],
+        "exact_endpoint": exact_effort["eligible_task_count"],
+    }
+    if actual_effort_counts != expected_effort_counts:
+        raise AnalysisError("{} three-way effort denominators changed".format(scope_key))
     coefficients = _selector_coefficients(matrix, tasks)
     for label, expected in EXPECTED_SELECTOR_TRACE_COUNTS[scope_key].items():
         if coefficients["by_selector"][label]["count"] != expected:
             raise AnalysisError(
                 "{} {} selector-trace denominator changed".format(scope_key, label)
             )
+
+    node_lodo = _node_lodo(paired_operational_pairs, tasks)
+    operational_nodes = paired_operational["expanded_bdd_nodes"]
+    if not (
+        node_lodo["eligible_pair_count"] == operational_nodes["eligible_pair_count"]
+        and node_lodo["cap_total"] == operational_nodes["cap_total"]
+        and node_lodo["exact_total"] == operational_nodes["exact_total"]
+        and _fraction_from_payload(node_lodo["base"], "node LODO base")
+        == Fraction(operational_nodes["cap_total"], operational_nodes["exact_total"])
+    ):
+        raise AnalysisError("node LODO disagrees with paired operational nodes")
 
     return {
         "role": SCOPE_ROLES[scope_key],
@@ -963,6 +1747,7 @@ def _scope_analysis(matrix, tasks, scope_key):
             "identical_raw_pool_pairs": len(pairs),
             "coverage": _coverage_summary(pairs),
             "operational": paired_operational,
+            "theory_aligned_triple_solved_effort": paired_effort,
         },
         "trace_strata": {
             "finite_cap": {
@@ -970,6 +1755,7 @@ def _scope_analysis(matrix, tasks, scope_key):
                 "trace_pairs": len(finite),
                 "coverage": _coverage_summary(finite),
                 "operational": finite_operational,
+                "theory_aligned_triple_solved_effort": finite_effort,
                 "selected_transform": _finite_cap_diagnostics(finite),
             },
             "exact_endpoint": {
@@ -977,6 +1763,7 @@ def _scope_analysis(matrix, tasks, scope_key):
                 "trace_pairs": len(exact_endpoint),
                 "coverage": _coverage_summary(exact_endpoint),
                 "operational": exact_operational,
+                "theory_aligned_triple_solved_effort": exact_effort,
                 "selected_identity": _exact_endpoint_invariant(exact_endpoint),
             },
         },
@@ -984,7 +1771,7 @@ def _scope_analysis(matrix, tasks, scope_key):
         "selected_certificate_coefficient": coefficients,
         "leave_one_domain_out": {
             "coverage": _coverage_lodo(matrix, tasks),
-            "expanded_bdd_nodes": _node_lodo(matrix, tasks),
+            "expanded_bdd_nodes": node_lodo,
         },
         "partition_ratio_max": _partition_ratio_summaries(matrix, tasks),
     }
@@ -1101,41 +1888,241 @@ def self_test():
         EXACT: 1308,
         CAP: 1306,
     }
+    exact_summary = _fraction_summary(
+        [Fraction(3, 2), Fraction(9, 2), Fraction(21, 2), Fraction(57, 2)]
+    )
+    assert _fraction_from_payload(exact_summary["median"], "synthetic median") == Fraction(15, 2)
 
-    def metric(count, cap_total, exact_total, lower, equal, higher):
-        return {
-            "eligible_pair_count": count,
-            "cap_total": cap_total,
-            "exact_total": exact_total,
-            "cap_over_exact": cap_total / exact_total,
-            "cap_lower": lower,
-            "equal": equal,
-            "cap_higher": higher,
+    def expect_analysis_error(callback, label):
+        try:
+            callback()
+        except AnalysisError:
+            return
+        raise AssertionError("validator accepted {}".format(label))
+
+    def cell(nodes, buckets, image_time):
+        result = {
+            "raw_metrics_complete": True,
+            "piece_metrics_certified": True,
+            "metrics_validation_error": None,
+            "metrics_validation_protocol": METRICS_VALIDATION_PROTOCOL,
+            "expanded_buckets_single_piece": True,
+            "expanded_bdd_nodes": nodes,
+            "attempted_bdd_nodes": nodes,
+            "attempted_bdd_pieces": buckets,
+            "batched_images": 0,
+            "expanded_states": 0,
+            "attempted_states": 0,
+            "image_time": image_time,
         }
+        result.update(SCHEMA_V2_CONVENTIONS)
+        for field in COMPLETED_BUCKET_IDENTITY_FIELDS:
+            result[field] = buckets
+        return result
 
-    strata = [
+    solved_cell = cell(10, 2, 1.0)
+    solved_cell.update(
         {
-            "expanded_bdd_nodes": metric(2, 8, 10, 1, 1, 0),
-            "image_time_seconds": metric(2, 4.0, 5.0, 1, 1, 0),
+            "coverage": 1,
+            "effort": 10,
+            "wbh_summary_solved": True,
+            "wbh_solved_summary_certified": True,
+            "plan_file_present": True,
+            "plan_file_canonical": True,
+            "plan_file_candidate_count": 1,
+            "outcome_reconciliation_certified": True,
+            "outcome_reconciliation_protocol": OUTCOME_RECONCILIATION_PROTOCOL,
+            "solution_cost": 7,
+            "plan_file_cost": 7,
+            "run_log_plan_cost": 7,
+            "wbh_done_solution_cost": 7,
+        }
+    )
+    assert _certified_solved_effort(solved_cell, "synthetic solved")["effort"] == 10
+    multi_piece_solved = dict(solved_cell)
+    multi_piece_solved["expanded_buckets_single_piece"] = False
+    expect_analysis_error(
+        lambda: _certified_solved_effort(multi_piece_solved, "synthetic multi-piece"),
+        "multi-piece solved effort",
+    )
+    piece_mismatch_solved = dict(solved_cell)
+    piece_mismatch_solved["expanded_bdd_pieces"] += 1
+    expect_analysis_error(
+        lambda: _certified_solved_effort(piece_mismatch_solved, "synthetic mismatch"),
+        "solved piece/bucket mismatch",
+    )
+
+    finite_pairs = [
+        {
+            "task": ("d", "p1"),
+            "exact": cell(10, 2, 5.0),
+            "cap": cell(8, 3, 4.0),
         },
         {
-            "expanded_bdd_nodes": metric(1, 3, 3, 0, 1, 0),
-            "image_time_seconds": metric(1, 2.0, 2.0, 0, 1, 0),
+            "task": ("d", "p2"),
+            "exact": cell(3, 1, 1.0),
+            "cap": cell(3, 1, 1.0),
         },
     ]
-    overall = {
-        "expanded_bdd_nodes": metric(3, 11, 13, 1, 2, 0),
-        "image_time_seconds": metric(3, 6.0, 7.0, 1, 2, 0),
-    }
+    endpoint_pairs = [
+        {
+            "task": ("e", "p3"),
+            "exact": cell(3, 1, 2.0),
+            "cap": cell(3, 1, 2.1),
+        }
+    ]
+    strata = [
+        _operational_summary(finite_pairs),
+        _operational_summary(endpoint_pairs),
+    ]
+    overall = _operational_summary(finite_pairs + endpoint_pairs)
     _validate_operational_conservation(overall, strata)
+    _validate_exact_endpoint_operational_identity(strata[1])
+
     nonconserving = json.loads(canonical_json(strata))
-    nonconserving[0]["expanded_bdd_nodes"]["cap_total"] += 1
-    try:
-        _validate_operational_conservation(overall, nonconserving)
-    except AnalysisError:
-        pass
-    else:
-        raise AssertionError("nonconserving operational strata were accepted")
+    nonconserving[0]["completed_buckets"]["cap_lower"] -= 1
+    nonconserving[0]["completed_buckets"]["cap_higher"] += 1
+    expect_analysis_error(
+        lambda: _validate_operational_conservation(overall, nonconserving),
+        "nonconserving operational strata",
+    )
+    changed_label = json.loads(canonical_json(overall))
+    changed_label["expanded_bdd_nodes_per_completed_bucket"]["estimand"] = "changed"
+    expect_analysis_error(
+        lambda: _validate_operational_summary_contract(changed_label),
+        "changed operational estimand",
+    )
+    changed_denominator = json.loads(canonical_json(overall))
+    changed_denominator["image_time_seconds_per_completed_bucket"][
+        "positive_denominator_pair_count"
+    ] += 1
+    expect_analysis_error(
+        lambda: _validate_operational_summary_contract(changed_denominator),
+        "changed operational denominator",
+    )
+    fraction_drift = json.loads(canonical_json(overall))
+    ratio = fraction_drift["completed_buckets"]["cap_over_exact"]
+    ratio["numerator"] *= 2
+    ratio["denominator"] *= 2
+    expect_analysis_error(
+        lambda: _validate_operational_summary_contract(fraction_drift),
+        "unreduced operational fraction",
+    )
+    identity_drift = json.loads(canonical_json(strata[1]))
+    identity_drift["expanded_bdd_nodes"]["equal"] -= 1
+    identity_drift["expanded_bdd_nodes"]["cap_lower"] += 1
+    expect_analysis_error(
+        lambda: _validate_exact_endpoint_operational_identity(identity_drift),
+        "changed exact-endpoint operational identity",
+    )
+    mismatched_cell = cell(4, 2, 1.0)
+    mismatched_cell["image_calls_completed"] = 1
+    expect_analysis_error(
+        lambda: _operational_summary(
+            [{"task": ("x", "p"), "exact": cell(4, 2, 1.0), "cap": mismatched_cell}]
+        ),
+        "mismatched bucket/image count",
+    )
+    changed_convention = cell(4, 2, 1.0)
+    changed_convention["image_count_convention"] = "legacy-proxy"
+    expect_analysis_error(
+        lambda: _operational_summary(
+            [
+                {
+                    "task": ("x", "q"),
+                    "exact": cell(4, 2, 1.0),
+                    "cap": changed_convention,
+                }
+            ]
+        ),
+        "changed operational metric convention",
+    )
+    changed_protocol = cell(4, 2, 1.0)
+    changed_protocol["metrics_validation_protocol"] = "legacy-validation"
+    expect_analysis_error(
+        lambda: _operational_summary(
+            [
+                {
+                    "task": ("x", "r"),
+                    "exact": cell(4, 2, 1.0),
+                    "cap": changed_protocol,
+                }
+            ]
+        ),
+        "changed operational validation protocol",
+    )
+    multi_piece_operational = cell(4, 2, 1.0)
+    multi_piece_operational["expanded_buckets_single_piece"] = False
+    expect_analysis_error(
+        lambda: _operational_summary(
+            [
+                {
+                    "task": ("x", "s"),
+                    "exact": cell(4, 2, 1.0),
+                    "cap": multi_piece_operational,
+                }
+            ]
+        ),
+        "multi-piece operational bucket",
+    )
+
+    def effort_summary(count, blind, exact, cap):
+        totals = {"blind": blind, "exact": exact, "cap": cap}
+        ratios = {}
+        for key, numerator, denominator in (
+            ("cap_over_blind", "cap", "blind"),
+            ("exact_over_blind", "exact", "blind"),
+            ("cap_over_exact", "cap", "exact"),
+        ):
+            ratios[key] = {
+                "ratio": _fraction_payload(Fraction(totals[numerator], totals[denominator])),
+                "numerator_lower": 0,
+                "equal": count,
+                "numerator_higher": 0,
+            }
+        return {
+            "eligibility": TRIPLE_SOLVED_EFFORT_ELIGIBILITY,
+            "estimand": TRIPLE_SOLVED_EFFORT_ESTIMAND,
+            "eligible_task_count": count,
+            "certified_cell_count": 3 * count,
+            "single_piece_bucket_certified_cell_count": 3 * count,
+            "cost_reconciled_task_count": count,
+            "effort_equals_expanded_bdd_nodes_cells": 3 * count,
+            "totals": totals,
+            "ratios": ratios,
+        }
+
+    effort_strata = [effort_summary(2, 10, 12, 9), effort_summary(1, 3, 3, 3)]
+    effort_overall = effort_summary(3, 13, 15, 12)
+    _validate_effort_conservation(effort_overall, effort_strata)
+    _validate_exact_endpoint_effort_identity(effort_strata[1])
+    changed_effort_label = json.loads(canonical_json(effort_overall))
+    changed_effort_label["eligibility"] = "changed"
+    expect_analysis_error(
+        lambda: _validate_effort_summary_contract(changed_effort_label),
+        "changed effort eligibility",
+    )
+    changed_effort_equality_count = json.loads(canonical_json(effort_overall))
+    changed_effort_equality_count[
+        "effort_equals_expanded_bdd_nodes_cells"
+    ] -= 1
+    expect_analysis_error(
+        lambda: _validate_effort_summary_contract(changed_effort_equality_count),
+        "changed effort/node equality count",
+    )
+    changed_effort_fraction = json.loads(canonical_json(effort_overall))
+    changed_effort_fraction["ratios"]["cap_over_blind"]["ratio"]["numerator"] += 1
+    expect_analysis_error(
+        lambda: _validate_effort_summary_contract(changed_effort_fraction),
+        "changed effort fraction",
+    )
+    changed_effort_identity = json.loads(canonical_json(effort_strata[1]))
+    changed_effort_identity["ratios"]["cap_over_exact"]["equal"] -= 1
+    changed_effort_identity["ratios"]["cap_over_exact"]["numerator_lower"] += 1
+    expect_analysis_error(
+        lambda: _validate_exact_endpoint_effort_identity(changed_effort_identity),
+        "changed exact-endpoint effort identity",
+    )
     try:
         parse_json_bytes(b'{"a":1,"a":2}', "synthetic duplicate")
     except AnalysisError:

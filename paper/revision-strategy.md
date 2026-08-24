@@ -23,14 +23,14 @@ heuristic information while improving the same-budget comparator.
 
 | Claim | Evidence |
 |---|---|
-| A width-$W$, $V$-valued consistent heuristic has expansion-size ratio at most $2VWn$ over blind forward search. | Bucket identity, partition theorem and strengthened nonconstant-cofactor-count lemma in the paper; complete proofs in the supplement. |
-| The parameter dependence is not merely an artifact of the proof. | The quadratic construction has $V=W$ and ratio at least $W^2/12$; setting $k=4W$ gives $n=8W+2$. This is an $\Omega(W^2)$ diagonal lower bound, equivalently realizing each pairwise product up to a constant; simultaneous $VWn$ tightness remains open. |
-| Cofactor width contributes information beyond ordinary total-ADD size. | Before relaxation to reduced size, the cofactor-profile and Apply certificates have explicit linear separations in both directions. |
-| Uniform caps preserve admissibility and consistency and weakly reduce width. | Safe-terminal-transform proposition and nested-cap argument. |
+| A width-$W$, $V$-valued consistent heuristic has expansion-size ratio at most $2VWn$ over blind forward search. | The sharper layerwise certificate is $\sum_g V_g\mathcal C_\pi(L_g,h)$, where $\mathcal C_\pi$ is the cut-aligned product of the state-set and heuristic cofactor profiles. Relaxing it yields the coarse ratio. |
+| The parameter dependence is not merely an artifact of the proof. | Exact modular-cut counting strengthens the quadratic construction to ratio at least $55W^2/288$ for $V=W$; setting $k=4W$ gives $n=8W+2$. The ratio matches all three pairwise products on this tied diagonal, without proving their independent necessity; simultaneous $VWn$ tightness remains open. |
+| Cofactor width contributes information beyond ordinary total-ADD size. | Before relaxation to width, the cofactor-profile and Apply certificates have explicit linear separations in both directions and combine per active layer by taking their minimum. |
+| Uniform caps preserve admissibility and consistency and contract every cofactor cut. | Safe-terminal-transform proposition and nested-cap argument; pointwise cut contraction also contracts every fixed-layer profile certificate. |
 | Cap-aware selection is backward compatible with exact-width selection on score-identical raw pools. | The exact candidate chosen for every width-feasible pattern is retained by the cap-aware per-pattern step, so the frozen lexicographic score cannot decrease. This also preserves semantic nontriviality; an exact cap-aware fallback is the exact selector's winner. |
 | Every selected heuristic retains an end-to-end representation certificate. | Every completed output has ratio at most $2K^2n$; at $K=8$ this is $128n$, while caps 2 and 4 sharpen it to $48n$ and $80n$. |
 | Cap-aware selection recovers useful heuristic content. | On 1,306 completed, certified, identical-pool pairs in the 1,327-task primary scope: 626 semantic gains and 0 losses; 1,292 versus 666 nontrivial selections. |
-| The recovered information improves the same-pool, same-width-budget comparator. | Primary macro coverage +0.96 percentage points, 12 wins versus 5 losses; expanded BDD nodes ratio 0.884 and image-time ratio 0.893 on 590 eligible pairs; construction-time ratio 1.023. The 1,377-task sensitivity has the same direction. |
+| The recovered information improves the same-pool, same-width-budget comparator. | Primary macro coverage +0.96 percentage points, 12 wins versus 5 losses; expanded BDD nodes ratio 0.884 and image-time ratio 0.893 on 579 positive-work pairs, plus 11 zero-work unsolvable endpoints; construction-time ratio 1.023. On 393 triple-solved finite-cap tasks, the effort ratios are cap-aware/exact 0.868, cap-aware/blind 0.982, and exact/blind 1.132. The 1,377-task sensitivity has the same direction. |
 
 ## Explicit Non-Claims
 
@@ -42,7 +42,8 @@ heuristic information while improving the same-budget comparator.
 - The 21 primary tasks without completed paired selector construction do not
   support a selector-mechanism comparison; they remain in all coverage and
   PAR2 denominators.
-- The experiment does not directly test the worst-case numerical upper bound.
+- The experiment measures the theorem's effort target against blind search but
+  does not instantiate the sharper profile-based numerical upper bound.
 - The unaligned M&S control is not covered by the aligned M&S family formula.
 
 ## Adversarial Review Round 1
@@ -217,3 +218,79 @@ as the strongest unaddressed objection.
 - Residual risk: a new $K$ sweep and matched ADD-size baseline would require a
   new frozen experiment. They remain deferred rather than being reconstructed
   post hoc.
+
+## Adversarial Review Round 4
+
+This round began from the committed Round-3 manuscript and again separated
+formal, empirical and hostile venue review. The mock ICAPS verdict was 6/10
+(borderline weak accept). Its clearest route to a stronger submission was a
+target-metric comparison of actual representation effort with blind search.
+
+### Theory objection: width hides useful cut-by-cut information
+
+- Adversarial reading: replacing every heuristic cut by its maximum width can
+  make the theorem look needlessly coarse and obscures why terminal coarsening
+  helps a particular frontier.
+- Resolution: define the cut-aligned profile product
+  $\mathcal C_\pi(S,h)=\sum_i c_i(\chi_S)c_i(h)$. A bucket is bounded directly
+  by this product, and search effort is bounded by
+  $\sum_g V_g\mathcal C_\pi(L_g,h)$ before either active-bucket counts or cut
+  widths are maximized. Safe terminal transforms contract every $c_i(h)$.
+- Residual risk: the retained traces do not contain the exact layer and
+  heuristic cofactor profiles needed to instantiate this upper bound.
+
+### Theory objection: the lower-bound constant discards most nodes
+
+- Adversarial reading: the previous $W^2/12$ proof counted only saturated
+  middle levels of the modular buckets, weakening an already diagonal result.
+- Resolution: count every next-bit node on every modular cut. The exact layer
+  contribution is
+  $S_{i,W}=\sum_{j<i}\min(W,j+1)\min(W,i-j+1)$, which strengthens the ratio to
+  $55W^2/288$ for all $W\geq2$ and $k\geq4W$. The supplement gives the closed
+  form, positivity calculation and edge-case audit.
+- Residual risk: the construction still does not prove a joint
+  $\Omega(VWn)$ lower bound.
+
+### Experiments objection: operational totals do not evaluate the theorem's target
+
+- Adversarial reading: aggregate node and time totals compare the two selectors
+  but do not reveal whether either heuristic improves over blind search in the
+  exact cumulative expanded-BDD-node measure used by the theorem.
+- Resolution: add a digest-pinned post-hoc audit on triple-solved, trace-complete
+  instances. It computes the paper's effort definition for blind, exact and
+  cap-aware search, separately for finite caps and exact endpoints, and checks
+  cost agreement, integral counters and raw-pool identity before inclusion.
+  This evaluates the theorem's target metric, not its unlogged numerical upper
+  bound.
+- Residual risk: triple-solved conditioning excludes discordant outcomes and
+  joint timeouts, so the result is descriptive rather than a coverage
+  explanation.
+
+### Experiments objection: the 590-pair headline mixes interventions and fallbacks
+
+- Adversarial reading: exact endpoints are a built-in negative control and
+  several unsolvable zero-node cases are outside the finite-$C^*$ theorem.
+- Resolution: report finite-cap operational conservation separately---total
+  nodes, completed buckets, nodes per completed bucket and image time per
+  bucket---and identify exact endpoints as the negative control. State the
+  solved denominator whenever invoking target-metric effort.
+- Residual risk: time per call remains a systems measurement and exact-endpoint
+  timing is not expected to be bit-identical.
+
+### Post-Revision Assessment
+
+The paper now has a sharper central theorem, a substantially stronger constant
+for its existing lower family, and a direct descriptive audit of the theorem's
+target effort measure against blind search. The main unresolved issues require
+new data or new theory: profile logging, a matched ADD-budget selector, a
+multi-budget replication, and joint three-factor tightness.
+
+The final hostile ICAPS review scored this revision 7/10 (weak accept,
+confidence 4/5). Its six repairable objections were addressed: the operational
+denominator is named ``Pairs'' rather than overloading $n$; the headline
+separates 579 positive-work pairs from 11 zero-work unsolvable endpoints; all
+post-hoc labels say descriptive or target-metric rather than robustness or
+bound validation; diagonal lower-bound claims no longer imply independent
+parameter necessity; selector-induced pattern changes are explicit; and the
+triple-solved audit fails closed unless every expanded bucket has one BDD
+piece. The remaining objections are scope limits already stated as non-claims.

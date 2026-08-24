@@ -191,17 +191,25 @@ manifest SHA-256
 `e944922a633c08594e48a2c667bf84cd35d6b8121d85d2b1c672aed4abea533e`,
 and the accepted prospective artifact and execution pins. Its role is
 `post-hoc-theorem-guided-descriptive`: it reports no tests, intervals, or
-population generalization.
+population generalization. The audit now includes same-PDB raw-to-capped
+certificate compression; conservation of completed bucket/image-call counts,
+expanded nodes and exact-decimal image time; normalized work per completed
+call with explicit zero denominators; and target-metric effort for strictly
+certified triple-solved blind/exact/cap-aware tasks, including finite-cap
+leave-one-domain-out descriptions. Triple-solved eligibility also certifies
+one BDD piece per expanded bucket, while node leave-one-domain-out totals are
+bound to the paired operational population. These additions do not alter the
+frozen primary estimand or secondary contract.
 
 - Canonical post-hoc artifact:
   `experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json`
-  (13,064 raw bytes), SHA-256
-  `195c209a8ba34a89c98fd0920c4f58753635cd3f375f6424ca49da017effc59d`
+  (37,928 raw bytes), SHA-256
+  `211ba15a3b15235175d5f98ec4d374dada5d00cacf8997a5f919543041a06312`
 - Post-hoc artifact sidecar:
   `experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json.sha256`
 - Generated post-hoc paper input:
   `paper/generated/pdb-cap-grid-posthoc-v1.tex`, SHA-256
-  `c9d89687e2bf7c39b2d6d023b67f778097cf8517c6ca38370cc138d53333739e`
+  `b31ded49ca6bf2ef35a089ea7cdd8628375610c2283ad78e92b29c3646b99e52`
 
 The post-hoc renderer reads only that canonical artifact and sidecar. Its
 self-test and `--check` gate validate the artifact pin and the generated TeX

@@ -236,15 +236,36 @@ directions, but it cannot rank the two constraints empirically.
 The execution logs contain widths, ADD summaries, operational totals and the
 validated maximum ratio of summed bucket nodes to an unsplit layer. They do not
 contain the complete source cofactor profiles needed to evaluate the theorem's
-cut-sensitive numerical upper bound instance by instance.
+cut-sensitive numerical upper bound instance by instance. They do retain the
+cumulative expanded-BDD-node counters needed to evaluate the theorem's target
+effort measure itself.
 
-**Decision:** reject correlation or theorem-validation claims from these logs.
+**Decision:** reject correlation or numerical upper-bound-validation claims
+from these logs, but retain a post-hoc comparison of actual effort against
+blind search on rigorously reconciled triple-solved pairs.
 
 **Reason:** partition ratios directly describe observed fragmentation, but do
 not reconstruct $Q(\chi_{L_g})$ or certify tightness of the worst-case bound.
-The final paper labels this audit post hoc and limits its claim accordingly.
+Likewise, neither total ADD size nor maximum width recovers the cut-aligned
+product $\mathcal C_\pi(L_g,h)$. The effort audit answers the narrower question
+of how the measured target behaved; the final paper labels it post hoc and
+does not present it as validation of the certificate's numerical slack.
 
-### Promoting Post-Hoc Robustness Diagnostics to Confirmatory Results
+### Reconstructing Cofactor Profiles from Aggregate Counters
+
+The retained traces log selected widths, total ADD sizes, completed buckets,
+expanded nodes and image time, but not the residual count at every variable cut
+for each exact layer and chosen heuristic.
+
+**Decision:** reject any attempt to infer or impute the missing profiles from
+aggregate widths, ADD sizes or partition counts.
+
+**Reason:** many different cut profiles share the same maximum width and total
+node count. Any reconstructed certificate would therefore depend on
+unverifiable assumptions rather than preserved observations. A future run must
+log both layer and heuristic cut counts directly.
+
+### Promoting Post-Hoc Descriptive Diagnostics to Confirmatory Results
 
 The preserved properties support useful exhaustive diagnostics: transform
 strata, per-pair signs, leave-one-domain-out ranges, initial-value changes and

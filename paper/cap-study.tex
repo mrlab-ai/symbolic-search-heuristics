@@ -401,7 +401,7 @@ not certified. \CapScopeCaveat
 \end{table}
 \end{landscape}
 
-\subsection{Post-Hoc Theorem-Guided Diagnostics}
+\subsection{Post-Hoc Descriptive Diagnostics}
 
 After completing the prospective analysis, we added a separate
 digest-pinned audit to answer the adversarial questions of whether the
@@ -422,6 +422,33 @@ median \CapPosthocPrimaryRawWidthMedian. Among
 dead-end proof, the cap-aware initial value is higher/equal/lower on
 \CapPosthocPrimaryInitialHigher/\CapPosthocPrimaryInitialEqual/
 \CapPosthocPrimaryInitialLower\ tasks.
+
+The paired coefficient audit avoids cross-pattern confounding by evaluating
+the chosen cap-aware PDB immediately before and after its terminal transform.
+For every primary finite-cap trace, the coarse certificate coefficient
+$c=2\values W$ decreases strictly. Table~\ref{tab:supp-posthoc-compression}
+reports both the marginal coefficients and the exact paired raw-to-capped
+ratios; these are structural certificates, not observed overhead ratios.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Post-hoc same-PDB certificate compression on every finite-cap
+    trace. P95 uses nearest rank. ``Strict'' counts strict paired coefficient
+    reductions.}
+  \label{tab:supp-posthoc-compression}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}lrrrrrrrrrrr@{}}
+    \toprule
+    Scope & Pairs & \multicolumn{3}{c}{Raw $c$} &
+      \multicolumn{3}{c}{Capped $c$} &
+      \multicolumn{3}{c}{Raw/capped} & Strict \\
+    & & Median & P95 & Max & Median & P95 & Max & Median & P95 & Max & \\
+    \midrule
+    \CapPosthocCoefficientCompressionRows
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
 
 \begin{table}[htbp]
   \centering
@@ -459,11 +486,86 @@ dead-end proof, the cap-aware initial value is higher/equal/lower on
 
 On the primary operational subset, every eligible exact-endpoint node count is
 identical, whereas finite caps give the full node reduction. Image
-time is not identical at exact endpoints because it includes the surrounding
-search process. The exact-endpoint coverage losses in
+time is a measured duration and therefore need not be identical across reruns
+of the same operations. The exact-endpoint coverage losses in
 Table~\ref{tab:supp-posthoc-trace-strata} likewise occur at the resource limit
 despite identity of the selected heuristic, so they are not evidence against
 Proposition~\ref{prop-selector-dominance}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Post-hoc conservation across completed buckets. ``Pos./zero''
+    splits pairs by whether the bucket denominator is positive or zero in both
+    configurations. Bucket, node/bucket and image/bucket ratios are cap-aware
+    over exact; the last columns give taskwise L/E/H signs for the normalized
+    metrics on positive-denominator pairs.}
+  \label{tab:supp-posthoc-per-bucket}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}llrrrrrrrrll@{}}
+    \toprule
+    Scope & Endpoint & Pairs & Pos. & Zero & Cap buckets & Exact buckets &
+      Buckets & Nodes/bucket & Image/bucket & Node L/E/H & Image L/E/H \\
+    \midrule
+    \CapPosthocOperationalPerBucketRows
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+These operational comparisons include pattern changes induced by selection;
+the same-PDB coefficient audit above is the isolated terminal-transform
+comparison. Finite caps can refine the search into more completed buckets while
+reducing the aggregate representation and image work per bucket. Exact
+endpoints are the negative control: their completed-bucket totals, node totals
+and node-per-bucket values are identical. Image time need not be identical
+because it includes measured systems variation around the same operations.
+
+The target-metric audit uses the exact expansion-size measure bounded by
+Theorem~\ref{thm-effort}. Eligibility requires complete identical-pool selector traces,
+certified solved searches for blind, exact and cap-aware configurations, one
+BDD piece per expanded bucket, agreement of all three solution costs,
+schema-v2 metrics, and
+integral effort equal to the validated expanded-BDD-node counter. In
+particular, zero/zero unsolvable operational pairs do not enter this
+finite-$\copt$ comparison.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Post-hoc target-metric effort on triple-solved tasks. Ratios use
+    pooled totals; L/E/H compares cap-aware with exact taskwise.}
+  \label{tab:supp-posthoc-effort}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{@{}llrrrrrrrl@{}}
+    \toprule
+    Scope & Endpoint & Tasks & Blind & Exact & Cap-aware & Cap/blind &
+      Exact/blind & Cap/exact & Cap/exact L/E/H \\
+    \midrule
+    \CapPosthocTripleSolvedEffortRows
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Post-hoc leave-one-domain-out stability of the finite-cap
+    triple-solved effort ratios. Parentheses name the omitted domain at each
+    extreme.}
+  \label{tab:supp-posthoc-effort-lodo}
+  \begin{tabular}{@{}llrrr@{}}
+    \toprule
+    Scope & Ratio & Base & Minimum & Maximum \\
+    \midrule
+    \CapPosthocFiniteEffortLodoRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The effort comparison evaluates the theorem's target measure, not its
+profile-sensitive numerical upper bound: the logs do not retain both cofactor
+profiles at every layer. Its triple-solved denominator also cannot explain
+coverage discordances or joint timeouts.
 
 \begin{table}[htbp]
   \centering

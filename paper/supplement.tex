@@ -24,6 +24,8 @@
 \newcommand{\bddsize}[1]{\ensuremath{|B_{#1}|}}
 \newcommand{\cofcount}{\ensuremath{Q}}
 \newcommand{\width}{\ensuremath{\mathsf{w}}}
+\newcommand{\cutcount}[2]{\ensuremath{c_{#1}(#2)}}
+\newcommand{\cutprod}[2]{\ensuremath{\mathcal{C}_{\pi}(#1,#2)}}
 \newcommand{\values}{\ensuremath{V}}
 \newcommand{\level}[2]{\ensuremath{H_{#2}}}
 \newcommand{\effort}{\ensuremath{\mathit{effort}}}
@@ -266,6 +268,12 @@ cofactor width are
   \qquad
   \width_\pi(f)=\max_{0\leq i\leq n}|\sub{i}{f}|.
 \]
+Write $\cutcount{i}{f}=|\sub{i}{f}|$. For a state set $S$ and heuristic
+$h$, their cut-aligned \emph{cofactor-profile product} is
+\[
+  \cutprod{S}{h}=\sum_{i=0}^{n-1}
+  \cutcount{i}{\chi_S}\cutcount{i}{h}.
+\]
 For a Boolean function $f$, $\bdd{f}$ is its reduced ordered BDD under
 $\pi$, and $\bddsize{f}$ counts its inner nodes.  For a heuristic $h$,
 $\hrange(h)$ is its attained value set.  The blind heuristic $\hblind$ is
@@ -320,7 +328,9 @@ $\phi(0)=0$, $\phi(\infty)=\infty$, and
   \quad\text{for every $a\in\mathbb Z$ and integer $c\geq0$.}
 \]
 Then $h=\phi\circ q$ is admissible and consistent and
-$\width_\pi(h)\leq\width_\pi(q)$.
+$\cutcount{i}{h}\leq\cutcount{i}{q}$ for every cut $i$. Consequently,
+$\width_\pi(h)\leq\width_\pi(q)$ and
+$\cutprod{S}{h}\leq\cutprod{S}{q}$ for every state set $S$.
 \end{proposition}
 
 \begin{proof}
@@ -336,7 +346,9 @@ $\phi(q(s))\leq\max(0,q(s))\leq\hstar(s)$. If $q(s)=\infty$, raw
 admissibility implies $\hstar(s)=\infty$. The transformed heuristic is
 therefore admissible, consistent, and zero on goals. Finally,
 $(\phi\circ q)|_\rho=\phi\circ(q|_\rho)$, so the terminal map may merge
-cofactors but cannot create any.
+cofactors but cannot create any. This proves the cutwise inequality; taking a
+maximum proves the width inequality, and multiplying by the nonnegative
+state-set cut counts and summing proves the profile-product inequality.
 \end{proof}
 
 Rectification $\phi_+(a)=\max(0,a)$ is one instance. For
@@ -359,8 +371,8 @@ terminals. Hence $\phi_{\kappa_1}\circ q$ is a terminal relabeling of
 $\phi_{\kappa_2}\circ q$ and
 $\width_\pi(\phi_{\kappa_1}\circ q)\leq
 \width_\pi(\phi_{\kappa_2}\circ q)$. Thus increasing $\kappa$ weakly
-strengthens the heuristic, whereas decreasing it weakly decreases both its
-finite-value count and width and therefore its coarse $2\values Wn$
+strengthens the heuristic, whereas decreasing it weakly contracts every cut
+count, the profile product with any fixed set, and the coarse $2\values Wn$
 certificate.
 
 Let $\mathrm{ADD}_\pi(h)$ be the reduced ordered ADD of $h$ under $\pi$
@@ -454,6 +466,7 @@ Let $S\subseteq\{0,1\}^n$ and $U\subseteq\hrange(h)$. Then
 \[
 \bddsize{S\cap h^{-1}(U)}
 \leq\cofcount(\chi_{S\cap h^{-1}(U)})
+\leq\cutprod{S}{h}
 \leq W\cofcount(\chi_S)
 \leq Wn(\bddsize{S}+2).
 \]
@@ -472,10 +485,11 @@ Lemma~\ref{lem-pair}. Consequently,
 \[
  |\sub{i}{\chi_{S\cap h^{-1}(U)}}|
  \leq|R_i|
- \leq|\sub{i}{\chi_S}|\,|\sub{i}{h}|
+ \leq\cutcount{i}{\chi_S}\cutcount{i}{h}
  \leq W|\sub{i}{\chi_S}|.
 \]
-Summing over $i=0,\ldots,n-1$ proves the middle inequality.
+Summing before and after the relaxation to $W$ proves the two middle
+inequalities.
 \end{proof}
 
 \begin{theorem}[partition bound]
@@ -483,18 +497,19 @@ Summing over $i=0,\ldots,n-1$ proves the middle inequality.
 Let $S\subseteq\{0,1\}^n$. Then
 \[
  \sum_{v\in\hrange(h)}\bddsize{S\cap\level{h}{v}}
+ \leq T\cutprod{S}{h}
  \leq TW\cofcount(\chi_S)
  \leq TWn(\bddsize{S}+2)
  \leq W^2n(\bddsize{S}+2).
 \]
 If $S\subseteq\states$ and the sum ranges only over finite values attained
-on planning states, the first two bounds hold with $T$ replaced by
+on planning states, every $T$-dependent bound holds with $T$ replaced by
 $\values=|h(\states)\setminus\{\infty\}|$.
 \end{theorem}
 
 \begin{proof}
 Theorem~\ref{thm-bucket} with $U=\{v\}$ bounds every bucket by
-$W\cofcount(\chi_S)$. Sum over the $T$ terminals and use
+$\cutprod{S}{h}$. Sum over the $T$ terminals, relax the profile, and use
 $T\leq W$ from Proposition~\ref{prop-range}; Lemma~\ref{lem-qsize}
 converts cofactor count to reduced size. If only finite values attained on
 planning states are included, there are at most $\values$ nonempty
@@ -524,12 +539,20 @@ each pair of internal operand nodes and for each pair in which one operand is
 internal and the other is the 1-terminal.
 Hence
 \[
- \bddsize{S\cap h^{-1}(U)}\leq bA+b+A,
+ \bddsize{S\cap h^{-1}(U)}
+ \leq\min\{\cutprod{S}{h},\,(A+1)b+A\},
 \]
-to be compared with $W\cofcount(\chi_S)$ in
-Theorem~\ref{thm-bucket}. Summing the Apply bound over at most $\values$
-buckets on each of the $N$ nonempty layers below $\copt$, under the standing
-bucket-identity assumptions, gives
+where the first certificate is Theorem~\ref{thm-bucket}.  More precisely, if
+$b_g=\bddsize{L_g}$ and $\values_g$ is the number of nonempty selected
+buckets on layer $g$, the standing bucket-identity assumptions give the
+combined search-level certificate
+\[
+ \effort(\task,h)
+ \leq\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
+ \values_g\min\{\cutprod{L_g}{h},\,(A+1)b_g+A\}.
+\]
+Relaxing this to the Apply term and using at most $\values$ buckets on each
+of the $N$ nonempty layers below $\copt$ gives
 \[
  \effort(\task,h)
  \leq\values\bigl((A+1)\effort(\task,\hblind)+AN\bigr)
@@ -550,12 +573,12 @@ weight is $0$ modulo $3$. Under the natural order, $W=2$, while the reduced
 ADD for $h$ and BDD for $S$ both have $\Theta(n)$ nodes. The slice
 $S\cap h^{-1}(\{0\})$ is weight $0$ modulo $6$ and also has a constant-width,
 $\Theta(n)$-node OBDD.
-Thus $W\cofcount(\chi_S)=\Theta(n)$ while $bA+b+A=\Theta(n^2)$. In the other
+Thus $\cutprod{S}{h}=\Theta(n)$ while $bA+b+A=\Theta(n^2)$. In the other
 direction, take $h=x_1$ and $S=\{x_1=1\}$. Then $A=b=1$ but
 $\cofcount(\chi_S)=2n-1$, so Apply gives $3$ while the cofactor bound is
-$4n-2$. Cofactor width supplies cut-sensitive and compositional structure; we
-do not claim it is a universally tighter operational selector than total ADD
-size.
+$\cutprod{S}{h}=4n-3$. The profile certificate supplies cut-sensitive and
+compositional structure; we do not claim it is a universally tighter
+operational selector than total ADD size.
 \end{remark}
 
 \section{Search-Effort Bound}
@@ -570,10 +593,21 @@ By Lemma~\ref{lem-identity}, expansion size is exactly
 \begin{theorem}[effort bound]
 \label{thm-effort}
 Let $h$ be consistent with $\width_\pi(h)\leq W$, and let
-$\values=|h(\states)\setminus\{\infty\}|$. Then
+$\values=|h(\states)\setminus\{\infty\}|$.  For each $g$, let
+\[
+ \values_g=
+ |\{v\in h(\states)\setminus\{\infty\}\mid
+ g+v\leq\copt,\ L_g\cap\level{h}{v}\ne\emptyset\}|.
+\]
+Then
 \[
  \begin{aligned}
  \effort(\task,h)
+ &\leq\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
+      \values_g\cutprod{L_g}{h} \\
+ &\leq\values
+   \sum_{\substack{g<\copt\\L_g\ne\emptyset}}
+     \cutprod{L_g}{h} \\
  &\leq\values W
    \sum_{\substack{g<\copt\\L_g\ne\emptyset}}
      \cofcount(\chi_{L_g}) \\
@@ -584,15 +618,12 @@ $\values=|h(\states)\setminus\{\infty\}|$. Then
 \end{theorem}
 
 \begin{proof}
-The bucket identity permits enlarging the inner sum to all finite values
-attained on planning states. The finite-state form of
-Theorem~\ref{thm-partition} therefore gives
-\[
- \effort(\task,h)
- \leq\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
-       \values W\cofcount(\chi_{L_g}).
-\]
-Lemma~\ref{lem-qsize} bounds each cofactor count by
+Lemma~\ref{lem-identity} selects exactly these $\values_g$ buckets on layer
+$g$, and Theorem~\ref{thm-bucket} bounds each bucket by
+$\cutprod{L_g}{h}$. This proves the first inequality.  The next two follow
+from $\values_g\leq\values$ and
+$\cutprod{L_g}{h}\leq W\cofcount(\chi_{L_g})$.
+Lemma~\ref{lem-qsize} then bounds each cofactor count by
 $n(\bddsize{L_g}+2)$.
 Let $N$ be the number of nonempty layers below $\copt$. Since blind
 search expands each such layer once,
@@ -602,8 +633,8 @@ search expands each such layer once,
  \label{eq-effort-nonempty}
 \end{equation}
 Positive integer costs imply $N\leq\copt$: the possible layer indices are
-$0,\ldots,\copt-1$. This proves the second inequality, and
-$\values\leq W$ proves the third.
+$0,\ldots,\copt-1$. This proves the penultimate inequality, and
+$\values\leq W$ proves the last.
 \end{proof}
 
 \begin{corollary}[search-effort ratio]
@@ -623,7 +654,7 @@ $0<\copt<\infty$, this is a proper subset of the Boolean cube. Every
 nonempty $L_g$ with $0<g<\copt$ is also proper because it omits
 \sinit. Hence each $\chi_{L_g}$ is nonconstant, and
 Lemma~\ref{lem-qsize} gives
-$\cofcount(\chi_{L_g})\leq2n\bddsize{L_g}$. Substitution in the first
+$\cofcount(\chi_{L_g})\leq2n\bddsize{L_g}$. Substitution in the third
 inequality of Theorem~\ref{thm-effort}, followed by summation over $g$,
 proves both inequalities.
 \end{proof}
@@ -773,7 +804,7 @@ For all integers $W \geq 2$ and $k \geq 4W$ there are tasks
 $\task_{k,W}$ with $n=2k+2$ Boolean variables and consistent, admissible
 heuristics $h$ with $\width_\pi(h)=W$ such that
 $\effort(\task_{k,W},h)\geq
-(W^2/12)\effort(\task_{k,W},\hblind)$.
+(55W^2/288)\effort(\task_{k,W},\hblind)$.
 \end{theorem}
 
 \begin{proof}
@@ -836,44 +867,97 @@ pre-goal layers and no intermediate layers between costs $k$ and $k+W$, so
 \emph{Heuristic effort.}
 On $L_i$, $h=q(\sum_{j\leq i}v_j\bmod W)$. For $i\geq W-1$ all $W$
 buckets are nonempty, and every bucket is selected because
-$i+h\leq k+W-1<\copt$. Fix a layer $i\in[2W,k]$ and one bucket. For every
-$W\leq j\leq i-W$, prefixes of $v_1,\dots,v_j$ with distinct partial
-residues induce distinct cofactors of the modular bucket: the already-fixed
-$x$-block and $t=0$ are common literals, and a suffix using
-at most $W-1$ of the remaining variables completes one residue to the
-required bucket and not another. Each such cofactor essentially depends
-on $v_{j+1}$ by the same argument. Consequently the reduced OBDD has
-$W$ distinct nodes at each of the $i-2W+1$ middle levels, and the bucket
-has at least $W(i-2W+1)$ inner nodes. Summing over these layers and their
-$W$ buckets gives
+$i+h\leq k+W-1<\copt$; the same inequality selects every nonempty bucket
+on the earlier layers as well.
+
+We count all modular inner nodes rather than only the saturated middle
+levels.  Fix layer $i$ and the cut after the first $j$ choice bits, where
+$0\leq j<i$.
+The attainable residues of the $j$ prefix bits and the $i-j$ suffix bits
+have cardinalities
 \[
-\effort(\task_{k,W},h)
- \geq W^2\sum_{i=2W}^k(i-2W+1)
- =\frac{W^2(k-2W+1)(k-2W+2)}{2}.
+ p_j=\min\{W,j+1\}
+ \quad\text{and}\quad
+ r_{i-j}=\min\{W,i-j+1\},
 \]
-Writing $k=4W+d$ with $d\geq0$, the ratio is at least $W^2/12$ because
+respectively.  For one target residue $a$, a prefix residue $z$ induces a
+nonzero residual exactly when $b=a-z\bmod W$ is attainable by the suffix.
+Distinct such residues induce distinct modular residual functions.  Choose
+an accepted suffix Hamming weight $t\in[0,i-j]$ for $b$. If $t<i-j$, assign
+weight $t$ to the last $i-j-1$ bits: the 0-child accepts and the 1-child does
+not. If $t=i-j$, assign those bits weight $i-j-1$: the 1-child accepts and
+the 0-child does not. Hence every nonzero residual depends on $v_{j+1}$.
+For every pair $(z,b)$ of attainable prefix and suffix residues, there is a
+unique target $a=z+b\bmod W$. Thus, after summing over target buckets and
+counting nodes separately across their reduced BDDs, the cut contributes
+exactly $p_jr_{i-j}$ modular nodes. Conjoining the common chain,
+future-choice, and $t$ literals preserves these nonzero functions and their
+distinctness.  The expanded BDDs on layer $i$ therefore contain at least
 \[
-12(k-2W+1)(k-2W+2)-(k+1)(3k+4)
-=9d^2+24Wd+29d+44W+20>0.
+ S_{i,W}=\sum_{j=0}^{i-1}
+   \min\{W,j+1\}\min\{W,i-j+1\}
 \]
+inner nodes in total.
+
+For completeness, direct summation gives
+\[
+S_{i,W}=
+\begin{cases}
+ i(i+1)(i+5)/6,
+   &0\leq i\leq W-2,\\
+ \displaystyle\frac{1}{6}\left[
+   \begin{aligned}
+     &W(W-1)(W+4)+3rW^2\\[-2pt]
+     &\quad{}+3Wr(r+2)-r(r+1)(r+2)
+   \end{aligned}\right],
+   &i=W-1+r,\ 0\leq r\leq W-1,\\
+ W(Wi-W^2+2W-1),
+   &i\geq2W-1.
+\end{cases}
+\]
+Consequently, if $d=k-4W\geq0$, then
+\[
+\begin{aligned}
+N_W(k)&:=\sum_{i=0}^{k}S_{i,W}\\
+ &=\frac{55W^4+90W^3-7W^2-18W}{12}
+   +\frac{Wd}{2}(6W^2+Wd+5W-2).
+\end{aligned}
+\]
+This is a lower bound on $\effort(\task_{k,W},h)$.  With
+$D(k)=(k+1)(3k+4)/2=\effort(\task_{k,W},\hblind)$, expansion and collection
+of terms yield
+\[
+\begin{aligned}
+288N_W(k)-55W^2D(k)
+={}&2W(695W^2-139W-216)\\
+ &+\frac{dW}{2}(408W^2+123Wd+1055W-576)>0.
+\end{aligned}
+\]
+Both parentheses are positive for $W\geq2$ and $d\geq0$, which proves the
+claimed ratio.
 \end{proof}
 
 \begin{corollary}[pairwise lower bounds]
 \label{cor-pairwise-lb}
 For every integer $W\geq2$, the construction contains an instance with
 $\values=W$ and $n=8W+2$ whose heuristic-to-blind effort ratio is at least
-$\values W/12$, $\values n/108$, and $Wn/108$.
+$55\values W/288$, $55\values n/2304$, and $55Wn/2304$.
 \end{corollary}
 
 \begin{proof}
-Set $k=4W$ in Theorem~\ref{thm-tight}. Then $n=2k+2=8W+2\leq9W$ and the
-ratio is at least $W^2/12$. The three displayed bounds follow from
-$\values=W$ and $n\leq9W$.
+Set $k=4W$ in Theorem~\ref{thm-tight}.  Then $\values=W$ and
+$n=8W+2$.  The first bound is Theorem~\ref{thm-tight}.  For the other two,
+the exact count above gives
+\[
+2304N_W(4W)-55W(8W+2)D(4W)
+=4W(2120W^2-941W-919)>0.
+\]
+Since $\values=W$, this proves both remaining bounds.
 \end{proof}
 
-Thus every pairwise product among $\values$, $W$, and $n$ is attained up to
-a constant on this diagonal parameter slice. This does not prove a joint
-$\Omega(\values Wn)$ lower bound.
+Thus the ratio is simultaneously within a constant of $\values W$, $\values n$,
+and $Wn$ on this tied diagonal slice. This does not prove their independent
+pairwise necessity or a joint $\Omega(\values Wn)$ lower bound.
 
 \section{Width of the Known Exponential Pathology}
 

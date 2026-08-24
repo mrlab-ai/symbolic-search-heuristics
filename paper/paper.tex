@@ -53,6 +53,8 @@
 \newcommand{\bddsize}[1]{\ensuremath{|B_{#1}|}}
 \newcommand{\cofcount}{\ensuremath{Q}}
 \newcommand{\width}{\ensuremath{\mathsf{w}}}
+\newcommand{\cutcount}[2]{\ensuremath{c_{#1}(#2)}}
+\newcommand{\cutprod}[2]{\ensuremath{\mathcal{C}_{\pi}(#1,#2)}}
 \newcommand{\values}{\ensuremath{V}}
 \newcommand{\level}[2]{\ensuremath{H_{#2}}}
 \newcommand{\effort}{\ensuremath{\mathit{effort}}}
@@ -97,14 +99,16 @@ Forward symbolic \astar\ partitions BDD frontiers by heuristic value. Because
 BDD size is not monotone under subsets, even a perfect heuristic can increase
 expansion size exponentially. We apply fixed-order MTBDD width---called
 \emph{cofactor width} $W$---to heuristic ADDs. For exact cost layers $L_g$, a
-consistent heuristic with $\values$ finite values has the cut-sensitive bound
+consistent heuristic has a profile-sensitive bound that pairs the distinct
+layer and heuristic cofactors at every cut. It relaxes to
 $\values W\sum_g\cofcount(\chi_{L_g})$. This certificate and the ordinary
 global-ADD Apply bound can each be linearly sharper than the other. For $n$
 state bits it implies a blind-effort ratio of at most
 $2\values Wn\leq2W^2n$. A family with $\values=W$ and $n=\Theta(W)$ attains
 $\Omega(W^2)$; joint $\values Wn$ tightness remains open. The known
-exponential pathology has exponential width. We also derive safe terminal
-transforms and bounds for common heuristic families.
+exponential pathology has exponential width under its analyzed order. Safe
+terminal transforms contract every cut of the heuristic profile, and we
+derive bounds for three planning-heuristic families.
 
 As a case study, we use uniform caps in a width-constrained PDB selector.
 On score-identical raw pools, candidate containment prevents any loss in the
@@ -114,9 +118,14 @@ exact selector's score or semantic nontriviality. At $K=8$ on the fixed
 (\CapPrimaryWins/\CapPrimaryLosses\ wins/losses). Among
 \CapPrimaryTracePairs\ tasks with both complete identical-pool traces, capping
 adds \CapPrimarySemanticWins\ nontrivial selections and removes none; on the
-separate 590 pairs with complete operational metrics, expanded BDD nodes fall
-11.6\%. Unaligned M\&S retains the highest descriptive coverage, so this is not
-overall planner dominance.
+separate \CapPosthocPrimaryOverallPositiveBucketPairs\ positive-work pairs
+(plus \CapPosthocPrimaryOverallZeroBucketPairs\ zero-work unsolvable
+endpoints), expanded BDD nodes fall 11.6\%. In an explicitly post-hoc audit of
+\CapPosthocPrimaryFiniteTripleSolvedPairs\ finite-cap tasks solved by all three
+methods, capped effort is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times
+blind versus \CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact
+selection. Unaligned M\&S retains the highest descriptive coverage, so this is
+not overall planner dominance.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -177,18 +186,19 @@ certificate and guide safe terminal coarsening.
 
 Our central contribution is a structural safety regime for the pathology of
 \citet{speck-et-al-icaps2020}, together with its limits and one operational
-case study. A fragmentation theorem bounds the total size of all value slices
-of a state set $S$ by $TW\cofcount(\chi_S)$ for a width-$W$,
-$T$-terminal heuristic. Together with an exact bucket identity, it yields the
-cut-sensitive cumulative bound and the blind-effort ratio
+case study. A fragmentation theorem first bounds each value slice through the
+cut-by-cut inner product of the state-set and heuristic cofactor profiles.
+Summing slices and relaxing the profile gives $TW\cofcount(\chi_S)$ for a
+width-$W$, $T$-terminal heuristic. Together with an exact bucket identity, it
+yields a profile-sensitive cumulative bound and the blind-effort ratio
 $2\values Wn\leq2W^2n$. Before the cofactor count is relaxed, this certificate
 and the standard total-ADD Apply bound are incomparable. A new diagonal family
 has $\values=W$, $n=\Theta(W)$, and ratio $\Omega(W^2)$, which also realizes
-each pairwise product up to a constant; joint $\values Wn$ tightness remains
-open. The known exponential pathology has exponential width under its analyzed
-order.
+all three pairwise products on this tied diagonal. It does not show their
+independent necessity, and joint $\values Wn$ tightness remains open. The known
+exponential pathology has exponential width under its analyzed order.
 
-We give width-nonincreasing safe terminal transforms, including nested
+We give profile-contracting safe terminal transforms, including nested
 uniform caps, and bound integer potentials, bounded-state PDBs, and linear
 M\&S aligned with the search order. We then prove that cap-aware PDB selection
 is backward compatible with exact-width selection: on score-identical raw pools it
@@ -202,8 +212,14 @@ prespecified macro coverage by \CapPrimaryMacroDeltaPoints\ percentage points
 (\CapPrimaryWins\ wins and \CapPrimaryLosses\ losses). Among
 \CapPrimaryTracePairs\ tasks with both complete identical-pool traces, it adds
 \CapPrimarySemanticWins\ semantically nontrivial selections and loses none. On
-the separate 590 pairs with complete operational metrics, it reduces expanded
-BDD nodes by 11.6\% and image time by 10.7\%. Blind,
+the separate \CapPosthocPrimaryOverallPositiveBucketPairs\ positive-work pairs
+(plus \CapPosthocPrimaryOverallZeroBucketPairs\ zero-work unsolvable
+endpoints), it reduces expanded BDD nodes by 11.6\% and image time by 10.7\%.
+On an explicitly post-hoc,
+triple-solved subset of \CapPosthocPrimaryFiniteTripleSolvedPairs\ finite-cap
+tasks, capped effort is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times
+blind, while exact-selection effort is
+\CapPosthocPrimaryFiniteExactBlindEffortRatio\ times blind. Blind,
 conventional CEGAR PDB, and unaligned M\&S provide descriptive context; M\&S
 retains higher full-census coverage.
 
@@ -237,6 +253,16 @@ $\sub{i}{f}=\{f|_\rho\mid\rho\in\{0,1\}^i\}$ its distinct cofactors.
 For a function $f$ over $x_1, \dots, x_n$, the \emph{cofactor count} is
 $\cofcount(f) = \sum_{i=0}^{n-1} |\sub{i}{f}|$.
 \end{definition}
+
+Write $\cutcount{i}{f}=|\sub{i}{f}|$ for its cut-$i$ cofactor count. For a
+state set $S$ and heuristic $h$, define their \emph{cofactor-profile product}
+by
+\[
+  \cutprod{S}{h}=\sum_{i=0}^{n-1}
+  \cutcount{i}{\chi_S}\cutcount{i}{h}.
+\]
+It aligns the two residual profiles at the same cuts; in particular,
+$\cutprod{S}{h}\leq\width_\pi(h)\cofcount(\chi_S)$.
 
 \begin{lemma}
 \label{lem-qsize}
@@ -347,7 +373,9 @@ every $a\in\mathbb Z$ and integer $c\geq0$ satisfy
 \phi(a+c) \leq \phi(a)+c.
 \]
 Then $h=\phi\circ q$ is admissible and consistent and
-$\width_\pi(h)\leq\width_\pi(q)$.
+$\cutcount{i}{h}\leq\cutcount{i}{q}$ for every cut $i$. Consequently,
+$\width_\pi(h)\leq\width_\pi(q)$ and
+$\cutprod{S}{h}\leq\cutprod{S}{q}$ for every state set $S$.
 \end{proposition}
 
 Monotonicity and the cost condition transfer consistency and imply
@@ -358,10 +386,11 @@ $\phi_\kappa(\infty)=\infty$) are safe and width nonincreasing. The cap has
 at most $\kappa+1$ finite values and is pointwise strongest among such safe
 transforms with that output ceiling. If $\kappa_1\leq\kappa_2$, then
 $\phi_{\kappa_1}\circ q$ is a terminal relabeling of
-$\phi_{\kappa_2}\circ q$, so its cofactor width is no larger. Caps therefore
-form a nested safety--informativeness ladder: increasing $\kappa$ weakly
-strengthens the heuristic, while decreasing it weakly decreases both the
-finite-value count and width, hence the coarse $2\values Wn$ certificate.
+$\phi_{\kappa_2}\circ q$, so every cut count, its profile product with any
+fixed set, and its cofactor width are no larger. Caps therefore form a nested
+safety--informativeness ladder: increasing $\kappa$ weakly strengthens the
+heuristic, while decreasing it weakly contracts both the profile-sensitive and
+coarse $2\values Wn$ certificates.
 
 Let $\mathrm{ADD}_\pi(h)$ be the reduced ordered ADD under $\pi$
 \citep{bahar-et-al-iccad1993}.
@@ -400,6 +429,7 @@ Let $S \subseteq \{0,1\}^n$ and $U \subseteq \hrange(h)$. Then
 \begin{aligned}
 \bddsize{S \cap h^{-1}(U)}
   &\leq \cofcount(\chi_{S \cap h^{-1}(U)}) \\
+  &\leq \cutprod{S}{h} \\
   &\leq W\cofcount(\chi_S) \\
   &\leq Wn(\bddsize{S}+2).
 \end{aligned}
@@ -409,9 +439,9 @@ Let $S \subseteq \{0,1\}^n$ and $U \subseteq \hrange(h)$. Then
 \begin{proof}[Proof sketch]
 At cut $i$, equal pairs $(\chi_S|_\rho,h|_\rho)$ induce equal slice
 cofactors, so their number is at most
-$|\sub{i}{\chi_S}|\,|\sub{i}{h}|\leq
-W|\sub{i}{\chi_S}|$. Sum over cuts and apply
-Lemma~\ref{lem-qsize}. The supplement gives the explicit injection.
+$\cutcount{i}{\chi_S}\cutcount{i}{h}$. Sum over cuts, relax each heuristic
+cut count to $W$, and apply Lemma~\ref{lem-qsize}. The supplement gives the
+explicit injection.
 \end{proof}
 
 This covers a bucket ($U=\{v\}$), recognized-dead-end removal, and
@@ -424,18 +454,20 @@ Let $S \subseteq \{0,1\}^n$. Then
 \[
 \begin{aligned}
 \sum_{v \in \hrange(h)} \bddsize{S \cap \level{h}{v}}
+  &\leq T\cutprod{S}{h} \\
   &\leq TW\cofcount(\chi_S) \\
   &\leq TWn(\bddsize{S}+2) \\
   &\leq W^2n(\bddsize{S}+2).
 \end{aligned}
 \]
 If $S\subseteq\states$ and the sum ranges only over finite values attained
-on planning states, the first two bounds hold with $T$ replaced by $\values$.
+on planning states, every $T$-dependent bound holds with $T$ replaced by
+$\values$.
 \end{theorem}
 
 \begin{proof}[Proof sketch]
 Apply Theorem~\ref{thm-bucket} to each of $T$ buckets (or the $\values$
-finite planning-state buckets), then use $T\leq W$.
+finite planning-state buckets), then relax the profile and use $T\leq W$.
 \end{proof}
 
 The effort measure sums each reduced bucket separately even if a shared
@@ -448,18 +480,19 @@ $b=\bddsize{S}$, relabeling its terminals by membership in $U$
 \citep[Sec.~9.2]{wegener-2000} and applying standard Boolean Apply
 \citep[Sec.~4.3]{bryant-ieeecomp1986} gives
 $\bddsize{S\cap h^{-1}(U)}\leq bA+b+A$. Thus the two certificates
-combine as $\min\{W\cofcount(\chi_S),bA+b+A\}$. With the bucket identity
+combine as $\min\{\cutprod{S}{h},bA+b+A\}$. With the bucket identity
 below, the ADD certificate yields the blind-effort ratio bound
 $\values(2A+1)$. A nonconstant ADD has one root and at most $W$ nodes on
 each other level, so $A\leq1+(n-1)W$; since then $W\geq2$, the ADD ratio is
 at most $2\values Wn$. Thus the coarse width ratio is not a tighter
 replacement for ADD size.
-The width bound can instead be sharper before $\cofcount$ is relaxed. The
+The profile bound can instead be sharper before it is relaxed to width. The
 certificates are genuinely incomparable: if $h$ is parity and $S$ is Hamming
-weight $0$ modulo $3$, then $W\cofcount(\chi_S)=\Theta(n)$ while the Apply
+weight $0$ modulo $3$, then $\cutprod{S}{h}=\Theta(n)$ while the Apply
 bound is $\Theta(n^2)$; for $h=x_1$ and $S=\{x_1=1\}$, Apply gives $3$ while
-$W\cofcount(\chi_S)=\Theta(n)$. The supplement proves both separations. We use
-width for this cut-sensitive structure and its compositional family bounds.
+$\cutprod{S}{h}=\Theta(n)$. The supplement proves both separations. We use
+width as a compact maximum of this cut-sensitive profile and for its
+compositional family bounds.
 
 % ======================= search-effort guarantees ========================
 \section{Forward Product-at-Evaluation Search Guarantees}
@@ -488,9 +521,16 @@ optimal $g$-values, completeness, and no other expansions---in full.
 \begin{theorem}[effort bound]
 \label{thm-effort}
 Let $h$ be consistent with $\width_\pi(h) \leq W$. Then
+for
+$\values_g=|\{v\in h(\states)\setminus\{\infty\}\mid
+g+v\leq\copt,\ L_g\cap\level{h}{v}\ne\emptyset\}|$,
 \[
 \begin{aligned}
 \effort(\task,h)
+  &\leq \sum_{\substack{g<\copt\\L_g\ne\emptyset}}
+    \values_g\cutprod{L_g}{h} \\
+  &\leq \values\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
+    \cutprod{L_g}{h} \\
   &\leq \values W
     \sum_{\substack{g<\copt\\L_g\ne\emptyset}}
       \cofcount(\chi_{L_g}) \\
@@ -503,11 +543,11 @@ Let $h$ be consistent with $\width_\pi(h) \leq W$. Then
 \end{theorem}
 
 \begin{proof}[Proof sketch]
-Lemma~\ref{lem-identity} and Theorem~\ref{thm-partition} bound all selected
-slices of each nonempty $L_g$ by
-$\values W\cofcount(\chi_{L_g})$, and Lemma~\ref{lem-qsize} bounds this by
-$\values Wn(\bddsize{L_g}+2)$. If $N$ is the number of nonempty layers
-below $\copt$, summing gives
+Lemma~\ref{lem-identity} selects exactly $\values_g$ buckets on layer $g$,
+and Theorem~\ref{thm-bucket} bounds each by $\cutprod{L_g}{h}$.
+Then $\values_g\leq\values$, profile relaxation, and
+Lemma~\ref{lem-qsize} give the next three inequalities. If $N$ is the number
+of nonempty layers below $\copt$, summing gives
 $\values Wn(\effort(\task,\hblind)+2N)$. Positive integer costs imply
 $N\leq\copt$, and $\values\leq W$ gives the coarse bound.
 \end{proof}
@@ -521,8 +561,8 @@ $\effort(\task, h) \leq 2\,\values W n \cdot
 \end{corollary}
 
 Every nonempty pre-goal layer is proper, so Lemma~\ref{lem-qsize} gives
-$\cofcount(\chi_{L_g})\leq2n\bddsize{L_g}$. Summing the first inequality of
-Theorem~\ref{thm-effort} proves the corollary directly.
+$\cofcount(\chi_{L_g})\leq2n\bddsize{L_g}$. Substituting this bound into the
+third inequality of Theorem~\ref{thm-effort} proves the corollary directly.
 
 The guarantee is one-sided: pruning savings remain unbounded. It concerns
 frontier sizes in forward product-at-evaluation \bddastar, not primitive
@@ -538,7 +578,7 @@ For all integers $W \geq 2$ and $k \geq 4W$ there are tasks
 $\task_{k,W}$ with $n=2k+2$ Boolean variables and consistent, admissible
 heuristics $h$ with $\width_\pi(h)=W$ such that
 $\effort(\task_{k,W},h)\geq
-(W^2/12)\effort(\task_{k,W},\hblind)$.
+(55W^2/288)\effort(\task_{k,W},\hblind)$.
 \end{theorem}
 
 \begin{proof}[Proof sketch]
@@ -546,20 +586,21 @@ Use a $k$-step binary-choice chain followed by a cost-$W$ goal action and
 order the chain bits before the choice bits. The non-goal heuristic is the
 negated choice residue modulo $W$; action costs make it admissible and
 consistent, and its $W$ residuals give exact width $W$. Blind effort is
-$(k+1)(3k+4)/2$. Summing the modular-bucket witnesses over all layers from
-$2W$ through $k$ gives at least
-$W^2(k-2W+1)(k-2W+2)/2$ heuristic effort. Their ratio is at least $W^2/12$.
-The supplement gives the construction and cofactor witnesses.
+$(k+1)(3k+4)/2$. At layer $i$ and the cut after $j$ choice bits, summing
+over all modular buckets gives exactly
+$\min(W,j+1)\min(W,i-j+1)$ distinct next-bit nodes. Summing these witnesses
+over all cuts and layers and comparing with blind effort gives the stated
+$55W^2/288$ ratio. The supplement gives the exact summation and edge-case
+proof.
 \end{proof}
 
-Taking $k=4W$ gives $\values=W$ and $n=8W+2\leq9W$. Hence the same
-family has ratios at least
-$\values W/12$, $\values n/108$, and $Wn/108$. If a universal upper
-bound drops any one factor from $\values Wn$ while retaining the other two
-multiplicatively, that pairwise dependence is therefore already
-asymptotically tight on this diagonal slice. The theorem does not establish
-that all three factors are simultaneously necessary, and it is not a
-typical-case prediction.
+Taking $k=4W$ gives $\values=W$ and $n=8W+2$. Substitution in the exact
+summation shows that the same family has ratios at least
+$55\values W/288$, $55\values n/2304$, and $55Wn/2304$. If a universal upper
+bound retains any one of these pairwise products, its order is realized on
+this diagonal slice. Because $\values$, $W$, and $n$ are tied here, the theorem
+does not establish their independent pairwise necessity or joint three-factor
+tightness, and it is not a typical-case prediction.
 
 \subsection{Exponential Width Is Necessary for the Known Pathology}
 
@@ -948,50 +989,61 @@ The separately frozen secondary summaries retain their own eligibility rules.
 On 590 complete-certified pairs, cap-aware selection reduces aggregate
 expanded BDD nodes from 1,299,208,237 to 1,149,000,940 (11.6\%) and image
 time from 7,502.7 to 6,699.7 seconds (10.7\%). On the 1,306 completed
-construction pairs, its construction total is 2.3\% higher. The supplement
-reports the all-task sensitivity and full representation summaries.
+construction pairs, its construction total is 2.3\% higher. Of the 590
+operational pairs, \CapPosthocPrimaryOverallPositiveBucketPairs\ have positive
+completed-bucket counts and \CapPosthocPrimaryOverallZeroBucketPairs\ are
+zero/zero unsolvable endpoints. The supplement reports the all-task
+sensitivity and full representation summaries.
 
 \begin{table}[tb]
   \centering
   \footnotesize
   \setlength{\tabcolsep}{2.5pt}
-  \caption{Explicitly post-hoc primary-scope localization of the operational
-    totals. Ratios are cap-aware over exact; L/E/H counts tasks on which the
-    cap-aware node count is lower/equal/higher. Eligibility requires a
-    complete certified pair with schema-v2 image metrics; $n$ is this
-    operational denominator, not the full trace stratum. This conditioned
-    diagnostic does not explain coverage discordances.}
+  \caption{Post-hoc primary operational strata. Ratios are cap-aware over
+    exact; L/E/H gives taskwise node signs. This conditioned complete-certified
+    schema-v2 denominator cannot explain coverage discordances.}
   \label{tab:cap-posthoc-strata}
   \begin{tabular}{lrrrr}
     \toprule
-    Endpoint & $n$ & Nodes & Node L/E/H & Image \\
+    Endpoint & Pairs & Nodes & Node L/E/H & Image \\
     \midrule
     \CapPosthocPrimaryOperationalStrataRows
     \bottomrule
   \end{tabular}
 \end{table}
 
-\paragraph{Post-Hoc Robustness Audit.}
+\paragraph{Post-Hoc Descriptive Diagnostics.}
 All \CapPosthocPrimaryFinitePairs\ finite-cap selections materially transform
 an exact-infeasible raw PDB: raw width exceeds eight in every case, with
 median \CapPosthocPrimaryRawWidthMedian\ and range
-\CapPosthocPrimaryRawWidthMinimum--\CapPosthocPrimaryRawWidthMaximum. On the
-operational subset, Table~\ref{tab:cap-posthoc-strata} localizes the node and
-image-time reductions to these selections; all eligible exact-endpoint node
-counts are identical. All paired cap-aware coverage wins occur in the
-finite-cap stratum; exact endpoints contribute no wins and two cutoff losses
-despite selected-heuristic identity. Among
-\CapPosthocPrimaryInitialNondeadPairs\ pairs without an initial dead-end proof,
-cap-aware $h(s_{\mathrm I})$ is higher on
-\CapPosthocPrimaryInitialHigher, equal on \CapPosthocPrimaryInitialEqual, and
-never lower. Deleting any one domain leaves the macro-coverage gain between
-\CapPosthocPrimaryCoverageLodoMinimumPoints\ and
-\CapPosthocPrimaryCoverageLodoMaximumPoints\ percentage points and the node
-ratio between \CapPosthocPrimaryNodeLodoMinimumRatio\ and
-\CapPosthocPrimaryNodeLodoMaximumRatio. These are fixed-census descriptions
-with no inferential status; the 590-pair operational subset excludes timeouts
-and discordant outcomes, and the logs do not contain the full cofactor profiles
-needed to validate the theorem numerically.
+\CapPosthocPrimaryRawWidthMinimum--\CapPosthocPrimaryRawWidthMaximum. The
+same-PDB coefficient $2\values W$ contracts strictly on all
+\CapPosthocPrimaryCompressionPairs\ transformations: its median falls from
+\CapPosthocPrimaryRawCoefficientMedian\ to
+\CapPosthocPrimaryCappedCoefficientMedian, and its 95th percentile from
+\CapPosthocPrimaryRawCoefficientPninetyfive\ to
+\CapPosthocPrimaryCappedCoefficientPninetyfive. On the operational finite-cap
+subset, cap-aware search completes
+\CapPosthocPrimaryFiniteCompletedBucketRatio\ times as many buckets, yet uses
+only \CapPosthocPrimaryFiniteNodePerBucketRatio\ times the nodes and
+\CapPosthocPrimaryFiniteImageTimePerBucketRatio\ times the image seconds per
+completed bucket. Table~\ref{tab:cap-posthoc-strata} localizes the total
+reductions to these selections; all eligible exact-endpoint node and bucket
+counts are identical. These operational comparisons include selector-induced
+pattern changes; only the preceding same-PDB coefficient comparison isolates
+terminal capping.
+
+The target-metric audit further requires blind completion, matching costs,
+certified integral counters, and one BDD piece per expanded bucket for all
+three methods. On its
+\CapPosthocPrimaryFiniteTripleSolvedPairs\ finite-cap tasks,
+cap-aware effort is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind,
+exact-selection effort is \CapPosthocPrimaryFiniteExactBlindEffortRatio\ times
+blind, and their ratio is \CapPosthocPrimaryFiniteCapExactEffortRatio; exact
+endpoint efforts are identical. This evaluates the theorem's target measure,
+not its unlogged upper bound. The conditioned subsets exclude timeouts and
+discordant outcomes; the supplement reports leave-one-domain-out and coverage
+strata.
 
 \paragraph{Descriptive Controls.}
 Uncapped, unaligned M\&S solved
@@ -1035,14 +1087,14 @@ representation choices.
 
 \section{Limitations}
 
-The guarantee is specific to fixed-order product-at-evaluation forward
-symbolic search with positive costs, consistent heuristics, and the stated
-duplicate and goal-test policy. It bounds BDD-node representation effort, not
-runtime, memory, heuristic quality, or plan quality. Width is order-dependent,
+The guarantee covers fixed-order forward product-at-evaluation search with
+positive costs, consistent heuristics, and our duplicate/goal-test policy. It
+bounds BDD-node effort, not runtime or memory. Width is order-dependent,
 and the sharper certificate needs the cofactor counts of exact search layers.
-Our logs do not contain those layer profiles, so the experiment studies a
-theorem-guided selector rather than numerically validating
-Theorem~\ref{thm-effort}. The ADD comparison is
+Our logs do not contain both layer and heuristic profiles, so they cannot
+instantiate the profile-based upper bound. The post-hoc audit instead compares
+the theorem's target effort measure with blind search on its triple-solved
+denominator. The ADD comparison is
 also formal: we did not evaluate a matched selector that filters candidates by
 global ADD size instead of width.
 
@@ -1062,25 +1114,17 @@ ladder, and the width certificate.
 % ============================ conclusions ================================
 \section{Conclusions}
 
-For product-at-evaluation forward \bddastar, cofactor width provides a fixed-order
-representation-safety certificate: a consistent width-$W$, $\values$-valued
-heuristic has blind-effort ratio at most $2\values Wn\leq2W^2n$. The known
-pathology has exponential width, while our diagonal lower family attains
-$\Omega(W^2)$ for $\values=W$ and $n=\Theta(W)$; this realizes each pairwise
-product up to a constant, but joint $\values Wn$ tightness remains open. Common heuristic families are
-width-bounded. These are representation, not runtime or quality, guarantees.
-
-Safe terminal coarsening yields a cap-aware $K=8$ PDB selector that cannot
-lower the exact selector's score or semantic nontriviality on score-identical
-pools. Across the
-\CapPrimaryTracePairs\ completed identical-pool pairs, it adds
-\CapPrimarySemanticWins\ semantic-nontrivial selections and loses none. On the
-fixed \CapPrimaryTasks-task primary complement, macro coverage rises by
-\CapPrimaryMacroDeltaPoints\ points
-(\CapPrimaryWins/\CapPrimaryLosses\ wins/losses); on the separate 590
-metric-complete pairs, expanded BDD nodes fall 11.6\%. This is not overall
-dominance: unaligned M\&S retains higher census coverage, and the experiment
-does not validate the worst-case bound.
+For product-at-evaluation forward \bddastar, cut-aligned cofactor profiles give
+a fixed-order certificate with coarse blind-effort ratio
+$2\values Wn\leq2W^2n$; a diagonal family attains $\Omega(W^2)$, while joint
+$\values Wn$ tightness remains open. Safe coarsening contracts the certificate
+and yields a backward-compatible PDB selector that adds
+\CapPrimarySemanticWins\ nontrivial selections without loss. On the post-hoc
+\CapPosthocPrimaryFiniteTripleSolvedPairs-task finite-cap subset, capped effort
+is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind versus
+\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection. The modest
+coverage gain does not establish runtime or overall planner dominance;
+unaligned M\&S retains higher census coverage.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
 % Flush every body float before the reference-only pages.  The provisional

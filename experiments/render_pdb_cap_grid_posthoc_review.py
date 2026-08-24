@@ -49,13 +49,47 @@ MATERIAL_TRANSFORM_DEFINITION = (
 )
 SELECTED_COEFFICIENT_FORMULA = "c=2*V_selected*W_selected"
 SELECTED_COEFFICIENT_ELIGIBILITY = "complete-certified-selector-trace-per-config/v1"
+RAW_CAP_COEFFICIENT_FORMULA = "c=2*V*W"
+RAW_CAP_COEFFICIENT_ELIGIBILITY = (
+    "same-cap-selected-pdb-raw-versus-transformed-finite-cap-trace/v1"
+)
+COMPLETED_BUCKET_DEFINITION = (
+    "completed-single-piece-bucket-equals-completed-image-call/v1"
+)
+NODE_PER_BUCKET_ESTIMAND = (
+    "cap-over-exact-ratio-of-total-expanded-bdd-nodes-per-completed-bucket/v1"
+)
+IMAGE_TIME_PER_BUCKET_ESTIMAND = (
+    "cap-over-exact-ratio-of-total-image-seconds-per-completed-bucket/v1"
+)
+IMAGE_TIME_EXACT_ARITHMETIC = (
+    "sum-of-shortest-roundtrip-decimal-json-numbers/v1"
+)
+TRIPLE_SOLVED_EFFORT_ELIGIBILITY = (
+    "complete-identical-pool-selector-traces-three-way-certified-solved-"
+    "cost-reconciled-single-piece-buckets-schema-v2/v1"
+)
+TRIPLE_SOLVED_EFFORT_ESTIMAND = (
+    "ratio-of-total-certified-wbh-solution-cutoff-effort-on-three-way-solved/v1"
+)
+FINITE_EFFORT_LODO_ESTIMANDS = {
+    "cap_over_blind": (
+        "cap-over-blind-total-certified-effort-on-finite-cap-three-way-solved/v1"
+    ),
+    "exact_over_blind": (
+        "exact-over-blind-total-certified-effort-on-finite-cap-three-way-solved/v1"
+    ),
+    "cap_over_exact": (
+        "cap-over-exact-total-certified-effort-on-finite-cap-three-way-solved/v1"
+    ),
+}
 COVERAGE_LODO_ESTIMAND = "cap-minus-exact-equal-domain-macro-coverage/v1"
 NODE_LODO_ESTIMAND = (
     "cap-over-exact-total-expanded-bdd-nodes-on-complete-certified-pairs/v1"
 )
 PARTITION_ELIGIBILITY = "finite-nonnegative-observed-partition_ratio_max/v1"
 EXPECTED_ANALYSIS_SHA256 = (
-    "195c209a8ba34a89c98fd0920c4f58753635cd3f375f6424ca49da017effc59d"
+    "211ba15a3b15235175d5f98ec4d374dada5d00cacf8997a5f919543041a06312"
 )
 EXPECTED_PROPERTIES_CANONICAL_SHA256 = (
     "bddc69b2eedcc1442e6a42517d4d294e9a6ae0ab7dbf4aebc49714b152c0f215"
@@ -107,6 +141,14 @@ SCOPE_ROLES = {
 EXPECTED_SELECTOR_TRACE_COUNTS = {
     "primary": {"pdb_selector_k8": 1308, "pdb_cap_grid_k8": 1306},
     "all_tasks": {"pdb_selector_k8": 1358, "pdb_cap_grid_k8": 1356},
+}
+EXPECTED_TRIPLE_SOLVED_EFFORT_COUNTS = {
+    "primary": {"overall": 575, "finite_cap": 393, "exact_endpoint": 182},
+    "all_tasks": {"overall": 602, "finite_cap": 419, "exact_endpoint": 183},
+}
+EXPECTED_FINITE_EFFORT_CONTRIBUTING_DOMAINS = {
+    "primary": 41,
+    "all_tasks": 42,
 }
 CONFIG_LABELS = (
     ("blind_fw", "Blind"),
@@ -277,7 +319,135 @@ def _validate_operational(operational, label, maximum_pairs):
             raise RenderError("{} {} ratio is inconsistent".format(label, metric))
     if len(eligible_counts) != 1:
         raise RenderError("{} metric denominators disagree".format(label))
-    return eligible_counts.pop()
+    eligible_count = eligible_counts.pop()
+    buckets = _require_dict(
+        operational.get("completed_buckets"), "{} completed buckets".format(label)
+    )
+    if buckets.get("definition") != COMPLETED_BUCKET_DEFINITION:
+        raise RenderError("{} completed-bucket definition changed".format(label))
+    if not (
+        buckets.get("eligible_pair_count") == eligible_count
+        and buckets.get("identity_checked_cells") == 2 * eligible_count
+        and buckets.get("identity_violations") == 0
+    ):
+        raise RenderError("{} completed-bucket identity changed".format(label))
+    cap_buckets = _require_int(
+        buckets.get("cap_total"), "{} cap completed buckets".format(label), 1
+    )
+    exact_buckets = _require_int(
+        buckets.get("exact_total"), "{} exact completed buckets".format(label), 1
+    )
+    if _validate_fraction(
+        buckets.get("cap_over_exact"), "{} completed-bucket ratio".format(label)
+    ) != Fraction(cap_buckets, exact_buckets):
+        raise RenderError("{} completed-bucket ratio is inconsistent".format(label))
+    if sum(
+        _require_int(buckets.get(field), "{} buckets {}".format(label, field))
+        for field in ("cap_lower", "equal", "cap_higher")
+    ) != eligible_count:
+        raise RenderError("{} completed-bucket comparisons disagree".format(label))
+
+    specifications = (
+        (
+            "expanded_bdd_nodes_per_completed_bucket",
+            NODE_PER_BUCKET_ESTIMAND,
+            "exact-integer-ratio-of-totals/v1",
+            "expanded_bdd_nodes",
+        ),
+        (
+            "image_time_seconds_per_completed_bucket",
+            IMAGE_TIME_PER_BUCKET_ESTIMAND,
+            IMAGE_TIME_EXACT_ARITHMETIC,
+            "image_time_seconds",
+        ),
+    )
+    for key, estimand, arithmetic, old_key in specifications:
+        item = _require_dict(operational.get(key), "{} {}".format(label, key))
+        if item.get("estimand") != estimand or item.get("arithmetic") != arithmetic:
+            raise RenderError("{} {} semantic contract changed".format(label, key))
+        if item.get("eligible_pair_count") != eligible_count:
+            raise RenderError("{} {} denominator changed".format(label, key))
+        positive = _require_int(
+            item.get("positive_denominator_pair_count"),
+            "{} {} positive denominator".format(label, key),
+        )
+        zero = _require_int(
+            item.get("zero_denominator_pair_count"),
+            "{} {} zero denominator".format(label, key),
+        )
+        zero_parts = _require_dict(
+            item.get("zero_denominator_pairs"),
+            "{} {} zero-denominator detail".format(label, key),
+        )
+        if set(zero_parts) != {"both_zero", "cap_only_zero", "exact_only_zero"}:
+            raise RenderError("{} {} zero-denominator categories changed".format(label, key))
+        if sum(
+            _require_int(value, "{} {} zero category".format(label, key))
+            for value in zero_parts.values()
+        ) != zero or positive + zero != eligible_count:
+            raise RenderError("{} {} zero-denominator disclosure disagrees".format(label, key))
+        if sum(
+            _require_int(item.get(field), "{} {} {}".format(label, key, field))
+            for field in ("cap_lower", "equal", "cap_higher")
+        ) != positive:
+            raise RenderError("{} {} comparisons disagree".format(label, key))
+        if not (
+            item.get("cap_completed_bucket_total") == cap_buckets
+            and item.get("exact_completed_bucket_total") == exact_buckets
+        ):
+            raise RenderError("{} {} bucket totals disagree".format(label, key))
+        if key.startswith("expanded"):
+            cap_metric = Fraction(
+                _require_int(
+                    item.get("cap_metric_total"), "{} {} cap total".format(label, key)
+                )
+            )
+            exact_metric = Fraction(
+                _require_int(
+                    item.get("exact_metric_total"), "{} {} exact total".format(label, key)
+                )
+            )
+            if not (
+                item["cap_metric_total"] == operational[old_key]["cap_total"]
+                and item["exact_metric_total"] == operational[old_key]["exact_total"]
+            ):
+                raise RenderError("{} {} metric totals disagree".format(label, key))
+        else:
+            cap_metric = _validate_fraction(
+                item.get("cap_metric_total"), "{} {} cap total".format(label, key)
+            )
+            exact_metric = _validate_fraction(
+                item.get("exact_metric_total"), "{} {} exact total".format(label, key)
+            )
+            if not (
+                math.isclose(
+                    float(cap_metric), operational[old_key]["cap_total"], rel_tol=1e-14
+                )
+                and math.isclose(
+                    float(exact_metric), operational[old_key]["exact_total"], rel_tol=1e-14
+                )
+            ):
+                raise RenderError("{} {} metric totals disagree".format(label, key))
+        cap_per = cap_metric / cap_buckets
+        exact_per = exact_metric / exact_buckets
+        if not (
+            _validate_fraction(
+                item.get("cap_per_completed_bucket"),
+                "{} {} cap per bucket".format(label, key),
+            )
+            == cap_per
+            and _validate_fraction(
+                item.get("exact_per_completed_bucket"),
+                "{} {} exact per bucket".format(label, key),
+            )
+            == exact_per
+            and _validate_fraction(
+                item.get("cap_over_exact"), "{} {} ratio".format(label, key)
+            )
+            == cap_per / exact_per
+        ):
+            raise RenderError("{} {} fraction drifted".format(label, key))
+    return eligible_count
 
 
 def _validate_fraction(item, label):
@@ -289,7 +459,23 @@ def _validate_fraction(item, label):
     value = _require_number(item.get("value"), "{} value".format(label))
     if not math.isclose(value, item["numerator"] / denominator, rel_tol=1e-14, abs_tol=1e-18):
         raise RenderError("{} decimal value is inconsistent".format(label))
-    return Fraction(item["numerator"], denominator)
+    fraction = Fraction(item["numerator"], denominator)
+    if fraction.numerator != item["numerator"] or fraction.denominator != denominator:
+        raise RenderError("{} fraction is not reduced".format(label))
+    return fraction
+
+
+def _validate_fraction_summary(summary, label, expected_count):
+    summary = _require_dict(summary, label)
+    if summary.get("count") != expected_count:
+        raise RenderError("{} count changed".format(label))
+    values = [
+        _validate_fraction(summary.get(field), "{} {}".format(label, field))
+        for field in ("minimum", "median", "nearest_rank_p95", "maximum")
+    ]
+    if values != sorted(values):
+        raise RenderError("{} exact quantiles are not ordered".format(label))
+    return values
 
 
 def _validate_operational_conservation(overall, strata, label):
@@ -311,6 +497,204 @@ def _validate_operational_conservation(overall, strata, label):
                 raise RenderError(
                     "{} {} {} does not conserve across strata".format(label, metric, field)
                 )
+    bucket_whole = overall["completed_buckets"]
+    bucket_parts = [stratum["completed_buckets"] for stratum in strata]
+    for field in (
+        "eligible_pair_count",
+        "identity_checked_cells",
+        "identity_violations",
+        "cap_total",
+        "exact_total",
+        "cap_lower",
+        "equal",
+        "cap_higher",
+    ):
+        if bucket_whole[field] != sum(part[field] for part in bucket_parts):
+            raise RenderError(
+                "{} completed buckets {} do not conserve".format(label, field)
+            )
+    for key in (
+        "expanded_bdd_nodes_per_completed_bucket",
+        "image_time_seconds_per_completed_bucket",
+    ):
+        whole = overall[key]
+        parts = [stratum[key] for stratum in strata]
+        for field in (
+            "eligible_pair_count",
+            "positive_denominator_pair_count",
+            "zero_denominator_pair_count",
+            "cap_completed_bucket_total",
+            "exact_completed_bucket_total",
+            "cap_lower",
+            "equal",
+            "cap_higher",
+        ):
+            if whole[field] != sum(part[field] for part in parts):
+                raise RenderError("{} {} {} does not conserve".format(label, key, field))
+        for field in ("both_zero", "cap_only_zero", "exact_only_zero"):
+            if whole["zero_denominator_pairs"][field] != sum(
+                part["zero_denominator_pairs"][field] for part in parts
+            ):
+                raise RenderError("{} {} zero counts do not conserve".format(label, key))
+        if key.startswith("expanded"):
+            for field in ("cap_metric_total", "exact_metric_total"):
+                if whole[field] != sum(part[field] for part in parts):
+                    raise RenderError("{} {} {} does not conserve".format(label, key, field))
+        else:
+            for field in ("cap_metric_total", "exact_metric_total"):
+                whole_fraction = _validate_fraction(
+                    whole[field], "{} {} overall {}".format(label, key, field)
+                )
+                part_total = sum(
+                    (
+                        _validate_fraction(
+                            part[field], "{} {} stratum {}".format(label, key, field)
+                        )
+                        for part in parts
+                    ),
+                    Fraction(),
+                )
+                if whole_fraction != part_total:
+                    raise RenderError("{} {} {} does not conserve".format(label, key, field))
+
+
+def _validate_coefficient_compression(compression, finite_count, label):
+    compression = _require_dict(compression, label)
+    if not (
+        compression.get("formula") == RAW_CAP_COEFFICIENT_FORMULA
+        and compression.get("eligibility") == RAW_CAP_COEFFICIENT_ELIGIBILITY
+        and compression.get("paired_count") == finite_count
+    ):
+        raise RenderError("{} semantic contract changed".format(label))
+    _validate_summary(
+        compression.get("raw"), "{} raw coefficient".format(label), expected_count=finite_count
+    )
+    _validate_summary(
+        compression.get("capped"),
+        "{} capped coefficient".format(label),
+        expected_count=finite_count,
+    )
+    ratio_values = _validate_fraction_summary(
+        compression.get("raw_over_capped"),
+        "{} raw/capped ratio".format(label),
+        finite_count,
+    )
+    if ratio_values[0] <= 1:
+        raise RenderError("{} raw/capped coefficient is not strictly reduced".format(label))
+    for field in (
+        "strict_value_reduction_count",
+        "strict_width_reduction_count",
+        "strict_coefficient_reduction_count",
+    ):
+        if compression.get(field) != finite_count:
+            raise RenderError("{} {} changed".format(label, field))
+
+
+def _validate_effort_summary(summary, label, expected_count):
+    summary = _require_dict(summary, label)
+    if not (
+        summary.get("eligibility") == TRIPLE_SOLVED_EFFORT_ELIGIBILITY
+        and summary.get("estimand") == TRIPLE_SOLVED_EFFORT_ESTIMAND
+        and summary.get("eligible_task_count") == expected_count
+        and summary.get("certified_cell_count") == 3 * expected_count
+        and summary.get("single_piece_bucket_certified_cell_count")
+        == 3 * expected_count
+        and summary.get("cost_reconciled_task_count") == expected_count
+        and summary.get("effort_equals_expanded_bdd_nodes_cells")
+        == 3 * expected_count
+    ):
+        raise RenderError("{} certification contract changed".format(label))
+    totals = _require_dict(summary.get("totals"), "{} totals".format(label))
+    if set(totals) != {"blind", "exact", "cap"}:
+        raise RenderError("{} effort configurations changed".format(label))
+    for config in totals:
+        _require_int(totals[config], "{} {} total".format(label, config), 1)
+    expected_ratios = {
+        "cap_over_blind": Fraction(totals["cap"], totals["blind"]),
+        "exact_over_blind": Fraction(totals["exact"], totals["blind"]),
+        "cap_over_exact": Fraction(totals["cap"], totals["exact"]),
+    }
+    ratios = _require_dict(summary.get("ratios"), "{} ratios".format(label))
+    if set(ratios) != set(expected_ratios):
+        raise RenderError("{} effort ratios changed".format(label))
+    for key, expected in expected_ratios.items():
+        item = _require_dict(ratios.get(key), "{} {}".format(label, key))
+        if _validate_fraction(item.get("ratio"), "{} {} ratio".format(label, key)) != expected:
+            raise RenderError("{} {} ratio drifted".format(label, key))
+        if sum(
+            _require_int(item.get(field), "{} {} {}".format(label, key, field))
+            for field in ("numerator_lower", "equal", "numerator_higher")
+        ) != expected_count:
+            raise RenderError("{} {} comparisons disagree".format(label, key))
+    return summary
+
+
+def _validate_effort_conservation(overall, strata, label):
+    for field in (
+        "eligible_task_count",
+        "certified_cell_count",
+        "single_piece_bucket_certified_cell_count",
+        "cost_reconciled_task_count",
+        "effort_equals_expanded_bdd_nodes_cells",
+    ):
+        if overall[field] != sum(stratum[field] for stratum in strata):
+            raise RenderError("{} effort {} does not conserve".format(label, field))
+    for config in ("blind", "exact", "cap"):
+        if overall["totals"][config] != sum(
+            stratum["totals"][config] for stratum in strata
+        ):
+            raise RenderError("{} {} effort does not conserve".format(label, config))
+    for ratio in ("cap_over_blind", "exact_over_blind", "cap_over_exact"):
+        for field in ("numerator_lower", "equal", "numerator_higher"):
+            if overall["ratios"][ratio][field] != sum(
+                stratum["ratios"][ratio][field] for stratum in strata
+            ):
+                raise RenderError(
+                    "{} {} {} does not conserve".format(label, ratio, field)
+                )
+
+
+def _validate_exact_effort_identity(summary, label):
+    ratio = summary["ratios"]["cap_over_exact"]
+    if not (
+        summary["totals"]["cap"] == summary["totals"]["exact"]
+        and _validate_fraction(ratio["ratio"], "{} cap/exact identity".format(label)) == 1
+        and ratio["numerator_lower"] == ratio["numerator_higher"] == 0
+        and ratio["equal"] == summary["eligible_task_count"]
+    ):
+        raise RenderError("{} cap/exact effort identity failed".format(label))
+
+
+def _validate_effort_lodo(item, ratio_key, summary, scope_key, label):
+    item = _require_dict(item, label)
+    if not (
+        item.get("estimand") == FINITE_EFFORT_LODO_ESTIMANDS[ratio_key]
+        and item.get("eligible_task_count") == summary["eligible_task_count"]
+        and item.get("contributing_domains")
+        == EXPECTED_FINITE_EFFORT_CONTRIBUTING_DOMAINS[scope_key]
+        and item.get("omitted_domain_replicates") == 46
+    ):
+        raise RenderError("{} contract changed".format(label))
+    base = _validate_fraction(item.get("base"), "{} base".format(label))
+    if base != _validate_fraction(
+        summary["ratios"][ratio_key]["ratio"], "{} summary base".format(label)
+    ):
+        raise RenderError("{} base disagrees with finite effort".format(label))
+    minimum = _validate_fraction(
+        item.get("minimum", {}).get("ratio"), "{} minimum".format(label)
+    )
+    maximum = _validate_fraction(
+        item.get("maximum", {}).get("ratio"), "{} maximum".format(label)
+    )
+    width = _validate_fraction(item.get("range_width"), "{} width".format(label))
+    if not minimum <= base <= maximum or width != maximum - minimum:
+        raise RenderError("{} range is inconsistent".format(label))
+    for extreme in ("minimum", "maximum"):
+        domains = item.get(extreme, {}).get("omitted_domains")
+        if not isinstance(domains, list) or not domains or any(
+            type(domain) is not str or not domain for domain in domains
+        ):
+            raise RenderError("{} {} domains changed".format(label, extreme))
 
 
 def _validate_scope(scope, key, task_count):
@@ -334,6 +718,11 @@ def _validate_scope(scope, key, task_count):
         "{} paired operational".format(key),
         pair_count,
     )
+    paired_effort = _validate_effort_summary(
+        paired.get("theory_aligned_triple_solved_effort"),
+        "{} paired effort".format(key),
+        EXPECTED_TRIPLE_SOLVED_EFFORT_COUNTS[key]["overall"],
+    )
 
     strata = _require_dict(scope.get("trace_strata"), "{} strata".format(key))
     if set(strata) != {"finite_cap", "exact_endpoint"}:
@@ -349,7 +738,11 @@ def _validate_scope(scope, key, task_count):
     if finite_count + exact_count != pair_count:
         raise RenderError("{} trace strata do not partition paired traces".format(key))
     stratum_operationals = []
-    for name, stratum, count in (("finite", finite, finite_count), ("exact", exact, exact_count)):
+    stratum_efforts = []
+    for name, stratum_key, stratum, count in (
+        ("finite", "finite_cap", finite, finite_count),
+        ("exact", "exact_endpoint", exact, exact_count),
+    ):
         _validate_coverage(stratum.get("coverage"), count, "{} {} coverage".format(key, name))
         operational = _require_dict(
             stratum.get("operational"),
@@ -361,11 +754,54 @@ def _validate_scope(scope, key, task_count):
             count,
         )
         stratum_operationals.append(operational)
+        stratum_efforts.append(
+            _validate_effort_summary(
+                stratum.get("theory_aligned_triple_solved_effort"),
+                "{} {} effort".format(key, name),
+                EXPECTED_TRIPLE_SOLVED_EFFORT_COUNTS[key][stratum_key],
+            )
+        )
     _validate_operational_conservation(
         paired_operational,
         stratum_operationals,
         key,
     )
+    exact_operational = stratum_operationals[1]
+    exact_buckets = exact_operational["completed_buckets"]
+    exact_nodes = exact_operational["expanded_bdd_nodes"]
+    exact_normalized = exact_operational[
+        "expanded_bdd_nodes_per_completed_bucket"
+    ]
+    if not (
+        exact_buckets["cap_total"] == exact_buckets["exact_total"]
+        and exact_buckets["cap_lower"] == exact_buckets["cap_higher"] == 0
+        and exact_nodes["cap_total"] == exact_nodes["exact_total"]
+        and exact_nodes["cap_lower"] == exact_nodes["cap_higher"] == 0
+        and _validate_fraction(
+            exact_normalized["cap_over_exact"], "{} exact node/bucket identity".format(key)
+        )
+        == 1
+        and exact_normalized["cap_lower"] == exact_normalized["cap_higher"] == 0
+        and exact_normalized["equal"]
+        == exact_normalized["positive_denominator_pair_count"]
+    ):
+        raise RenderError("{} exact operational identity failed".format(key))
+    _validate_effort_conservation(paired_effort, stratum_efforts, key)
+    _validate_exact_effort_identity(stratum_efforts[1], "{} exact effort".format(key))
+    finite_effort_lodo = _require_dict(
+        stratum_efforts[0].get("leave_one_domain_out"),
+        "{} finite effort LODO".format(key),
+    )
+    if set(finite_effort_lodo) != set(FINITE_EFFORT_LODO_ESTIMANDS):
+        raise RenderError("{} finite effort LODO ratios changed".format(key))
+    for ratio_key in FINITE_EFFORT_LODO_ESTIMANDS:
+        _validate_effort_lodo(
+            finite_effort_lodo.get(ratio_key),
+            ratio_key,
+            stratum_efforts[0],
+            key,
+            "{} finite effort LODO {}".format(key, ratio_key),
+        )
 
     transform = _require_dict(finite.get("selected_transform"), "{} finite transform".format(key))
     _validate_summary(
@@ -375,6 +811,11 @@ def _validate_scope(scope, key, task_count):
     )
     if transform.get("selected_count") != finite_count:
         raise RenderError("{} finite selected count changed".format(key))
+    _validate_coefficient_compression(
+        transform.get("same_pdb_raw_to_cap_coefficient"),
+        finite_count,
+        "{} finite coefficient compression".format(key),
+    )
     material = _require_dict(transform.get("material_transform"), "{} material transform".format(key))
     if not (
         material.get("definition") == MATERIAL_TRANSFORM_DEFINITION
@@ -465,6 +906,23 @@ def _validate_scope(scope, key, task_count):
         )
         if minimum > maximum or width != maximum - minimum:
             raise RenderError("{} LODO {} range is inconsistent".format(key, metric))
+        if metric == "expanded_bdd_nodes":
+            operational_nodes = paired_operational["expanded_bdd_nodes"]
+            cap_total = _require_int(
+                item.get("cap_total"), "{} LODO cap node total".format(key), 1
+            )
+            exact_total = _require_int(
+                item.get("exact_total"), "{} LODO exact node total".format(key), 1
+            )
+            if not (
+                item.get("eligible_pair_count")
+                == operational_nodes["eligible_pair_count"]
+                and cap_total == operational_nodes["cap_total"]
+                and exact_total == operational_nodes["exact_total"]
+                and _validate_fraction(item.get("base"), "{} LODO node base".format(key))
+                == Fraction(cap_total, exact_total)
+            ):
+                raise RenderError("{} node LODO disagrees with operational nodes".format(key))
 
     partitions = _require_dict(scope.get("partition_ratio_max"), "{} partitions".format(key))
     if partitions.get("eligibility") != PARTITION_ELIGIBILITY:
@@ -611,6 +1069,10 @@ def render_tex(analysis):
     initial_h_rows = []
     coefficient_rows = []
     raw_width_rows = []
+    compression_rows = []
+    per_bucket_rows = []
+    effort_rows = []
+    effort_lodo_rows = []
     universal_rows = []
     lodo_rows = []
     partition_rows = []
@@ -664,6 +1126,58 @@ def render_tex(analysis):
                     )
                 )
 
+        groups = (
+            ("Overall", scope["paired_trace_summary"]),
+            ("Finite cap", scope["trace_strata"]["finite_cap"]),
+            ("Exact endpoint", scope["trace_strata"]["exact_endpoint"]),
+        )
+        for group_label, group in groups:
+            operational = group["operational"]
+            buckets = operational["completed_buckets"]
+            nodes_per_bucket = operational[
+                "expanded_bdd_nodes_per_completed_bucket"
+            ]
+            time_per_bucket = operational[
+                "image_time_seconds_per_completed_bucket"
+            ]
+            per_bucket_rows.append(
+                "{} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {}/{}/{} & {}/{}/{}".format(
+                    scope_label,
+                    group_label,
+                    buckets["eligible_pair_count"],
+                    nodes_per_bucket["positive_denominator_pair_count"],
+                    nodes_per_bucket["zero_denominator_pair_count"],
+                    buckets["cap_total"],
+                    buckets["exact_total"],
+                    _decimal(buckets["cap_over_exact"]["value"]),
+                    _decimal(nodes_per_bucket["cap_over_exact"]["value"]),
+                    _decimal(time_per_bucket["cap_over_exact"]["value"]),
+                    nodes_per_bucket["cap_lower"],
+                    nodes_per_bucket["equal"],
+                    nodes_per_bucket["cap_higher"],
+                    time_per_bucket["cap_lower"],
+                    time_per_bucket["equal"],
+                    time_per_bucket["cap_higher"],
+                )
+            )
+            effort = group["theory_aligned_triple_solved_effort"]
+            effort_rows.append(
+                "{} & {} & {} & {} & {} & {} & {} & {} & {} & {}/{}/{}".format(
+                    scope_label,
+                    group_label,
+                    effort["eligible_task_count"],
+                    effort["totals"]["blind"],
+                    effort["totals"]["exact"],
+                    effort["totals"]["cap"],
+                    _decimal(effort["ratios"]["cap_over_blind"]["ratio"]["value"]),
+                    _decimal(effort["ratios"]["exact_over_blind"]["ratio"]["value"]),
+                    _decimal(effort["ratios"]["cap_over_exact"]["ratio"]["value"]),
+                    effort["ratios"]["cap_over_exact"]["numerator_lower"],
+                    effort["ratios"]["cap_over_exact"]["equal"],
+                    effort["ratios"]["cap_over_exact"]["numerator_higher"],
+                )
+            )
+
         initial = scope["selected_initial_h_on_non_dead_pairs"]
         initial_h_rows.append(
             "{} & {} & {} & {} & {}".format(
@@ -689,6 +1203,25 @@ def render_tex(analysis):
                 )
             )
         transform = scope["trace_strata"]["finite_cap"]["selected_transform"]
+        compression = transform["same_pdb_raw_to_cap_coefficient"]
+        compression_rows.append(
+            "{} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {}".format(
+                scope_label,
+                compression["paired_count"],
+                _stat(compression["raw"]["median"]),
+                _stat(compression["raw"]["nearest_rank_p95"]),
+                _stat(compression["raw"]["maximum"]),
+                _stat(compression["capped"]["median"]),
+                _stat(compression["capped"]["nearest_rank_p95"]),
+                _stat(compression["capped"]["maximum"]),
+                _decimal(compression["raw_over_capped"]["median"]["value"]),
+                _decimal(
+                    compression["raw_over_capped"]["nearest_rank_p95"]["value"]
+                ),
+                _decimal(compression["raw_over_capped"]["maximum"]["value"]),
+                compression["strict_coefficient_reduction_count"],
+            )
+        )
         raw_width = transform["selected_raw_W"]
         raw_width_rows.append(
             "{} & {} & {} & {} & {} & {}".format(
@@ -708,6 +1241,26 @@ def render_tex(analysis):
                     entry["coefficient"],
                     entry["selected_count"],
                     caps,
+                )
+            )
+        finite_effort = scope["trace_strata"]["finite_cap"][
+            "theory_aligned_triple_solved_effort"
+        ]
+        for ratio_key, ratio_label in (
+            ("cap_over_blind", "Cap/blind"),
+            ("exact_over_blind", "Exact/blind"),
+            ("cap_over_exact", "Cap/exact"),
+        ):
+            item = finite_effort["leave_one_domain_out"][ratio_key]
+            effort_lodo_rows.append(
+                "{} & {} & {} & {} ({}) & {} ({})".format(
+                    scope_label,
+                    ratio_label,
+                    _decimal(item["base"]["value"]),
+                    _decimal(item["minimum"]["ratio"]["value"]),
+                    _tex_escape(", ".join(item["minimum"]["omitted_domains"])),
+                    _decimal(item["maximum"]["ratio"]["value"]),
+                    _tex_escape(", ".join(item["maximum"]["omitted_domains"])),
                 )
             )
         for metric_key, metric_label, multiplier in (
@@ -748,6 +1301,31 @@ def render_tex(analysis):
     primary_raw_width = primary["trace_strata"]["finite_cap"][
         "selected_transform"
     ]["selected_raw_W"]
+    primary_compression = primary["trace_strata"]["finite_cap"][
+        "selected_transform"
+    ]["same_pdb_raw_to_cap_coefficient"]
+    primary_overall_operational = primary["paired_trace_summary"]["operational"]
+    primary_finite_operational = primary["trace_strata"]["finite_cap"]["operational"]
+    primary_exact_operational = primary["trace_strata"]["exact_endpoint"]["operational"]
+    all_finite_operational = all_tasks["trace_strata"]["finite_cap"]["operational"]
+    primary_overall_effort = primary["paired_trace_summary"][
+        "theory_aligned_triple_solved_effort"
+    ]
+    primary_finite_effort = primary["trace_strata"]["finite_cap"][
+        "theory_aligned_triple_solved_effort"
+    ]
+    primary_exact_effort = primary["trace_strata"]["exact_endpoint"][
+        "theory_aligned_triple_solved_effort"
+    ]
+    all_overall_effort = all_tasks["paired_trace_summary"][
+        "theory_aligned_triple_solved_effort"
+    ]
+    all_finite_effort = all_tasks["trace_strata"]["finite_cap"][
+        "theory_aligned_triple_solved_effort"
+    ]
+    all_exact_effort = all_tasks["trace_strata"]["exact_endpoint"][
+        "theory_aligned_triple_solved_effort"
+    ]
     primary_lodo = primary["leave_one_domain_out"]
     primary_partitions = primary["partition_ratio_max"]["by_config"]
     lines.extend(
@@ -810,6 +1388,408 @@ def render_tex(analysis):
                 "CapPosthocPrimaryCapPartitionPninetyfive",
                 _stat(primary_partitions["pdb_cap_grid_k8"]["nearest_rank_p95"]),
             ),
+            _macro(
+                "CapPosthocPrimaryCompressionPairs",
+                str(primary_compression["paired_count"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryRawCoefficientMedian",
+                _stat(primary_compression["raw"]["median"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryRawCoefficientPninetyfive",
+                _stat(primary_compression["raw"]["nearest_rank_p95"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryRawCoefficientMaximum",
+                _stat(primary_compression["raw"]["maximum"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryCappedCoefficientMedian",
+                _stat(primary_compression["capped"]["median"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryCappedCoefficientPninetyfive",
+                _stat(primary_compression["capped"]["nearest_rank_p95"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryCappedCoefficientMaximum",
+                _stat(primary_compression["capped"]["maximum"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryPairedCompressionMedian",
+                _decimal(primary_compression["raw_over_capped"]["median"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryPairedCompressionPninetyfive",
+                _decimal(
+                    primary_compression["raw_over_capped"]["nearest_rank_p95"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryPairedCompressionMaximum",
+                _decimal(primary_compression["raw_over_capped"]["maximum"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryStrictCoefficientReductions",
+                str(primary_compression["strict_coefficient_reduction_count"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallOperationalPairs",
+                str(primary_overall_operational["completed_buckets"]["eligible_pair_count"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallPositiveBucketPairs",
+                str(
+                    primary_overall_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["positive_denominator_pair_count"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallZeroBucketPairs",
+                str(
+                    primary_overall_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["zero_denominator_pair_count"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallCompletedBucketRatio",
+                _decimal(
+                    primary_overall_operational["completed_buckets"]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallNodePerBucketRatio",
+                _decimal(
+                    primary_overall_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallImageTimePerBucketRatio",
+                _decimal(
+                    primary_overall_operational[
+                        "image_time_seconds_per_completed_bucket"
+                    ]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteOperationalPairs",
+                str(primary_finite_operational["completed_buckets"]["eligible_pair_count"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFinitePositiveBucketPairs",
+                str(
+                    primary_finite_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["positive_denominator_pair_count"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteZeroBucketPairs",
+                str(
+                    primary_finite_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["zero_denominator_pair_count"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapCompletedBuckets",
+                str(primary_finite_operational["completed_buckets"]["cap_total"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteExactCompletedBuckets",
+                str(primary_finite_operational["completed_buckets"]["exact_total"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCompletedBucketRatio",
+                _decimal(
+                    primary_finite_operational["completed_buckets"]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteNodePerBucketRatio",
+                _decimal(
+                    primary_finite_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteImageTimePerBucketRatio",
+                _decimal(
+                    primary_finite_operational[
+                        "image_time_seconds_per_completed_bucket"
+                    ]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteNodePerCallRatio",
+                _decimal(
+                    primary_finite_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteImageTimePerCallRatio",
+                _decimal(
+                    primary_finite_operational[
+                        "image_time_seconds_per_completed_bucket"
+                    ]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteBucketCountLower",
+                str(primary_finite_operational["completed_buckets"]["cap_lower"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteBucketCountEqual",
+                str(primary_finite_operational["completed_buckets"]["equal"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteBucketCountHigher",
+                str(primary_finite_operational["completed_buckets"]["cap_higher"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteNodePerCallLower",
+                str(
+                    primary_finite_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["cap_lower"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteNodePerCallEqual",
+                str(
+                    primary_finite_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["equal"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteNodePerCallHigher",
+                str(
+                    primary_finite_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["cap_higher"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteImageTimePerCallLower",
+                str(
+                    primary_finite_operational[
+                        "image_time_seconds_per_completed_bucket"
+                    ]["cap_lower"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteImageTimePerCallEqual",
+                str(
+                    primary_finite_operational[
+                        "image_time_seconds_per_completed_bucket"
+                    ]["equal"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteImageTimePerCallHigher",
+                str(
+                    primary_finite_operational[
+                        "image_time_seconds_per_completed_bucket"
+                    ]["cap_higher"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryExactEndpointOperationalPairs",
+                str(primary_exact_operational["completed_buckets"]["eligible_pair_count"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryExactEndpointPositiveBucketPairs",
+                str(
+                    primary_exact_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["positive_denominator_pair_count"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryExactEndpointZeroBucketPairs",
+                str(
+                    primary_exact_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["zero_denominator_pair_count"]
+                ),
+            ),
+            _macro(
+                "CapPosthocAllFiniteOperationalPairs",
+                str(all_finite_operational["completed_buckets"]["eligible_pair_count"]),
+            ),
+            _macro(
+                "CapPosthocAllFiniteNodePerBucketRatio",
+                _decimal(
+                    all_finite_operational[
+                        "expanded_bdd_nodes_per_completed_bucket"
+                    ]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocAllFiniteImageTimePerBucketRatio",
+                _decimal(
+                    all_finite_operational[
+                        "image_time_seconds_per_completed_bucket"
+                    ]["cap_over_exact"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryTripleSolvedPairs",
+                str(primary_overall_effort["eligible_task_count"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteTripleSolvedPairs",
+                str(primary_finite_effort["eligible_task_count"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryExactEndpointTripleSolvedPairs",
+                str(primary_exact_effort["eligible_task_count"]),
+            ),
+            _macro(
+                "CapPosthocAllTripleSolvedPairs",
+                str(all_overall_effort["eligible_task_count"]),
+            ),
+            _macro(
+                "CapPosthocAllFiniteTripleSolvedPairs",
+                str(all_finite_effort["eligible_task_count"]),
+            ),
+            _macro(
+                "CapPosthocAllExactEndpointTripleSolvedPairs",
+                str(all_exact_effort["eligible_task_count"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallBlindEffort",
+                str(primary_overall_effort["totals"]["blind"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallExactEffort",
+                str(primary_overall_effort["totals"]["exact"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallCapEffort",
+                str(primary_overall_effort["totals"]["cap"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallCapBlindEffortRatio",
+                _decimal(primary_overall_effort["ratios"]["cap_over_blind"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallExactBlindEffortRatio",
+                _decimal(primary_overall_effort["ratios"]["exact_over_blind"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryOverallCapExactEffortRatio",
+                _decimal(primary_overall_effort["ratios"]["cap_over_exact"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteBlindEffort",
+                str(primary_finite_effort["totals"]["blind"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteExactEffort",
+                str(primary_finite_effort["totals"]["exact"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapEffort",
+                str(primary_finite_effort["totals"]["cap"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapBlindEffortRatio",
+                _decimal(primary_finite_effort["ratios"]["cap_over_blind"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteExactBlindEffortRatio",
+                _decimal(primary_finite_effort["ratios"]["exact_over_blind"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapExactEffortRatio",
+                _decimal(primary_finite_effort["ratios"]["cap_over_exact"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapExactEffortLower",
+                str(primary_finite_effort["ratios"]["cap_over_exact"]["numerator_lower"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapExactEffortEqual",
+                str(primary_finite_effort["ratios"]["cap_over_exact"]["equal"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapExactEffortHigher",
+                str(primary_finite_effort["ratios"]["cap_over_exact"]["numerator_higher"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryExactEndpointCapExactEffortRatio",
+                _decimal(primary_exact_effort["ratios"]["cap_over_exact"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocAllFiniteCapBlindEffortRatio",
+                _decimal(all_finite_effort["ratios"]["cap_over_blind"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocAllFiniteExactBlindEffortRatio",
+                _decimal(all_finite_effort["ratios"]["exact_over_blind"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocAllFiniteCapExactEffortRatio",
+                _decimal(all_finite_effort["ratios"]["cap_over_exact"]["ratio"]["value"]),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapBlindEffortLodoMinimum",
+                _decimal(
+                    primary_finite_effort["leave_one_domain_out"]["cap_over_blind"][
+                        "minimum"
+                    ]["ratio"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapBlindEffortLodoMaximum",
+                _decimal(
+                    primary_finite_effort["leave_one_domain_out"]["cap_over_blind"][
+                        "maximum"
+                    ]["ratio"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteExactBlindEffortLodoMinimum",
+                _decimal(
+                    primary_finite_effort["leave_one_domain_out"]["exact_over_blind"][
+                        "minimum"
+                    ]["ratio"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteExactBlindEffortLodoMaximum",
+                _decimal(
+                    primary_finite_effort["leave_one_domain_out"]["exact_over_blind"][
+                        "maximum"
+                    ]["ratio"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapExactEffortLodoMinimum",
+                _decimal(
+                    primary_finite_effort["leave_one_domain_out"]["cap_over_exact"][
+                        "minimum"
+                    ]["ratio"]["value"]
+                ),
+            ),
+            _macro(
+                "CapPosthocPrimaryFiniteCapExactEffortLodoMaximum",
+                _decimal(
+                    primary_finite_effort["leave_one_domain_out"]["cap_over_exact"][
+                        "maximum"
+                    ]["ratio"]["value"]
+                ),
+            ),
             _rows_macro("CapPosthocTraceStrataRows", trace_rows),
             _rows_macro("CapPosthocOperationalRows", operational_rows),
             _rows_macro(
@@ -819,6 +1799,10 @@ def render_tex(analysis):
             _rows_macro("CapPosthocInitialHRows", initial_h_rows),
             _rows_macro("CapPosthocCertificateCoefficientRows", coefficient_rows),
             _rows_macro("CapPosthocRawWidthRows", raw_width_rows),
+            _rows_macro("CapPosthocCoefficientCompressionRows", compression_rows),
+            _rows_macro("CapPosthocOperationalPerBucketRows", per_bucket_rows),
+            _rows_macro("CapPosthocTripleSolvedEffortRows", effort_rows),
+            _rows_macro("CapPosthocFiniteEffortLodoRows", effort_lodo_rows),
             _rows_macro("CapPosthocUniversalCoefficientRows", universal_rows),
             _rows_macro("CapPosthocLeaveOneDomainOutRows", lodo_rows),
             _rows_macro("CapPosthocPartitionRatioRows", partition_rows),
@@ -883,6 +1867,39 @@ def self_test():
             ("diagnostics", "primary", "partition_ratio_max", "eligibility"),
             "changed-eligibility",
         ),
+        (
+            (
+                "diagnostics",
+                "primary",
+                "trace_strata",
+                "finite_cap",
+                "selected_transform",
+                "same_pdb_raw_to_cap_coefficient",
+                "eligibility",
+            ),
+            "changed-eligibility",
+        ),
+        (
+            (
+                "diagnostics",
+                "primary",
+                "paired_trace_summary",
+                "operational",
+                "expanded_bdd_nodes_per_completed_bucket",
+                "estimand",
+            ),
+            "changed-estimand",
+        ),
+        (
+            (
+                "diagnostics",
+                "primary",
+                "paired_trace_summary",
+                "theory_aligned_triple_solved_effort",
+                "estimand",
+            ),
+            "changed-estimand",
+        ),
     )
     for path, value in semantic_mutations:
         candidate = copy.deepcopy(analysis)
@@ -893,10 +1910,22 @@ def self_test():
         expect_rejected(candidate, ".".join(path))
 
     candidate = copy.deepcopy(analysis)
+    candidate["diagnostics"]["primary"]["paired_trace_summary"][
+        "theory_aligned_triple_solved_effort"
+    ]["single_piece_bucket_certified_cell_count"] -= 1
+    expect_rejected(candidate, "single-piece effort certification count")
+
+    candidate = copy.deepcopy(analysis)
     candidate["diagnostics"]["primary"]["leave_one_domain_out"]["coverage"][
         "range_width"
     ] = {"numerator": 0, "denominator": 1, "value": 0.0}
     expect_rejected(candidate, "inconsistent LODO range width")
+
+    candidate = copy.deepcopy(analysis)
+    candidate["diagnostics"]["primary"]["leave_one_domain_out"][
+        "expanded_bdd_nodes"
+    ]["cap_total"] += 1
+    expect_rejected(candidate, "node LODO/operational mismatch")
 
     candidate = copy.deepcopy(analysis)
     candidate["diagnostics"]["primary"]["selected_certificate_coefficient"][
@@ -919,6 +1948,76 @@ def self_test():
     item["eligible_pair_count"] += 1
     item["equal"] += 1
     expect_rejected(candidate, "node/image denominator mismatch")
+
+    candidate = copy.deepcopy(analysis)
+    compression = candidate["diagnostics"]["primary"]["trace_strata"]["finite_cap"][
+        "selected_transform"
+    ]["same_pdb_raw_to_cap_coefficient"]
+    compression["strict_coefficient_reduction_count"] -= 1
+    expect_rejected(candidate, "coefficient compression strict-count drift")
+
+    candidate = copy.deepcopy(analysis)
+    ratio = candidate["diagnostics"]["primary"]["trace_strata"]["finite_cap"][
+        "selected_transform"
+    ]["same_pdb_raw_to_cap_coefficient"]["raw_over_capped"]["median"]
+    ratio["numerator"] *= 2
+    ratio["denominator"] *= 2
+    expect_rejected(candidate, "unreduced coefficient-compression fraction")
+
+    candidate = copy.deepcopy(analysis)
+    ratio = candidate["diagnostics"]["primary"]["paired_trace_summary"]["operational"][
+        "completed_buckets"
+    ]["cap_over_exact"]
+    ratio["numerator"] += 1
+    expect_rejected(candidate, "completed-bucket fraction drift")
+
+    candidate = copy.deepcopy(analysis)
+    endpoint = candidate["diagnostics"]["primary"]["trace_strata"]["exact_endpoint"][
+        "operational"
+    ]["expanded_bdd_nodes"]
+    endpoint["equal"] -= 1
+    endpoint["cap_lower"] += 1
+    expect_rejected(candidate, "exact-endpoint operational identity drift")
+
+    candidate = copy.deepcopy(analysis)
+    effort = candidate["diagnostics"]["primary"]["paired_trace_summary"][
+        "theory_aligned_triple_solved_effort"
+    ]
+    effort["eligible_task_count"] -= 1
+    expect_rejected(candidate, "triple-solved effort denominator drift")
+
+    candidate = copy.deepcopy(analysis)
+    ratio = candidate["diagnostics"]["primary"]["paired_trace_summary"][
+        "theory_aligned_triple_solved_effort"
+    ]["ratios"]["cap_over_blind"]["ratio"]
+    ratio["numerator"] += 1
+    expect_rejected(candidate, "triple-solved effort fraction drift")
+
+    candidate = copy.deepcopy(analysis)
+    comparisons = candidate["diagnostics"]["primary"]["trace_strata"]["finite_cap"][
+        "theory_aligned_triple_solved_effort"
+    ]["ratios"]["cap_over_exact"]
+    comparisons["numerator_lower"] -= 1
+    comparisons["numerator_higher"] += 1
+    expect_rejected(candidate, "nonconserving triple-solved effort strata")
+
+    candidate = copy.deepcopy(analysis)
+    comparisons = candidate["diagnostics"]["primary"]["trace_strata"]["exact_endpoint"][
+        "theory_aligned_triple_solved_effort"
+    ]["ratios"]["cap_over_exact"]
+    comparisons["equal"] -= 1
+    comparisons["numerator_lower"] += 1
+    expect_rejected(candidate, "exact-endpoint effort identity drift")
+
+    candidate = copy.deepcopy(analysis)
+    candidate["diagnostics"]["primary"]["trace_strata"]["finite_cap"][
+        "theory_aligned_triple_solved_effort"
+    ]["leave_one_domain_out"]["cap_over_blind"]["range_width"] = {
+        "numerator": 0,
+        "denominator": 1,
+        "value": 0.0,
+    }
+    expect_rejected(candidate, "finite effort LODO width drift")
     print("self-test passed")
 
 
