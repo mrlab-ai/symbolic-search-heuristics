@@ -96,6 +96,38 @@ abstract states; and the lexicographically smaller sorted pattern.  The means
 and fractions are compared as exact integer ratios.  This is a deterministic
 ranking surrogate, not a runtime-optimality claim.
 
+\begin{proposition}[selector dominance]
+\label{prop-selector-dominance}
+Suppose the exact and cap-aware selectors complete on the same normalized
+raw-PDB pool with the same width budget. The cap-aware candidate set after
+per-pattern selection contains every exact-feasible candidate. Hence its
+winner has lexicographic score no smaller than the exact winner. It preserves
+initial-state dead-end recognition and semantic nontriviality; if neither
+winner recognizes the initial state as a dead end, its initial value is no
+smaller.
+\end{proposition}
+
+\begin{proof}
+Consider any raw PDB whose exact transform has width at most (K). Exact is
+the final endpoint of that PDB's cap-aware ladder. Since it is feasible, the
+last-feasible rule retains it as the per-pattern representative. It therefore
+enters the cap-aware cross-pattern comparison with exactly the score it has in
+the exact selector. This holds for every exact-feasible raw PDB, proving
+candidate-set containment and the score inequality.
+
+The first score component preserves initial-state dead-end recognition. If
+the exact winner is semantic-nontrivial, it has either positive mean finite
+distance or positive abstract dead-end fraction. A candidate ranked at least
+as high either improves an earlier component---which already implies an
+initial dead end or a positive finite value---or matches the earlier
+components and cannot reduce the component witnessing nontriviality. Finally,
+when both winners have a finite initial value, equality of the first component
+forces the second component to be nondecreasing.
+\end{proof}
+
+This is a backward-compatibility result for the frozen information score, not
+a coverage or runtime guarantee.
+
 The cap-aware whole-trace certificate records each tested transform, its cap,
 feasibility decision, transformed \(W\), ADD inner nodes \(A\), terminal count
 \(T\), total ADD nodes \(U=A+T\), finite-value count \(V\), and the raw
@@ -230,11 +262,15 @@ Missing observations are never imputed.
 \section{Focused Full-Evaluation Results}
 \label{sec:supp-cap-tables}
 
-\CapPrimaryText\ \CapSensitivityText\ \CapMechanismText\ The mechanism status
-is deliberately strict: paired trace coverage is incomplete
-(\CapPrimaryTracePairs/\CapPrimaryTasks), so the matching raw pools and the
-large observed semantic-nontrivial difference are descriptive trace evidence,
-not a certified mechanism attribution.  \CapScopeCaveat
+\CapPrimaryText\ \CapSensitivityText\ Under the prespecified all-scope rule,
+\CapMechanismText\ The missing 21 pairs are not instrumentation losses: their
+runs ended before both selectors produced completed traces under the stated
+time or memory limits. On all \CapPrimaryTracePairs\ completed pairs, the raw
+pools match, so Proposition~\ref{prop-selector-dominance} applies. Cap-aware
+selection adds \CapPrimarySemanticWins\ semantic-nontrivial winners and loses
+\CapPrimarySemanticLosses. This is a complete conditional result on the
+reported paired denominator, while the frozen global mechanism label remains
+not certified. \CapScopeCaveat
 
 \begin{table}[htbp]
   \centering

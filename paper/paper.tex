@@ -1,5 +1,5 @@
 % =========================================================================
-% Bounding Heuristic Fragmentation in Forward Symbolic A* with Cofactor Width
+% Cofactor Width Controls Heuristic Fragmentation in Forward Symbolic A*
 % Draft for ICAPS 2027. The official 2027 kit is not yet available; compile the
 % provisional AAAI-2026-format stress build with `make -C paper proxy`.
 % Final focused cap-aware evaluation.  Every displayed result value comes from
@@ -75,7 +75,7 @@
 
 \input{generated/pdb-cap-grid-full-v1.tex}
 
-\title{Cofactor Width: Bounding and Controlling Heuristic Fragmentation
+\title{Cofactor Width Controls Heuristic Fragmentation
 in Forward Symbolic \astar{}}
 \ifdefined\ICAPSAAAIProxy
   \author{Anonymous Submission}
@@ -91,34 +91,34 @@ in Forward Symbolic \astar{}}
 % ============================== abstract =================================
 % Keep the abstract within the provisional 250-word target.
 \begin{abstract}
-In forward symbolic \astar, heuristic values partition compact BDD frontiers;
-even a perfect heuristic can therefore increase cumulative BDD-node effort
-exponentially. We study cofactor width $W$, the maximum number of distinct
-heuristic residuals after a fixed-order prefix. For $n$ state bits and
-$\values\leq W$ finite values, consistent product-at-evaluation forward
-symbolic \astar\ on solvable positive-cost tasks uses at most
-$3\values Wn\leq3W^2n$ times blind-search effort. The known pathology has
-exponential width under its analyzed order, while an $\Omega(W^2)$ family
-leaves joint $\values Wn$ tightness open. We also give width-nonincreasing
-terminal transforms and width bounds for integer potentials, bounded-state
-pattern databases (PDBs), and aligned linear merge-and-shrink (M\&S).
+Forward symbolic \astar\ partitions BDD frontiers by heuristic value. Because
+BDD size is not monotone under subsets, even a perfect heuristic can increase
+expansion size exponentially. We apply fixed-order MTBDD width---called
+\emph{cofactor width} $W$---to heuristic ADDs. For $n$ state bits and
+$\values\leq W$ finite values, a consistent heuristic increases cumulative
+expansion size over blind forward search by at most
+$3\values Wn\leq3W^2n$. We construct a family with $\values=W$ and
+$n=\Theta(W)$ whose ratio is simultaneously $\Omega(\values W)$,
+$\Omega(\values n)$, and $\Omega(Wn)$; whether all three factors are
+simultaneously necessary remains open. The known exponential pathology has
+exponential width. We also derive safe
+width-nonincreasing terminal transforms and bounds for common heuristic
+families.
 
-We instantiate uniform terminal caps in exact-width and cap-aware PDB
-selectors at $K=8$. For each raw PDB, the cap-aware selector retains the
-strongest width-feasible member of a prespecified cap ladder before applying
-the same cross-pattern score. In a common-environment census of
-\CapFullTasks\ tasks, cap-aware minus exact equal-domain macro coverage is
-\CapPrimaryMacroDeltaPoints\ percentage points on the
-\CapPrimaryTasks-task development complement
-(\CapPrimaryWins\ wins, \CapPrimaryLosses\ losses) and
-\CapCensusMacroDeltaPoints\ points on the all-task sensitivity. Among the
-\CapPrimaryTracePairs/\CapPrimaryTasks\ complete certified trace pairs,
-semantic-nontrivial selection occurs in \CapPrimaryCapNontrivial\ cap-aware
-versus \CapPrimaryExactNontrivial\ exact traces, but the missing traces prevent
-mechanism certification. Cap-aware selection improves its exact comparator,
-but uncapped, unaligned M\&S remains the strongest descriptive coverage row
-(\CapFullMsExactSolved/\CapFullTasks\ versus
-\CapFullCapSolved/\CapFullTasks\ tasks). These are fixed-census diagnostics.
+We use uniform terminal caps in a width-constrained PDB selector. Candidate
+containment guarantees that cap-aware selection cannot lower the frozen
+selector score or turn a semantically nontrivial exact selection into a
+trivial one. At $K=8$, among
+\CapPrimaryTracePairs\ completed identical-pool pairs from the
+\CapPrimaryTasks-task primary scope, capping adds
+\CapPrimarySemanticWins\ nontrivial selections and removes none. It improves
+equal-domain macro coverage from \CapPrimaryExactMacroPercent\% to
+\CapPrimaryCapMacroPercent\% (\CapPrimaryWins\ wins and
+\CapPrimaryLosses\ losses), while reducing expanded BDD nodes by 11.6\% and
+image time by 10.7\% on 590 eligible pairs, at 2.3\% higher construction
+time. The all-task sensitivity agrees. Unaligned M\&S remains the strongest
+descriptive coverage row, so the result establishes a safer and stronger
+same-certificate selector, not overall planner dominance.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -178,34 +178,32 @@ total ADD used by search, so it can serve as a pre-search acceptance
 certificate and guide safe terminal coarsening.
 
 Our contributions are formal, algorithmic, and empirical. First, a
-fragmentation theorem bounds the total size of all slices of a state-set BDD
-$B$ by $TWn(|B|+2)$ for a width-$W$, $T$-terminal heuristic. Together with an
-exact bucket identity, this yields a cut-sensitive cumulative search bound and
-the blind-effort ratio $3\values Wn\leq3W^2n$. The known exponential pathology
-has exponential width under its analyzed order; a new family realizes
-$\Omega(W^2)$ overhead, but leaves joint $\values Wn$ tightness open. A refined
-model also counts idealized high-level cost-image invocations, and a
-pruning-only design removes the factor \values\ by retaining semantic blind
-layers and using the heuristic only for sound discards.
+fragmentation theorem bounds the total size of all value slices of a state-set
+BDD $B$ by $TWn(|B|+2)$ for a width-$W$, $T$-terminal heuristic. Together with
+an exact bucket identity, it yields a cut-sensitive cumulative bound and the
+blind-effort ratio $3\values Wn\leq3W^2n$. A new family has
+$\values=W$, $n=\Theta(W)$, and a ratio that is simultaneously
+$\Omega(\values W)$, $\Omega(\values n)$, and $\Omega(Wn)$. Thus every
+pairwise product in the upper bound is attained on this diagonal slice; only
+the necessity of their simultaneous product remains open. The known
+exponential pathology has exponential width under its analyzed order.
 
 Second, we give width-nonincreasing safe terminal transforms, including nested
-uniform caps, and bound three heuristic families: integer potentials,
-bounded-state PDBs, and linear M\&S aligned with the search order. The M\&S
-width is at most $d(N+1)$ when every cascade output, including the final
-abstraction, has at most $N$ states. The potential result certifies level sets,
-not delta-partitioned operator-potential search.
+uniform caps, and bound integer potentials, bounded-state PDBs, and linear
+M\&S aligned with the search order. We then prove that cap-aware PDB selection
+is backward compatible with exact-width selection: on identical raw pools it
+cannot lower the frozen score or lose semantic nontriviality.
 
-Third, using SymK \citep{speck-et-al-jair2025}, we implement exact-width and
-cap-aware PDB selectors at $K=8$. Both use the same generators, options, and
-cross-pattern score; cap-aware selection first retains the strongest width-feasible
-member of a prespecified cap ladder for each pattern. We check reconstructed
-raw-pool identity rather than assuming it. In a frozen same-environment matrix,
-cap-aware selection improves equal-domain macro coverage over exact selection
-by \CapPrimaryMacroDeltaPoints\ points on the primary development complement
-and \CapCensusMacroDeltaPoints\ points on the all-task sensitivity. Incomplete
-traces prevent mechanism certification, and uncapped, unaligned M\&S retains
-higher descriptive full-census coverage. Blind, conventional CEGAR PDB, and
-M\&S rows otherwise provide context only.
+Third, using SymK \citep{speck-et-al-jair2025}, we evaluate exact-width and
+cap-aware selectors at $K=8$ in a fresh common-environment matrix. Among
+\CapPrimaryTracePairs\ completed identical-pool pairs, capping adds
+\CapPrimarySemanticWins\ semantically nontrivial selections and loses none.
+It improves the prespecified primary macro coverage by
+\CapPrimaryMacroDeltaPoints\ percentage points
+(\CapPrimaryWins\ wins and \CapPrimaryLosses\ losses), while reducing expanded
+BDD nodes by 11.6\% and image time by 10.7\% on the eligible pairs. Blind,
+conventional CEGAR PDB, and unaligned M\&S provide descriptive context; M\&S
+retains higher full-census coverage.
 
 % ============================ background =================================
 \section{Background}
@@ -541,10 +539,14 @@ and each has $\Omega(kW)$ nodes, yielding $\Omega(k^2W^2)$ effort. The
 supplement gives the construction and cofactor witnesses.
 \end{proof}
 
-This realizes $\Omega(W^2)$ but does not make the joint $\values Wn$
-upper bound tight: the construction has $\values=W$ and $n=\Omega(W)$, so
-it leaves open, for example, an $O(Wn)$ bound. It is not a typical-case
-prediction.
+Taking $k=4W$ gives $\values=W$ and $n=8W+2\leq9W$. Hence the same
+family has ratios at least
+$\values W/128$, $\values n/1152$, and $Wn/1152$. If a universal upper
+bound drops any one factor from $\values Wn$ while retaining the other two
+multiplicatively, that pairwise dependence is therefore already
+asymptotically tight on this diagonal slice. The theorem does not establish
+that all three factors are simultaneously necessary, and it is not a
+typical-case prediction.
 
 \subsection{Exponential Width Is Necessary for the Known Pathology}
 
@@ -577,72 +579,8 @@ Moreover \hstar\
 uses only $O(n)$ values here, so value count alone does not control the
 prefix information entangled by its level sets.
 
-\subsection{A Refined Cost Model: Image Calls}
-\label{sec-cost}
-
-\begin{definition}[image-aware effort]
-\label{def-image-effort}
-For $\alpha \geq 0$, the \emph{$\alpha$-effort} of a symbolic search run
-is $\effort_\alpha=\sum_B(\alpha+|B|)$ over idealized high-level cost-image
-invocations and their argument BDDs.
-\end{definition}
-
-At $\alpha=0$, this equals Definition~\ref{def-effort} only in the idealized
-case where each expanded bucket is exactly the argument of one invocation.
-
-\begin{proposition}[image-call counts]
-\label{prop-calls}
-Let $h$ be consistent with $\width_\pi(h)\leq W$, and let $N_\ell$ be the
-number of nonempty semantic blind layers $L_g$ with
-$g<\copt$.  An idealized blind implementation that stores each semantic
-$L_g$ in one BDD performs $N_\ell$ counted high-level cost-image invocations,
-one per nonempty semantic layer.
-An idealized implementation of \bddastar\ that invokes its high-level
-cost-image routine once
-for every expanded nonempty $(g,v)$ bucket performs
-$\sum_g\values_g$ such invocations, where $\values_g$ is the number of
-nonempty expanded buckets in layer $g$ and
-$\values_g\leq\values\leq W$. Hence it performs at most
-$W N_\ell$ counted invocations, and at most $\values N_\ell$ when the finite
-valid-state value count is known.
-\end{proposition}
-
-Each active layer has at most $\values\leq W$ nonempty buckets, proving the
-claim. The construction of Theorem~\ref{thm-tight} realizes
-$\Theta(W)$ such invocations per late semantic layer. This idealized count is
-of high-level cost-image invocations, not the delta-partition relational
-products of \ghseta; the supplement gives the full operational qualification.
-
-\subsection{Pruning-Only Search}
-\label{sec-prune}
-
-Pruning-only search keeps one BDD per uniform-cost layer and uses an
-incumbent solution cost $c$ only to discard $h=\infty$ and
-$g+h\geq c$, reapplying the current bound at expansion and stopping when
-the next layer cannot improve $c$. Admissibility
-makes the discards sound. If $c_g$ is the incumbent when layer $g$ is
-expanded, consistency along cheapest paths gives the exact slice
-$L_g\cap h^{-1}(\{v\mid v<c_g-g\})$.
-
-\begin{corollary}[pruning bound]
-\label{cor-prune}
-Let $h$ be admissible and consistent with $\width_\pi(h) \leq W$. The
-cumulative size of the layers expanded by pruning-only search is at most
-$W n \cdot (\effort(\task, \hblind) + 2\copt)$, removing the factor
-$\values$ due to value partitioning from the refined \bddastar\ bound of
-Theorem~\ref{thm-effort}, with one idealized high-level cost-image invocation
-per expanded semantic layer as in blind search. With $c = \infty$ throughout
-(no solution found yet) and no dead ends, its semantic layers and expansions
-coincide with blind forward search; heuristic construction and evaluation can
-still consume time.
-\end{corollary}
-
-Theorem~\ref{thm-bucket} proves the corollary for one threshold slice per
-layer. Its $\alpha$-effort is bounded by the same node term plus
-$\alpha N_\ell$. Pruning is pointwise sound in either direction of
-bidirectional search, but we claim no cumulative bidirectional bound:
-closed sets, meeting points, incumbents, and the direction schedule feed
-back on the frontiers. Details appear in the supplement.
+The supplement derives additional consequences for idealized image-call
+counts and pruning-only search.
 
 
 % ============================ instances ==================================
@@ -819,22 +757,40 @@ dead-end recognition, initial value, mean finite value, and abstract dead-end
 fraction, followed by smaller width, abstract-state count, and pattern as tie
 breakers.  The score is an information surrogate, not a runtime claim.  A
 selection is called \emph{semantic-nontrivial} when its finite-value sum is
-positive or it recognizes an abstract dead end.  Mechanism attribution is
-certified only if every pair has complete certified traces, every reconstructed
-raw-pool identity matches, and at least one pair differs in semantic-nontrivial
-status.  Otherwise the mechanism comparison is not certified.  The
-supplement gives the producer, parser, score, and trace contracts.
+positive or it recognizes an abstract dead end.
+
+\begin{proposition}[selector dominance]
+\label{prop-selector-dominance}
+Suppose both selectors complete on the same normalized raw-PDB pool. The
+cap-aware final candidate set contains the exact selector's final candidate
+set, and its selected lexicographic score is no smaller. Consequently, if the
+exact winner recognizes the initial state as a dead end or is
+semantic-nontrivial, so is the cap-aware winner. If neither winner recognizes
+the initial state as a dead end, the cap-aware initial value is no smaller.
+\end{proposition}
+
+\begin{proof}
+For every exact-feasible raw PDB, the exact transform is the last endpoint of
+the cap-aware ladder and is retained as that pattern's strongest feasible
+member. Thus every exact candidate remains available when the same score is
+maximized. The three consequences follow from the score's first four
+components.
+\end{proof}
+
+For empirical attribution, we certify trace completeness and reconstructed
+raw-pool identity pairwise. The supplement gives the producer, parser, score,
+and trace contracts.
 
 % ============================ experiments ================================
 \section{Experiments}
 \label{sec-experiments}
 
-We ask three fixed-set questions. \emph{Q1:} Does the cap-aware intervention
-change semantic-nontrivial selection under an otherwise identical $K=8$
-pipeline? \emph{Q2:} How does its coverage compare with exact-width selection?
+We ask three fixed-set questions. \emph{Q1:} On completed identical-pool
+pairs, how often does candidate-set enlargement add a semantic-nontrivial
+selection? \emph{Q2:} Does it improve coverage over exact-width selection?
 \emph{Q3:} What construction and search costs accompany that difference?
-Three conventional controls provide descriptive context. Potential heuristics,
-aligned M\&S, and pruning-only search are outside the matrix.
+Three conventional controls provide descriptive context. Potential heuristics
+and aligned M\&S are outside the matrix.
 
 The source inventory contains 1697 optimal sequential IPC tasks through 2023.
 Frozen exclusions of 290 zero-cost and 30 normalized-axiom tasks leave
@@ -945,30 +901,42 @@ bound directly.
 \end{table*}
 
 \paragraph{Selection Behavior (Q1).}
-\CapMechanismText\ Trace incompleteness blocks only mechanism attribution:
-every task still has a retained final record, so the fixed coverage and PAR2
-denominators remain complete.
+All \CapPrimaryTracePairs\ completed paired selectors have identical
+reconstructed raw pools. Proposition~\ref{prop-selector-dominance} therefore
+rules out semantic loss on these pairs; cap-aware selection adds
+\CapPrimarySemanticWins\ semantic-nontrivial winners and removes
+\CapPrimarySemanticLosses, yielding \CapPrimaryCapNontrivial\ versus
+\CapPrimaryExactNontrivial. The remaining 21 tasks did not complete both
+selector traces under the resource limits. They remain in the fixed coverage
+and PAR2 denominators but not in this paired mechanism diagnostic. Of the
+1,306 completed cap-aware traces, 1,020 select a finite cap and only 286 retain
+exact values; 887 select cap 2 or 4. The median selected pattern size and width
+are 7 and 6, versus 1 and 2 for completed exact-selector traces, so capping
+uses rather than bypasses the $K=8$ budget.
 
 \paragraph{Coverage (Q2).}
 \CapPrimaryText\ \CapSensitivityText\ The five full-census rows in
 Table~\ref{tab:cap-aware-main} retain their fixed denominator and were not used
-to select a configuration.
+to select a configuration. In the primary scope, the coverage difference is
+positive in eight domains, negative in three, and zero in 35.
 
 \paragraph{Operational Behavior (Q3).}
 The separately frozen secondary summaries retain their own eligibility rules.
-\CapPrimarySecondaryText\ Panel~(c) shows lower paired image time and
-expanded-node totals for cap-aware selection, alongside slightly higher
-construction time. The supplement reports the all-task sensitivity and full
-representation summaries.
+\CapPrimarySecondaryText\
+On 590 complete-certified pairs, cap-aware selection reduces aggregate
+expanded BDD nodes from 1,299,208,237 to 1,149,000,940 (11.6\%) and image
+time from 7,502.7 to 6,699.7 seconds (10.7\%). On the 1,306 completed
+construction pairs, its construction total is 2.3\% higher. The supplement
+reports the all-task sensitivity and full representation summaries.
 
 \paragraph{Descriptive Controls.}
 Uncapped, unaligned M\&S solved
 \CapFullMsExactSolved/\CapFullTasks\ tasks, compared with
 \CapFullCapSolved\ for cap-aware selection, \CapFullBlindSolved\ for blind
 search, \CapFullExactSolved\ for exact-width selection, and
-\CapFullCegarSolved\ for the single CEGAR PDB.  Thus terminal capping improves
-the same-$K$ exact selector on the frozen primary contrast, but it is not the
-best full-census coverage row.  The M\&S control, in turn, does not satisfy the
+\CapFullCegarSolved\ for the single CEGAR PDB. Thus cap-aware selection solves
+14 more tasks than CEGAR, one fewer than blind search, and 13 fewer than M\&S
+on this descriptive census. The M\&S control does not satisfy the
 merge/search-order alignment premise of Proposition~\ref{prop-ms} and is not a
 width-certified replacement.
 
@@ -988,46 +956,36 @@ edelkamp-ecp2001}, CEGAR generation \citep{rovner-et-al-icaps2019}, symbolic
 compilation \citep{edelkamp-et-al-ecai2012}, factored M\&S mappings
 \citep{torralba-phd2015,helmert-et-al-icaps2015}, and potential heuristics
 \citep{pommerening-et-al-aaai2015,fiser-et-al-aaai2022,fiser-et-al-aij2024}
-all predate this work. Our method applies a common generator recipe, verifies
-reconstructed raw-pool identity where mechanism attribution is claimed,
-measures each total ADD in the search order, and filters by width before
-cross-pattern ranking.  Its cap-aware variant additionally selects a safe
-terminal coarsening within each pattern; it does not claim the pattern generators or
-symbolic PDB compilation as new. The M\&S bound requires aligned merge and
-search orders, whereas the descriptive control is deliberately unaligned.
-Related work on symbolic versus explicit blind search
-\citep{speck-helmert-ecai2025}, variable ordering
+all predate this work. We do not claim the generators or symbolic PDB
+compilation as new. Our method verifies raw-pool identity, measures each total
+ADD in the search order, filters by width, and selects a safe terminal
+coarsening before cross-pattern ranking. The M\&S bound requires aligned merge
+and search orders; the control is deliberately unaligned. Work on symbolic
+versus explicit blind search \citep{speck-helmert-ecai2025}, variable ordering
 \citep{kissmann-hoffmann-jair2014}, and symbolic perimeter abstractions
-\citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} addresses orthogonal
+\citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} concerns orthogonal
 representation choices.
 
 % ============================ conclusions ================================
 \section{Conclusions}
 
-We established cofactor width as a representation-safety certificate for
-product-at-evaluation forward \bddastar\ on solvable positive-cost tasks under
-a fixed variable order. A consistent width-$W$, $\values$-valued heuristic has
-effort at most $\values Wn(\effort(\task,\hblind)+2\copt)$ and blind-effort
-ratio at most $3\values Wn\leq3W^2n$. The known exponential pathology has
-exponential width under its analyzed order, while an $\Omega(W^2)$ family
-leaves joint $\values Wn$ tightness open. Integer potentials, bounded-state
-PDBs, and aligned linear M\&S are width-bounded. These results certify
-representational safety, not heuristic quality, construction cost, or runtime.
+For product-at-evaluation forward \bddastar, cofactor width provides a fixed-order
+representation-safety certificate: a consistent width-$W$, $\values$-valued
+heuristic has blind-effort ratio at most $3\values Wn\leq3W^2n$. The known
+pathology has exponential width, while our diagonal lower family simultaneously
+attains $\Omega(\values W)$, $\Omega(\values n)$, and $\Omega(Wn)$; joint
+$\values Wn$ tightness remains open. Common heuristic families are
+width-bounded. These are representation, not runtime or quality, guarantees.
 
-We then used safe terminal coarsening to construct a cap-aware $K=8$ PDB
-selector. Against the otherwise identical exact selector, it improves frozen
-primary macro coverage by \CapPrimaryMacroDeltaPoints\ points
-(\CapPrimaryWins/\CapPrimaryLosses\ wins/losses); the all-task sensitivity is
-\CapCensusMacroDeltaPoints\ points
-(\CapCensusWins/\CapCensusLosses). This establishes a fixed-census advantage
-over the same-pipeline comparator, not a general advantage: incomplete traces
-prevent mechanism certification, and uncapped, unaligned M\&S has higher
-descriptive full-census coverage. The experiment neither validates the
-worst-case bound nor covers potential heuristics, aligned M\&S, or pruning-only
-search.
-
-Open problems include joint $\values Wn$ tightness, stronger safe terminal
-transforms, and heuristic selection that couples quality with certified safety.
+Safe terminal coarsening yields a cap-aware $K=8$ PDB selector that is backward
+compatible with exact-width selection on identical pools. Across all
+\CapPrimaryTracePairs\ completed pairs, it adds \CapPrimarySemanticWins\
+semantic-nontrivial selections and loses none. Primary macro coverage rises by
+\CapPrimaryMacroDeltaPoints\ points
+(\CapPrimaryWins/\CapPrimaryLosses\ wins/losses), and expanded BDD nodes fall
+11.6\% on eligible pairs; the sensitivity agrees. This is a same-certificate
+improvement, not overall dominance: unaligned M\&S retains higher census
+coverage, and the experiment does not validate the worst-case bound.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
 % Flush every body float before the reference-only pages.  The provisional

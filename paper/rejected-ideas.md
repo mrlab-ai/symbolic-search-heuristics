@@ -121,11 +121,13 @@ would be a better home.
 
 ## Pruning Ideas
 
-The pruning-only theorem remains in the paper because it is a clean consequence
-of the fragmentation bound: retaining blind `g`-layers and using the heuristic
-only for sound threshold discards removes the finite-value factor from the
-representation bound. What was rejected is the empirical claim that the tested
-pruning variants are the best practical use of a heuristic.
+The pruning-only theorem remains in the supplementary material because it is a
+clean consequence of the fragmentation bound: retaining blind `g`-layers and
+using the heuristic only for sound threshold discards removes the finite-value
+factor from the representation bound. It was removed from the eight-page main
+paper because it does not enter the focused experiment. What was rejected is
+the empirical claim that the tested pruning variants are the best practical
+use of a heuristic.
 
 ### Forward Pruning-Only Search
 
@@ -224,6 +226,33 @@ evaluate the bound instance by instance.
 **Reason:** aggregate width, image and node summaries do not reconstruct the
 quantities in the proof. The final paper limits the experiment to selector
 behavior, coverage and separately denominated operational descriptions.
+
+### A Joint Three-Factor Lower-Bound Claim
+
+The quadratic construction becomes a simultaneous pairwise lower bound when
+setting (k=4W): it has (V=W), (n=8W+2), and overhead in
+(\Omega(VW)), (\Omega(Vn)), and (\Omega(Wn)). All three parameters are tied
+together on this diagonal slice.
+
+**Decision:** reject any claim that the construction proves
+(\Omega(VWn)) overhead or independent necessity of all three factors.
+
+**Reason:** the construction establishes that each pairwise product is tight
+on one parameter slice, but its ratio is only quadratic while (VWn) is
+cubic there. Joint three-parameter tightness remains open.
+
+### Selector Dominance as Runtime Dominance
+
+Candidate containment proves that cap-aware selection cannot lower the frozen
+information score on an identical raw pool. It also preserves initial-state
+dead-end recognition and semantic nontriviality.
+
+**Decision:** reject the stronger claim that cap-aware selection must improve
+coverage or runtime on every task.
+
+**Reason:** the score is an information surrogate. Stronger heuristic values
+can still change bucket fragmentation and construction cost, and the fixed
+census contains both coverage wins and losses.
 
 ### Changing Pattern Generators or the Cross-Pattern Score
 

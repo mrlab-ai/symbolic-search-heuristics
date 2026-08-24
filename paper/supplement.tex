@@ -47,8 +47,8 @@
 % Paper-facing aggregates emitted by the reviewed, digest-pinned renderer.
 \input{generated/pdb-cap-grid-full-v1.tex}
 
-\title{Bounding Heuristic Fragmentation in Forward Symbolic \astar{}
-with Cofactor Width: Supplementary Material}
+\title{Cofactor Width Controls Heuristic Fragmentation
+in Forward Symbolic \astar{}: Supplementary Material}
 \author{Anonymous for review}
 \date{}
 
@@ -838,6 +838,23 @@ layers and their $W$ buckets gives
 \]
 Together with the blind upper bound, this proves the stated ratio.
 \end{proof}
+
+\begin{corollary}[pairwise lower bounds]
+\label{cor-pairwise-lb}
+For every integer $W\geq2$, the construction contains an instance with
+$\values=W$ and $n=8W+2$ whose heuristic-to-blind effort ratio is at least
+$\values W/128$, $\values n/1152$, and $Wn/1152$.
+\end{corollary}
+
+\begin{proof}
+Set $k=4W$ in Theorem~\ref{thm-tight}. Then $n=2k+2=8W+2\leq9W$ and the
+ratio is at least $W^2/128$. The three displayed bounds follow from
+$\values=W$ and $n\leq9W$.
+\end{proof}
+
+Thus every pairwise product among $\values$, $W$, and $n$ is attained up to
+a constant on this diagonal parameter slice. This does not prove a joint
+$\Omega(\values Wn)$ lower bound.
 
 \section{Width of the Known Exponential Pathology}
 
