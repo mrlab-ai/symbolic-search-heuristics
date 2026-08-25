@@ -32,9 +32,13 @@ class LaunchError(RuntimeError):
 
 
 # Pin these in a descendant protocol commit after building the source commit.
-PLANNER_REVISION = "TO_BE_PINNED"
-PLANNER_BINARY_SHA256 = "TO_BE_PINNED"
-PREPROCESS_BINARY_SHA256 = "TO_BE_PINNED"
+PLANNER_REVISION = "addde7a818d1a7f9f7a397cea711b66c9e1e0242"
+PLANNER_BINARY_SHA256 = (
+    "8f8a19326b1c4c069db5d521b12c4be3dc9eb52234f467c5130c820b6abffcb5"
+)
+PREPROCESS_BINARY_SHA256 = (
+    "c82c8456f16ad981334dc3098c4252ee02b3ce184f686d10779ae0feef0fabbd"
+)
 
 EXPERIMENT_PATH = SCRIPT_DIR / "data" / Path(__file__).stem
 REVISION_CACHE = Path(
