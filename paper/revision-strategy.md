@@ -3,9 +3,11 @@
 ## Venue and Scope
 
 - Target: ICAPS 2027 long paper.
-- Provisional format: AAAI two-column style, at most eight content pages plus
-  references, following the published ICAPS 2026 rule until the 2027 call is
-  available.
+- Typesetting: official AAAI 2027 author kit in anonymous-submission mode.
+- Provisional length target: at most eight content pages plus references,
+  following the published ICAPS 2026 rule until ICAPS 2027 publishes its own
+  author instructions. AAAI 2027's separate seven-content-page rule is not
+  treated as an ICAPS rule.
 - Paper category: theoretical/algorithmic classical-planning paper with a
   fixed-census empirical evaluation.
 - Central question: when can a heuristic partition symbolic search frontiers
@@ -143,8 +145,8 @@ theory, experiments and presentation objections.
 - Adversarial reading: a two-line final page makes the paper look unpolished
   and obscures how much evidence the main argument really contains.
 - Resolution: remove redundant conclusion prose and tighten related work. The
-  provisional AAAI-format proxy now ends cleanly after eight content pages,
-  with references starting on page 9.
+  official AAAI 2027 build now uses all eight content pages without an orphaned
+  final body page, and references flow directly after the text.
 
 ### Post-Revision Assessment
 
@@ -294,3 +296,76 @@ bound validation; diagonal lower-bound claims no longer imply independent
 parameter necessity; selector-induced pattern changes are explicit; and the
 triple-solved audit fails closed unless every expanded bucket has one BDD
 piece. The remaining objections are scope limits already stated as non-claims.
+
+## Path from Weak Accept to Clear Accept
+
+The current 7/10 verdict appears stable on correctness. The remaining risks are
+significance and evidential alignment: cofactor width is standard machinery,
+the lower bound is diagonal rather than jointly tight, the experiment uses one
+width budget and no ADD-matched selector, and the theorem-target audit is
+conditioned and post hoc. A clear-accept verdict therefore most plausibly needs
+one decisive new result rather than another defensive prose pass.
+
+### Highest-value decisive routes
+
+1. Close the theory gap by proving a joint $\Omega(VWn)$ lower bound,
+   establishing independent necessity of the factors, or sharpening the
+   universal upper bound.
+2. Run an independently frozen experiment that logs the complete layer and
+   heuristic cut profiles, active $V_g$, per-layer bucket effort and unsplit
+   layer size. Instantiate $\mathcal C_\pi(L_g,h)$, charge and report profiling
+   overhead, and compare actual slack for the profile, width and Apply
+   certificates. Add a total-ADD-size selector under a prespecified matching
+   rule (for example, a common certified-ratio budget or a frozen development
+   acceptance rate), an unconstrained same-pool selector, and a prespecified
+   sweep such as $K\in\{2,4,8,16,32\}$. This would expose both certificate slack
+   and the safety--quality frontier.
+
+A fixed-pattern raw-versus-capped search ablation and an independent
+replication should follow that combined experiment. An online
+split-versus-unsplit policy is potentially stronger, but it changes search
+semantics and belongs below these experiments unless accompanied by a new
+algorithm and correctness proof. Bidirectional or relational-product bounds
+are useful but less direct theory extensions.
+
+### Manuscript-only improvements that can stabilize the verdict
+
+1. Rebuild the narrative as one chain: profile theorem, safe capping, measured
+   expansion effort. Keep the PDB family proposition that connects the theorem
+   to the case study, but move the potential/M\&S derivations, proof detail and
+   most audit mechanics to the supplement. Compress the denominator-heavy
+   abstract.
+2. Replace the current post-hoc table and selected diagnostic rows in the main
+   results table with the strongest target-metric comparison; do not add a
+   third empirical table. On the 393 finite-cap triple-solved tasks, pooled
+   effort is 1,001,381,935 for blind, 1,133,741,538 for exact and 983,535,036
+   for capped search. Thus exact/blind is 1.132, capped/blind is 0.982 and
+   capped/exact is 0.868; taskwise signs are 261/33/99 and the leave-one-domain-
+   out capped/exact range is 0.850--0.923. Label this an explicitly post-hoc
+   follow-up rather than silently folding it into prospective Q3.
+3. Use exact endpoints only as a representation negative control: node and
+   completed-bucket counts are identical on eligible pairs, but image time has
+   ratio 1.01 and the coverage stratum has 0 wins/2 losses. Report the separate
+   finite-cap coverage result as 12 wins/3 losses on 1,020 completed trace
+   pairs, not as part of the 393-task target-effort denominator. Describe 626/0
+   correctly: containment proves zero semantic losses, while the empirical
+   finding is 626 added nontrivial choices.
+4. Explain width's role relative to ADD size: it is a frontier-independent,
+   reusable envelope that composes across heuristic families and yields a
+   nested cap ladder. Disclose that the marginal coefficient medians are 8 for
+   1,308 completed exact selections and 48 for 1,306 completed cap-aware
+   selections; these are different denominators and not a paired causal
+   comparison. The paired statement is that capping the same PDB contracts its
+   coefficient by a median factor of 12.75 on 1,020 transformations.
+5. Budget floats and pages explicitly. Both empirical tables currently defer
+   to page 8 while their discussion is on page 7, so a replacement table or
+   cut-profile/capping diagram must displace existing material and remain near
+   its discussion. Compact pseudocode and complexity should replace current
+   mechanics prose or move to the supplement. Consolidate repeated schema,
+   digest and censoring caveats into one protocol paragraph.
+
+These presentation changes can make the weak accept more robust, but further
+post-hoc diagnostics, another constant improvement, or prose polish alone are
+unlikely to justify an 8+ verdict. If new experiments are feasible, the next
+ablations after the combined profile/ADD/multi-budget study are repeated
+cutoff-sensitive discordances and timing measurements.

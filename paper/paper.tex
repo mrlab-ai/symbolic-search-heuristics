@@ -1,37 +1,26 @@
 % =========================================================================
 % Cofactor Width Controls Heuristic Fragmentation in Forward Symbolic A*
-% Draft for ICAPS 2027. The official 2027 kit is not yet available; compile the
-% provisional AAAI-2026-format stress build with `make -C paper proxy`.
+% Draft for ICAPS 2027, formatted with the official AAAI 2027 author kit.
 % Final focused cap-aware evaluation.  Every displayed result value comes from
 % either the reviewed frozen artifact or the separately labeled, digest-pinned
 % post-hoc review audit.
 % =========================================================================
 \documentclass[letterpaper]{article}
-\ifdefined\ICAPSAAAIProxy
-  \usepackage[submission]{aaai2026}
-  \usepackage{times}
-  \usepackage{helvet}
-  \usepackage{courier}
-  \usepackage[hyphens]{url}
-  \usepackage{graphicx}
-  \urlstyle{rm}
-  \def\UrlFont{\rm}
-  \usepackage{caption}
-  \frenchspacing
-  \setlength{\pdfpagewidth}{8.5in}
-  \setlength{\pdfpageheight}{11in}
-  \pdfinfo{/TemplateVersion (2026.1)}
-\else
-  \usepackage[margin=1in]{geometry}
-\fi
-\usepackage{amsmath,amssymb,amsthm}
+\usepackage[submission]{aaai2027}
+\usepackage[hyphens]{url}
+\usepackage{graphicx}
+\urlstyle{rm}
+\def\UrlFont{\rm}
 \usepackage{natbib}
+\usepackage{caption}
+\frenchspacing
+\usepackage{amsmath,amssymb,amsthm}
 \usepackage{booktabs}
-\usepackage{microtype}
-% Keep the deferred full-width result table at the top of its body page.
-\makeatletter
-\setlength{\@dblfptop}{0pt}
-\makeatother
+\pdfinfo{
+/TemplateVersion (2027.1)
+}
+\setcounter{secnumdepth}{0}
+\hyphenation{Torralba}
 
 % ------------------------------- macros ---------------------------------
 \newcommand{\inlinecite}[1]{\citet{#1}}
@@ -81,13 +70,8 @@
 
 \title{Cofactor Width Controls Heuristic Fragmentation
 in Forward Symbolic \astar{}}
-\ifdefined\ICAPSAAAIProxy
-  \author{Anonymous Submission}
-  \affiliations{Anonymous}
-\else
-  \author{Anonymous for review}
-  \date{}
-\fi
+\author{Anonymous Submission}
+\affiliations{}
 
 \begin{document}
 \maketitle
@@ -906,11 +890,6 @@ it changes neither the primary estimand nor the frozen secondary contract.
   \centering
   \small
   \setlength{\tabcolsep}{4pt}
-  \caption{Focused cap-aware evaluation. Panel (a) gives descriptive
-    full-census context; panel (b) gives the primary fixed-set contrast and
-    its mechanism denominators; panel (c) gives the separately frozen primary
-    operational summaries. PAR2 and time totals are in seconds.}
-  \label{tab:cap-aware-main}
   \begin{minipage}[t]{0.46\textwidth}
     \centering
     \textbf{(a) Full-census context}\\[2pt]
@@ -945,7 +924,7 @@ it changes neither the primary estimand nor the frozen secondary contract.
   \vspace{6pt}
 
   \textbf{(c) Primary operational summaries}\\[2pt]
-  \footnotesize
+  \small
   \begin{tabular}{lrrrr}
     \toprule
     Metric & Eligible & Cap-aware & Exact & $\Delta$/ratio \\
@@ -953,11 +932,15 @@ it changes neither the primary estimand nor the frozen secondary contract.
     \CapPrimarySecondaryRows
     \bottomrule
   \end{tabular}
-  \vspace{4pt}
-
   \begin{minipage}{0.98\textwidth}
-    \footnotesize \CapScopeCaveat\ \CapRatioCaveat\ \CapCensoringCaveat
+    \small \CapScopeCaveat\ \CapRatioCaveat\ \CapCensoringCaveat
   \end{minipage}
+  \normalsize
+  \caption{Focused cap-aware evaluation. Panel (a) gives descriptive
+    full-census context; panel (b) gives the primary fixed-set contrast and
+    its mechanism denominators; panel (c) gives the separately frozen primary
+    operational summaries. PAR2 and time totals are in seconds.}
+  \label{tab:cap-aware-main}
 \end{table*}
 
 \paragraph{Selection Behavior (Q1).}
@@ -997,12 +980,8 @@ sensitivity and full representation summaries.
 
 \begin{table}[tb]
   \centering
-  \footnotesize
+  \small
   \setlength{\tabcolsep}{2.5pt}
-  \caption{Post-hoc primary operational strata. Ratios are cap-aware over
-    exact; L/E/H gives taskwise node signs. This conditioned complete-certified
-    schema-v2 denominator cannot explain coverage discordances.}
-  \label{tab:cap-posthoc-strata}
   \begin{tabular}{lrrrr}
     \toprule
     Endpoint & Pairs & Nodes & Node L/E/H & Image \\
@@ -1010,6 +989,11 @@ sensitivity and full representation summaries.
     \CapPosthocPrimaryOperationalStrataRows
     \bottomrule
   \end{tabular}
+  \normalsize
+  \caption{Post-hoc primary operational strata. Ratios are cap-aware over
+    exact; L/E/H gives taskwise node signs. This conditioned complete-certified
+    schema-v2 denominator cannot explain coverage discordances.}
+  \label{tab:cap-posthoc-strata}
 \end{table}
 
 \paragraph{Post-Hoc Descriptive Diagnostics.}
@@ -1076,14 +1060,12 @@ all predate this work. We do not claim the generators or symbolic PDB
 compilation as new. Our method verifies raw-pool identity, measures each total
 ADD in the search order, filters by width, and selects a safe terminal
 coarsening before cross-pattern ranking. The M\&S bound requires aligned merge
-and search orders; the control is deliberately unaligned. The width parameter
-of relaxed BDD heuristics for delete-free planning bounds a BDD constructed
-over action choices \citep{castro-et-al-icaps2019}; our width instead belongs
-to the total state-to-value ADD that slices search frontiers. Work on symbolic
-versus explicit blind search \citep{speck-helmert-ecai2025}, variable ordering
-\citep{kissmann-hoffmann-jair2014}, and symbolic perimeter abstractions
-\citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} concerns orthogonal
-representation choices.
+and search orders; the control is deliberately unaligned. The width of relaxed
+BDD heuristics bounds action-choice BDDs \citep{castro-et-al-icaps2019}, unlike
+our state-to-value ADD width. Symbolic-versus-explicit search
+\citep{speck-helmert-ecai2025}, variable ordering
+\citep{kissmann-hoffmann-jair2014}, and perimeter abstractions
+\citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} are orthogonal.
 
 \section{Limitations}
 
@@ -1097,6 +1079,9 @@ the theorem's target effort measure with blind search on its triple-solved
 denominator. The ADD comparison is
 also formal: we did not evaluate a matched selector that filters candidates by
 global ADD size instead of width.
+Likewise, the marginal exact-versus-cap-aware coefficient summaries use
+different completed-trace sets; only the paired raw-to-capped analysis isolates
+terminal coarsening.
 
 Empirically, this is a fixed-census case study at one primary budget $K=8$ and
 one deterministic cap ladder. The outcome-informed development screen is
@@ -1127,13 +1112,9 @@ coverage gain does not establish runtime or overall planner dominance;
 unaligned M\&S retains higher census coverage.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
-% Flush every body float before the reference-only pages.  The provisional
-% layout gate subtracts one from this reference-start page, so deferred
-% double-column tables are counted as body content.
-\clearpage
+% Flush every body float before measuring the final content page. The 2027
+% style repeats this barrier when it starts the bibliography.
+\FloatBarrier
 \label{paper:references-start}
-\ifdefined\ICAPSAAAIProxy\else
-  \bibliographystyle{plainnat}
-\fi
 \bibliography{bib/abbrv,bib/literatur,bib/crossref,extra}
 \end{document}

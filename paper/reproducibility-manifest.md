@@ -13,6 +13,24 @@ development screen only. Every one of the 1,377 tasks, including those 50, is
 rerun in every full-evaluation configuration; no pilot record substitutes for
 a full-census cell.
 
+## Typesetting provenance
+
+The review manuscript uses the official AAAI 2027 author kit retrieved on
+2026-08-24 from `https://aaai.org/authorkit27/`. The downloaded archive was
+5,495,535 bytes with SHA-256
+`e28c6ac9bc6eb3b4e2d849547d2cefb5162610ee39d0a12e0dc62d1126b44a7d`;
+two independent downloads were byte-identical and passed the archive integrity
+test. The repository vendors the untouched files `paper/aaai2027.sty`
+(SHA-256
+`391bce82815bf698b8e382dd3ae7e30c75d7ab46df140cb295b1266016bc8623`)
+and `paper/aaai2027.bst` (SHA-256
+`5db7765ba99de5c1e4686f9b3940a0add9c5e702f2164514462bec130ccb6e3c`).
+Both the build and the standalone submission checker reject links or byte
+drift in these files. AAAI 2027's own page rule is not used as an ICAPS rule;
+until ICAPS 2027 publishes its author instructions, the project audit retains
+the preceding ICAPS eight-content-page assumption as an explicit configurable
+target.
+
 ## Executable sources
 
 - Pilot runner and parser:

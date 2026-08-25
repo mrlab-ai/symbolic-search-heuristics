@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate final paper integration and a provisional two-PDF review bundle."""
+"""Validate final paper integration and its AAAI-2027 review bundle."""
 
 from __future__ import annotations
 
@@ -28,7 +28,14 @@ ROOT = Path(__file__).resolve().parent
 MAIN = ROOT / "paper.tex"
 SUPPLEMENT = ROOT / "supplement.tex"
 CAP_STUDY = ROOT / "cap-study.tex"
-PROXY = ROOT / "aaai2026-proxy.tex"
+AUTHOR_KIT_STYLE = ROOT / "aaai2027.sty"
+AUTHOR_KIT_BST = ROOT / "aaai2027.bst"
+EXPECTED_AAAI2027_STYLE_SHA256 = (
+    "391bce82815bf698b8e382dd3ae7e30c75d7ab46df140cb295b1266016bc8623"
+)
+EXPECTED_AAAI2027_BST_SHA256 = (
+    "5db7765ba99de5c1e4686f9b3940a0add9c5e702f2164514462bec130ccb6e3c"
+)
 MANIFEST = ROOT / "reproducibility-manifest.md"
 GENERATED = ROOT / "generated" / "pdb-cap-grid-full-v1.tex"
 GENERATED_INPUT = r"\input{generated/pdb-cap-grid-full-v1.tex}"
@@ -37,17 +44,12 @@ POSTHOC_GENERATED_INPUT = r"\input{generated/pdb-cap-grid-posthoc-v1.tex}"
 CAP_STUDY_INPUT = r"\input{cap-study.tex}"
 REFERENCES_START_LABEL = r"\label{paper:references-start}"
 
-# A clearpage before this exact active suffix flushes every body float before
-# the reference boundary.  The proxy gate therefore counts the physical page
-# immediately preceding paper:references-start, rather than the source page on
-# which a deferred table happened to be declared.
+# The official style forbids forced page breaks and adds a FloatBarrier at the
+# bibliography. The explicit barrier here lets the page gate label the last
+# content page after every body float has been placed.
 MAIN_REFERENCE_TAIL = re.compile(
-    r"\\clearpage\s*"
+    r"\\FloatBarrier\s*"
     r"\\label\{paper:references-start\}\s*"
-    r"\\ifdefined\\ICAPSAAAIProxy\s*"
-    r"\\else\s*"
-    r"\\bibliographystyle\{plainnat\}\s*"
-    r"\\fi\s*"
     r"\\bibliography\{bib/abbrv,bib/literatur,bib/crossref,extra\}\s*"
     r"\\end\{document\}\s*\Z"
 )
@@ -57,21 +59,75 @@ PAGE_COUNTER_MUTATION = re.compile(
     r"|addtocounter\s*\{\s*page\s*\}|stepcounter\s*\{\s*page\s*\})"
 )
 
-PROXY_WRAPPER = re.compile(
-    r"\s*\\def\\ICAPSAAAIProxy\{1\}\s*"
-    r"\\input\{paper\.tex\}\s*\Z"
+# The official AAAI 2027 style owns fonts, page geometry, bibliography style,
+# and page breaking.  These patterns reject the legacy proxy machinery and
+# the layout overrides that the author kit explicitly disallows.
+FORBIDDEN_AAAI_MAIN = (
+    (
+        "obsolete AAAI template",
+        re.compile(r"\\usepackage(?:\s*\[[^\]]*\])?\s*\{aaai2026\}"),
+    ),
+    (
+        "explicit text-font package",
+        re.compile(
+            r"\\usepackage(?:\s*\[[^\]]*\])?\s*\{[^}]*"
+            r"\b(?:times|helvet|courier|lmodern|newtxtext)\b[^}]*\}"
+        ),
+    ),
+    (
+        "forbidden AAAI package",
+        re.compile(
+            r"\\usepackage(?:\s*\[[^\]]*\])?\s*\{[^}]*"
+            r"\b(?:authblk|babel|balance|bbm|CJK|epsf|epsfig|euler|fancyhdr|"
+            r"float|flushend|fullpage|geometry|graphics|hyperref|indentfirst|layout|"
+            r"multicol|nameref|navigator|pdfcomment|pgfplots|psfig|pstricks|"
+            r"savetrees|sectsty|setspace|stfloats|tabu|t1enc|titlesec|tocbibind|ulem|"
+            r"wrapfig)"
+            r"\b[^}]*\}"
+        ),
+    ),
+    (
+        "forbidden AAAI command",
+        re.compile(
+            r"\\(?:abovecaption|abovedisplay|addevensidemargin|addsidemargin|"
+            r"addtolength|balance|baselinestretch|belowcaption|belowdisplay|"
+            r"break|clearpage|clip|columnsep|float|linespread|newpage|"
+            r"nocopyright|pagebreak|pagestyle|textheight|tiny|topmargin|trim)\b"
+        ),
+    ),
+    (
+        "explicit bibliography style",
+        re.compile(r"\\bibliographystyle\b"),
+    ),
+    (
+        "forbidden setlength target",
+        # AAAI 2027 permits tabcolsep as the sole documented exception.
+        re.compile(r"\\setlength(?!\s*\{\s*\\tabcolsep\s*\})"),
+    ),
+    (
+        "negative vertical spacing",
+        re.compile(r"\\v(?:space|skip)\*?\s*(?:\{\s*-|-)")
+    ),
+    (
+        "sub-nine-point table font",
+        re.compile(
+            r"\\begin\{table\*?\}"
+            r"(?:(?!\\end\{table\*?\})[\s\S])*?"
+            r"\\(?:footnotesize|scriptsize|tiny)\b"
+        ),
+    ),
 )
 
 # Provisional project audit assumption only, not an ICAPS 2027 requirement:
 # audit a two-PDF review bundle until the venue publishes its rules. Changing
 # this allowlist then requires an explicit reviewed edit.
 REVIEW_BUNDLE_FILENAMES = (
-    "aaai2026-proxy.pdf",
+    "paper.pdf",
     "supplement.pdf",
 )
 
 REVIEW_DOCUMENT_MARKERS = {
-    "aaai2026-proxy.pdf": {
+    "paper.pdf": {
         "required": ("Cofactor Width", "Anonymous submission", "Abstract"),
         "forbidden": ("Supplementary Material",),
     },
@@ -175,7 +231,7 @@ ALLOWED_PDFINFO_FIELDS = {
 }
 
 SAFE_PDF_CREATORS = re.compile(
-    r"^(?:TeX|LaTeX(?: with hyperref)?|pdfTeX(?:-[0-9][0-9.]*)?|"
+    r"^(?:TeX|LaTeX|pdfTeX(?:-[0-9][0-9.]*)?|"
     r"LuaTeX(?:-[0-9][0-9.]*)?|XeTeX(?:-[0-9][0-9.]*)?)$",
     re.IGNORECASE,
 )
@@ -269,6 +325,18 @@ FORBIDDEN_REVIEW_MACROS = (
 )
 
 REQUIRED_MAIN = (
+    r"\documentclass[letterpaper]{article}",
+    r"\usepackage[submission]{aaai2027}",
+    r"\usepackage[hyphens]{url}",
+    r"\usepackage{graphicx}",
+    r"\urlstyle{rm}",
+    r"\def\UrlFont{\rm}",
+    r"\usepackage{natbib}",
+    r"\usepackage{caption}",
+    r"\frenchspacing",
+    "/TemplateVersion (2027.1)",
+    r"\author{Anonymous Submission}",
+    r"\affiliations{}",
     GENERATED_INPUT,
     POSTHOC_GENERATED_INPUT,
     r"\CapFullContextRows",
@@ -298,6 +366,9 @@ REQUIRED_CAP_STUDY = (
 )
 
 REQUIRED_MANIFEST = (
+    "`paper/aaai2027.sty`",
+    "`paper/aaai2027.bst`",
+    "https://aaai.org/authorkit27/",
     "experiments/pdb_cap_grid_full_protocol.py",
     "experiments/exp_pdb_cap_grid_full.py",
     "experiments/analyze_pdb_cap_grid_full.py",
@@ -326,6 +397,9 @@ REQUIRED_MANIFEST = (
 )
 
 REQUIRED_MANIFEST_DIGESTS = (
+    "e28c6ac9bc6eb3b4e2d849547d2cefb5162610ee39d0a12e0dc62d1126b44a7d",
+    EXPECTED_AAAI2027_STYLE_SHA256,
+    EXPECTED_AAAI2027_BST_SHA256,
     "77cf4950563be2d2a60aded13783a3ffe26c0c8391ac9d626f3bd618231941fa",
     "fc3233bfd260210cf4d0cce11146fe6f3198820d6e19a8b56740c1240039378b",
     "94238d64a699142ef81cc4a35489467af8b78dcdf46973536556eb7e3f6b6f78",
@@ -441,6 +515,28 @@ def _read_stable_regular(
         return raw.decode("utf-8", "strict")
     except UnicodeDecodeError as error:
         raise SubmissionReadinessError(f"{label} is not strict UTF-8") from error
+
+
+def _validate_author_kit_file(path: Path, expected_sha256: str, label: str) -> None:
+    raw = _read_stable_regular_bytes(path, 1024 * 1024, label=label)
+    actual_sha256 = hashlib.sha256(raw).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise SubmissionReadinessError(
+            f"{label} does not match the official AAAI 2027 author kit"
+        )
+
+
+def _validate_author_kit_files() -> None:
+    _validate_author_kit_file(
+        AUTHOR_KIT_STYLE,
+        EXPECTED_AAAI2027_STYLE_SHA256,
+        "AAAI 2027 style",
+    )
+    _validate_author_kit_file(
+        AUTHOR_KIT_BST,
+        EXPECTED_AAAI2027_BST_SHA256,
+        "AAAI 2027 bibliography style",
+    )
 
 
 def _strip_tex_comments(text: str) -> str:
@@ -644,6 +740,26 @@ def _document_info_fields(pdf_name: str, document_info: str):
         raise SubmissionReadinessError(
             f"{pdf_name} has an invalid PDF page count"
         )
+    page_size = single("page size", required=True)
+    if not re.fullmatch(
+        r"612(?:\.0+)?\s+x\s+792(?:\.0+)?\s+pts(?:\s+\(letter\))?",
+        page_size,
+        re.IGNORECASE,
+    ):
+        raise SubmissionReadinessError(
+            f"{pdf_name} is not portrait US Letter size"
+        )
+    page_rotation = single("page rot", required=True)
+    if page_rotation != "0":
+        raise SubmissionReadinessError(
+            f"{pdf_name} has nonzero page rotation"
+        )
+    pdf_version = single("pdf version", required=True)
+    version_match = re.fullmatch(r"([1-9][0-9]*)\.([0-9]+)", pdf_version)
+    if not version_match or tuple(map(int, version_match.groups())) < (1, 5):
+        raise SubmissionReadinessError(
+            f"{pdf_name} must use PDF version 1.5 or newer"
+        )
     return fields
 
 
@@ -746,6 +862,8 @@ def _validate_review_pdf_surfaces(
         )
     if javascript.strip():
         raise SubmissionReadinessError(f"{pdf_name} contains document JavaScript")
+    if re.search(rb"/Outlines\b", raw):
+        raise SubmissionReadinessError(f"{pdf_name} contains PDF bookmarks")
     _validate_review_document_identity(pdf_name, first_page_text)
     normalized_visible_text = _normalized_visible_text(extracted_text)
     for description, pattern in FORBIDDEN_CONTENT:
@@ -782,12 +900,11 @@ def _validate_review_pdf_surfaces(
         extracted_text,
         include_digest_pattern=True,
     )
-    _scan_review_surface(
-        pdf_name,
-        "PDF-action-markup",
-        _extract_action_targets(pdf_name, action_markup),
-        include_digest_pattern=True,
-    )
+    action_targets = _extract_action_targets(pdf_name, action_markup)
+    if action_targets.strip():
+        raise SubmissionReadinessError(
+            f"{pdf_name} contains an embedded link or PDF action"
+        )
 
 
 def _validate_attachment_inventory(pdf_name: str, inventory: str) -> None:
@@ -795,6 +912,29 @@ def _validate_attachment_inventory(pdf_name: str, inventory: str) -> None:
         raise SubmissionReadinessError(
             f"{pdf_name} contains an embedded file or an unknown attachment inventory"
         )
+
+
+def _validate_font_inventory(pdf_name: str, inventory: str) -> None:
+    lines = inventory.splitlines()
+    separator = next(
+        (index for index, line in enumerate(lines) if re.fullmatch(r"[-\s]+", line)),
+        None,
+    )
+    if separator is None:
+        raise SubmissionReadinessError(
+            f"{pdf_name} has an unreadable font inventory"
+        )
+    font_rows = [line for line in lines[separator + 1 :] if line.strip()]
+    if not font_rows:
+        raise SubmissionReadinessError(f"{pdf_name} has no inspectable fonts")
+    for row in font_rows:
+        if re.search(r"\bType\s*3\b", row, re.IGNORECASE):
+            raise SubmissionReadinessError(f"{pdf_name} contains a Type 3 font")
+        fields = row.split()
+        if len(fields) < 8 or fields[-5].casefold() != "yes":
+            raise SubmissionReadinessError(
+                f"{pdf_name} contains an unembedded or unreadable font"
+            )
 
 
 def _run_pdf_tool(executable: str, arguments, pdf_name: str) -> bytes:
@@ -834,24 +974,23 @@ def audit_review_bundle(path_values) -> None:
         for value in path_values
     ]
     _validate_review_bundle_paths(paths)
-    # Independently enforce the float-flushing source boundary even when the
-    # bundle-only action is invoked without the full final-result gate.
-    _validate_main_reference_boundary(
-        _strip_tex_comments(
-            _read_stable_regular(MAIN, label="main paper source")
-        )
+    # Independently enforce the official preamble and source boundary even
+    # when the bundle-only action is invoked without the full result gate.
+    _validate_source(
+        "paper.tex",
+        _read_stable_regular(MAIN, label="main paper source"),
+        REQUIRED_MAIN,
     )
-    _validate_proxy_wrapper(
-        _read_stable_regular(PROXY, label="AAAI proxy wrapper")
-    )
+    _validate_author_kit_files()
     pdfinfo = shutil.which("pdfinfo")
     pdftotext = shutil.which("pdftotext")
     pdfdetach = shutil.which("pdfdetach")
     pdftohtml = shutil.which("pdftohtml")
-    if not pdfinfo or not pdftotext or not pdfdetach or not pdftohtml:
+    pdffonts = shutil.which("pdffonts")
+    if not pdfinfo or not pdftotext or not pdfdetach or not pdftohtml or not pdffonts:
         raise SubmissionReadinessError(
-            "pdfinfo, pdftotext, pdfdetach, and pdftohtml are required for the "
-            "review-bundle audit"
+            "pdfinfo, pdftotext, pdfdetach, pdftohtml, and pdffonts are required "
+            "for the review-bundle audit"
         )
 
     digests = {}
@@ -912,6 +1051,11 @@ def audit_review_bundle(path_values) -> None:
             f"{label} embedded-file inventory",
         )
         _validate_attachment_inventory(label, attachments)
+        fonts = _decode_tool_output(
+            _run_pdf_tool(pdffonts, [str(path)], label),
+            f"{label} font inventory",
+        )
+        _validate_font_inventory(label, fonts)
         after = _read_stable_regular_bytes(
             path, 64 * 1024 * 1024, label=label
         )
@@ -948,19 +1092,17 @@ def _validate_main_reference_boundary(active: str) -> None:
         )
 
 
-def _validate_proxy_wrapper(text: str) -> None:
-    active = _strip_tex_comments(text)
-    if not PROXY_WRAPPER.fullmatch(active):
-        raise SubmissionReadinessError(
-            "aaai2026-proxy.tex must contain only the reviewed proxy switch "
-            "and paper input"
-        )
-
-
 def _validate_source(name: str, text: str, required) -> None:
     active = _strip_tex_comments(text)
     if name == "paper.tex":
         _validate_main_reference_boundary(active)
+        for description, pattern in FORBIDDEN_AAAI_MAIN:
+            match = pattern.search(active)
+            if match:
+                line = active.count("\n", 0, match.start()) + 1
+                raise SubmissionReadinessError(
+                    f"{name}:{line}: AAAI 2027 violation ({description})"
+                )
     for description, pattern in FORBIDDEN_CONTENT:
         match = pattern.search(active)
         if match:
@@ -1068,15 +1210,13 @@ def validate(
 
 
 def check_repository() -> None:
+    _validate_author_kit_files()
     main_text = _read_stable_regular(MAIN, label="main paper source")
     supplement_text = _read_stable_regular(
         SUPPLEMENT, label="supplement source"
     )
     cap_study_text = _read_stable_regular(
         CAP_STUDY, label="focused-study supplement source"
-    )
-    _validate_proxy_wrapper(
-        _read_stable_regular(PROXY, label="AAAI proxy wrapper")
     )
     manifest_text = _read_stable_regular(
         MANIFEST, label="private reproducibility manifest"
@@ -1112,7 +1252,10 @@ def _review_bundle_self_test():
         "JavaScript:     no\n"
         "Metadata Stream: no\n"
         "Pages:          8\n"
+        "Page size:      612 x 792 pts (letter)\n"
+        "Page rot:       0\n"
         "Encrypted:      no\n"
+        "PDF version:    1.5\n"
     )
     # A prior-work author name and the public system name are legitimate in
     # visible scholarly text; anonymity is enforced through PDF metadata and
@@ -1134,6 +1277,15 @@ def _review_bundle_self_test():
         "",
     )
     _validate_attachment_inventory(REVIEW_BUNDLE_FILENAMES[0], "0 embedded files\n")
+    safe_fonts = (
+        "name                                 type              encoding         "
+        "emb sub uni object ID\n"
+        "------------------------------------ ----------------- ---------------- "
+        "--- --- --- ---------\n"
+        "ABCDEF+TeXGyreTermes-Regular         Type 1            Custom           "
+        "yes yes no       4  0\n"
+    )
+    _validate_font_inventory(REVIEW_BUNDLE_FILENAMES[0], safe_fonts)
 
     rejected = 0
     bad_name_sets = (
@@ -1183,6 +1335,15 @@ def _review_bundle_self_test():
         (
             safe_raw,
             safe_info.replace("Creator:        LaTeX", "Creator:        Named Author"),
+            "",
+            safe_text,
+            safe_first_page,
+            safe_action_markup,
+            "",
+        ),
+        (
+            safe_raw,
+            safe_info.replace("Creator:        LaTeX", "Creator:        LaTeX with hyperref"),
             "",
             safe_text,
             safe_first_page,
@@ -1260,6 +1421,15 @@ def _review_bundle_self_test():
         ),
         (
             safe_raw + b"symbolic-search-heuristics",
+            safe_info,
+            "",
+            safe_text,
+            safe_first_page,
+            safe_action_markup,
+            "",
+        ),
+        (
+            safe_raw + b" /Outlines 12 0 R",
             safe_info,
             "",
             safe_text,
@@ -1400,8 +1570,38 @@ def _review_bundle_self_test():
             "",
             safe_text,
             safe_first_page,
+            '<a href="https://example.org/">x</a>',
+            "",
+        ),
+        (
+            safe_raw,
+            safe_info,
+            "",
+            safe_text,
+            safe_first_page,
             safe_action_markup,
             "app.alert('x')",
+        ),
+        (
+            safe_raw,
+            safe_info.replace(
+                "Page size:      612 x 792 pts (letter)",
+                "Page size:      595 x 842 pts (A4)",
+            ),
+            "",
+            safe_text,
+            safe_first_page,
+            safe_action_markup,
+            "",
+        ),
+        (
+            safe_raw,
+            safe_info.replace("PDF version:    1.5", "PDF version:    1.4"),
+            "",
+            safe_text,
+            safe_first_page,
+            safe_action_markup,
+            "",
         ),
         (
             safe_raw,
@@ -1438,16 +1638,26 @@ def _review_bundle_self_test():
         rejected += 1
     else:
         raise AssertionError("embedded review-PDF file was accepted")
+    for bad_fonts in (
+        safe_fonts.replace("Type 1", "Type 3"),
+        safe_fonts.replace("yes yes no", "no  no  no"),
+        safe_fonts.split("ABCDEF+", 1)[0],
+    ):
+        try:
+            _validate_font_inventory(REVIEW_BUNDLE_FILENAMES[0], bad_fonts)
+        except SubmissionReadinessError:
+            rejected += 1
+        else:
+            raise AssertionError("unsafe review-PDF font inventory was accepted")
     return rejected
 
 
 def self_test():
+    _validate_author_kit_files()
     reference_tail = (
-        "\\clearpage\n"
+        "\\FloatBarrier\n"
         + REFERENCES_START_LABEL
-        + "\n\\ifdefined\\ICAPSAAAIProxy\n"
-        + "\\else\n  \\bibliographystyle{plainnat}\n\\fi\n"
-        + "\\bibliography{bib/abbrv,bib/literatur,bib/crossref,extra}\n"
+        + "\n\\bibliography{bib/abbrv,bib/literatur,bib/crossref,extra}\n"
         + "\\end{document}\n"
     )
     main = (
@@ -1484,22 +1694,22 @@ def self_test():
 
     base = (main, supplement, cap_study, manifest, generated)
     validate_fixture(base)
-    rejected = 0
-    _validate_proxy_wrapper(
-        "% reviewed wrapper\n\\def\\ICAPSAAAIProxy{1}\n"
-        "\\input{paper.tex}\n"
+    # The kit expressly permits tabcolsep adjustment for otherwise oversized
+    # tables, so the general setlength ban must not reject that exception.
+    validate_fixture(
+        (
+            main.replace(
+                GENERATED_INPUT,
+                "\\setlength{\\tabcolsep}{1mm}\n" + GENERATED_INPUT,
+                1,
+            ),
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        )
     )
-    for bad_wrapper in (
-        "\\setcounter{page}{1}\n\\def\\ICAPSAAAIProxy{1}\n"
-        "\\input{paper.tex}\n",
-        "\\def\\ICAPSAAAIProxy{1}\n\\input{other.tex}\n",
-    ):
-        try:
-            _validate_proxy_wrapper(bad_wrapper)
-        except SubmissionReadinessError:
-            rejected += 1
-        else:
-            raise AssertionError("proxy-wrapper adversary was accepted")
+    rejected = 0
     mutations = [
         (main + "RESULT PLACEHOLDER\n", supplement, cap_study, manifest, generated),
         (main + "synthetic results\n", supplement, cap_study, manifest, generated),
@@ -1585,7 +1795,7 @@ def self_test():
             generated,
         ),
         (
-            main.replace("\\clearpage\n", "", 1),
+            main.replace("\\FloatBarrier\n", "", 1),
             supplement,
             cap_study,
             manifest,
@@ -1611,8 +1821,8 @@ def self_test():
         ),
         (
             main.replace(
-                "\\clearpage",
-                "\\setcounter{page}{1}\n\\clearpage",
+                "\\FloatBarrier",
+                "\\setcounter{page}{1}\n\\FloatBarrier",
                 1,
             ),
             supplement,
@@ -1624,6 +1834,61 @@ def self_test():
             main.replace(
                 REFERENCES_START_LABEL,
                 REFERENCES_START_LABEL + "\n" + REFERENCES_START_LABEL,
+                1,
+            ),
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main.replace(
+                "\\FloatBarrier",
+                "\\clearpage\n\\FloatBarrier",
+                1,
+            ),
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main.replace(
+                "\\FloatBarrier",
+                "\\bibliographystyle{plainnat}\n\\FloatBarrier",
+                1,
+            ),
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main.replace(
+                GENERATED_INPUT,
+                "\\usepackage{times}\n" + GENERATED_INPUT,
+                1,
+            ),
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main.replace(
+                GENERATED_INPUT,
+                "\\setlength{\\pdfpagewidth}{8.5in}\n" + GENERATED_INPUT,
+                1,
+            ),
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main.replace(
+                "\\FloatBarrier",
+                "\\begin{table}\\footnotesize x\\end{table}\n\\FloatBarrier",
                 1,
             ),
             supplement,

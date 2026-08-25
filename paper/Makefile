@@ -7,10 +7,13 @@ LATEXMK ?= latexmk
 LATEXFLAGS ?= -pdf -interaction=nonstopmode -halt-on-error
 PDFINFO ?= pdfinfo
 PAPER_PYTHON ?= python3
-# Provisional stress-test threshold; replace it with the published ICAPS 2027
-# rule when the official author kit becomes available. Reference pages do not
-# count against this body-page target.
-PROXY_TARGET_CONTENT_PAGES ?= 8
+# ICAPS 2027 has not published its page rule. Keep the preceding eight-page
+# content limit as an explicit project assumption until the call is available.
+ICAPS_TARGET_CONTENT_PAGES ?= 8
+AUTHOR_KIT_STYLE := aaai2027.sty
+AUTHOR_KIT_BST := aaai2027.bst
+AAAI2027_STYLE_SHA256 := 391bce82815bf698b8e382dd3ae7e30c75d7ab46df140cb295b1266016bc8623
+AAAI2027_BST_SHA256 := 5db7765ba99de5c1e4686f9b3940a0add9c5e702f2164514462bec130ccb6e3c
 GENERATED_RESULT := generated/pdb-cap-grid-full-v1.tex
 ANALYSIS_ARTIFACT_DIR := ../experiments/artifacts/pdb-cap-grid-focused-full
 POSTHOC_GENERATED_RESULT := generated/pdb-cap-grid-posthoc-v1.tex
@@ -23,13 +26,14 @@ POSTHOC_ANALYSIS_SIDECAR := \
 POSTHOC_ANALYZER := ../experiments/analyze_pdb_cap_grid_posthoc_review.py
 POSTHOC_RENDERER := ../experiments/render_pdb_cap_grid_posthoc_review.py
 
-.PHONY: paper supplement proxy proxy-preflight submission-check submission-audit \
-	submission update-bib clean
+.PHONY: paper supplement author-kit-preflight submission-check submission-audit \
+		submission update-bib clean
 
 paper: paper.pdf
 
-paper.pdf: paper.tex $(GENERATED_RESULT) $(POSTHOC_GENERATED_RESULT) \
-		$(wildcard bib/*.bib) $(wildcard extra.bib)
+paper.pdf: paper.tex $(AUTHOR_KIT_STYLE) $(AUTHOR_KIT_BST) \
+		$(GENERATED_RESULT) $(POSTHOC_GENERATED_RESULT) \
+		$(wildcard bib/*.bib) $(wildcard extra.bib) | author-kit-preflight
 	$(LATEXMK) $(LATEXFLAGS) $<
 
 supplement: supplement.pdf
@@ -44,42 +48,39 @@ $(POSTHOC_GENERATED_RESULT): $(POSTHOC_RENDERER) \
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(POSTHOC_RENDERER) \
 		--analysis $(POSTHOC_ANALYSIS_ARTIFACT) --output $@ --write
 
-# ICAPS 2027 has not published its author kit.  This target deliberately uses
-# the preceding conference's AAAI 2026 format only as a page/layout stress
-# test.  Put aaai2026.sty on TEXINPUTS and aaai2026.bst on BSTINPUTS; do not
-# vendor or silently substitute either reviewed file.
-proxy: aaai2026-proxy.pdf
-
-proxy-preflight:
+# The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
+# Fail closed if either file is missing, replaced by a link, or byte-modified.
+author-kit-preflight:
 	@command -v sha256sum >/dev/null || { \
-		echo 'sha256sum not found; cannot attest the reviewed proxy kit' >&2; \
+		echo 'sha256sum not found; cannot attest the AAAI 2027 author kit' >&2; \
 		exit 2; \
 	}
-	@style="$$(kpsewhich aaai2026.sty)"; \
-	test -n "$$style" || { \
-		echo 'aaai2026.sty not found; add the reviewed author kit to TEXINPUTS' >&2; \
-		exit 2; \
-	}; \
-	test "$$(sha256sum "$$style" | awk '{print $$1}')" = \
-		'6f90c4d7a36f4a038daf187fdd6cec9fe578aba819733b49551574a37feecd35' || { \
-		echo 'aaai2026.sty does not match the reviewed provisional kit' >&2; \
+	@command -v stat >/dev/null || { \
+		echo 'stat not found; cannot attest the AAAI 2027 author kit' >&2; \
 		exit 2; \
 	}
-	@bst="$$(kpsewhich aaai2026.bst)"; \
-	test -n "$$bst" || { \
-		echo 'aaai2026.bst not found; add the reviewed author kit to BSTINPUTS' >&2; \
+	@style='$(AUTHOR_KIT_STYLE)'; \
+	 test -f "$$style" && test ! -L "$$style" && \
+	 test "$$(stat -c '%h' "$$style")" = 1 || { \
+		echo 'aaai2027.sty is missing, non-regular, or linked' >&2; \
 		exit 2; \
-	}; \
-	test "$$(sha256sum "$$bst" | awk '{print $$1}')" = \
-		'ac26e2c66047435c0ed25f21ae36ad42d731cf3d794c4a8b5f05a62141a27294' || { \
-		echo 'aaai2026.bst does not match the reviewed provisional kit' >&2; \
+	 }; \
+	 test "$$(sha256sum "$$style" | awk '{print $$1}')" = \
+		'$(AAAI2027_STYLE_SHA256)' || { \
+		echo 'aaai2027.sty does not match the official reviewed kit' >&2; \
 		exit 2; \
 	}
-
-aaai2026-proxy.pdf: proxy-preflight aaai2026-proxy.tex paper.tex \
-		$(GENERATED_RESULT) $(POSTHOC_GENERATED_RESULT) \
-		$(wildcard bib/*.bib) $(wildcard extra.bib)
-	$(LATEXMK) $(LATEXFLAGS) aaai2026-proxy.tex
+	@bst='$(AUTHOR_KIT_BST)'; \
+	 test -f "$$bst" && test ! -L "$$bst" && \
+	 test "$$(stat -c '%h' "$$bst")" = 1 || { \
+		echo 'aaai2027.bst is missing, non-regular, or linked' >&2; \
+		exit 2; \
+	 }; \
+	 test "$$(sha256sum "$$bst" | awk '{print $$1}')" = \
+		'$(AAAI2027_BST_SHA256)' || { \
+		echo 'aaai2027.bst does not match the official reviewed kit' >&2; \
+		exit 2; \
+	}
 
 # This gate binds the accepted focused full-study artifact and prevents a
 # submission build from silently retaining synthetic, stale, or unreviewed
@@ -110,28 +111,28 @@ submission-check: $(POSTHOC_GENERATED_RESULT)
 # provenance, source, logs, and post-unblinding artifacts stay outside it.
 # Force both documents through LaTeX here: latexmk otherwise trusts its state
 # database even when a newer unrelated PDF has replaced an output file.
-submission-audit: submission-check proxy-preflight
-	$(LATEXMK) $(LATEXFLAGS) -g aaai2026-proxy.tex
+submission-audit: submission-check author-kit-preflight
+	$(LATEXMK) $(LATEXFLAGS) -g paper.tex
 	$(LATEXMK) $(LATEXFLAGS) -g supplement.tex
 	@set -eu; \
 	command -v $(PDFINFO) >/dev/null || { \
-		echo 'pdfinfo not found; cannot audit the proxy page count' >&2; \
+		echo 'pdfinfo not found; cannot audit the paper page count' >&2; \
 		exit 2; \
 	}; \
-	target='$(PROXY_TARGET_CONTENT_PAGES)'; \
+	target='$(ICAPS_TARGET_CONTENT_PAGES)'; \
 	case "$$target" in \
 		[1-9]|[1-9][0-9]|[1-9][0-9][0-9]) ;; \
-		*) echo 'PROXY_TARGET_CONTENT_PAGES must be an integer from 1 through 999' >&2; exit 2 ;; \
+		*) echo 'ICAPS_TARGET_CONTENT_PAGES must be an integer from 1 through 999' >&2; exit 2 ;; \
 	esac; \
-	pages="$$( $(PDFINFO) aaai2026-proxy.pdf | \
+	pages="$$( $(PDFINFO) paper.pdf | \
 		awk '/^Pages:/ { print $$2; exit }')"; \
 	case "$$pages" in \
 		[1-9]|[1-9][0-9]|[1-9][0-9][0-9]) ;; \
-		*) echo 'cannot determine a bounded positive proxy page count' >&2; exit 2 ;; \
+		*) echo 'cannot determine a bounded positive paper page count' >&2; exit 2 ;; \
 	esac; \
 	references_page="$$(sed -n \
 		's/.*\\newlabel{paper:references-start}{{[^}]*}{\([0-9][0-9]*\)}.*/\1/p' \
-		aaai2026-proxy.aux)"; \
+		paper.aux)"; \
 	case "$$references_page" in \
 		[1-9]|[1-9][0-9]|[1-9][0-9][0-9]) ;; \
 		*) echo 'cannot determine a unique bounded paper:references-start page' >&2; exit 2 ;; \
@@ -140,14 +141,14 @@ submission-audit: submission-check proxy-preflight
 		echo "paper:references-start page $$references_page is inconsistent with $$pages PDF pages" >&2; \
 		exit 2; \
 	fi; \
-	body_page=$$((references_page - 1)); \
+	body_page=$$references_page; \
 	if [ "$$body_page" -gt "$$target" ]; then \
-		echo "AAAI proxy content reaches page $$body_page; provisional target is $$target" >&2; \
+		echo "AAAI-formatted content reaches page $$body_page; ICAPS target is $$target" >&2; \
 		exit 2; \
 	fi; \
-	echo "AAAI proxy: body content reaches physical page $$body_page within provisional target; $$pages total pages including references"
+	echo "AAAI 2027 format: body content reaches physical page $$body_page within ICAPS target; $$pages total pages including references"
 	@set -eu; \
-	for log in aaai2026-proxy.log supplement.log; do \
+	for log in paper.log supplement.log; do \
 		test -s "$$log" || { echo "$$log is missing or empty" >&2; exit 2; }; \
 		if grep -En \
 			'^(Overfull \\[hv]box|LaTeX Warning: (Citation|Reference).*undefined|LaTeX Warning: There were undefined (citations|references)|Package (natbib|biblatex) Warning: .*undefined|LaTeX Warning: Label\(s\) may have changed|LaTeX Warning: Label .* multiply defined|LaTeX Warning: There were multiply-defined labels)' \
@@ -157,7 +158,7 @@ submission-audit: submission-check proxy-preflight
 		fi; \
 	done
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py \
-		--review-bundle aaai2026-proxy.pdf supplement.pdf
+		--review-bundle paper.pdf supplement.pdf
 
 submission: submission-audit
 
@@ -175,7 +176,4 @@ clean:
 	rm -f paper*.aux paper*.bbl paper*.blg paper*.log paper*.out paper*.pdf \
 		paper*.fdb_latexmk paper*.fls \
 		supplement*.aux supplement*.bbl supplement*.blg supplement*.log \
-		supplement*.out supplement*.pdf supplement*.fdb_latexmk supplement*.fls \
-		aaai2026-proxy.aux aaai2026-proxy.bbl aaai2026-proxy.blg \
-		aaai2026-proxy.fdb_latexmk aaai2026-proxy.fls \
-		aaai2026-proxy.log aaai2026-proxy.out aaai2026-proxy.pdf
+		supplement*.out supplement*.pdf supplement*.fdb_latexmk supplement*.fls
