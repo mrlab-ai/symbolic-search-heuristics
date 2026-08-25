@@ -2,6 +2,7 @@
 
 #include "../sym_state_space_manager.h"
 #include "../sym_variables.h"
+#include "../wbh_profile.h"
 #include "../wbh_stats.h"
 
 #include "../../task_utils/task_properties.h"
@@ -38,6 +39,9 @@ SymbolicSearch::SymbolicSearch(const plugins::Options &opts)
     sym_params.print_options();
     cout << endl;
     vars->init();
+    if (sym_params.profile) {
+        sym_params.profile->log_variable_order(vars.get());
+    }
     cout << endl;
 }
 
@@ -136,6 +140,9 @@ SearchStatus SymbolicSearch::step() {
         set_plan(plan_data_base->get_first_accepted_plan());
         if (sym_params.stats) {
             sym_params.stats->log_done(upper_bound);
+        }
+        if (sym_params.profile) {
+            sym_params.profile->log_done(upper_bound);
         }
         cout << endl;
         return cur_status;

@@ -50,7 +50,7 @@
 \input{generated/pdb-cap-grid-full-v1.tex}
 \input{generated/pdb-cap-grid-posthoc-v1.tex}
 
-\title{Cofactor Width Controls Heuristic Fragmentation
+\title{Tight Cofactor-Width Bounds for Heuristic Fragmentation
 in Forward Symbolic \astar{}: Supplementary Material}
 \author{Anonymous for review}
 \date{}
@@ -274,8 +274,11 @@ $h$, their cut-aligned \emph{cofactor-profile product} is
   \cutprod{S}{h}=\sum_{i=0}^{n-1}
   \cutcount{i}{\chi_S}\cutcount{i}{h}.
 \]
-For a Boolean function $f$, $\bdd{f}$ is its reduced ordered BDD under
-$\pi$, and $\bddsize{f}$ counts its inner nodes.  For a heuristic $h$,
+For a Boolean function $f$, $\bdd{f}$ is its reduced ordered BDD with
+complemented edges under $\pi$, and $\bddsize{f}$ counts regular inner
+nodes, as in CUDD. A residual is represented by a signed pointer: its regular
+node together with its polarity. Thus $f$ and $\neg f$ may share all regular
+nodes but remain distinct residual functions. For a heuristic $h$,
 $\hrange(h)$ is its attained value set.  The blind heuristic $\hblind$ is
 identically zero, and $\effort(\task,h)$ is the cumulative number of inner
 nodes in the BDDs expanded by product-at-evaluation forward \bddastar\ before
@@ -410,26 +413,31 @@ $\cofcount(f)\leq2n\bddsize{f}$.
 \end{lemma}
 
 \begin{proof}
-For the first inequality, consider a node $N$ of $\bdd{f}$ labeled
+For the first inequality, consider a regular node $N$ of $\bdd{f}$ labeled
 $x_{i+1}$. Since every node of a reduced OBDD is reachable from the root,
 there is a path from the root to $N$; fixing the variables tested along
 this path to the corresponding edge values and all remaining variables
 among $x_1, \dots, x_i$ arbitrarily yields a prefix $\rho \in \{0,1\}^i$
-with $f|_\rho$ equal to the function computed by $N$, because variables
-skipped by long edges do not influence the traversal. Hence every node
-labeled $x_{i+1}$ computes an element of $\sub{i}{f}$, and by canonicity
-distinct nodes compute distinct functions, so the map is injective.
+whose signed residual pointer has regular node $N$, because variables skipped
+by long edges do not influence the traversal. Distinct regular nodes give
+distinct signed pointers, so the map is injective.
 Summing over $i$ gives
 $\bddsize{f} \leq \sum_{i=0}^{n-1} |\sub{i}{f}| = \cofcount(f)$. For the
-second inequality, fix $i$ and consider any $u \in \sub{i}{f}$. Either
-$u$ is a constant function, of which there are at most two, or $u$
-essentially depends on some variable; let $x_j$ with $j > i$ be the first
-such variable. Traversing $\bdd{f}$ from the root under any prefix
-witnessing $u$ ends at an inner node labeled $x_j$ that computes $u$, and
-by canonicity this node is unique. Hence
-$|\sub{i}{f}| \leq \bddsize{f} + 2$ for every $i$, and summing over the
-$n$ levels yields the second claim. For the final inequality, write
-$b=\bddsize{f}\geq1$. If $b\geq2$, then
+second inequality, fix $i$. Let $U$ be the number of regular inner nodes
+above the cut and $D$ the number of distinct regular nonterminal nodes on
+the projected frontier. Let $\delta$ indicate whether the regular terminal
+is reached, let $r\leq D$ count frontier nodes reached in both polarities,
+and let $t\leq2$ count the signed constant residuals. The projected regular
+truncated DAG is binary, so $D+\delta\leq U+1$. The polarity-sensitive
+residual count is
+\[
+ |\sub{i}{f}|=D+r+t.
+\]
+If $t=0$, this is at most $D+U+1$; if $t>0$, then $\delta=1$, hence
+$D\leq U$, and the count is at most $D+U+2$. In both cases it is at most
+$\bddsize{f}+2$, because the complete diagram contains at least the $U+D$
+regular inner nodes. Summing proves the second claim. For the final
+inequality, write $b=\bddsize{f}\geq1$. If $b\geq2$, then
 $n(b+2)\leq2nb$. If $b=1$, the unique inner node tests some $x_j$, so $f$
 is $x_j$ or $\neg x_j$. The cuts before $x_j$ have one residual and the
 remaining cuts have two constants. Thus
@@ -532,15 +540,18 @@ constant factor.
 \begin{remark}[comparison with a total-ADD-size certificate]
 Let $A$ be the number of inner nodes in the reduced total ADD for $h$, and
 write $b=\bddsize{S}$. For any terminal set $U$, relabeling terminals by
-membership in $U$ and reducing produces a Boolean BDD for $h^{-1}(U)$ with at
-most $A$ inner nodes \citep[Sec.~9.2]{wegener-2000}. Standard synchronous
-Boolean Apply for conjunction \citep[Sec.~4.3]{bryant-ieeecomp1986} creates at most one output node for
+membership in $U$ and reducing produces an ordinary Boolean OBDD for
+$h^{-1}(U)$ with at most $A$ inner nodes
+\citep[Sec.~9.2]{wegener-2000}. Materializing both
+polarities of $S$ gives an ordinary OBDD with at most $2b$ inner nodes.
+Standard synchronous Boolean Apply for conjunction
+\citep[Sec.~4.3]{bryant-ieeecomp1986} creates at most one output node for
 each pair of internal operand nodes and for each pair in which one operand is
 internal and the other is the 1-terminal.
 Hence
 \[
  \bddsize{S\cap h^{-1}(U)}
- \leq\min\{\cutprod{S}{h},\,(A+1)b+A\},
+ \leq\min\{\cutprod{S}{h},\,2(A+1)b+A\},
 \]
 where the first certificate is Theorem~\ref{thm-bucket}.  More precisely, if
 $b_g=\bddsize{L_g}$ and $\values_g$ is the number of nonempty selected
@@ -549,23 +560,23 @@ combined search-level certificate
 \[
  \effort(\task,h)
  \leq\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
- \values_g\min\{\cutprod{L_g}{h},\,(A+1)b_g+A\}.
+ \values_g\min\{\cutprod{L_g}{h},\,2(A+1)b_g+A\}.
 \]
 Relaxing this to the Apply term and using at most $\values$ buckets on each
 of the $N$ nonempty layers below $\copt$ gives
 \[
  \effort(\task,h)
- \leq\values\bigl((A+1)\effort(\task,\hblind)+AN\bigr)
- \leq\values(2A+1)\effort(\task,\hblind),
+ \leq\values\bigl(2(A+1)\effort(\task,\hblind)+AN\bigr)
+ \leq\values(3A+2)\effort(\task,\hblind),
 \]
 because $N\leq\effort(\task,\hblind)$. A nonconstant ADD has one root and at
 most $W$ nodes at each of the other $n-1$ levels, so
 $A\leq1+(n-1)W$. Since a nonconstant function has $W\geq2$, this implies
-$2A+1\leq2nW$; for a constant function, $A=0$. The reduced-size baseline is
-therefore no worse than the coarse $2\values Wn$ ratio. A rooted binary ADD
+$3A+2\leq3nW$; for a constant function, $A=0$. The reduced-size baseline is
+therefore at most $3\values Wn$. A rooted binary ADD
 with $A$ inner nodes reaches at most
 $A+1$ terminals, so $\values\leq A+1$ also gives the ADD-only ratio
-$(A+1)(2A+1)$.
+$(A+1)(3A+2)$.
 
 The two bounds are nevertheless incomparable before cofactor count is relaxed.
 Let $h$ be Hamming-weight parity and let $S$ contain assignments whose Hamming
@@ -573,9 +584,10 @@ weight is $0$ modulo $3$. Under the natural order, $W=2$, while the reduced
 ADD for $h$ and BDD for $S$ both have $\Theta(n)$ nodes. The slice
 $S\cap h^{-1}(\{0\})$ is weight $0$ modulo $6$ and also has a constant-width,
 $\Theta(n)$-node OBDD.
-Thus $\cutprod{S}{h}=\Theta(n)$ while $bA+b+A=\Theta(n^2)$. In the other
+Thus $\cutprod{S}{h}=\Theta(n)$ while $2(A+1)b+A=\Theta(n^2)$. In the other
 direction, take $h=x_1$ and $S=\{x_1=1\}$. Then $A=b=1$ but
-$\cofcount(\chi_S)=2n-1$, so Apply gives $3$ while the cofactor bound is
+$\cofcount(\chi_S)=2n-1$, so the CUDD-safe Apply certificate gives $5$ while
+the cofactor bound is
 $\cutprod{S}{h}=4n-3$. The profile certificate supplies cut-sensitive and
 compositional structure; we do not claim it is a universally tighter
 operational selector than total ADD size.
@@ -714,9 +726,10 @@ heuristic-delta pairs, so their relational-product count also depends on
 those partitions. The exact finite value count $\values$ can therefore be
 a much sharper operational parameter than an ADD-derived width bound, while
 delta-integrated search requires a separate analysis
-\citep{fiser-et-al-aij2024}. On the quadratic construction below, the
-idealized model counts $\Theta(W)$ high-level cost-image invocations on each
-of $\Theta(k)$ late semantic layers, so the factor is realizable.
+\citep{fiser-et-al-aij2024}. On the joint-tightness construction below, the
+idealized model counts exactly $\values$ high-level cost-image invocations on
+each of $B$ persistent semantic layers, so the value-count factor is
+realizable independently of width.
 
 \emph{Pruning-only search} instead maintains one BDD per uniform-cost
 layer and an incumbent solution bound $c$ ($c=\infty$ initially). It
@@ -796,168 +809,166 @@ transition system. Pointwise incumbent pruning itself uses only
 admissibility and, unlike the cumulative layer argument above, does not
 require positive operator costs.
 
-\section{Quadratic Width-Ratio Construction}
+\section{Joint Tightness of the Coarse Ratio}
 
-\begin{theorem}[quadratic width-ratio family]
+\begin{theorem}[joint lower bound]
 \label{thm-tight}
-For all integers $W \geq 2$ and $k \geq 4W$ there are tasks
-$\task_{k,W}$ with $n=2k+2$ Boolean variables and consistent, admissible
-heuristics $h$ with $\width_\pi(h)=W$ such that
-$\effort(\task_{k,W},h)\geq
-(55W^2/288)\effort(\task_{k,W},\hblind)$.
+For every $2\leq\values\leq W$ and every power of two $B\geq4W$, there
+is a polynomial-size task with $n=\Theta(B)$ Boolean state bits and a
+consistent, admissible heuristic $h$ with exactly $\values$ finite values and
+$\width_\pi(h)=W$ such that
+\[
+  \frac{\effort(\task,h)}{\effort(\task,\hblind)}
+  \geq \frac{\values Wn}{120}.
+\]
 \end{theorem}
 
 \begin{proof}
-The task has binary variables $x_0,\dots,x_k$, choice variables
-$v_1,\dots,v_k$, and one goal bit $t$. Initially only $x_0$ holds. For
-each $i\in\{1,\ldots,k\}$, two unit-cost operators advance the chain:
-$o_i^0$ has precondition $x_{i-1}\wedge\neg x_i$ and effect $x_i$,
-while $o_i^1$ has the same precondition and effect
-$x_i\wedge v_i$. The only operator that achieves $t$ has precondition
-$x_k\wedge\neg t$, effect $t$, and cost $W$. The goal is $t$, so every
-solution has cost
+Write $B=2^m$, set $C=\values-1$, and let $N=2B+m$.  The task has an
+$m$-bit address $a$, modular bits $y_1,\ldots,y_B$, data bits
+$z_0,\ldots,z_{B-1}$, a goal bit $t$, and a control variable with generation
+values $c_0,\ldots,c_N$ and persistent values $s_0,\ldots,s_{B-1}$.  Encode
+the control variable with
 \[
-\copt=k+W.
+ q=\left\lceil\log_2(N+B+1)\right\rceil
 \]
-The order $\pi$ lists the $x$-block, then $v_1,\dots,v_k$, then $t$.
-
-Let
+Boolean bits.  The order $\pi$ lists the control bits, the address bits, the
+$y$-bits, the $z$-bits, and $t$, in that order.  Thus
 \[
-r(s)=\Bigl(\sum_{j=1}^{k}s(v_j)\Bigr)\bmod W,
-\qquad
-q(r)=(-r)\bmod W\in\{0,\dots,W-1\},
-\]
-and define
-\[
-h(s)=
-\begin{cases}
-0, & s(t)=1,\\
-q(r(s)), & s(t)=0.
-\end{cases}
-\]
-A unit-cost choice operator either leaves the residue unchanged or maps
-$r$ to $r+1\bmod W$, and
-$q(r)\leq1+q(r+1\bmod W)$. The goal operator can decrease $h$ by at
-most $W-1$ and costs $W$. Hence $h$ is consistent. Every plan from a
-non-goal state must still apply the cost-$W$ goal operator. Therefore a
-solvable non-goal state $s$ satisfies
-$h(s)\leq W-1<W\leq\hstar(s)$; admissibility is immediate at goals and
-dead ends.
-
-The heuristic ignores the $x$-block. While the $v$-block is read, its
-cofactor is determined by the partial residue, of which there are at
-most $W$; after $t$ is read the cofactors are constants. All $W$ values
-are attained, so Proposition~\ref{prop-range} gives the reverse
-inequality and
-\[
-\width_\pi(h)=W.
+ n=q+m+2B+1=2B+O(\log B)=\Theta(B).
 \]
 
-\emph{Blind effort.}
-For $i\leq k$, layer $L_i$ fixes the chain prefix, fixes
-$v_j=0$ for $j>i$ and $t=0$, and leaves $v_1,\dots,v_i$ free. Therefore
-$L_i$ is the conjunction of $k+1$ chain literals, $k-i$ future-choice
-literals, and $\neg t$, so $\bddsize{L_i}=2k-i+2$. There are $k+1$ such
-pre-goal layers and no intermediate layers between costs $k$ and $k+W$, so
+Initially the control is $c_0$ and all other bits are zero.  Concatenate the
+address, modular, and data bits in their order under $\pi$ as
+$u_1,\ldots,u_N$.  At $c_{j-1}$, two cost-$C$ operators set $u_j$ to zero or
+one and move to $c_j$.  At $c_N$, one cost-1 operator for each address
+$d\in\{0,\ldots,B-1\}$ requires $a=d$ and $z_d=1$ and moves to $s_0$.
+For every $0\leq\ell<B-1$, a cost-1 operator moves from $s_\ell$ to
+$s_{\ell+1}$ without changing the other bits.  Finally, a cost-$C$ operator
+applicable at $s_{B-1}$ sets $t=1$.
+The goal is $t=1$.  Every solution therefore costs
 \[
-\effort(\task_{k,W},\hblind)
- =\sum_{i=0}^k(2k-i+2)=\frac{(k+1)(3k+4)}{2}.
+ \copt=NC+B+C.
 \]
+The task has $O(B)$ operators.  Binary control preconditions and address
+tests give an explicit encoding of size $O(B\log B)$.
 
-\emph{Heuristic effort.}
-On $L_i$, $h=q(\sum_{j\leq i}v_j\bmod W)$. For $i\geq W-1$ all $W$
-buckets are nonempty, and every bucket is selected because
-$i+h\leq k+W-1<\copt$; the same inequality selects every nonempty bucket
-on the earlier layers as well.
+It remains to define the heuristic.  On the cyclic group $\mathbb Z_W$, let
+\[
+ \lambda(r)=
+ \begin{cases}
+   r, & 0\leq r<\values-1,\\
+   \values-1, & \values-1\leq r<W.
+ \end{cases}
+\]
+Every color class $\lambda^{-1}(v)$ has trivial stabilizer under cyclic
+translation.  This is immediate for the singleton classes; the last class is
+a nonempty proper cyclic interval, which no nonzero translation fixes.  On
+every Boolean assignment, including assignments with an unused control code,
+set
+\[
+ h(s)=
+ \begin{cases}
+   0, & s(t)=1,\\
+   \lambda\!\left(\sum_{i=1}^B s(y_i)\bmod W\right), & s(t)=0.
+ \end{cases}
+\]
+The heuristic has exactly the values $0,\ldots,\values-1$.  A generation
+operator changes its value by at most $C$; the filter and persistent operators
+preserve it; and the goal operator decreases it by at most $C$.  Hence $h$ is
+consistent and, because it is zero at goals, admissible.
 
-We count all modular inner nodes rather than only the saturated middle
-levels.  Fix layer $i$ and the cut after the first $j$ choice bits, where
-$0\leq j<i$.
-The attainable residues of the $j$ prefix bits and the $i-j$ suffix bits
-have cardinalities
+We next establish its exact width.  At a cut within the $y$-block, a prefix
+affects the residual only through its Hamming-weight residue modulo $W$, so
+there are at most $W$ residuals.  At every other cut there are no more.  For a
+cut after $j$ modular bits with
 \[
- p_j=\min\{W,j+1\}
- \quad\text{and}\quad
- r_{i-j}=\min\{W,i-j+1\},
+ W-1\leq j\leq B-W+1,
 \]
-respectively.  For one target residue $a$, a prefix residue $z$ induces a
-nonzero residual exactly when $b=a-z\bmod W$ is attainable by the suffix.
-Distinct such residues induce distinct modular residual functions.  Choose
-an accepted suffix Hamming weight $t\in[0,i-j]$ for $b$. If $t<i-j$, assign
-weight $t$ to the last $i-j-1$ bits: the 0-child accepts and the 1-child does
-not. If $t=i-j$, assign those bits weight $i-j-1$: the 1-child accepts and
-the 0-child does not. Hence every nonzero residual depends on $v_{j+1}$.
-For every pair $(z,b)$ of attainable prefix and suffix residues, there is a
-unique target $a=z+b\bmod W$. Thus, after summing over target buckets and
-counting nodes separately across their reduced BDDs, the cut contributes
-exactly $p_jr_{i-j}$ modular nodes. Conjoining the common chain,
-future-choice, and $t$ literals preserves these nonzero functions and their
-distinctness.  The expanded BDDs on layer $i$ therefore contain at least
-\[
- S_{i,W}=\sum_{j=0}^{i-1}
-   \min\{W,j+1\}\min\{W,i-j+1\}
-\]
-inner nodes in total.
+both the prefix and suffix realize every residue in $\mathbb Z_W$.  If the
+residuals induced by prefix residues $r$ and $r'$ were equal, then
+$\lambda(r+x)=\lambda(r'+x)$ for every $x\in\mathbb Z_W$.  Each color class
+would be invariant under translation by $r'-r$, so triviality of its
+stabilizer gives $r=r'$.  The cut has $W$ distinct residuals, and therefore
+$\width_\pi(h)=W$.
 
-For completeness, direct summation gives
+We now lower-bound heuristic effort.  Each persistent control value $s_\ell$
+defines one exact layer
 \[
-S_{i,W}=
-\begin{cases}
- i(i+1)(i+5)/6,
-   &0\leq i\leq W-2,\\
- \displaystyle\frac{1}{6}\left[
-   \begin{aligned}
-     &W(W-1)(W+4)+3rW^2\\[-2pt]
-     &\quad{}+3Wr(r+2)-r(r+1)(r+2)
-   \end{aligned}\right],
-   &i=W-1+r,\ 0\leq r\leq W-1,\\
- W(Wi-W^2+2W-1),
-   &i\geq2W-1.
-\end{cases}
+ S_\ell=\{s_\ell\}\wedge[z_a=1]\wedge\neg t,
+ \qquad 0\leq\ell<B,
 \]
-Consequently, if $d=k-4W\geq0$, then
+where $[z_a=1]$ denotes the multiplexer predicate.  The address, modular, and
+data choices otherwise remain free.  Its cost is $NC+1+\ell$.  Every color
+occurs in every such layer, and for every color $v$,
+\[
+ NC+1+\ell+v\leq NC+B+C=\copt.
+\]
+Lemma~\ref{lem-identity} therefore selects all $\values$ buckets in all $B$
+persistent layers.
+
+Fix one of these layers, a color $v$, and a cut after $j$ modular bits, where
+\[
+ W-1\leq j\leq B-W.
+\]
+For every address $d$ and prefix residue $r$, the bucket residual is
+\[
+ z_d\wedge\neg t\wedge
+ \left[
+ \lambda\!\left(r+\sum_{i=j+1}^B y_i\bmod W\right)=v
+ \right].
+\tag{1}\label{eq:mux-residual}
+\]
+These $BW$ residuals are pairwise distinct.  Different addresses are
+separated by a data assignment, and different residues are separated by the
+trivial cyclic stabilizer of $\lambda^{-1}(v)$.  Moreover, every residual in
+\eqref{eq:mux-residual} depends on $y_{j+1}$.  Indeed, a nonempty proper color
+class has an adjacent cyclic boundary, and the remaining $B-j-1\geq W-1$
+bits can realize the residue at that boundary. Every displayed residual is
+false when $t=1$, so no two are complements. In a reduced ordered BDD with
+complemented edges, pairwise distinct, noncomplementary residuals that depend
+on the next variable induce distinct regular nodes labeled by that variable.
+Hence the reduced BDD for this bucket has at
+least $BW$ nodes at each of the
+$B-2W+2$ indicated modular levels.  Summing over colors and persistent layers
+gives
+\[
+ \effort(\task,h)
+ \geq \values\,B\,(BW)(B-2W+2)
+ \geq \tfrac12\values WB^3,
+\tag{2}\label{eq:joint-lower-effort}
+\]
+where the last inequality uses $B\geq4W$.
+
+Finally, blind effort is only quadratic.  At generation control value $c_j$,
+the exact layer fixes the control code, the $N-j$ not-yet-chosen bits, and
+$t=0$; its BDD has $q+N-j+1$ nodes.  At a persistent control value, the
+ordered multiplexer BDD consists of a full $B$-leaf address tree, one data
+node per leaf, the shared $t$-node, and the control prefix, for $q+2B$ nodes.
+Thus
 \[
 \begin{aligned}
-N_W(k)&:=\sum_{i=0}^{k}S_{i,W}\\
- &=\frac{55W^4+90W^3-7W^2-18W}{12}
-   +\frac{Wd}{2}(6W^2+Wd+5W-2).
+ \effort(\task,\hblind)
+ &\leq \sum_{j=0}^{N}(q+N-j+1)+B(q+2B)\\
+ &=O(B^2).
 \end{aligned}
+\tag{3}\label{eq:joint-blind-effort}
 \]
-This is a lower bound on $\effort(\task_{k,W},h)$.  With
-$D(k)=(k+1)(3k+4)/2=\effort(\task_{k,W},\hblind)$, expansion and collection
-of terms yield
-\[
-\begin{aligned}
-288N_W(k)-55W^2D(k)
-={}&2W(695W^2-139W-216)\\
- &+\frac{dW}{2}(408W^2+123Wd+1055W-576)>0.
-\end{aligned}
-\]
-Both parentheses are positive for $W\geq2$ and $d\geq0$, which proves the
-claimed ratio.
+For the explicit constant, $B\geq8$ gives $m\leq B/2$, $q\leq B$,
+$N+1\leq3B$, and $q+N+1\leq4B$.  The right-hand side of
+\eqref{eq:joint-blind-effort} is therefore at most $15B^2$, whereas
+\eqref{eq:joint-lower-effort} is at least $\values WB^3/2$.  Moreover,
+$n=q+m+2B+1\leq4B$.  The ratio is consequently at least
+$\values WB/30\geq\values Wn/120$.  The heuristic itself has an $O(BW)$
+ordered ADD, so the entire construction is polynomial-size.
 \end{proof}
 
-\begin{corollary}[pairwise lower bounds]
-\label{cor-pairwise-lb}
-For every integer $W\geq2$, the construction contains an instance with
-$\values=W$ and $n=8W+2$ whose heuristic-to-blind effort ratio is at least
-$55\values W/288$, $55\values n/2304$, and $55Wn/2304$.
-\end{corollary}
-
-\begin{proof}
-Set $k=4W$ in Theorem~\ref{thm-tight}.  Then $\values=W$ and
-$n=8W+2$.  The first bound is Theorem~\ref{thm-tight}.  For the other two,
-the exact count above gives
-\[
-2304N_W(4W)-55W(8W+2)D(4W)
-=4W(2120W^2-941W-919)>0.
-\]
-Since $\values=W$, this proves both remaining bounds.
-\end{proof}
-
-Thus the ratio is simultaneously within a constant of $\values W$, $\values n$,
-and $Wn$ on this tied diagonal slice. This does not prove their independent
-pairwise necessity or a joint $\Omega(\values Wn)$ lower bound.
+For each fixed power-of-two $B$, the construction permits every pair
+$2\leq\values\leq W\leq B/4$; varying $B$ changes
+$n=2B+O(\log B)$. It therefore establishes joint worst-case necessity of all
+three factors in Corollary~\ref{cor-effort}, rather than only necessity along
+a tied diagonal. Its repeated multiplexer layers are synthetic, so the theorem
+is not a typical-case prediction.
 
 \section{Width of the Known Exponential Pathology}
 

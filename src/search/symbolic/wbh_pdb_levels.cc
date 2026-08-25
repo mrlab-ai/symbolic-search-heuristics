@@ -33,6 +33,11 @@ const char *const CAP_GRID_SELECTOR_PROTOCOL = "fixed_pool_cap_grid_v6";
 const char *const CAP_GRID_SELECTOR_SCORE =
     "per_pattern_strongest_feasible_cap_then_"
     "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1";
+const char *const ADD_SELECTOR_PROTOCOL = "fixed_pool_total_add_v1";
+const char *const CAPPED_ADD_SELECTOR_PROTOCOL =
+    "fixed_pool_total_add_value_cap_v1";
+const char *const ADD_CAP_GRID_SELECTOR_PROTOCOL =
+    "fixed_pool_total_add_cap_grid_v1";
 
 struct CandidateSpec {
     vector<int> pattern;
@@ -392,6 +397,25 @@ bool candidate_is_better(
     return candidate.pattern < incumbent.pattern;
 }
 
+bool uses_total_add_budget(int total_add_node_budget) {
+    return total_add_node_budget != numeric_limits<int>::max();
+}
+
+bool candidate_is_feasible(
+    const MaterializedCandidate &candidate, int cofactor_width_budget,
+    int total_add_node_budget) {
+    if (uses_total_add_budget(total_add_node_budget)) {
+        return candidate.add_stats.width_upper_bound <= total_add_node_budget;
+    }
+    return candidate.add_stats.cofactor_width <= cofactor_width_budget;
+}
+
+const char *budget_rejection_reason(int total_add_node_budget) {
+    return uses_total_add_budget(total_add_node_budget)
+               ? "total_add_node_budget"
+               : "cofactor_width_budget";
+}
+
 void append_string_array(ostringstream &out, const vector<string> &values) {
     out << "[";
     for (size_t i = 0; i < values.size(); ++i) {
@@ -419,19 +443,29 @@ void append_int_array(ostringstream &out, const vector<int> &values) {
 void log_selector_record(
     const string &kind, const CandidateSpec &spec,
     const MaterializedCandidate *candidate, int cofactor_width_budget,
-    int value_cap, bool select_value_cap, bool feasible,
+    int total_add_node_budget, int value_cap, bool select_value_cap,
+    bool feasible,
     const string &rejection_reason, bool emit_raw_value_histogram = false) {
     ostringstream out;
     const bool capped = value_cap >= 0;
     const bool cap_grid = select_value_cap;
+    const bool add_budget = uses_total_add_budget(total_add_node_budget);
     out << "{\"protocol\":\""
-        << (cap_grid ? CAP_GRID_SELECTOR_PROTOCOL
-                     : (capped ? CAPPED_WIDTH_SELECTOR_PROTOCOL
-                               : WIDTH_SELECTOR_PROTOCOL))
+        << (add_budget
+                ? (cap_grid ? ADD_CAP_GRID_SELECTOR_PROTOCOL
+                            : (capped ? CAPPED_ADD_SELECTOR_PROTOCOL
+                                      : ADD_SELECTOR_PROTOCOL))
+                : (cap_grid ? CAP_GRID_SELECTOR_PROTOCOL
+                            : (capped ? CAPPED_WIDTH_SELECTOR_PROTOCOL
+                                      : WIDTH_SELECTOR_PROTOCOL)))
         << "\",\"score_version\":\""
-        << (cap_grid ? CAP_GRID_SELECTOR_SCORE
-                     : (capped ? CAPPED_WIDTH_SELECTOR_SCORE
-                               : WIDTH_SELECTOR_SCORE))
+        << (add_budget
+                ? (cap_grid ? CAP_GRID_SELECTOR_SCORE
+                            : (capped ? CAPPED_WIDTH_SELECTOR_SCORE
+                                      : WIDTH_SELECTOR_SCORE))
+                : (cap_grid ? CAP_GRID_SELECTOR_SCORE
+                            : (capped ? CAPPED_WIDTH_SELECTOR_SCORE
+                                      : WIDTH_SELECTOR_SCORE)))
         << "\",\"sources\":";
     append_string_array(out, spec.sources);
     out << ",\"pattern\":";
@@ -459,7 +493,11 @@ void log_selector_record(
                ",\"dead_count\":null,\"cofactor_width\":null"
                ",\"width_upper_bound\":null";
     }
-    out << ",\"cofactor_width_budget\":" << cofactor_width_budget;
+    if (add_budget) {
+        out << ",\"total_add_node_budget\":" << total_add_node_budget;
+    } else {
+        out << ",\"cofactor_width_budget\":" << cofactor_width_budget;
+    }
     if (capped || cap_grid) {
         out << ",\"value_cap\":" << value_cap;
         if (candidate) {
@@ -540,18 +578,24 @@ void log_selector_record(
         out << "\"" << rejection_reason << "\"";
     }
     out << "}";
-    utils::g_log << "PDB width-selector v1 " << kind << ": " << out.str()
-                 << endl;
+    utils::g_log << (add_budget ? "PDB add-selector v1 "
+                                : "PDB width-selector v1 ")
+                 << kind << ": " << out.str() << endl;
 }
+}
+
+bool PdbLevelSets::uses_total_add_node_budget() const {
+    return uses_total_add_budget(total_add_node_budget);
 }
 
 PdbLevelSets::PdbLevelSets(
     SymVariables *vars, const shared_ptr<AbstractTask> &task, int state_budget,
     PdbPatternSelection pattern_selection, bool legacy_goal_directed,
     double cegar_max_time, int cegar_seed, int cofactor_width_budget,
-    int value_cap, bool select_value_cap)
+    int total_add_node_budget, int value_cap, bool select_value_cap)
     : vars(vars), cofactor_width_budget(cofactor_width_budget),
-      value_cap(value_cap), select_value_cap(select_value_cap) {
+      total_add_node_budget(total_add_node_budget), value_cap(value_cap),
+      select_value_cap(select_value_cap) {
     TaskProxy task_proxy(*task);
 
     if (pattern_selection == PdbPatternSelection::EXACT_WIDTH_FILTER) {
@@ -656,7 +700,8 @@ PdbLevelSets::PdbLevelSets(
             if (!spec.within_state_budget) {
                 log_selector_record(
                     "candidate", spec, nullptr, cofactor_width_budget,
-                    value_cap, select_value_cap, /*feasible=*/false,
+                    total_add_node_budget, value_cap, select_value_cap,
+                    /*feasible=*/false,
                     "abstract_state_budget");
                 spec.pdb.reset();
                 continue;
@@ -687,13 +732,16 @@ PdbLevelSets::PdbLevelSets(
                         transformed = cap_candidate(vars, *raw, cap);
                         candidate = transformed.get();
                     }
-                    bool feasible = candidate->add_stats.cofactor_width <=
-                                    cofactor_width_budget;
+                    bool feasible = candidate_is_feasible(
+                        *candidate, cofactor_width_budget,
+                        total_add_node_budget);
                     log_selector_record(
                         "candidate", spec, candidate,
-                        cofactor_width_budget, cap,
+                        cofactor_width_budget, total_add_node_budget, cap,
                         /*select_value_cap=*/true, feasible,
-                        feasible ? "" : "cofactor_width_budget",
+                        feasible ? ""
+                                 : budget_rejection_reason(
+                                       total_add_node_budget),
                         /*emit_raw_value_histogram=*/!histogram_emitted);
                     histogram_emitted = true;
                     if (feasible) {
@@ -712,13 +760,16 @@ PdbLevelSets::PdbLevelSets(
             } else {
                 unique_ptr<MaterializedCandidate> candidate =
                     materialize_candidate(vars, task_proxy, spec, value_cap);
-                bool feasible = candidate->add_stats.cofactor_width <=
-                                cofactor_width_budget;
+                bool feasible = candidate_is_feasible(
+                    *candidate, cofactor_width_budget,
+                    total_add_node_budget);
                 log_selector_record(
                     "candidate", spec, candidate.get(),
-                    cofactor_width_budget, value_cap,
+                    cofactor_width_budget, total_add_node_budget, value_cap,
                     /*select_value_cap=*/false, feasible,
-                    feasible ? "" : "cofactor_width_budget");
+                    feasible ? ""
+                             : budget_rejection_reason(
+                                   total_add_node_budget));
                 if (feasible &&
                     (!winner || candidate_is_better(*candidate, *winner))) {
                     winner = move(candidate);
@@ -739,7 +790,8 @@ PdbLevelSets::PdbLevelSets(
             /*within_state_budget=*/true, nullptr};
         log_selector_record(
             "selected", selected_spec, winner.get(), cofactor_width_budget,
-            winner->value_cap, select_value_cap, /*feasible=*/true, "");
+            total_add_node_budget, winner->value_cap, select_value_cap,
+            /*feasible=*/true, "");
 
         pattern = winner->pattern;
         selected_source = winner->sources.front();
@@ -749,9 +801,15 @@ PdbLevelSets::PdbLevelSets(
         level_sets = move(winner->level_sets);
         dead_ends = winner->dead_ends;
         add_stats = move(winner->add_stats);
-        selection_name = select_value_cap
-                             ? "exact_width_cap_filter"
-                             : "exact_width_filter";
+        if (uses_total_add_node_budget()) {
+            selection_name = select_value_cap
+                                 ? "exact_add_cap_filter"
+                                 : "exact_add_filter";
+        } else {
+            selection_name = select_value_cap
+                                 ? "exact_width_cap_filter"
+                                 : "exact_width_filter";
+        }
 
         pdbs::Projection selected_projection(task_proxy, pattern);
         verify_against_pdb(
@@ -759,9 +817,14 @@ PdbLevelSets::PdbLevelSets(
         utils::g_log << "PDB pattern selection=" << selection_name
                      << " (source=" << selected_source << ", "
                      << pattern.size() << " vars, " << num_abstract_states
-                     << " abstract states, exact width="
-                     << add_stats.cofactor_width << " <= "
-                     << cofactor_width_budget;
+                     << " abstract states, ";
+        if (uses_total_add_node_budget()) {
+            utils::g_log << "total ADD nodes=" << add_stats.width_upper_bound
+                         << " <= " << total_add_node_budget;
+        } else {
+            utils::g_log << "exact width=" << add_stats.cofactor_width
+                         << " <= " << cofactor_width_budget;
+        }
         if (value_cap >= 0 || select_value_cap) {
             utils::g_log << ", value_cap=" << value_cap;
         }

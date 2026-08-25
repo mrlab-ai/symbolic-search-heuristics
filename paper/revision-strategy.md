@@ -17,16 +17,18 @@
 ## Central Contribution
 
 Cofactor width gives a fixed-order certificate for heuristic fragmentation in
-forward product-at-evaluation symbolic A*, and safe terminal capping turns the
-certificate into a backward-compatible PDB selector that recovers useful
-heuristic information while improving the same-budget comparator.
+forward product-at-evaluation symbolic A*. The certificate's $O(VWn)$ ratio is
+jointly tight for independently chosen feasible $V$, $W$, and $n$. Safe
+terminal capping turns the certificate into a backward-compatible PDB selector
+that recovers useful heuristic information while improving the same-budget
+comparator.
 
 ## Claims and Evidence
 
 | Claim | Evidence |
 |---|---|
 | A width-$W$, $V$-valued consistent heuristic has expansion-size ratio at most $2VWn$ over blind forward search. | The sharper layerwise certificate is $\sum_g V_g\mathcal C_\pi(L_g,h)$, where $\mathcal C_\pi$ is the cut-aligned product of the state-set and heuristic cofactor profiles. Relaxing it yields the coarse ratio. |
-| The parameter dependence is not merely an artifact of the proof. | Exact modular-cut counting strengthens the quadratic construction to ratio at least $55W^2/288$ for $V=W$; setting $k=4W$ gives $n=8W+2$. The ratio matches all three pairwise products on this tied diagonal, without proving their independent necessity; simultaneous $VWn$ tightness remains open. |
+| All three factors in the coarse ratio are jointly necessary. | A polynomial-size multiplexer/modular family independently chooses every $2\leq V\leq W$ and power-of-two $B\geq4W$, has $n=\Theta(B)$ Boolean state bits and exact width $W$, and attains effort ratio $\Omega(VWn)$. Complete residual counting and the blind $O(B^2)$ bound are in the supplement. |
 | Cofactor width contributes information beyond ordinary total-ADD size. | Before relaxation to width, the cofactor-profile and Apply certificates have explicit linear separations in both directions and combine per active layer by taking their minimum. |
 | Uniform caps preserve admissibility and consistency and contract every cofactor cut. | Safe-terminal-transform proposition and nested-cap argument; pointwise cut contraction also contracts every fixed-layer profile certificate. |
 | Cap-aware selection is backward compatible with exact-width selection on score-identical raw pools. | The exact candidate chosen for every width-feasible pattern is retained by the cap-aware per-pattern step, so the frozen lexicographic score cannot decrease. This also preserves semantic nontriviality; an exact cap-aware fallback is the exact selector's winner. |
@@ -47,6 +49,11 @@ heuristic information while improving the same-budget comparator.
 - The experiment measures the theorem's effort target against blind search but
   does not instantiate the sharper profile-based numerical upper bound.
 - The unaligned M&S control is not covered by the aligned M&S family formula.
+
+The adversarial-review sections below are a chronological audit trail. Their
+descriptions of the older diagonal construction remain historically accurate;
+where they say that joint tightness was open, that risk is superseded by the
+new joint lower bound above.
 
 ## Adversarial Review Round 1
 
@@ -297,29 +304,27 @@ parameter necessity; selector-induced pattern changes are explicit; and the
 triple-solved audit fails closed unless every expanded bucket has one BDD
 piece. The remaining objections are scope limits already stated as non-claims.
 
-## Path from Weak Accept to Clear Accept
+## Round 5: Acting on the Clear-Accept Roadmap
 
-The current 7/10 verdict appears stable on correctness. The remaining risks are
-significance and evidential alignment: cofactor width is standard machinery,
-the lower bound is diagonal rather than jointly tight, the experiment uses one
-width budget and no ADD-matched selector, and the theorem-target audit is
-conditioned and post hoc. A clear-accept verdict therefore most plausibly needs
-one decisive new result rather than another defensive prose pass.
+The theory route succeeded: the new polynomial-size multiplexer/modular family
+proves joint $\Omega(VWn)$ tightness for independently chosen feasible
+parameters. This removes the strongest formal limitation in the 7/10 review.
+The remaining high-value risk is evidential alignment: the published matrix
+uses one width budget, lacks an acceptance-matched ADD selector, and does not
+log the complete profiles needed to instantiate the sharp certificate.
 
 ### Highest-value decisive routes
 
-1. Close the theory gap by proving a joint $\Omega(VWn)$ lower bound,
-   establishing independent necessity of the factors, or sharpening the
-   universal upper bound.
-2. Run an independently frozen experiment that logs the complete layer and
+1. **Completed:** prove a joint $\Omega(VWn)$ lower bound, establishing
+   independent necessity of all three factors in the coarse upper bound.
+2. **In implementation:** run an independently frozen experiment that logs the complete layer and
    heuristic cut profiles, active $V_g$, per-layer bucket effort and unsplit
    layer size. Instantiate $\mathcal C_\pi(L_g,h)$, charge and report profiling
    overhead, and compare actual slack for the profile, width and Apply
-   certificates. Add a total-ADD-size selector under a prespecified matching
-   rule (for example, a common certified-ratio budget or a frozen development
-   acceptance rate), an unconstrained same-pool selector, and a prespecified
-   sweep such as $K\in\{2,4,8,16,32\}$. This would expose both certificate slack
-   and the safety--quality frontier.
+   certificates. The frozen design uses $K\in\{2,4,8,16,32\}$, total-ADD-node
+   budgets $U\in\{8,29,55,100,204\}$ matched on the original 50-task
+   development archive, and an unconstrained exact same-pool selector. Width
+   and ADD constraints are varied separately rather than simultaneously.
 
 A fixed-pattern raw-versus-capped search ablation and an independent
 replication should follow that combined experiment. An online

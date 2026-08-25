@@ -15,6 +15,7 @@ class Feature;
 
 namespace symbolic {
 class WbhStats;
+class WbhProfile;
 
 struct SymParameters {
     ConditionalEffectsTransitionType ce_transition_type;
@@ -44,6 +45,10 @@ struct SymParameters {
     // wbh_log option is a non-empty path. Shared across all copies of this
     // struct so that forward and backward searches write to one file.
     std::shared_ptr<WbhStats> stats;
+
+    // Independent complete cofactor-profile stream. This is not folded into
+    // WbhStats so the frozen wbh.jsonl schema-v2 remains unchanged.
+    std::shared_ptr<WbhProfile> profile;
 
     SymParameters(
         const plugins::Options &opts,

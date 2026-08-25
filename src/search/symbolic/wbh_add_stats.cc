@@ -3,6 +3,7 @@
 #include "wbh_stats.h"
 
 #include "../utils/system.h"
+#include "../utils/timer.h"
 
 #include <algorithm>
 #include <cmath>
@@ -49,6 +50,7 @@ AddStats compute_add_stats(SymVariables *vars, const ADD &add, int num_values) {
     // below the current level is unchanged (the function skips this bit); a
     // root on the current level advances to its two children. CUDD's unique
     // table makes pointer identity exactly equality of residual functions.
+    utils::Timer cofactor_timer;
     unordered_set<DdNode *> frontier;
     frontier.insert(Cudd_Regular(add.getNode()));
     const int manager_levels = Cudd_ReadSize(dd);
@@ -99,6 +101,7 @@ AddStats compute_add_stats(SymVariables *vars, const ADD &add, int num_values) {
         stats.cofactor_width > stats.width_upper_bound) {
         ABORT("Exact ADD cofactor-width computation failed its invariants.");
     }
+    stats.cofactor_seconds = cofactor_timer();
     return stats;
 }
 

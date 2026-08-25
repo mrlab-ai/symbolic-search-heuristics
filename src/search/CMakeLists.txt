@@ -1040,6 +1040,7 @@ create_fast_downward_library(
         symbolic/wbh_ms_levels
         symbolic/wbh_pdb_levels
         symbolic/wbh_potential_levels
+        symbolic/wbh_profile
         symbolic/wbh_pruner
         symbolic/wbh_stats
         symbolic/transition_relations/conjunctive_transition_relation

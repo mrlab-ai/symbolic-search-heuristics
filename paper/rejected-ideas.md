@@ -111,7 +111,9 @@ prespecified exact and cap-aware `K=8` contrast; the earlier `K=32` screen is
 development evidence from a different scope and cannot reconstruct a common
 full-census sweep.
 
-**Decision:** defer the sweep to a new frozen experiment.
+**Decision:** exclude any reconstructed sweep from the old census. A genuinely
+new, separately frozen profile experiment now uses
+`K in {2,4,8,16,32}`; it does not retroactively change the accepted study.
 
 **Reason:** running or selecting additional budgets after inspecting the
 `K=8` outcomes would answer a new tuning question. The current revision instead
@@ -224,7 +226,9 @@ The paper proves a second per-bucket bound based on the total ADD size, and the
 two pre-relaxation bounds are incomparable.
 
 **Decision:** reject the claim that cofactor width is the superior operational
-budget.
+budget. A new separately frozen study now adds an acceptance-matched
+total-ADD-node baseline, but no comparative claim is permitted until that
+matrix passes its fail-closed analysis.
 
 **Reason:** the accepted matrix contains no matched total-ADD-size budget
 ablation. The revised paper proves linear separations between the cut-sensitive
@@ -297,19 +301,22 @@ Neither version contains the full cofactor profiles needed for the theorem's
 numerical certificate. Presenting the standalone quantiles as robustness or
 mechanism evidence would therefore exploit censoring rather than resolve it.
 
-### A Joint Three-Factor Lower-Bound Claim
+### A Joint Three-Factor Lower-Bound Claim from the Old Construction
 
 The quadratic construction becomes a simultaneous pairwise lower bound when
 setting (k=4W): it has (V=W), (n=8W+2), and overhead in
 (\Omega(VW)), (\Omega(Vn)), and (\Omega(Wn)). All three parameters are tied
 together on this diagonal slice.
 
-**Decision:** reject any claim that the construction proves
+**Decision:** reject any claim that the old quadratic construction proves
 (\Omega(VWn)) overhead or independent necessity of all three factors.
 
 **Reason:** the construction establishes that each pairwise product is tight
 on one parameter slice, but its ratio is only quadratic while (VWn) is
-cubic there. Joint three-parameter tightness remains open.
+cubic there. This historical rejection remains correct for that construction.
+It is superseded as an open problem by a different polynomial-size
+multiplexer/modular family, which independently varies the parameters and
+proves the joint $\Omega(VWn)$ lower bound.
 
 ### Selector Dominance as Runtime Dominance
 

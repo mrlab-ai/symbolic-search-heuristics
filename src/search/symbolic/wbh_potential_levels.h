@@ -61,6 +61,10 @@ public:
 
     void log_heuristic(WbhStats &stats) const;
 
+    const AddStats &get_add_stats() const {
+        return add_stats;
+    }
+
     long get_width_upper_bound() const {
         return add_stats.width_upper_bound;
     }

@@ -60,6 +60,7 @@ class PdbLevelSets {
     std::string selected_source;
     int num_abstract_states = 0;
     int cofactor_width_budget;
+    int total_add_node_budget;
     int value_cap;
     bool select_value_cap;
     bool selected_initial_dead_end = false;
@@ -75,7 +76,8 @@ public:
         SymVariables *vars, const std::shared_ptr<AbstractTask> &task,
         int state_budget, PdbPatternSelection pattern_selection,
         bool legacy_goal_directed, double cegar_max_time, int cegar_seed,
-        int cofactor_width_budget, int value_cap, bool select_value_cap);
+        int cofactor_width_budget, int total_add_node_budget, int value_cap,
+        bool select_value_cap);
 
     const std::map<int, BDD> &get_level_sets() const {
         return level_sets;
@@ -105,13 +107,21 @@ public:
         return cofactor_width_budget;
     }
 
+    int get_total_add_node_budget() const {
+        return total_add_node_budget;
+    }
+
+    bool uses_total_add_node_budget() const;
+
     int get_value_cap() const {
         return value_cap;
     }
 
     bool uses_exact_width_filter() const {
         return selection_name == "exact_width_filter" ||
-               selection_name == "exact_width_cap_filter";
+               selection_name == "exact_width_cap_filter" ||
+               selection_name == "exact_add_filter" ||
+               selection_name == "exact_add_cap_filter";
     }
 
     bool selected_initial_is_dead_end() const {
@@ -119,6 +129,10 @@ public:
     }
 
     void log_heuristic(WbhStats &stats) const;
+
+    const AddStats &get_add_stats() const {
+        return add_stats;
+    }
 
     long get_width_upper_bound() const {
         return add_stats.width_upper_bound;

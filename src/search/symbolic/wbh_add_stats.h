@@ -32,6 +32,7 @@ struct AddStats {
     long width_upper_bound = 0;
     long cofactor_width = 0;
     std::vector<long> cofactor_counts;
+    double cofactor_seconds = 0;
 };
 
 // Traverse the ADD once for node statistics and once level-by-level for the

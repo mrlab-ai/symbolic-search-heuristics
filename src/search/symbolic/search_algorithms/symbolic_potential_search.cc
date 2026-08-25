@@ -3,6 +3,7 @@
 #include "../sym_state_space_manager.h"
 #include "../sym_variables.h"
 #include "../wbh_potential_levels.h"
+#include "../wbh_profile.h"
 #include "../wbh_stats.h"
 
 #include "../../potentials/potential_optimizer.h"
@@ -73,6 +74,10 @@ void SymbolicPotentialForwardSearch::initialize() {
                  << endl;
     if (sym_params.stats) {
         level_sets->log_heuristic(*sym_params.stats);
+    }
+    if (sym_params.profile) {
+        sym_params.profile->log_heuristic(
+            vars.get(), level_sets->get_add_stats());
     }
 
     auto search_ptr =

@@ -1,5 +1,6 @@
 #include "sym_parameters.h"
 
+#include "wbh_profile.h"
 #include "wbh_stats.h"
 
 #include "../plugins/plugin.h"
@@ -46,6 +47,10 @@ SymParameters::SymParameters(
     string wbh_log = opts.get<string>("wbh_log");
     if (!wbh_log.empty()) {
         stats = make_shared<WbhStats>(wbh_log);
+    }
+    string wbh_profile_log = opts.get<string>("wbh_profile_log");
+    if (!wbh_profile_log.empty()) {
+        profile = make_shared<WbhProfile>(wbh_profile_log);
     }
 }
 
@@ -138,6 +143,13 @@ void SymParameters::add_options_to_feature(plugins::Feature &feature) {
         "If non-empty, path to a JSON-lines log file for the "
         "width-bounded-heuristics instrumentation (PR1). Empty disables "
         "logging and leaves search behavior unchanged.",
+        "\"\"");
+    feature.add_option<std::string>(
+        "wbh_profile_log",
+        "If non-empty, path to a separate JSON-lines log containing complete "
+        "cofactor profiles for the selected heuristic and prepared forward "
+        "blind layers. Empty disables profile logging. This option does not "
+        "alter the wbh_log schema-v2 stream.",
         "\"\"");
 }
 }

@@ -3,6 +3,7 @@
 #include "../closed_list.h"
 #include "../frontier.h"
 #include "../sym_utils.h"
+#include "../wbh_profile.h"
 #include "../wbh_pruner.h"
 #include "../wbh_stats.h"
 
@@ -171,8 +172,21 @@ void UniformCostSearch::stepImage(int maxTime, int maxNodes) {
             ++wbh_piece_count;
         }
     }
+    if (sym_params.profile && fw) {
+        if (mgr->has_zero_cost_transition()) {
+            ABORT(
+                "Complete blind-layer profiles require positive operator "
+                "costs; a zero-cost transition would split one exact g-layer "
+                "across multiple prepared frontiers.");
+        }
+        sym_params.profile->prepare_blind_layer(
+            wbh_g, mgr->getVars(), frontier.prepared_bucket());
+    }
     utils::Timer wbh_image_timer;
     ResultExpansion res_expansion = frontier.expand(maxTime, maxNodes, fw);
+    if (sym_params.profile && fw) {
+        sym_params.profile->finish_blind_layer(res_expansion.ok);
+    }
     if (wbh_log_this) {
         double image_time = wbh_image_timer();
         sym_params.stats->log_expand(

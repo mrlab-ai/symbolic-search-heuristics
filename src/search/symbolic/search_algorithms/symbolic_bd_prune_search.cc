@@ -3,6 +3,7 @@
 #include "../sym_state_space_manager.h"
 #include "../sym_variables.h"
 #include "../wbh_ms_levels.h"
+#include "../wbh_profile.h"
 #include "../wbh_pruner.h"
 #include "../wbh_stats.h"
 
@@ -94,6 +95,10 @@ void SymbolicBdPruneSearch::build_and_attach_pruners() {
             "bidirectional_pruning_ms", construction_time, max_states, -1,
             true);
         level_sets->log_heuristic(*sym_params.stats);
+    }
+    if (sym_params.profile) {
+        sym_params.profile->log_heuristic(
+            vars.get(), level_sets->get_add_stats());
     }
     fw_pruner = make_shared<WbhPruner>(
         this, level_sets->get_level_sets(), level_sets->get_dead_ends());

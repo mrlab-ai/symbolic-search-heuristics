@@ -3,6 +3,7 @@
 #include "../sym_state_space_manager.h"
 #include "../sym_variables.h"
 #include "../wbh_pdb_levels.h"
+#include "../wbh_profile.h"
 #include "../wbh_stats.h"
 
 #include "../../plugins/plugin.h"
@@ -12,6 +13,8 @@
 #include "../plan_reconstruction/sym_solution_cut.h"
 #include "../plan_selection/plan_selector.h"
 #include "../searches/heuristic_fw_search.h"
+
+#include <limits>
 
 using namespace std;
 
@@ -23,6 +26,7 @@ SymbolicPdbForwardSearch::SymbolicPdbForwardSearch(const plugins::Options &opts)
       cegar_max_time(opts.get<double>("cegar_max_time")),
       cegar_seed(opts.get<int>("cegar_seed")),
       cofactor_width_budget(opts.get<int>("cofactor_width_budget")),
+      total_add_node_budget(opts.get<int>("total_add_node_budget")),
       value_cap(opts.get<int>("value_cap")),
       select_value_cap(opts.get<bool>("select_value_cap")),
       dynamic_reordering(opts.get<bool>("dynamic_reordering")),
@@ -57,6 +61,25 @@ void SymbolicPdbForwardSearch::initialize() {
             << endl;
         utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
     }
+    const bool finite_width_budget =
+        cofactor_width_budget != numeric_limits<int>::max();
+    const bool finite_add_budget =
+        total_add_node_budget != numeric_limits<int>::max();
+    if (finite_width_budget && finite_add_budget) {
+        utils::g_log
+            << "A finite total_add_node_budget cannot be combined with a "
+               "finite cofactor_width_budget."
+            << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+    }
+    if (finite_add_budget &&
+        pattern_selection != PdbPatternSelection::EXACT_WIDTH_FILTER) {
+        utils::g_log
+            << "A finite total_add_node_budget requires "
+               "pattern_selection=exact_width_filter."
+            << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+    }
     mgr =
         make_shared<SymStateSpaceManager>(vars.get(), sym_params, search_task);
 
@@ -65,16 +88,22 @@ void SymbolicPdbForwardSearch::initialize() {
         make_shared<PdbLevelSets>(
             vars.get(), search_task, state_budget, pattern_selection,
             goal_directed, cegar_max_time, cegar_seed,
-            cofactor_width_budget, value_cap, select_value_cap);
+            cofactor_width_budget, total_add_node_budget, value_cap,
+            select_value_cap);
     if (level_sets->uses_exact_width_filter()) {
         utils::g_log << "wbh PDB heuristic: pattern_size="
                      << level_sets->get_pattern().size()
                      << ", selected_source="
                      << level_sets->get_selected_source()
                      << ", abstract_states="
-                     << level_sets->get_num_abstract_states()
-                     << ", cofactor_width_budget="
-                     << level_sets->get_cofactor_width_budget();
+                     << level_sets->get_num_abstract_states();
+        if (level_sets->uses_total_add_node_budget()) {
+            utils::g_log << ", total_add_node_budget="
+                         << level_sets->get_total_add_node_budget();
+        } else {
+            utils::g_log << ", cofactor_width_budget="
+                         << level_sets->get_cofactor_width_budget();
+        }
         if (level_sets->get_value_cap() >= 0 || select_value_cap) {
             utils::g_log << ", value_cap=" << level_sets->get_value_cap();
         }
@@ -98,6 +127,10 @@ void SymbolicPdbForwardSearch::initialize() {
     }
     if (sym_params.stats) {
         level_sets->log_heuristic(*sym_params.stats);
+    }
+    if (sym_params.profile) {
+        sym_params.profile->log_heuristic(
+            vars.get(), level_sets->get_add_stats());
     }
 
     // A completed PDB may prove the initial state dead. Record its construction
@@ -176,7 +209,8 @@ public:
             "goal_fill skips variables that do not fit instead of wasting the "
             "remaining budget; cegar uses counterexample-guided refinement; "
             "exact_width_filter applies a deterministic score to a fixed "
-            "candidate-generator pool under cofactor_width_budget.",
+            "candidate-generator pool under one exact cofactor-width or "
+            "total-ADD-node budget.",
             "legacy");
         add_option<double>(
             "cegar_max_time",
@@ -198,6 +232,13 @@ public:
             "cegar_max_time remains a wall-clock generator limit.",
             "infinity", plugins::Bounds("1", "infinity"));
         add_option<int>(
+            "total_add_node_budget",
+            "Hard total ADD-node budget U=A+T, used only for "
+            "pattern_selection=exact_width_filter. A finite value is "
+            "mutually exclusive with a finite cofactor_width_budget and "
+            "applies to the same fixed candidate pool and score.",
+            "infinity", plugins::Bounds("1", "infinity"));
+        add_option<int>(
             "value_cap",
             "Apply the safe terminal transform min(h_PDB, K) to every finite "
             "PDB value before exact-width filtering and search. K >= 0 "
@@ -209,8 +250,9 @@ public:
             "With pattern_selection=exact_width_filter, materialize each raw "
             "PDB once and test the distinct safe transforms with caps "
             "0,1,2,4,...,256 plus the exact values. For each pattern retain "
-            "its strongest feasible transform under the exact width budget, "
-            "then apply the frozen quality score across patterns.",
+            "its strongest feasible transform under the active exact width "
+            "or total-ADD-node budget, then apply the frozen quality score "
+            "across patterns.",
             "false");
         add_option<bool>(
             "prune_only",
