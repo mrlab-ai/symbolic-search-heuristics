@@ -1,0 +1,41 @@
+{
+  "account": "naiss2025-5-561-cpu",
+  "cpus_per_task": 1,
+  "effective_ld_library_path": "/software/sse/easybuild/prefix/software/GCCcore/11.3.0/lib64/:/software/sse/easybuild/prefix/software/GCCcore/11.3.0/lib64/:/software/sse/easybuild/prefix/software/GCCcore/11.3.0/lib64/:/software/sse/easybuild/prefix/software/GCCcore/11.3.0/lib64/:",
+  "effective_path": "/home/jendrik/.codex/packages/standalone/releases/0.150.1-x86_64-unknown-linux-musl/codex-path:/home/jendrik/.codex/tmp/arg0/codex-arg0uoRmXS:/software/sse2/generic/manual/ssetools/v2.1.0/wrappers:/software/sse2/generic/manual/ssetools/v2.1.0/bin:/software/tools/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/home/jendrik/bin:/home/jendrik/.local/bin:/home/jendrik/bin:/home/jendrik/.local/bin:/home/jendrik/bin:/home/jendrik/.local/bin:/home/jendrik/bin:/home/jendrik/.local/bin:/home/jendrik/bin:/home/jendrik/.local/bin",
+  "export_policy": "PATH",
+  "hostname": "n213",
+  "job_id": "1789586",
+  "job_name": "pdbprof-login-runtime-probe",
+  "memory_per_cpu": "256M",
+  "partition": "cpu",
+  "probe_error_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "probe_output_sha256": "032d69f123fc056a83983ef980633807edb06c66e2db966432aeb31bc906b8b9",
+  "probe_python_sha256": "254ae7d178a2276ea7373c117a8d295498a5a83006f7e94ee77ecf3dfd5b0f10",
+  "probe_shell_sha256": "15dc864a03f731e93fe01b2ad7e1d22a90aea500734ca4fb9f0c6e5b49ff6582",
+  "python_environment": {
+    "LD_PRELOAD": null,
+    "PYTHONHOME": null,
+    "PYTHONNOUSERSITE": null,
+    "PYTHONPATH": null,
+    "PYTHONSTARTUP": null,
+    "PYTHONUSERBASE": null
+  },
+  "qos": "normal",
+  "recorded_utc": "2026-08-29T22:31:21Z",
+  "schema": "symbolic-search-heuristics/pdb-profile-slurm-runtime-receipt/v1",
+  "state": "COMPLETED",
+  "submit_line": "sbatch --parsable --export=PATH --job-name=pdbprof-login-runtime-probe --output=/nobackup/proj/disk/dfsplan/personal/jendrik/symk-cap-grid-results/experiments/artifacts/pdb-profile-runtime-probe/runtime-login-%j.jsonl --error=/nobackup/proj/disk/dfsplan/personal/jendrik/symk-cap-grid-results/experiments/artifacts/pdb-profile-runtime-probe/runtime-login-%j.err --partition=cpu --qos=normal --time=00:05:00 --mem-per-cpu=256M --cpus-per-task=1 --account=naiss2025-5-561-cpu --no-requeue --chdir=/nobackup/proj/disk/dfsplan/personal/jendrik/symk-cap-grid-results/experiments /nobackup/proj/disk/dfsplan/personal/jendrik/symk-cap-grid-results/experiments/probe_pdb_profile_runtime.sh",
+  "submit_time": "2026-08-30T00:31:01",
+  "validator": {
+    "available": false,
+    "candidate": null,
+    "is_symlink": null,
+    "path": null,
+    "resolved_path": null,
+    "sha256": null,
+    "size": null
+  },
+  "wall_time": "00:05:00",
+  "work_directory": "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-cap-grid-results/experiments"
+}

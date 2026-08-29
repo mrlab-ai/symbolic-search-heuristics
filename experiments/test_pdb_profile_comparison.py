@@ -829,6 +829,17 @@ class JjExporterTests(unittest.TestCase):
                     with self.assertRaises(JJ.JjCacheError):
                         JJ.current_commit(repo)
 
+    def test_parent_commit_uses_the_same_fail_closed_identity_parser(self):
+        revision = "b" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / ".jj").mkdir()
+            with mock.patch.object(
+                JJ, "_run_jj", return_value=(revision + "\t0\n").encode("ascii")
+            ) as run:
+                self.assertEqual(JJ.parent_commit(repo), revision)
+            self.assertIn("@-", run.call_args.args[1])
+
     def test_ancestor_and_tracked_file_queries_fail_closed(self):
         ancestor = "a" * 40
         descendant = "b" * 40
@@ -844,6 +855,16 @@ class JjExporterTests(unittest.TestCase):
             self.assertTrue(JJ.file_is_tracked_at(Path("/repo"), ancestor, "x.py"))
         with self.assertRaises(JJ.JjCacheError):
             JJ.file_is_tracked_at(Path("/repo"), ancestor, "../x.py")
+
+    def test_tracked_file_digest_reads_the_pinned_tree_not_the_worktree(self):
+        revision = "a" * 40
+        with mock.patch.object(JJ, "file_is_tracked_at", return_value=True), mock.patch.object(
+            JJ, "_file_bytes", return_value=b"pinned bytes"
+        ):
+            self.assertEqual(
+                JJ.tracked_file_sha256(Path("/repo"), revision, "x.py"),
+                "977d59924a4dfd9d4e93c74467f3253786327c8c28e69a75f30cf0429dab77c7",
+            )
 
     def test_export_excludes_unsupported_ancillary_symlinks(self):
         revision = "a" * 40

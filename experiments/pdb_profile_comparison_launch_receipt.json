@@ -1,0 +1,23 @@
+{
+  "account": "naiss2025-5-561-cpu",
+  "array_spec": "1-996%5",
+  "array_tasks": 996,
+  "array_throttle": 5,
+  "command": "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-cap-grid-results/experiments/data/exp_pdb_profile_comparison-grid-steps/exp_pdb_profile_comparison-02-start",
+  "cpus_per_task": 1,
+  "job_id": "1663659",
+  "job_name": "exp_pdb_profile_comparison-02-start",
+  "launcher_sha256": "e09c8ec75e049e6cf696bef17fe2018cd7c308bf02eb4afc5c808af4e654e282",
+  "memory_per_cpu": "9G",
+  "original_exported_path_value_recorded": false,
+  "original_validator_identity_recorded": false,
+  "partition": "cpu",
+  "qos": "normal",
+  "recorded_utc": "2026-08-29T22:12:45Z",
+  "requeue": false,
+  "schema": "symbolic-search-heuristics/pdb-profile-main-launch-receipt/v1",
+  "submit_line": "sbatch --export PATH /nobackup/proj/disk/dfsplan/personal/jendrik/symk-cap-grid-results/experiments/data/exp_pdb_profile_comparison-grid-steps/exp_pdb_profile_comparison-02-start",
+  "submit_time": "2026-08-25T10:02:35",
+  "wall_time": "02:30:00",
+  "work_directory": "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-cap-grid-results/experiments/data/exp_pdb_profile_comparison-grid-steps"
+}

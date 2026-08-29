@@ -89,6 +89,8 @@ submission-check: $(POSTHOC_GENERATED_RESULT)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		../experiments/recover_pdb_profile_comparison.py --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		../experiments/analyze_pdb_cap_grid_full.py --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		$(POSTHOC_ANALYZER) --self-test

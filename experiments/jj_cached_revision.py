@@ -90,6 +90,15 @@ def current_commit(repo: Path) -> str:
     return _parse_single_commit(raw)
 
 
+def parent_commit(repo: Path) -> str:
+    """Return the single full, conflict-free parent of the working copy."""
+    repo = Path(repo).resolve()
+    if not repo.is_dir() or not (repo / ".jj").is_dir():
+        raise JjCacheError("{} is not a Jujutsu workspace root".format(repo))
+    raw = _run_jj(repo, ["log", "-r", "@-", "--no-graph", "-T", COMMIT_TEMPLATE])
+    return _parse_single_commit(raw)
+
+
 def resolve_pinned_commit(repo: Path, revision: str) -> str:
     repo = Path(repo).resolve()
     if not repo.is_dir() or not (repo / ".jj").is_dir():
@@ -162,6 +171,13 @@ def file_is_tracked_at(repo: Path, revision: str, relative: str) -> bool:
     if lines != [relative]:
         raise JjCacheError("Jujutsu returned an unexpected tracked path")
     return True
+
+
+def tracked_file_sha256(repo: Path, revision: str, relative: str) -> str:
+    """Return the content digest of one regular tracked file at *revision*."""
+    if not file_is_tracked_at(repo, revision, relative):
+        raise JjCacheError("tracked file does not exist: {}".format(relative))
+    return hashlib.sha256(_file_bytes(repo, revision, relative)).hexdigest()
 
 
 @dataclass(frozen=True)
