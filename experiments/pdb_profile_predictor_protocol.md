@@ -58,7 +58,9 @@ For each distinct selected heuristic, the following orderings are fixed.
   established predictor.
 - **Frozen information-quality tuple:** initial dead-end recognition, initial
   value, mean finite value and abstract dead-end fraction, in the selector's
-  lexicographic order; larger predicts lower total expanded-BDD effort.  Width,
+  lexicographic order; larger predicts lower total expanded-BDD effort.  The
+  same direction is used as an explicit-search-quality control for
+  fragmentation: better quality predicts less fragmentation.  Width,
   abstract-state count and pattern tie breakers are excluded from this tuple.
 - **Cut-aligned profile certificate `B_profile`:** smaller predicts lower
   expanded-BDD effort.
