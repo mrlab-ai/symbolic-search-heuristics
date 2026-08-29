@@ -8,6 +8,15 @@ __pycache__/
 /misc/.tox/
 /misc/autodoc/downward-xmlrpc.secret
 
+# LaTeX build products (the final PDFs are distributed separately).
+/paper/*.aux
+/paper/*.bbl
+/paper/*.blg
+/paper/*.fdb_latexmk
+/paper/*.fls
+/paper/*.log
+/paper/*.pdf
+
 # CUDD
 /src/search/ext/cudd-3.0.0/autom4te.cache/
 /src/search/ext/cudd-3.0.0/Makefile.in
