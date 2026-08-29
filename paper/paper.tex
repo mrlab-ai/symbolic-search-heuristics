@@ -84,11 +84,12 @@ its advantage in others? Accuracy alone cannot answer this question: even a
 perfect heuristic can split a compact binary decision diagram (BDD) into
 exponentially larger pieces. We study fixed-order, product-at-evaluation
 forward symbolic \astar\ with positive costs and a consistent heuristic. At
-each variable cut, our cofactor-profile product pairs the distinct residuals
-of a search layer with those of the heuristic's algebraic decision diagram.
-It bounds every heuristic split and yields a cumulative expanded-BDD-node
-certificate. If $W$ is the largest heuristic residual count, $V$ its number of
-finite values, and $n$ the number of state bits, heuristic effort is at most
+each variable cut, our cofactor-profile product multiplies the marginal
+residual counts of a search layer and the heuristic ADD. This bounds their
+realized pairs, and hence every heuristic split, without modeling correlation,
+yielding a cumulative expanded-BDD-node certificate. If $W$ is the largest
+heuristic residual count, $V$ its number of finite values, and $n$ the number
+of state bits, heuristic effort is at most
 $2VWn$ times blind effort. A polynomial-size planning family attains at least
 $VWn/120$, so all three factors are jointly necessary. The profile certificate
 and the standard Apply certificate based on total ADD size are incomparable.
@@ -110,7 +111,8 @@ coverage, and we do not claim runtime or planner dominance.
 Heuristics guide explicit \astar\ by ranking states
 \citep{hart-et-al-ieeessc1968,pearl-1984}. In symbolic search, however, the
 same information also partitions compact state sets. Binary decision diagrams
-(BDDs) can represent enormous sets succinctly
+(BDDs)\footnote{All diagram and width statements use the planner's fixed
+variable order; cofactor width is unrelated to planning novelty width.} can represent enormous sets succinctly
 \citep{mcmillan-1993,edelkamp-helmert-ecp1999,bryant-ieeecomp1986}, but BDD
 size is not monotone under subsets: splitting a small diagram can produce large
 pieces. This raises our central question: which structural property explains
@@ -139,12 +141,13 @@ goal formulas and leave heuristics aside \citep{speck-helmert-ecai2025}. We
 seek a parameterized certificate relative to blind symbolic search, not a
 claim that every accurate heuristic is cheap.
 
-Our metric is a cut-aligned cofactor-profile product. At each prefix of the
+Our certificate is a cut-aligned cofactor-profile product. At each prefix of the
 fixed BDD order, it multiplies the number of residual state-set functions by
-the number of residual heuristic functions. The latter maximum is standard
+the number of residual heuristic functions. This Cartesian product
+upper-bounds the pairs that actually co-occur; it does not measure their
+correlation. The latter maximum is standard
 residual/MTBDD width \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}, which we call
-\emph{cofactor width}; it is unrelated to planning novelty width or the width
-of an action-choice BDD. The binary product argument is also standard
+\emph{cofactor width}. The binary product argument is also standard
 \citep[Thm.~3.3.6]{wegener-2000}. Our contribution is the connection to exact
 symbolic-search buckets, accumulation over cost layers, and the resulting
 relative-effort theorem. The profile certificate and the standard Apply
@@ -219,7 +222,8 @@ by
   \cutprod{S}{h}=\sum_{i=0}^{n-1}
   \cutcount{i}{\chi_S}\cutcount{i}{h}.
 \]
-It aligns the two residual profiles at the same cuts; in particular,
+It multiplies the two marginal residual counts at corresponding cuts; in
+particular,
 $\cutprod{S}{h}\leq\width_\pi(h)\cofcount(\chi_S)$.
 
 \begin{lemma}
@@ -764,8 +768,9 @@ cap-aware selector materializes one raw PDB and derives
 for caps $\kappa\in\{0,1,2,4,8,16,32,64,128,256\}$ below the raw
 maximum finite value, followed by the exact transform.  Proposition
 \ref{prop-transform} preserves admissibility and consistency, and the nested
-cap order is nondecreasing in both information and width.  The selector
-therefore retains the strongest feasible tested ladder member of each pattern
+cap order is nondecreasing in pointwise heuristic strength, while decreasing
+the cap cannot increase any cut count.  The selector therefore retains the
+strongest feasible tested ladder member of each pattern
 before comparing patterns. This per-pattern
 step prevents a weak cap of one pattern from defeating a stronger feasible
 transform of that same pattern.
@@ -1053,61 +1058,48 @@ through a different search mechanism.
 
 \section{Limitations}
 
-The guarantee covers fixed-order forward product-at-evaluation search with
+The guarantee assumes fixed-order forward product-at-evaluation search,
 positive costs, consistent heuristics, and our duplicate/goal-test policy. It
-bounds BDD-node effort, not runtime or memory. The certificate depends on the
-Boolean encoding, total extension, and variable order; bounded width is
-sufficient, not necessary. The matching constructed family establishes
-worst-case parameter necessity rather than typical behavior. The sharper
-certificate needs the cofactor counts of exact search layers.
-Our logs do not contain both layer and heuristic profiles, so they cannot
-instantiate the profile-based upper bound. The post-hoc audit instead compares
-the theorem's target effort measure with blind search on its triple-solved
-denominator. The ADD comparison is
-also formal: we did not evaluate a matched selector that filters candidates by
-global ADD size instead of width.
-Likewise, the marginal exact-versus-cap-aware coefficient summaries use
-different completed-trace sets; only the paired raw-to-capped analysis isolates
-terminal coarsening.
+bounds BDD-node effort, not runtime or memory, and depends on the encoding,
+total extension, and variable order; bounded width is sufficient, not
+necessary. The construction establishes worst-case parameter necessity, not
+typical behavior. The sharper certificate requires cut profiles absent from
+the current logs. Consequently, the post-hoc audit only compares effort with
+blind search on triple-solved tasks. We did not run a matched ADD-size
+selector. Moreover, the marginal exact and cap-aware summaries use different
+completed traces; only the paired raw-to-capped analysis isolates terminal
+coarsening.
 
-Empirically, this is a fixed-census case study at one primary budget $K=8$ and
-one deterministic cap ladder. The outcome-informed development screen is
-disclosed and excluded from the primary complement, but there is only one run
-per cell and a hard resource cutoff. The primary coverage gain of
-\CapPrimaryMacroDeltaPoints\ percentage points is modest and has no
-population-inferential interpretation. Semantic nontriviality and the frozen
-score are information surrogates, not planner-quality guarantees. Operational ratios
-condition on completed metric pairs and therefore cannot explain coverage
-discordances or joint timeouts; leave-one-domain-out stability does not remove
-that censoring. Cap-aware construction time is 2.3\% higher on its completed
-paired denominator, and unaligned M\&S has higher descriptive coverage. A
-multi-$K$ replication with full cofactor profiles and a matched ADD-size
-baseline would test how much of the result is specific to $K=8$, the cap
-ladder, and the width certificate.
+The experiment is a fixed-census case study at $K=8$ and one cap ladder, with
+one run per cell and a hard cutoff. We disclose and exclude the outcome-informed
+development screen from the primary complement. The
+\CapPrimaryMacroDeltaPoints-percentage-point coverage gain is modest and has
+no population-inferential interpretation; the frozen information score is not
+a planner-quality guarantee. Effort ratios condition on completed pairs and
+cannot explain coverage discordances or joint timeouts. Cap-aware construction
+takes 2.3\% longer on its completed paired denominator, and unaligned M\&S has
+higher descriptive coverage. A multi-$K$ replication with complete cofactor
+profiles and a matched ADD-size baseline is needed to test generality.
 
 % ============================ conclusions ================================
 \section{Conclusions}
 
 For product-at-evaluation forward \bddastar, cut-aligned cofactor profiles give
-a fixed-order certificate with coarse blind-effort ratio
-$2\values Wn\leq2W^2n$, and a polynomial-size family attains at least
-$\values Wn/120$. Safe coarsening does not increase the certificate. On the
-fixed \CapPrimaryTasks-task, \CapFullDomains-domain complement, cap-aware
-selection has \CapPrimaryMacroDeltaPoints\ percentage points higher
-equal-domain macro coverage than exact-width selection
-(\CapPrimaryWins/\CapPrimaryLosses\ task wins/losses). This modest descriptive
-difference is the primary empirical result. On \CapPrimaryTracePairs\
-completed identical-pool pairs, candidate-set containment predicts no loss
-under the information score; empirically the cap-aware selector adds
-\CapPrimarySemanticWins\ positive-value or dead-end-detecting selections. On
-the post-hoc
-\CapPosthocPrimaryFiniteTripleSolvedPairs-task triple-solved finite-cap subset,
-the cap-aware selector's pooled expanded-BDD-node effort
-is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind versus
-\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection; this
-comparison can include a change of selected pattern. Together, the results
-establish a formal representation-effort certificate and a scoped case study,
-not typical-case tightness, runtime dominance, or general planner superiority.
+a fixed-order certificate with blind-effort ratio
+$2\values Wn\leq2W^2n$; a polynomial-size family attains $\values Wn/120$.
+Safe coarsening cannot increase the certificate. On the fixed
+\CapPrimaryTasks-task, \CapFullDomains-domain complement, cap-aware selection
+has \CapPrimaryMacroDeltaPoints\ percentage points higher equal-domain macro
+coverage than exact-width selection (\CapPrimaryWins/\CapPrimaryLosses\ task
+wins/losses), our primary empirical result. On \CapPrimaryTracePairs\ completed
+identical-pool pairs, it adds \CapPrimarySemanticWins\ informative selections
+without losing under the frozen score. On the post-hoc
+\CapPosthocPrimaryFiniteTripleSolvedPairs-task finite-cap subset, its pooled
+effort is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind versus
+\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection; selected
+patterns may differ. These results establish a formal representation-effort
+certificate and a scoped case study, not typical-case tightness, runtime
+dominance, or general planner superiority.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
 % Flush every body float before measuring the final content page. The 2027

@@ -1,7 +1,11 @@
 # Frozen cofactor-profile predictor analysis
 
 Status: frozen before reading any outcome from
-`exp_pdb_profile_comparison`.
+`exp_pdb_profile_comparison`.  On 2026-08-30, still before outcome access, the
+implementation audit made the strong-claim gates fail closed on sparse
+support, exact-rational comparisons, and the full 46-domain leave-one-out
+universe.  It also narrowed the blind comparison to a coverage claim.  No
+threshold was selected from experiment outcomes.
 
 The raw experiment contains 1,327 tasks from 46 domains and 18
 configurations.  It was launched under
@@ -15,8 +19,9 @@ Heuristic quality can reduce the set of expanded states, while partitioning
 those states by heuristic value can enlarge their decision-diagram
 representation.  We therefore test two distinct claims:
 
-1. Does cofactor structure predict *fragmentation*, measured independently of
-   the amount of search guidance?
+1. Does cofactor structure predict the ordinal ordering of *fragmentation* on
+   eligible fixed-cohort comparisons, where fragmentation is normalized by
+   the BDD size of the same expanded-state union?
 2. Does a selector that balances the frozen quality score with a cofactor
    constraint improve symbolic-search outcomes relative to matched controls?
 
@@ -35,16 +40,29 @@ a runtime or population-level result.
   semantics.  Repeated configurations selecting the same normalized pattern,
   cap and exact ADD profile are collapsed to one observation.  Their
   deterministic node efforts must agree or analysis fails closed.
-- Predictor orderings are compared only within a task.  Ties in either the
-  predictor or outcome are reported and excluded from the concordance
-  denominator.  Domain summaries weight each domain equally; task-pair totals
-  are also reported.
+- Predictor orderings are compared only within a task.  Each comparative gate
+  uses one shared pair set on which the target and every predictor entering
+  that claim are strictly ordered.  A tie in the target or in any compared
+  predictor excludes the pair for all of them, preventing a predictor from
+  improving its concordance by abstaining on adverse pairs.  Individual
+  predictor summaries retain their own tie diagnostics, but gates use only the
+  shared summaries.  Domain summaries weight each domain equally; task-pair
+  totals are also reported.
+- A strong predictor claim additionally requires comparable observations in
+  at least two thirds of the 46 domains (31 domains) and at least one fifth of
+  the 1,327 tasks (266 tasks) for every predictor entering the claim.  These
+  thresholds permit genuine structural ties and censored runs while ruling
+  out a claim driven by a small eligible subset.
 - The exact cut-aligned certificate is eligible only under the stricter
   existing certificate contract: candidate and profiled blind search solve at
   the same cost, have the same state order, and expose complete certified
   layer, heuristic and expansion profiles.
 - Jointly solved effort comparisons are conditional mechanism diagnostics.
   They cannot explain coverage discordances or joint timeouts.
+- Every selector contrast entering a strong effort claim must contain at least
+  266 eligible task pairs spanning at least 31 domains at every fixed budget.
+  All leave-one-domain-out maps use the complete frozen 46-domain universe;
+  omitting a domain with no eligible pair leaves the pooled value unchanged.
 
 ## Frozen predictors and directions
 
@@ -93,33 +111,49 @@ unconstrained endpoint remain visible.
 The paper may say that cofactor width is a **useful predictor of symbolic
 fragmentation** only if all of the following hold:
 
-1. its equal-domain fragmentation concordance is at least 0.65;
-2. every leave-one-domain-out value is at least 0.60;
-3. it exceeds the quality tuple's fragmentation concordance; and
-4. it is not more than 0.02 below the global ADD proxy.
+1. width, the quality tuple and the global ADD proxy each meet the fixed
+   31-domain and 266-task support floors;
+2. width's equal-domain fragmentation concordance is at least 0.65;
+3. every one of the 46 leave-one-domain-out values is defined and at least
+   0.60;
+4. it exceeds the quality tuple's fragmentation concordance; and
+5. it is not more than 0.02 below the global ADD proxy.
 
 The paper may say that the **cut-aligned profile is the sharper explanatory
 metric** only if:
 
-1. its equal-domain effort concordance exceeds both the width relaxation and
+1. the profile, width-relaxation and global-ADD certificates each meet the
+   fixed 31-domain and 266-task support floors;
+2. its equal-domain effort concordance exceeds both the width relaxation and
    the global-ADD Apply certificate;
-2. the advantage over each is at least 0.02; and
-3. both advantages remain positive under every leave-one-domain-out analysis.
+3. the advantage over each is at least 0.02; and
+4. both advantages remain positive under all 46 leave-one-domain-out
+   analyses, with no missing comparison.
 
-The paper may say that **width-based filtering outperforms the
-acceptance-matched ADD-size control** only if cap-aware width has lower
-conditional pooled effort in at least four of five matched budgets, the
-all-budget pooled direction agrees, no matched budget loses more than two net
-coverage tasks, and every leave-one-domain-out all-budget effort direction
-agrees.  Otherwise the ADD comparison is reported as mixed or negative.
+The paper may say that **width-based filtering has materially lower conditional
+effort than the acceptance-matched ADD-size control** only if cap-aware width
+has lower conditional pooled effort in at least four of five matched budgets,
+the all-budget ratio is at most 0.98, no matched budget loses more than two net
+coverage tasks, every leave-one-domain-out all-budget effort direction agrees,
+and all five budget comparisons meet the fixed 31-domain and 266-pair support
+floors.  Otherwise the ADD comparison is reported as mixed or negative.
 
-The paper may call cap-aware width selection a **useful new heuristic
-construction** only if it beats exact-width selection in conditional pooled
-effort at at least three of five budgets, has nonnegative aggregate coverage
-discordance across the five fixed comparisons, and does not reverse under
-leave-one-domain-out aggregation.  The paper may not call it a generally
-better planner unless it also improves full-denominator coverage over blind
-search across a clear majority of budgets; runtime is always secondary.
+The paper may say that **cap-aware width selection has materially lower
+conditional effort than exact-width selection** only if it has lower effort at
+at least three of five budgets, its all-budget ratio is at most 0.98, it has
+nonnegative aggregate coverage discordance across the five fixed comparisons,
+loses no more than two net coverage tasks at any budget, does not reverse under
+leave-one-domain-out aggregation, and all five budget comparisons meet the
+fixed 31-domain and 266-pair support floors.  The 0.98 threshold is a
+pre-outcome minimum effect-size guard; exact directional wins smaller than two
+percent remain visible but cannot license the stronger wording.
+
+The paper may say only that cap-aware width selection has **higher coverage
+than profiled blind search across the fixed budgets** if the material
+cap-versus-exact effort gate also passes, it has positive full-denominator coverage discordance in at
+least three of five budgets, the five-budget aggregate discordance is
+nonnegative, and no individual budget loses more than two tasks.  This does
+not license a general planner, runtime or population-level dominance claim.
 
 Failure of a gate is a result, not a reason to select a different budget or
 denominator.  If the gates fail, the paper retains the theory-led certificate

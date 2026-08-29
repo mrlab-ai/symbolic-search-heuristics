@@ -374,3 +374,89 @@ post-hoc diagnostics, another constant improvement, or prose polish alone are
 unlikely to justify an 8+ verdict. If new experiments are feasible, the next
 ablations after the combined profile/ADD/multi-budget study are repeated
 cutoff-sensitive discordances and timing measurements.
+
+## Round 6: Conditional Explanatory Reframing
+
+The proposed story is stronger than the current theory-led story only if the
+new, outcome-blind experiment supports both its explanatory and algorithmic
+links.  It gives the paper a single motivating question, distinguishes a
+symbolic-search mechanism from ordinary heuristic quality, and turns the
+theory into a design rule.  Without those links, the same framing would be
+weaker because it would promote a predictor or selector beyond the evidence.
+The manuscript therefore remains conditional until the frozen gates in
+`experiments/pdb_profile_predictor_protocol.md` have been evaluated.
+
+### Fixed conceptual roles
+
+Use one term for each object throughout the abstract, introduction, theory,
+and experiments.
+
+- **Selector score** is the frozen lexicographic tuple of initial dead-end
+  recognition, initial value, mean finite value, and abstract dead-end
+  fraction.  It is the explicit-search-motivated control, not a definition of
+  pointwise heuristic strength or a representation measure.
+- **Local representational fragmentation** means separately representing the
+  value slices of one fixed state set.  The empirical **normalized bucket
+  overhead** aggregates the same mechanism over a solved run: cumulative
+  expanded bucket effort divided by the semantic union effort of the same
+  generated layers.  It is undefined when either profile is incomplete or the
+  union effort is zero, and it does not explain coverage discordances.
+- **Cofactor width** $W$ is the frontier-independent structural predictor.  It
+  is standard fixed-order MTBDD width and, in the theory, only a one-sided
+  safety envelope.  Calling it a predictor is an additional empirical claim
+  licensed only by the frozen gate.  Its connection to symbolic-search
+  fragmentation and its use in heuristic construction are the contribution.
+- **Total ADD size** $U=A+T$ is the closest static representation baseline.
+  The acceptance-matched ADD selector is a control, not a causal isolation of
+  width.
+- **The cut-aligned profile certificate** $B_{\mathrm{profile}}$ multiplies the
+  marginal layer and heuristic residual counts at corresponding cuts.  It
+  upper-bounds realized residual pairs but does not model their correlation.
+  This frontier-dependent, ex-post quantity is compared with its width
+  relaxation $B_{\mathrm{width}}$ and the ordinary Apply certificate
+  $B_{\mathrm{add}}$ on the same exact target, cumulative expanded-BDD-node
+  effort.
+- **Cap-aware width selection** is the derived construction.  Its algorithmic
+  evidence is separate from the predictor evidence and is evaluated against
+  exact-width selection, matched ADD filtering, the unconstrained endpoint,
+  and profiled blind search at all five frozen budgets.
+
+### Outcome-contingent paper shape
+
+1. If the width-predictor, profile-certificate, matched-ADD, and cap-aware
+   construction gates all pass, lead with the explanatory chain: quality does
+   not characterize symbolic fragmentation; cofactor structure does; the
+   cut-aligned metric sharpens that explanation; and a selector derived from
+   it improves the matched controls.  Planner dominance remains a separate
+   claim and requires the blind-coverage gate.
+2. If the predictor gates pass but either selector gate fails, lead with the
+   explanatory metric and present the selector as a negative or mixed design
+   test.  Do not promise a successful new heuristic in the title, abstract, or
+   contribution list.
+3. If a selector gate passes but the corresponding predictor gate fails,
+   retain a theory-and-algorithm framing.  Report the selector improvement but
+   do not attribute it to a validated explanation of relative performance.
+4. If the central predictor and construction gates fail, retain the current
+   theory-led certificate framing.  Report the preregistered negative result as
+   a limitation and do not substitute a favorable budget, denominator, or
+   post-hoc metric.
+
+### Concept and evidence order after unblinding
+
+The explanatory version should introduce the tension before the machinery:
+(1) quality controls how many states search reaches, while fragmentation
+controls how those states are represented; (2) define the isolated
+fragmentation response; (3) introduce cofactor width and the cut-aligned
+profile product; (4) prove the exact bucket and search certificates; (5)
+derive safe caps and the selector; and (6) test prediction before reporting
+planner outcomes.  The results should follow the same order: predictor
+concordance, certificate concordance, matched width-versus-ADD contrasts,
+cap-aware versus exact-width contrasts, and only then blind-search coverage.
+
+One compact predictor table should report macro concordance, comparable-pair
+support, and leave-one-domain-out ranges for $W$, $U$, quality, and the three
+certificates.  One five-row budget table should report the fixed $(K,U)$
+pairs, full-denominator coverage discordance, conditional effort ratios, and
+eligible-pair counts for the selector contrasts.  Every claim must name
+whether it concerns fragmentation, conditional effort, coverage, or planner
+runtime; none of these outcomes may stand in for another.

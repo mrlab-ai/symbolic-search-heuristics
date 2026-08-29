@@ -24,11 +24,14 @@ class PredictorAnalysisError(RuntimeError):
     pass
 
 
-SCHEMA = "symbolic-search-heuristics/pdb-profile-predictors/v1"
+SCHEMA = "symbolic-search-heuristics/pdb-profile-predictors/v2"
+SHARED_COMPARISON_PROTOCOL = "strictly-ordered-shared-pair-comparison/v1"
 PROTOCOL_PATH = Path(__file__).with_name("pdb_profile_predictor_protocol.md")
 PROTOCOL_SHA256 = (
-    "20b2f6eece72b5accb36334efa1b2c581eb949e60ef54055961698cae2f314c8"
+    "b51c93ae31e3911c3b345de2e9f3c17567cb9c85e34f5fc077b692af2a5d8dab"
 )
+MIN_STRONG_CLAIM_DOMAINS = (2 * P.COHORT_DOMAINS + 2) // 3
+MIN_STRONG_CLAIM_TASKS = (P.COHORT_TASKS + 4) // 5
 
 
 def _canonical(value) -> bytes:
@@ -261,7 +264,9 @@ def fragmentation_observations(matrix, tasks):
     return observations, grouped, by_cell, dict(statuses)
 
 
-def _pairwise_summary(grouped, predictor: str, target: str, direction: str):
+def _pairwise_summary(
+    grouped, predictor: str, target: str, direction: str, all_domains=None
+):
     if direction not in {"same", "opposite"}:
         raise PredictorAnalysisError("invalid predictor direction")
     totals = Counter()
@@ -288,9 +293,16 @@ def _pairwise_summary(grouped, predictor: str, target: str, direction: str):
             totals[outcome] += 1
             domains[task[0]][outcome] += 1
 
+    if all_domains is None:
+        all_domains = {task[0] for task in grouped}
+    else:
+        all_domains = set(all_domains)
+    if not all_domains or any(type(domain) is not str for domain in all_domains):
+        raise PredictorAnalysisError("pairwise domain universe is invalid")
+
     domain_rows = []
     domain_values = {}
-    for domain in sorted(domains):
+    for domain in sorted(all_domains):
         counts = domains[domain]
         comparable = counts["concordant"] + counts["discordant"]
         value = (
@@ -310,7 +322,7 @@ def _pairwise_summary(grouped, predictor: str, target: str, direction: str):
     }
     macro = _mean(eligible_domain_values.values())
     loo = {}
-    for omitted in sorted(eligible_domain_values):
+    for omitted in sorted(all_domains):
         retained = [
             value
             for domain, value in eligible_domain_values.items()
@@ -341,27 +353,161 @@ def _pairwise_summary(grouped, predictor: str, target: str, direction: str):
     }
 
 
-def fragmentation_predictors(grouped):
+def _shared_pairwise_comparison(grouped, predictor_specs, target, all_domains):
+    """Compare predictors on one identical, strictly ordered task-pair set."""
+    all_domains = set(all_domains)
+    if not all_domains or not predictor_specs:
+        raise PredictorAnalysisError("shared comparison universe is empty")
+    for key, (predictor, direction) in predictor_specs.items():
+        if type(key) is not str or direction not in {"same", "opposite"}:
+            raise PredictorAnalysisError("shared predictor specification is invalid")
+
+    exclusions = Counter()
+    tied_by_predictor = Counter()
+    common_by_domain = Counter()
+    tasks_with_pairs = set()
+    predictor_totals = {key: Counter() for key in predictor_specs}
+    predictor_domains = {
+        key: defaultdict(Counter) for key in predictor_specs
+    }
+    for task, observations_by_id in grouped.items():
+        observations = list(observations_by_id.values())
+        for left, right in itertools.combinations(observations, 2):
+            if target == "_fragmentation":
+                target_order = _compare_fraction(left[target], right[target])
+            else:
+                target_order = _compare(left[target], right[target])
+            if target_order == 0:
+                exclusions["target_tied"] += 1
+                continue
+            orders = {
+                key: _compare(left[predictor], right[predictor])
+                for key, (predictor, _) in predictor_specs.items()
+            }
+            tied = [key for key, order in orders.items() if order == 0]
+            if tied:
+                exclusions["any_predictor_tied"] += 1
+                for key in tied:
+                    tied_by_predictor[key] += 1
+                continue
+            exclusions["comparable"] += 1
+            common_by_domain[task[0]] += 1
+            tasks_with_pairs.add(task)
+            for key, (_, direction) in predictor_specs.items():
+                expected = orders[key] if direction == "same" else -orders[key]
+                outcome = "concordant" if expected == target_order else "discordant"
+                predictor_totals[key][outcome] += 1
+                predictor_domains[key][task[0]][outcome] += 1
+
+    summaries = {}
+    for key, (predictor, direction) in predictor_specs.items():
+        totals = predictor_totals[key]
+        domain_values = {}
+        domain_rows = []
+        for domain in sorted(all_domains):
+            counts = predictor_domains[key][domain]
+            comparable = counts["concordant"] + counts["discordant"]
+            value = (
+                Fraction(counts["concordant"], comparable)
+                if comparable
+                else None
+            )
+            domain_values[domain] = value
+            domain_rows.append({
+                "domain": domain,
+                "concordant": counts["concordant"],
+                "discordant": counts["discordant"],
+                "comparable": comparable,
+                "concordance": _fraction_record(value),
+            })
+        eligible = {
+            domain: value for domain, value in domain_values.items()
+            if value is not None
+        }
+        macro = _mean(eligible.values())
+        loo = {
+            omitted: _mean(
+                value for domain, value in eligible.items() if domain != omitted
+            )
+            for omitted in sorted(all_domains)
+        }
+        finite_loo = [value for value in loo.values() if value is not None]
+        comparable = totals["concordant"] + totals["discordant"]
+        summaries[key] = {
+            "predictor": predictor.removeprefix("_"),
+            "target": target.removeprefix("_"),
+            "direction": direction,
+            "distinct_heuristic_pairs": comparable,
+            "concordant": totals["concordant"],
+            "discordant": totals["discordant"],
+            "comparable": comparable,
+            "micro_concordance": _ratio(totals["concordant"], comparable),
+            "tasks_with_comparable_pairs": len(tasks_with_pairs),
+            "eligible_domains": len(eligible),
+            "equal_domain_macro": _fraction_record(macro),
+            "leave_one_domain_out": {
+                "values": {
+                    domain: _fraction_record(value) for domain, value in loo.items()
+                },
+                "minimum": _fraction_record(min(finite_loo)) if finite_loo else None,
+                "maximum": _fraction_record(max(finite_loo)) if finite_loo else None,
+            },
+            "by_domain": domain_rows,
+        }
+    return {
+        "protocol": SHARED_COMPARISON_PROTOCOL,
+        "target": target.removeprefix("_"),
+        "support": {
+            "observation_pairs": sum(exclusions.values()),
+            "target_tied": exclusions["target_tied"],
+            "any_predictor_tied": exclusions["any_predictor_tied"],
+            "comparable": exclusions["comparable"],
+            "tasks_with_comparable_pairs": len(tasks_with_pairs),
+            "eligible_domains": sum(value > 0 for value in common_by_domain.values()),
+            "predictor_tie_counts": dict(tied_by_predictor),
+            "by_domain": [
+                {"domain": domain, "comparable": common_by_domain[domain]}
+                for domain in sorted(all_domains)
+            ],
+        },
+        "predictors": summaries,
+    }
+
+
+def fragmentation_predictors(grouped, domains=None):
     return {
         "cofactor_width": _pairwise_summary(
-            grouped, "cofactor_width", "_fragmentation", "same"
+            grouped, "cofactor_width", "_fragmentation", "same", domains
         ),
         "total_add_nodes": _pairwise_summary(
-            grouped, "total_add_nodes", "_fragmentation", "same"
+            grouped, "total_add_nodes", "_fragmentation", "same", domains
         ),
         "finite_values": _pairwise_summary(
-            grouped, "finite_values", "_fragmentation", "same"
+            grouped, "finite_values", "_fragmentation", "same", domains
         ),
         "quality": _pairwise_summary(
-            grouped, "_quality", "_fragmentation", "opposite"
+            grouped, "_quality", "_fragmentation", "opposite", domains
         ),
         "quality_to_total_effort": _pairwise_summary(
-            grouped, "_quality", "actual_effort", "opposite"
+            grouped, "_quality", "actual_effort", "opposite", domains
         ),
     }
 
 
-def certificate_predictors(certificate_rows, matrix):
+def fragmentation_gate_comparison(grouped, domains):
+    return _shared_pairwise_comparison(
+        grouped,
+        {
+            "cofactor_width": ("cofactor_width", "same"),
+            "total_add_nodes": ("total_add_nodes", "same"),
+            "quality": ("_quality", "opposite"),
+        },
+        "_fragmentation",
+        domains,
+    )
+
+
+def _certificate_observation_groups(certificate_rows, matrix):
     grouped = defaultdict(dict)
     for row in certificate_rows:
         task = (row["domain"], row["problem"])
@@ -395,17 +541,36 @@ def certificate_predictors(certificate_rows, matrix):
             raise PredictorAnalysisError(
                 "duplicate heuristic has different certificate evidence"
             )
+    return grouped
+
+
+def certificate_predictors(certificate_rows, matrix, domains=None):
+    grouped = _certificate_observation_groups(certificate_rows, matrix)
     return {
         "B_profile": _pairwise_summary(
-            grouped, "B_profile", "actual_effort", "same"
+            grouped, "B_profile", "actual_effort", "same", domains
         ),
         "B_width": _pairwise_summary(
-            grouped, "B_width", "actual_effort", "same"
+            grouped, "B_width", "actual_effort", "same", domains
         ),
         "B_add": _pairwise_summary(
-            grouped, "B_add", "actual_effort", "same"
+            grouped, "B_add", "actual_effort", "same", domains
         ),
     }
+
+
+def certificate_gate_comparison(certificate_rows, matrix, domains):
+    grouped = _certificate_observation_groups(certificate_rows, matrix)
+    return _shared_pairwise_comparison(
+        grouped,
+        {
+            "B_profile": ("B_profile", "same"),
+            "B_width": ("B_width", "same"),
+            "B_add": ("B_add", "same"),
+        },
+        "actual_effort",
+        domains,
+    )
 
 
 def _pool_equal(left: dict, right: dict) -> bool:
@@ -553,6 +718,24 @@ def selector_contrasts(matrix, tasks):
 
 
 def _all_budget_summary(contrasts):
+    if not contrasts:
+        raise PredictorAnalysisError("all-budget contrast set is empty")
+    domain_sets = []
+    for contrast in contrasts:
+        rows = contrast.get("by_domain")
+        if not isinstance(rows, list) or len(rows) != P.COHORT_DOMAINS:
+            raise PredictorAnalysisError("contrast domain universe is incomplete")
+        names = [row.get("domain") for row in rows if isinstance(row, dict)]
+        if (
+            len(names) != P.COHORT_DOMAINS
+            or any(type(name) is not str for name in names)
+            or len(set(names)) != P.COHORT_DOMAINS
+        ):
+            raise PredictorAnalysisError("contrast domain universe is invalid")
+        domain_sets.append(set(names))
+    if any(domains != domain_sets[0] for domains in domain_sets[1:]):
+        raise PredictorAnalysisError("contrast domain universes disagree")
+
     candidate_total = sum(
         item["conditional_effort"]["candidate_total"] for item in contrasts
     )
@@ -562,9 +745,7 @@ def _all_budget_summary(contrasts):
     coverage = sum(
         item["coverage"]["candidate_minus_reference"] for item in contrasts
     )
-    domains = sorted({
-        row["domain"] for item in contrasts for row in item["by_domain"]
-    })
+    domains = sorted(domain_sets[0])
     loo = {}
     loo_coverage = {}
     for domain in domains:
@@ -604,17 +785,100 @@ def _value(summary, *path):
     return current
 
 
+def _exact_fraction(record, label):
+    """Recover an exact rational from an internally generated fraction record."""
+    if record is None:
+        return None
+    if not isinstance(record, dict):
+        raise PredictorAnalysisError("{} is not a fraction record".format(label))
+    numerator = record.get("numerator")
+    denominator = record.get("denominator")
+    if (
+        type(numerator) is not int
+        or type(denominator) is not int
+        or denominator <= 0
+    ):
+        raise PredictorAnalysisError("{} is not an exact fraction".format(label))
+    value = Fraction(numerator, denominator)
+    if value.numerator != numerator or value.denominator != denominator:
+        raise PredictorAnalysisError("{} is not reduced".format(label))
+    return value
+
+
+def _pairwise_support(summary):
+    return (
+        type(summary.get("eligible_domains")) is int
+        and summary["eligible_domains"] >= MIN_STRONG_CLAIM_DOMAINS
+        and type(summary.get("tasks_with_comparable_pairs")) is int
+        and summary["tasks_with_comparable_pairs"] >= MIN_STRONG_CLAIM_TASKS
+    )
+
+
+def _contrast_support(contrast):
+    effort = contrast.get("conditional_effort")
+    rows = contrast.get("by_domain")
+    if not isinstance(effort, dict) or not isinstance(rows, list):
+        return False
+    eligible = effort.get("eligible_pairs")
+    if type(eligible) is not int or eligible < MIN_STRONG_CLAIM_TASKS:
+        return False
+    if len(rows) != P.COHORT_DOMAINS:
+        return False
+    domain_names = [row.get("domain") for row in rows if isinstance(row, dict)]
+    if (
+        len(domain_names) != P.COHORT_DOMAINS
+        or len(set(domain_names)) != P.COHORT_DOMAINS
+        or any(type(domain) is not str for domain in domain_names)
+    ):
+        return False
+    contributing_domains = sum(
+        isinstance(row, dict)
+        and type(row.get("effort_eligible_pairs")) is int
+        and row["effort_eligible_pairs"] > 0
+        for row in rows
+    )
+    return contributing_domains >= MIN_STRONG_CLAIM_DOMAINS
+
+
 def decision_gates(fragmentation, certificates, contrasts):
     width = fragmentation["cofactor_width"]
     quality = fragmentation["quality"]
     add = fragmentation["total_add_nodes"]
-    width_macro = _value(width, "equal_domain_macro", "value")
-    width_loo_min = _value(width, "leave_one_domain_out", "minimum", "value")
-    quality_macro = _value(quality, "equal_domain_macro", "value")
-    add_macro = _value(add, "equal_domain_macro", "value")
+    width_macro = _exact_fraction(
+        _value(width, "equal_domain_macro"), "width macro"
+    )
+    width_loo_min = _exact_fraction(
+        _value(width, "leave_one_domain_out", "minimum"), "width LOO minimum"
+    )
+    quality_macro = _exact_fraction(
+        _value(quality, "equal_domain_macro"), "quality macro"
+    )
+    add_macro = _exact_fraction(
+        _value(add, "equal_domain_macro"), "ADD macro"
+    )
+    width_loo_records = _value(
+        width, "leave_one_domain_out", "values"
+    ) or {}
+    width_loo_values = [
+        _exact_fraction(record, "width LOO {}".format(domain))
+        for domain, record in width_loo_records.items()
+    ]
+    complete_width_loo = (
+        len(width_loo_records) == P.COHORT_DOMAINS
+        and all(value is not None for value in width_loo_values)
+    )
     fragmentation_criteria = {
-        "macro_at_least_0_65": width_macro is not None and width_macro >= 0.65,
-        "loo_min_at_least_0_60": width_loo_min is not None and width_loo_min >= 0.60,
+        "broad_support": all(
+            _pairwise_support(summary) for summary in (width, quality, add)
+        ),
+        "macro_at_least_0_65": (
+            width_macro is not None and width_macro >= Fraction(13, 20)
+        ),
+        "loo_min_at_least_0_60": (
+            complete_width_loo
+            and width_loo_min is not None
+            and width_loo_min >= Fraction(3, 5)
+        ),
         "beats_quality": (
             width_macro is not None
             and quality_macro is not None
@@ -623,13 +887,22 @@ def decision_gates(fragmentation, certificates, contrasts):
         "within_0_02_of_add": (
             width_macro is not None
             and add_macro is not None
-            and width_macro >= add_macro - 0.02
+            and width_macro >= add_macro - Fraction(1, 50)
         ),
     }
 
-    profile_macro = _value(certificates["B_profile"], "equal_domain_macro", "value")
-    width_bound_macro = _value(certificates["B_width"], "equal_domain_macro", "value")
-    add_bound_macro = _value(certificates["B_add"], "equal_domain_macro", "value")
+    profile_macro = _exact_fraction(
+        _value(certificates["B_profile"], "equal_domain_macro"),
+        "profile-certificate macro",
+    )
+    width_bound_macro = _exact_fraction(
+        _value(certificates["B_width"], "equal_domain_macro"),
+        "width-certificate macro",
+    )
+    add_bound_macro = _exact_fraction(
+        _value(certificates["B_add"], "equal_domain_macro"),
+        "ADD-certificate macro",
+    )
     profile_loo = _value(
         certificates["B_profile"], "leave_one_domain_out", "values"
     ) or {}
@@ -639,15 +912,28 @@ def decision_gates(fragmentation, certificates, contrasts):
     add_bound_loo = _value(
         certificates["B_add"], "leave_one_domain_out", "values"
     ) or {}
-    shared_domains = set(profile_loo) & set(width_bound_loo) & set(add_bound_loo)
+    profile_domains = set(profile_loo)
+    width_bound_domains = set(width_bound_loo)
+    add_bound_domains = set(add_bound_loo)
+    complete_profile_loo = (
+        len(profile_domains) == P.COHORT_DOMAINS
+        and profile_domains == width_bound_domains == add_bound_domains
+    )
     loo_advantages = []
-    for domain in shared_domains:
-        pv = _value(profile_loo[domain], "value")
-        wv = _value(width_bound_loo[domain], "value")
-        av = _value(add_bound_loo[domain], "value")
+    for domain in sorted(profile_domains | width_bound_domains | add_bound_domains):
+        pv = _exact_fraction(profile_loo.get(domain), "profile LOO {}".format(domain))
+        wv = _exact_fraction(
+            width_bound_loo.get(domain), "width LOO {}".format(domain)
+        )
+        av = _exact_fraction(add_bound_loo.get(domain), "ADD LOO {}".format(domain))
         if None not in (pv, wv, av):
             loo_advantages.append(pv > wv and pv > av)
+        else:
+            loo_advantages.append(False)
     profile_criteria = {
+        "broad_support": all(
+            _pairwise_support(summary) for summary in certificates.values()
+        ),
         "beats_both_macro": (
             None not in (profile_macro, width_bound_macro, add_bound_macro)
             and profile_macro > width_bound_macro
@@ -655,68 +941,110 @@ def decision_gates(fragmentation, certificates, contrasts):
         ),
         "margin_at_least_0_02": (
             None not in (profile_macro, width_bound_macro, add_bound_macro)
-            and profile_macro >= width_bound_macro + 0.02
-            and profile_macro >= add_bound_macro + 0.02
+            and profile_macro >= width_bound_macro + Fraction(1, 50)
+            and profile_macro >= add_bound_macro + Fraction(1, 50)
         ),
-        "positive_every_loo": bool(loo_advantages) and all(loo_advantages),
+        "positive_every_loo": (
+            complete_profile_loo
+            and len(loo_advantages) == P.COHORT_DOMAINS
+            and all(loo_advantages)
+        ),
     }
 
     width_add = contrasts["matched_width_vs_add"]
     width_add_all = _all_budget_summary(width_add)
     width_add_ratios = [
-        _value(item, "conditional_effort", "candidate_over_reference", "value")
+        _exact_fraction(
+            _value(item, "conditional_effort", "candidate_over_reference"),
+            "matched width/ADD effort ratio",
+        )
         for item in width_add
     ]
     effort_wins = sum(
         value is not None and value < 1 for value in width_add_ratios
     )
+    width_add_all_ratio = _exact_fraction(
+        _value(
+            width_add_all,
+            "conditional_effort",
+            "candidate_over_reference",
+        ),
+        "all-budget width/ADD effort ratio",
+    )
     width_add_loo = width_add_all["leave_one_domain_out_effort_ratio"]
     width_add_criteria = {
+        "broad_support_every_budget": all(
+            _contrast_support(item) for item in width_add
+        ),
         "effort_wins_at_least_4_of_5": effort_wins >= 4,
         "all_budget_effort_below_1": (
-            _value(
-                width_add_all,
-                "conditional_effort",
-                "candidate_over_reference",
-                "value",
-            ) is not None
-            and _value(
-                width_add_all,
-                "conditional_effort",
-                "candidate_over_reference",
-                "value",
-            ) < 1
+            width_add_all_ratio is not None and width_add_all_ratio < 1
+        ),
+        "all_budget_effort_reduction_at_least_0_02": (
+            width_add_all_ratio is not None
+            and width_add_all_ratio <= Fraction(49, 50)
         ),
         "no_budget_coverage_loss_below_minus_2": all(
             item["coverage"]["candidate_minus_reference"] >= -2
             for item in width_add
         ),
-        "every_loo_effort_below_1": bool(width_add_loo) and all(
-            row is not None and row["value"] < 1
-            for row in width_add_loo.values()
+        "every_loo_effort_below_1": (
+            len(width_add_loo) == P.COHORT_DOMAINS
+            and all(
+                _exact_fraction(row, "width/ADD LOO effort ratio") is not None
+                and _exact_fraction(row, "width/ADD LOO effort ratio") < 1
+                for row in width_add_loo.values()
+            )
         ),
     }
 
     cap_exact = contrasts["cap_width_vs_exact_width"]
     cap_exact_all = _all_budget_summary(cap_exact)
     cap_exact_ratios = [
-        _value(item, "conditional_effort", "candidate_over_reference", "value")
+        _exact_fraction(
+            _value(item, "conditional_effort", "candidate_over_reference"),
+            "cap/exact effort ratio",
+        )
         for item in cap_exact
     ]
     cap_effort_wins = sum(
         value is not None and value < 1 for value in cap_exact_ratios
     )
+    cap_exact_all_ratio = _exact_fraction(
+        _value(
+            cap_exact_all,
+            "conditional_effort",
+            "candidate_over_reference",
+        ),
+        "all-budget cap/exact effort ratio",
+    )
     cap_loo_effort = cap_exact_all["leave_one_domain_out_effort_ratio"]
     cap_loo_coverage = cap_exact_all["leave_one_domain_out_coverage_difference"]
+    complete_cap_loo = (
+        len(cap_loo_effort) == P.COHORT_DOMAINS
+        and set(cap_loo_effort) == set(cap_loo_coverage)
+    )
     cap_criteria = {
+        "broad_support_every_budget": all(
+            _contrast_support(item) for item in cap_exact
+        ),
         "effort_wins_at_least_3_of_5": cap_effort_wins >= 3,
+        "all_budget_effort_reduction_at_least_0_02": (
+            cap_exact_all_ratio is not None
+            and cap_exact_all_ratio <= Fraction(49, 50)
+        ),
+        "no_budget_coverage_loss_below_minus_2": all(
+            item["coverage"]["candidate_minus_reference"] >= -2
+            for item in cap_exact
+        ),
         "aggregate_coverage_nonnegative": (
             cap_exact_all["coverage_candidate_minus_reference"] >= 0
         ),
         "no_loo_reversal": (
-            bool(cap_loo_effort)
+            complete_cap_loo
             and all(
-                row is not None and row["value"] < 1
+                _exact_fraction(row, "cap/exact LOO effort ratio") is not None
+                and _exact_fraction(row, "cap/exact LOO effort ratio") < 1
                 for row in cap_loo_effort.values()
             )
             and all(value >= 0 for value in cap_loo_coverage.values())
@@ -734,8 +1062,18 @@ def decision_gates(fragmentation, certificates, contrasts):
         item["coverage"]["candidate_minus_reference"] > 0
         for item in cap_blind
     )
-    general_planner_criteria = {
+    cap_blind_coverage_differences = [
+        item["coverage"]["candidate_minus_reference"] for item in cap_blind
+    ]
+    blind_coverage_criteria = {
+        "material_effort_gate_passes": all(cap_criteria.values()),
         "coverage_wins_at_least_3_of_5": cap_blind_coverage_wins >= 3,
+        "aggregate_coverage_nonnegative": (
+            sum(cap_blind_coverage_differences) >= 0
+        ),
+        "no_budget_coverage_loss_below_minus_2": all(
+            difference >= -2 for difference in cap_blind_coverage_differences
+        ),
     }
     return {
         "cofactor_width_useful_fragmentation_predictor": {
@@ -746,19 +1084,19 @@ def decision_gates(fragmentation, certificates, contrasts):
             "pass": all(profile_criteria.values()),
             "criteria": profile_criteria,
         },
-        "width_filter_outperforms_matched_add": {
+        "width_filter_materially_lower_effort_than_matched_add": {
             "pass": all(width_add_criteria.values()),
             "criteria": width_add_criteria,
             "all_budget": width_add_all,
         },
-        "cap_aware_width_useful_construction": {
+        "cap_aware_width_materially_lower_effort_than_exact_width": {
             "pass": all(cap_criteria.values()),
             "criteria": cap_criteria,
             "all_budget": cap_exact_all,
         },
-        "cap_aware_width_generally_better_than_blind": {
-            "pass": all(general_planner_criteria.values()),
-            "criteria": general_planner_criteria,
+        "cap_aware_width_higher_coverage_than_profiled_blind": {
+            "pass": all(blind_coverage_criteria.values()),
+            "criteria": blind_coverage_criteria,
             "fixed_budget_contrasts": cap_blind,
         },
     }
@@ -771,8 +1109,13 @@ def make_analysis(records):
     observations, grouped, _, statuses = fragmentation_observations(
         matrix, tasks
     )
-    fragmentation = fragmentation_predictors(grouped)
-    certificates = certificate_predictors(certificate_rows, matrix)
+    domains = {task[0] for task in tasks}
+    fragmentation = fragmentation_predictors(grouped, domains)
+    fragmentation_comparison = fragmentation_gate_comparison(grouped, domains)
+    certificates = certificate_predictors(certificate_rows, matrix, domains)
+    certificate_comparison = certificate_gate_comparison(
+        certificate_rows, matrix, domains
+    )
     contrasts = selector_contrasts(matrix, tasks)
     public_observations = []
     for observation in observations:
@@ -798,15 +1141,23 @@ def make_analysis(records):
             "domains": len({task[0] for task in tasks}),
             "configurations": P.CONFIG_COUNT,
             "inference": P.INFERENCE_POLICY,
+            "strong_claim_support": {
+                "minimum_domains": MIN_STRONG_CLAIM_DOMAINS,
+                "minimum_tasks_or_pairs": MIN_STRONG_CLAIM_TASKS,
+            },
         },
         "fragmentation_observation_status": statuses,
         "fragmentation_observations": public_observations,
         "fragmentation_predictors": fragmentation,
+        "fragmentation_gate_comparison": fragmentation_comparison,
         "certificate_predictors": certificates,
+        "certificate_gate_comparison": certificate_comparison,
         "selector_contrasts": contrasts,
     }
     result["decision_gates"] = decision_gates(
-        fragmentation, certificates, contrasts
+        fragmentation_comparison["predictors"],
+        certificate_comparison["predictors"],
+        contrasts,
     )
     return result
 
