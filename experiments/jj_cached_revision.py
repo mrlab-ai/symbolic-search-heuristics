@@ -35,6 +35,7 @@ ENTRY_TEMPLATE = (
     'if(self.executable(), "1", "0") ++ "\\n"'
 )
 COMMIT_TEMPLATE = 'commit_id ++ "\\t" ++ if(conflict, "1", "0") ++ "\\n"'
+PATH_TEMPLATE = 'path ++ "\\n"'
 
 
 def _run_jj(repo: Path, args: list[str]) -> bytes:
@@ -61,6 +62,34 @@ def _run_jj(repo: Path, args: list[str]) -> bytes:
     return completed.stdout
 
 
+def _parse_single_commit(raw: bytes, *, expected: str | None = None) -> str:
+    try:
+        text = raw.decode("ascii")
+    except UnicodeDecodeError as err:
+        raise JjCacheError("Jujutsu returned a non-ASCII commit identity") from err
+    lines = text.splitlines()
+    if len(lines) != 1:
+        raise JjCacheError("revision must resolve to exactly one commit")
+    fields = lines[0].split("\t")
+    if (
+        len(fields) != 2
+        or COMMIT_RE.fullmatch(fields[0]) is None
+        or fields[1] != "0"
+        or (expected is not None and fields[0] != expected)
+    ):
+        raise JjCacheError("revision changed identity or contains conflicts")
+    return fields[0]
+
+
+def current_commit(repo: Path) -> str:
+    """Return the full, conflict-free working-copy commit identity."""
+    repo = Path(repo).resolve()
+    if not repo.is_dir() or not (repo / ".jj").is_dir():
+        raise JjCacheError("{} is not a Jujutsu workspace root".format(repo))
+    raw = _run_jj(repo, ["log", "-r", "@", "--no-graph", "-T", COMMIT_TEMPLATE])
+    return _parse_single_commit(raw)
+
+
 def resolve_pinned_commit(repo: Path, revision: str) -> str:
     repo = Path(repo).resolve()
     if not repo.is_dir() or not (repo / ".jj").is_dir():
@@ -71,17 +100,68 @@ def resolve_pinned_commit(repo: Path, revision: str) -> str:
         repo,
         ["log", "-r", revision, "--no-graph", "-T", COMMIT_TEMPLATE],
     )
+    return _parse_single_commit(raw, expected=revision)
+
+
+def require_ancestor(repo: Path, ancestor: str, descendant: str) -> None:
+    """Fail unless two full commit IDs exist and the first reaches the second."""
+    repo = Path(repo).resolve()
+    resolve_pinned_commit(repo, ancestor)
+    resolve_pinned_commit(repo, descendant)
+    raw = _run_jj(
+        repo,
+        [
+            "log",
+            "-r",
+            "{} & ::{}".format(ancestor, descendant),
+            "--no-graph",
+            "-T",
+            COMMIT_TEMPLATE,
+        ],
+    )
     try:
-        text = raw.decode("ascii")
+        _parse_single_commit(raw, expected=ancestor)
+    except JjCacheError as err:
+        raise JjCacheError(
+            "revision {} is not an ancestor of {}".format(ancestor, descendant)
+        ) from err
+
+
+def working_copy_diff_summary(repo: Path) -> str:
+    """Return Jujutsu's tracked working-copy change summary for ``@``."""
+    raw = _run_jj(Path(repo).resolve(), ["diff", "--summary", "-r", "@"])
+    try:
+        return raw.decode("utf-8").strip()
     except UnicodeDecodeError as err:
-        raise JjCacheError("Jujutsu returned a non-ASCII commit identity") from err
-    lines = text.splitlines()
-    if len(lines) != 1:
-        raise JjCacheError("planner revision must resolve to exactly one commit")
-    fields = lines[0].split("\t")
-    if fields != [revision, "0"]:
-        raise JjCacheError("planner revision changed identity or contains conflicts")
-    return revision
+        raise JjCacheError("Jujutsu returned a non-UTF-8 change summary") from err
+
+
+def file_is_tracked_at(repo: Path, revision: str, relative: str) -> bool:
+    """Return whether *relative* is exactly one tracked file at *revision*."""
+    if COMMIT_RE.fullmatch(revision) is None:
+        raise JjCacheError("revision must be a full 40-hex commit ID")
+    pure = PurePosixPath(relative)
+    if (
+        not relative
+        or pure.is_absolute()
+        or ".." in pure.parts
+        or any("\n" in part or "\t" in part for part in pure.parts)
+        or pure.parts[0] in (".jj", ".git")
+    ):
+        raise JjCacheError("unsafe tracked path {!r}".format(relative))
+    raw = _run_jj(
+        Path(repo).resolve(),
+        ["file", "list", "-r", revision, "-T", PATH_TEMPLATE, "--", relative],
+    )
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError as err:
+        raise JjCacheError("tracked paths must be UTF-8") from err
+    if not lines:
+        return False
+    if lines != [relative]:
+        raise JjCacheError("Jujutsu returned an unexpected tracked path")
+    return True
 
 
 @dataclass(frozen=True)

@@ -23,7 +23,6 @@ import os
 import platform
 import re
 import stat
-import subprocess
 import sys
 import tempfile
 from fractions import Fraction
@@ -37,6 +36,7 @@ from lab.environments import SlurmEnvironment, is_run_step
 from lab.parser import Parser
 
 import wbh_parser
+import jj_cached_revision as jj_revision
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -48,12 +48,7 @@ REVISION_CACHE = Path(
     )
 ).resolve()
 
-REV = subprocess.run(
-    ["git", "-C", str(REPO), "rev-parse", "HEAD"],
-    check=True,
-    capture_output=True,
-    text=True,
-).stdout.strip()
+REV = jj_revision.current_commit(REPO)
 
 # Planner and scheduler limits for the preliminary screens.
 TIME_LIMIT = "300s"
@@ -1621,32 +1616,23 @@ def materialize_pddl_link(
             temporary.unlink()
 
 
-def _git_output(*args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(REPO), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-
-
 def require_revision_ancestor_of_head(revision: str) -> str:
     """Return protocol HEAD after attesting a full, existing ancestor commit."""
     if not isinstance(revision, str) or not re.fullmatch(
         r"[0-9a-f]{40}", revision
     ):
         raise RuntimeError("planner revision must be a full 40-digit commit")
-    head = _git_output("rev-parse", "HEAD")
+    head = jj_revision.current_commit(REPO)
     try:
-        _git_output("cat-file", "-e", revision + "^{commit}")
-    except subprocess.CalledProcessError as err:
+        jj_revision.resolve_pinned_commit(REPO, revision)
+    except jj_revision.JjCacheError as err:
         raise RuntimeError(
             "pinned planner revision does not name an existing commit: {}".
             format(revision)
         ) from err
     try:
-        _git_output("merge-base", "--is-ancestor", revision, head)
-    except subprocess.CalledProcessError as err:
+        jj_revision.require_ancestor(REPO, revision, head)
+    except jj_revision.JjCacheError as err:
         raise RuntimeError(
             "pinned planner revision {} is not an ancestor of protocol HEAD {}".
             format(revision, head)
@@ -1658,8 +1644,8 @@ def require_clean_committed_revision(
     revision: str, protocol_files=()
 ) -> None:
     """Require a clean protocol HEAD descending from the pinned planner."""
-    require_revision_ancestor_of_head(revision)
-    dirty = _git_output("status", "--porcelain", "--untracked-files=no")
+    head = require_revision_ancestor_of_head(revision)
+    dirty = jj_revision.working_copy_diff_summary(REPO)
     if dirty:
         raise RuntimeError(
             "prospective build/start requires a clean tracked worktree; got:\n{}".
@@ -1677,17 +1663,16 @@ def require_clean_committed_revision(
                 )
             ) from err
         try:
-            tracked = _git_output(
-                "ls-files", "--error-unmatch", "--", relative
-            )
-        except subprocess.CalledProcessError as err:
+            tracked = jj_revision.file_is_tracked_at(REPO, head, relative)
+        except jj_revision.JjCacheError as err:
+            raise RuntimeError(
+                "could not attest committed protocol file: {}".
+                format(relative)
+            ) from err
+        if not tracked:
             raise RuntimeError(
                 "protocol file must be committed before build/start: {}".
                 format(relative)
-            ) from err
-        if tracked != relative:
-            raise RuntimeError(
-                "could not attest committed protocol file: {}".format(relative)
             )
 
 

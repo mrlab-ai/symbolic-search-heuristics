@@ -530,8 +530,9 @@ For $n\geq2$, let $S=\{s\mid s(x_1)=1\}$ and
 $h(s)=(\sum_{i=1}^ns(x_i))\bmod2$. Then $\bddsize{S}=1$ and $h$ has
 width two under any order. The bucket $S\cap\level{h}{0}$ fixes
 $x_1=1$ and requires odd parity on $x_2,\ldots,x_n$. Its reduced BDD has
-one node for $x_1$, one for $x_2$, and two for each of
-$x_3,\ldots,x_n$, hence $2n-2$ inner nodes. Thus a width-two slice can be
+one node for $x_1$ and one parity node for each of
+$x_2,\ldots,x_n$, hence $n$ regular inner nodes; complemented edges share
+the opposite-parity residuals. Thus a width-two slice can be
 $\Theta(n)$ times larger than its source set. In cofactor count,
 $\cofcount(\chi_S)=2n-1$, so Theorem~\ref{thm-bucket} is within a
 constant factor.
@@ -967,7 +968,7 @@ For each fixed power-of-two $B$, the construction permits every pair
 $2\leq\values\leq W\leq B/4$; varying $B$ changes
 $n=2B+O(\log B)$. It therefore establishes joint worst-case necessity of all
 three factors in Corollary~\ref{cor-effort}, rather than only necessity along
-a tied diagonal. Its repeated multiplexer layers are synthetic, so the theorem
+a tied diagonal. Its repeated multiplexer layers are constructed, so the theorem
 is not a typical-case prediction.
 
 \section{Width of the Known Exponential Pathology}
@@ -1150,8 +1151,9 @@ heuristic changes into transition-relation partitions
 algebraically \citep{hansen-et-al-sara2002}. The exponential separation of
 \citet{speck-et-al-icaps2020} shows that even \hstar\ can be harmful under the
 BDD-node effort measure. Our response is deliberately narrower than a general
-performance theorem: cofactor width is a sufficient representation-safety
-condition for product-at-evaluation forward search. The exact-width selector
+performance theorem: cofactor width gives a sufficient parameterized
+representation-effort certificate for product-at-evaluation forward search.
+The exact-width selector
 operationalizes that condition, but neither its ranking score nor its runtime
 is covered by the theorem.
 
@@ -1160,6 +1162,13 @@ PDB construction and symbolic PDB use are established techniques
 automatic CEGAR pattern generation is due to
 \citet{rovner-et-al-icaps2019}, and compiling PDBs and M\&S heuristics into
 BDD value sets predates this work \citep{edelkamp-et-al-ecai2012}.
+Entry compression merges PDB locations while retaining a lower bound
+\citep{felner-et-al-jair2007}; value compression keeps the locations but maps
+several values to one stored value \citep{sturtevant-et-al-aaai2017}. A
+uniform cap is a special case of the latter idea. We do not claim value
+coarsening as new: the contribution is the cutwise contraction proof and its
+use to satisfy an exact residual-width certificate while preserving
+consistency.
 Relaxed BDD heuristics also use a width parameter to control a diagram over
 action choices for delete-free planning \citep{castro-et-al-icaps2019}. That
 construction width is distinct from the residual width of the total

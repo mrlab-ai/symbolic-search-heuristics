@@ -79,124 +79,103 @@ in Forward Symbolic \astar{}}
 % ============================== abstract =================================
 % Keep the abstract within the provisional 250-word target.
 \begin{abstract}
-Forward symbolic \astar\ partitions BDD frontiers by heuristic value. Because
-BDD size is not monotone under subsets, even a perfect heuristic can increase
-expansion size exponentially. We give a fixed-order safety condition based on
-the cofactor width $W$ of the heuristic ADD. For exact cost layers $L_g$, our
-bound pairs the distinct layer and heuristic cofactors at every cut. With
-$\values$ finite values, it relaxes to
-$\values W\sum_g\cofcount(\chi_{L_g})$ and, for $n$ state bits, to a
-blind-effort ratio of at most $2\values Wn\leq2W^2n$. The profile bound and
-the ordinary global-ADD Apply bound are incomparable. Throughout the feasible
-region $2\leq\values\leq W\leq B/4$ for power-of-two $B$, a polynomial-size
-family with an $O(BW)$-node ordered ADD and $n=\Theta(B)$ attains a ratio of at
-least $\values Wn/120$, making the coarse
-bound jointly tight up to a constant. The known exponential pathology has
-exponential width under its analyzed order, while safe terminal transforms
-contract every profile cut. As a case study, we use uniform caps in a
-width-constrained PDB selector. Candidate containment prevents any loss in the
-exact selector's information score on identical raw pools. At $K=8$ on a fixed
-\CapPrimaryTasks-task set, equal-domain macro coverage improves by
-\CapPrimaryMacroDeltaPoints\ points (\CapPrimaryWins/\CapPrimaryLosses\
-wins/losses), and capping adds \CapPrimarySemanticWins\ nontrivial selections
-on \CapPrimaryTracePairs\ completed identical-pool pairs. In a post-hoc audit
-of \CapPosthocPrimaryFiniteTripleSolvedPairs\ triple-solved finite-cap tasks,
-capped aggregate expansion effort
-is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind, versus
-\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection. Unaligned
-M\&S retains higher descriptive coverage; we do not claim planner dominance.
+Why do informative heuristics help symbolic \astar\ in some cases but destroy
+its advantage in others? Accuracy alone cannot answer this question: even a
+perfect heuristic can split a compact binary decision diagram (BDD) into
+exponentially larger pieces. We study fixed-order, product-at-evaluation
+forward symbolic \astar\ with positive costs and a consistent heuristic. At
+each variable cut, our cofactor-profile product pairs the distinct residuals
+of a search layer with those of the heuristic's algebraic decision diagram.
+It bounds every heuristic split and yields a cumulative expanded-BDD-node
+certificate. If $W$ is the largest heuristic residual count, $V$ its number of
+finite values, and $n$ the number of state bits, heuristic effort is at most
+$2VWn$ times blind effort. A polynomial-size planning family attains at least
+$VWn/120$, so all three factors are jointly necessary. The profile certificate
+and the standard Apply certificate based on total ADD size are incomparable.
+Cofactor width itself is standard multi-terminal decision-diagram width; the
+new contribution is its connection to exact symbolic-search buckets and the
+cut-aligned certificate. Safe value caps do not increase any profile cut. We
+use them in a width-constrained pattern-database selector whose candidate set
+contains that of exact-width selection on identical raw pools. At $K=8$ on a
+fixed \CapPrimaryTasks-task, \CapFullDomains-domain complement, equal-domain
+macro coverage is \CapPrimaryMacroDeltaPoints\ percentage points higher and
+pooled expanded BDD nodes are 11.6\% lower on 590 eligible completed pairs.
+These fixed-census results are descriptive; unaligned M\&S retains higher
+coverage, and we do not claim runtime or planner dominance.
 \end{abstract}
 
 % ============================ introduction ===============================
 \section{Introduction}
 
 Heuristics guide explicit \astar\ by ranking states
-\citep{hart-et-al-ieeessc1968,pearl-1984}, but in symbolic search the same
-information partitions compact frontiers. Symbolic search expands state sets
-represented as binary decision diagrams
-\citep[BDDs;][]{mcmillan-1993,edelkamp-helmert-ecp1999,bryant-ieeecomp1986};
-because BDD size is not monotone under subsets, an informative split can be
-representationally costly. Blind symbolic search, particularly in its
-bidirectional form, remains a strong approach to cost-optimal planning
-\citep{torralba-et-al-aij2017,speck-et-al-jair2025}, and a key component
-of the winning entry of the optimal track of the International Planning
-Competition (IPC) 2023 \citep{speck-ipc2023}.
+\citep{hart-et-al-ieeessc1968,pearl-1984}. In symbolic search, however, the
+same information also partitions compact state sets. Binary decision diagrams
+(BDDs) can represent enormous sets succinctly
+\citep{mcmillan-1993,edelkamp-helmert-ecp1999,bryant-ieeecomp1986}, but BDD
+size is not monotone under subsets: splitting a small diagram can produce large
+pieces. This raises our central question: which structural property explains
+when a heuristic fragments symbolic frontiers, and can it guide heuristic
+construction?
 
-Combining the two paradigms has a long history. \bddastar\
-\citep{edelkamp-reffel-ki1998} represents a heuristic $h$ as one BDD per
-heuristic value and splits each search layer into buckets of states that
-share a $g$- and an $h$-value. SetA\ensuremath{^{*}} and \ghseta\
-\citep{jensen-et-al-aij2008} instead fold the heuristic-value change into
-the transition relations, and ADDA\ensuremath{^{*}}
-\citep{hansen-et-al-sara2002} stores $h$ as an algebraic decision diagram
-(ADD). Empirically, all of these variants beat blind symbolic search in
-some domains and lose in others
-\citep{torralba-phd2015,torralba-et-al-aij2017}.
-\citet{speck-et-al-icaps2020} explained why: in symbolic search the
-effort of an expansion is governed by the number of BDD nodes rather than
-the number of represented states, and they prove that even the perfect
-heuristic \hstar\ can increase the cumulative size of the expanded BDDs
-exponentially. Against this backdrop, heuristic symbolic search has seen
-limited uptake. A notable recent direction uses operator-potential heuristics
-\citep{fiser-et-al-aaai2022,fiser-et-al-aij2024}, which integrate
-linear-programming-based potential heuristics
-\citep{pommerening-et-al-aaai2015} into
-\ghseta\ and report little increased BDD size in practice.
-This evidence motivates a structural explanation, but does not itself give
-a condition under which a heuristic \emph{provably} cannot cause a large
-representational overhead. Recently,
-\citet{speck-helmert-ecai2025} gave worst-case performance
-guarantees for symbolic search relative to explicit search, but their
-analysis concerns the representation of transition relations and goal
-formulas and explicitly leaves heuristics aside.
+The usual explicit-search intuition emphasizes heuristic quality. That is not
+sufficient in the symbolic setting. \citet{speck-et-al-icaps2020} show that
+even the perfect heuristic \hstar\ can increase the cumulative size of
+expanded BDDs exponentially. Earlier symbolic heuristic searches also have
+mixed empirical behavior: \bddastar\ stores one BDD per heuristic value
+\citep{edelkamp-reffel-ki1998}, SetA\ensuremath{^{*}} and \ghseta\ modify
+transition relations \citep{jensen-et-al-aij2008}, and ADDA\ensuremath{^{*}}
+stores the heuristic as an algebraic decision diagram (ADD)
+\citep{hansen-et-al-sara2002}; each helps in some domains and hurts in others
+\citep{torralba-phd2015,torralba-et-al-aij2017}. Blind symbolic search
+therefore remains a strong cost-optimal planning method
+\citep{torralba-et-al-aij2017,speck-et-al-jair2025} and contributed to the
+winning optimal IPC 2023 planner \citep{speck-ipc2023}.
 
-We apply standard fixed-order residual/multi-terminal-BDD (MTBDD) width
-\citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000} to
-heuristic total ADDs, using \emph{cofactor width} as a planning-facing name. It
-is the largest distinct-residual count after any prefix of the search order,
-equivalently the largest cut through the quasi-reduced total ADD. The
-underlying product-graph argument for binary synthesis is standard
-\citep[Thm.~3.3.6]{wegener-2000}. Our contribution is to
-couple it to exact symbolic-search bucket semantics across cost layers, derive
-cumulative effort bounds and separations, and instantiate them for
-planning-heuristic families. Operationally, width is measured on the same
-total ADD used by search, so it can serve as a pre-search acceptance
-certificate and guide safe terminal coarsening.
+Recent operator-potential heuristics report little BDD growth in practice
+\citep{fiser-et-al-aaai2022,fiser-et-al-aij2024}, but do not characterize when
+heuristic partitioning is representation-safe. Existing worst-case guarantees
+for symbolic versus explicit search instead concern transition relations and
+goal formulas and leave heuristics aside \citep{speck-helmert-ecai2025}. We
+seek a parameterized certificate relative to blind symbolic search, not a
+claim that every accurate heuristic is cheap.
 
-Our central contribution is a structural safety regime for the pathology of
-\citet{speck-et-al-icaps2020}, together with its limits and one operational
-case study. A fragmentation theorem first bounds each value slice through the
-cut-by-cut inner product of the state-set and heuristic cofactor profiles.
-Summing slices and relaxing the profile gives $TW\cofcount(\chi_S)$ for a
-width-$W$, $T$-terminal heuristic. Together with an exact bucket identity, it
-yields a profile-sensitive cumulative bound and the blind-effort ratio
-$2\values Wn\leq2W^2n$. Before the cofactor count is relaxed, this certificate
-and the standard total-ADD Apply bound are incomparable. For every power-of-two
-$B$ and $2\leq\values\leq W\leq B/4$, a polynomial-size family has
-$n=\Theta(B)$ and attains ratio at least $\values Wn/120$. The coarse upper
-bound is therefore jointly tight up to a constant. The known
-exponential pathology has exponential width under its analyzed order.
-The new chain is exact bucket identity, a cumulative cut-aligned certificate,
-two-way separation from global ADD size, and a jointly matching planning-task
-family; residual width and Boolean Apply themselves are standard.
+Our metric is a cut-aligned cofactor-profile product. At each prefix of the
+fixed BDD order, it multiplies the number of residual state-set functions by
+the number of residual heuristic functions. The latter maximum is standard
+residual/MTBDD width \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}, which we call
+\emph{cofactor width}; it is unrelated to planning novelty width or the width
+of an action-choice BDD. The binary product argument is also standard
+\citep[Thm.~3.3.6]{wegener-2000}. Our contribution is the connection to exact
+symbolic-search buckets, accumulation over cost layers, and the resulting
+relative-effort theorem. The profile certificate and the standard Apply
+certificate based on total ADD size are incomparable. Cofactor width is its
+frontier-independent relaxation and can be measured before search on the ADD
+and order used by the planner.
 
-We give profile-contracting safe terminal transforms, including nested
-uniform caps, and bound integer potentials, bounded-state PDBs, and linear
-M\&S aligned with the search order. We then prove that cap-aware PDB selection
-is backward compatible with exact-width selection: on score-identical raw pools it
-cannot lower the frozen score or lose semantic nontriviality, and an exact
-fallback is the exact selector's winner.
+For fixed-order product-at-evaluation forward symbolic \astar, the theorem
+bounds cumulative expanded-BDD-node effort by $O(VWn)$ times blind effort,
+where $V$ is the number of finite heuristic values, $W$ the cofactor width,
+and $n$ the number of state bits. A polynomial-size planning family attains
+$\Omega(VWn)$ throughout the feasible independent parameter range. The known
+exponential example has exponential width under its analyzed order. Thus
+bounded width is a sufficient protection against that pathology, not a
+necessary characterization of every compact split.
 
-Using SymK \citep{speck-et-al-jair2025}, we compare exact-width and cap-aware
-selectors at $K=8$ on a fixed \CapPrimaryTasks-task set: macro coverage improves
-by \CapPrimaryMacroDeltaPoints\ points, and capping adds
-\CapPrimarySemanticWins\ nontrivial selections on \CapPrimaryTracePairs\
-completed identical-pool pairs. On the post-hoc
-\CapPosthocPrimaryFiniteTripleSolvedPairs-task triple-solved finite-cap subset,
-capped aggregate expansion effort
-is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind versus
-\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection. Blind,
-CEGAR PDB, and unaligned M\&S are descriptive controls; M\&S retains higher
+Safe terminal maps, including uniform caps, do not increase any cofactor cut.
+We derive bounds for bounded integer potentials, PDBs, and linear M\&S aligned
+with the search order, then use caps in a width-constrained PDB selector.
+Whenever both selectors complete on the same normalized raw pool, the
+cap-aware candidate set contains every exact-feasible candidate and cannot
+lower their shared information score. This is candidate-set and score
+dominance, not a runtime guarantee.
+
+Using SymK \citep{speck-et-al-jair2025}, we compare both selectors at $K=8$ on
+a fixed \CapPrimaryTasks-task, \CapFullDomains-domain complement. Equal-domain
+macro coverage is \CapPrimaryMacroDeltaPoints\ percentage points higher for
+cap-aware selection, with \CapPrimaryWins/\CapPrimaryLosses\ task wins/losses;
+pooled expanded BDD nodes are 11.6\% lower on 590 eligible completed pairs.
+The comparison is descriptive and has no population-inferential meaning.
+Blind, CEGAR PDB, and unaligned M\&S are controls; M\&S retains higher
 full-census coverage.
 
 % ============================ background =================================
@@ -499,8 +478,10 @@ termination.
 
 \begin{proof}[Proof sketch]
 Selection is lexicographic in $(f,g)$ by definition; consistency makes
-generated successor $f$-keys nondecreasing, and positive costs prevent a
-selected key from being repopulated. Induction along cheapest
+generated successor $f$-keys nondecreasing. Consistency, positive costs, and
+increasing-$g$ tie breaking ensure that every predecessor that could populate
+a key at equal $f$ is selected first, so a selected key cannot be repopulated.
+Induction along cheapest
 paths gives optimal $g$-values and complete slices. An open prefix of an
 optimal plan prevents termination or selection above $\copt$. The
 supplement proves the five claims---monotone selection, no re-population,
@@ -633,7 +614,7 @@ worst-case parameter gap for the stated fixed-order,
 product-at-evaluation BDD-node-effort model: none of $\values$, $W$ or $n$ can
 be removed from its universal ratio. For each fixed power-of-two $B$, the
 construction covers the full region $2\leq\values\leq W\leq B/4$; varying $B$
-scales $n$. Its repeated multiplexer layers are synthetic and are not a
+scales $n$. Its repeated multiplexer layers are constructed and are not a
 typical-case prediction.
 
 \subsection{Exponential Width Is Necessary for the Known Pathology}
@@ -678,7 +659,7 @@ counts and pruning-only search.
 Let $\pi$ be variable-contiguous,
 $d=\max_{v\in\vars}|D_v|$, and $m=|\vars|$.
 
-\subsection{Potential Heuristics}
+\subsection{Bounded Integer Potentials}
 
 Integer potentials \citep{pommerening-et-al-aaai2015,fiser-et-al-aaai2022}
 form $p(s)=\sum_vP(v,s(v))$ and expose the safe rectification
@@ -718,8 +699,10 @@ need not form a prefix because non-pattern bits are skipped. Hence an
 abstract-state budget itself induces a width bound. A PDB has at most
 $|\states^P|$ finite values, so its effort ratio is at most
 $2|\states^P|^2n$. A distinct invalid-code sink instead gives width at most
-$|\states^P|+1$. Combining PDBs multiplies
-component-width bounds.
+$|\states^P|+1$. Max combinations, and additive combinations under an
+admissible cost partition, have at most the product of the component-width
+bounds; this representational statement does not itself establish
+admissibility.
 
 \subsection{Linear Merge-and-Shrink}
 
@@ -794,7 +777,7 @@ breakers.  The score is an information surrogate, not a runtime claim.  A
 selection is called \emph{semantic-nontrivial} when its finite-value sum is
 positive or it recognizes an abstract dead end.
 
-\begin{proposition}[selector dominance]
+\begin{proposition}[candidate-set and score dominance]
 \label{prop-selector-dominance}
 Suppose both selectors complete on the same score-bearing normalized raw-PDB
 pool. The
@@ -1032,36 +1015,51 @@ width-certified replacement.
 partition transitions \citep{jensen-et-al-aij2008}, while ADDA\ensuremath{^{*}}
 uses algebraic diagrams \citep{hansen-et-al-sara2002}. Even \hstar\ can
 increase BDD-node effort exponentially \citep{speck-et-al-icaps2020}. We give
-a checkable sufficient condition and show that their construction has
-exponential width under its analyzed order; this is a representation-safety
-certificate for one architecture, not a general runtime theorem. Residual
-width and the Boolean Apply bound are standard diagram tools. Our contribution
-is their connection to exact heuristic-bucket semantics: the cut-aligned
-profile summed over cost layers, its separation from the global ADD bound,
-safe terminal contractions, and a matching joint lower-bound family.
+a sufficient condition and show that their construction has exponential width
+under its analyzed order; this is a representation-effort certificate for one
+architecture, not a runtime theorem. Residual width, its product construction,
+and Boolean Apply are standard \citep{wegener-2000,bryant-ieeecomp1986}. The
+new chain is the exact pre-goal bucket identity, accumulation of the
+cut-aligned product over cost layers, a ratio relative to blind search,
+incomparability with the Apply certificate based on total ADD size, and a
+jointly matching planning-task family.
 
-PDBs and their symbolic use \citep{culberson-schaeffer-compint1998,
-edelkamp-ecp2001}, CEGAR generation \citep{rovner-et-al-icaps2019}, symbolic
-compilation \citep{edelkamp-et-al-ecai2012}, factored M\&S mappings
-\citep{torralba-phd2015,helmert-et-al-icaps2015}, and potential heuristics
-\citep{pommerening-et-al-aaai2015,fiser-et-al-aaai2022,fiser-et-al-aij2024}
-all predate this work. We do not claim the generators or symbolic PDB
-compilation as new. Our method verifies raw-pool identity, measures each total
-ADD in the search order, filters by width, and selects a safe terminal
-coarsening before cross-pattern ranking. The M\&S bound requires aligned merge
-and search orders; the control is deliberately unaligned. The width of relaxed
-BDD heuristics bounds action-choice BDDs \citep{castro-et-al-icaps2019}, unlike
-our state-to-value ADD width. Symbolic-versus-explicit search
-\citep{speck-helmert-ecai2025}, variable ordering
-\citep{kissmann-hoffmann-jair2014}, and perimeter abstractions
-\citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} are orthogonal.
+PDBs \citep{culberson-schaeffer-compint1998,edelkamp-ecp2001}, automatic
+pattern selection \citep{haslum-et-al-aaai2007,rovner-et-al-icaps2019}, and
+their symbolic compilation \citep{edelkamp-et-al-ecai2012} predate this work.
+Prior PDB compression merges table entries
+\citep{felner-et-al-jair2007}; value compression instead coarsens the value
+range while retaining every entry \citep{sturtevant-et-al-aaai2017}. Our
+uniform cap is a special monotone value coarsening, not a new compression
+primitive. Its role here is to preserve consistency, contract every cofactor
+cut, and make a PDB feasible under an exact residual-width budget before the
+shared information score ranks patterns. Total ADD size is the closest
+alternative representation budget: its certificate is formally incomparable,
+and this study does not claim empirical superiority over an ADD-size filter.
+
+Factored M\&S mappings \citep{torralba-phd2015,helmert-et-al-icaps2015} and
+potential heuristics \citep{pommerening-et-al-aaai2015,
+fiser-et-al-aaai2022,fiser-et-al-aij2024} are established; the potential
+results for delta-partitioned \ghseta\ concern a different architecture from
+our absolute-value buckets. The width of relaxed BDD heuristics bounds
+action-choice BDDs \citep{castro-et-al-icaps2019}, not a state-to-value ADD,
+and cofactor width is unrelated to planning novelty width. Variable ordering
+is directly relevant because the certificate is order-dependent
+\citep{kissmann-hoffmann-jair2014}; we fix rather than optimize it. Guarantees
+for symbolic versus explicit search \citep{speck-helmert-ecai2025} are
+complementary, while perimeter abstractions
+\citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} control fragmentation
+through a different search mechanism.
 
 \section{Limitations}
 
 The guarantee covers fixed-order forward product-at-evaluation search with
 positive costs, consistent heuristics, and our duplicate/goal-test policy. It
-bounds BDD-node effort, not runtime or memory. Width is order-dependent,
-and the sharper certificate needs the cofactor counts of exact search layers.
+bounds BDD-node effort, not runtime or memory. The certificate depends on the
+Boolean encoding, total extension, and variable order; bounded width is
+sufficient, not necessary. The matching constructed family establishes
+worst-case parameter necessity rather than typical behavior. The sharper
+certificate needs the cofactor counts of exact search layers.
 Our logs do not contain both layer and heuristic profiles, so they cannot
 instantiate the profile-based upper bound. The post-hoc audit instead compares
 the theorem's target effort measure with blind search on its triple-solved
@@ -1077,10 +1075,12 @@ one deterministic cap ladder. The outcome-informed development screen is
 disclosed and excluded from the primary complement, but there is only one run
 per cell and a hard resource cutoff. The primary coverage gain of
 \CapPrimaryMacroDeltaPoints\ percentage points is modest and has no
-population-inferential interpretation. Operational ratios
+population-inferential interpretation. Semantic nontriviality and the frozen
+score are information surrogates, not planner-quality guarantees. Operational ratios
 condition on completed metric pairs and therefore cannot explain coverage
 discordances or joint timeouts; leave-one-domain-out stability does not remove
-that censoring. Finally, unaligned M\&S has higher descriptive coverage. A
+that censoring. Cap-aware construction time is 2.3\% higher on its completed
+paired denominator, and unaligned M\&S has higher descriptive coverage. A
 multi-$K$ replication with full cofactor profiles and a matched ADD-size
 baseline would test how much of the result is specific to $K=8$, the cap
 ladder, and the width certificate.
@@ -1091,15 +1091,23 @@ ladder, and the width certificate.
 For product-at-evaluation forward \bddastar, cut-aligned cofactor profiles give
 a fixed-order certificate with coarse blind-effort ratio
 $2\values Wn\leq2W^2n$, and a polynomial-size family attains at least
-$\values Wn/120$. Safe coarsening contracts the certificate. On
-\CapPrimaryTracePairs\ completed identical-pool pairs, the resulting PDB
-selector adds \CapPrimarySemanticWins\ nontrivial selections and loses none.
-On the post-hoc
+$\values Wn/120$. Safe coarsening does not increase the certificate. On the
+fixed \CapPrimaryTasks-task, \CapFullDomains-domain complement, cap-aware
+selection has \CapPrimaryMacroDeltaPoints\ percentage points higher
+equal-domain macro coverage than exact-width selection
+(\CapPrimaryWins/\CapPrimaryLosses\ task wins/losses). This modest descriptive
+difference is the primary empirical result. On \CapPrimaryTracePairs\
+completed identical-pool pairs, candidate-set containment predicts no loss
+under the information score; empirically the cap-aware selector adds
+\CapPrimarySemanticWins\ positive-value or dead-end-detecting selections. On
+the post-hoc
 \CapPosthocPrimaryFiniteTripleSolvedPairs-task triple-solved finite-cap subset,
-capped aggregate expansion effort
+the cap-aware selector's pooled expanded-BDD-node effort
 is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind versus
-\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection. This does
-not establish runtime or overall planner dominance.
+\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection; this
+comparison can include a change of selected pattern. Together, the results
+establish a formal representation-effort certificate and a scoped case study,
+not typical-case tightness, runtime dominance, or general planner superiority.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
 % Flush every body float before measuring the final content page. The 2027

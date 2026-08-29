@@ -813,6 +813,38 @@ class JjExporterTests(unittest.TestCase):
         self.assertIsNotNone(JJ.COMMIT_RE.fullmatch("a" * 40))
         self.assertIsNone(JJ.COMMIT_RE.fullmatch("a" * 64))
 
+    def test_current_commit_requires_one_conflict_free_full_id(self):
+        revision = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / ".jj").mkdir()
+            with mock.patch.object(
+                JJ, "_run_jj", return_value=(revision + "\t0\n").encode("ascii")
+            ):
+                self.assertEqual(JJ.current_commit(repo), revision)
+            for raw in (b"", (revision + "\t1\n").encode("ascii"), b"short\t0\n"):
+                with self.subTest(raw=raw), mock.patch.object(
+                    JJ, "_run_jj", return_value=raw
+                ):
+                    with self.assertRaises(JJ.JjCacheError):
+                        JJ.current_commit(repo)
+
+    def test_ancestor_and_tracked_file_queries_fail_closed(self):
+        ancestor = "a" * 40
+        descendant = "b" * 40
+        with mock.patch.object(
+            JJ, "resolve_pinned_commit", side_effect=(ancestor, descendant)
+        ), mock.patch.object(
+            JJ, "_run_jj", return_value=(ancestor + "\t0\n").encode("ascii")
+        ):
+            JJ.require_ancestor(Path("/repo"), ancestor, descendant)
+        with mock.patch.object(JJ, "_run_jj", return_value=b""):
+            self.assertFalse(JJ.file_is_tracked_at(Path("/repo"), ancestor, "x.py"))
+        with mock.patch.object(JJ, "_run_jj", return_value=b"x.py\n"):
+            self.assertTrue(JJ.file_is_tracked_at(Path("/repo"), ancestor, "x.py"))
+        with self.assertRaises(JJ.JjCacheError):
+            JJ.file_is_tracked_at(Path("/repo"), ancestor, "../x.py")
+
     def test_export_excludes_unsupported_ancillary_symlinks(self):
         revision = "a" * 40
         entries = (
