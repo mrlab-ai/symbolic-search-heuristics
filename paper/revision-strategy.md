@@ -460,3 +460,22 @@ pairs, full-denominator coverage discordance, conditional effort ratios, and
 eligible-pair counts for the selector contrasts.  Every claim must name
 whether it concerns fragmentation, conditional effort, coverage, or planner
 runtime; none of these outcomes may stand in for another.
+
+### Final gate outcome
+
+The exact explanatory framing is not supported strongly enough to replace the
+theory-led story. The initial 1,327-task profile experiment had no eligible
+fragmentation observation because every semantic-union denominator was
+recorded as zero. Its certificate concordances were 0.409 for the profile,
+0.407 for the width relaxation, and 0.369 for Apply; the matched-ADD and
+multi-budget construction gates also failed.
+
+The corrected, frozen 275-task semantic-union follow-up produces 1,746 shared
+strict pairs from 113 tasks in 39 domains. Width's equal-domain concordance is
+0.786 (LODO 0.780--0.807), compared with 0.766 for total ADD size and 0.228
+for the frozen information-quality tuple. Every effect and domain criterion
+passes, but task support is below the preregistered floor of 184. The overall
+gate therefore fails and its frozen consequence applies: do not tune a rescue
+selector. The manuscript keeps the theory-and-algorithm framing, reports the
+strong but under-supported signal as suggestive, and does not claim that width
+is a validated predictor of relative planner performance.

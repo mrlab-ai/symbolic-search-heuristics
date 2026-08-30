@@ -67,6 +67,7 @@
 
 \input{generated/pdb-cap-grid-full-v1.tex}
 \input{generated/pdb-cap-grid-posthoc-v1.tex}
+\input{generated/pdb-profile-semantic-union-v1.tex}
 
 \title{Tight Cofactor-Width Bounds for Heuristic Fragmentation
 in Forward Symbolic \astar{}}
@@ -79,30 +80,32 @@ in Forward Symbolic \astar{}}
 % ============================== abstract =================================
 % Keep the abstract within the provisional 250-word target.
 \begin{abstract}
-Why do informative heuristics help symbolic \astar\ in some cases but destroy
-its advantage in others? Accuracy alone cannot answer this question: even a
-perfect heuristic can split a compact binary decision diagram (BDD) into
-exponentially larger pieces. We study fixed-order, product-at-evaluation
-forward symbolic \astar\ with positive costs and a consistent heuristic. At
-each variable cut, our cofactor-profile product multiplies the marginal
-residual counts of a search layer and the heuristic ADD. This bounds their
-realized pairs, and hence every heuristic split, without modeling correlation,
-yielding a cumulative expanded-BDD-node certificate. If $W$ is the largest
-heuristic residual count, $V$ its number of finite values, and $n$ the number
-of state bits, heuristic effort is at most
-$2VWn$ times blind effort. A polynomial-size planning family attains at least
-$VWn/120$, so all three factors are jointly necessary. The profile certificate
-and the standard Apply certificate based on total ADD size are incomparable.
-Cofactor width itself is standard multi-terminal decision-diagram width; the
-new contribution is its connection to exact symbolic-search buckets and the
-cut-aligned certificate. Safe value caps do not increase any profile cut. We
-use them in a width-constrained pattern-database selector whose candidate set
-contains that of exact-width selection on identical raw pools. At $K=8$ on a
-fixed \CapPrimaryTasks-task, \CapFullDomains-domain complement, equal-domain
-macro coverage is \CapPrimaryMacroDeltaPoints\ percentage points higher and
-pooled expanded BDD nodes are 11.6\% lower on 590 eligible completed pairs.
-These fixed-census results are descriptive; unaligned M\&S retains higher
-coverage, and we do not claim runtime or planner dominance.
+Why do some heuristics help symbolic \astar\ while others destroy its
+compactness? Heuristic quality---the usual explanation of search
+performance---is insufficient: even a perfect heuristic can split a compact
+binary decision diagram (BDD) into exponentially larger pieces. For
+fixed-order, product-at-evaluation forward symbolic \astar, we introduce a
+cut-aligned cofactor-profile product that multiplies the residual counts of a
+search layer and the heuristic ADD at each variable cut. It bounds every
+heuristic split and yields a cumulative expanded-BDD-node certificate. If $W$
+is the largest heuristic residual count, $V$ its number of finite values, and
+$n$ the number of state bits, heuristic effort is at most $2VWn$ times blind
+effort; a polynomial-size family attains $VWn/120$. Cofactor width is standard
+decision-diagram width; its connection to exact symbolic-search buckets and
+the cut-aligned certificate is new. Safe value caps contract the certificate
+and yield a width-constrained pattern-database selector. In a corrected
+\SemanticUnionTasks-task predictor study, width has equal-domain concordance
+\SemanticUnionWidthMacro\ with bucket fragmentation, versus
+\SemanticUnionQualityMacro\ for the frozen information-quality score and
+\SemanticUnionAddMacro\ for total ADD size. Yet strict comparisons cover only
+\SemanticUnionPairTasks\ tasks, below the preregistered
+\SemanticUnionTaskFloor-task gate; we treat this as suggestive, claim no
+validation, and tune no new selector from it. Separately, at $K=8$ on a
+\CapPrimaryTasks-task, \CapFullDomains-domain complement, cap-aware selection
+raises macro coverage by \CapPrimaryMacroDeltaPoints\ percentage points and
+lowers pooled expanded BDD nodes by 11.6\% on 590 eligible pairs. These results
+are descriptive; unaligned M\&S retains higher coverage, and we claim neither
+runtime nor planner dominance.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -171,6 +174,11 @@ Whenever both selectors complete on the same normalized raw pool, the
 cap-aware candidate set contains every exact-feasible candidate and cannot
 lower their shared information score. This is candidate-set and score
 dominance, not a runtime guarantee.
+
+A domain-balanced follow-up finds width strongly concordant with bucket
+fragmentation and superior to frozen information quality, but misses its
+preregistered task-support floor. We report this signal without predictor
+validation or new tuning and retain the theory-and-algorithm framing.
 
 Using SymK \citep{speck-et-al-jair2025}, we compare both selectors at $K=8$ on
 a fixed \CapPrimaryTasks-task, \CapFullDomains-domain complement. Equal-domain
@@ -885,12 +893,23 @@ and trace contracts.
 \section{Experiments}
 \label{sec-experiments}
 
-We ask three fixed-set questions. \emph{Q1:} On completed identical-pool
+We ask four fixed-set questions. \emph{Q0:} Does cofactor width order isolated
+bucket fragmentation better than frozen information quality, and comparably
+to total ADD size? \emph{Q1:} On completed identical-pool
 pairs, how often does candidate-set enlargement add a semantic-nontrivial
 selection? \emph{Q2:} Does it improve coverage over exact-width selection?
 \emph{Q3:} What construction and search costs accompany that difference?
 Three conventional controls provide descriptive context. Potential heuristics
 and aligned M\&S are outside the matrix.
+
+Q0 uses a separately frozen corrected \SemanticUnionTasks-task, 16-configuration
+measurement. Fragmentation $F$ is cumulative expanded-bucket BDD nodes divided
+by per-$g$ expanded-union BDD nodes. A shared strict-pair set compares ordinal
+concordance of $W$, total ADD size $U$, and quality, with domains weighted
+equally. The gate couples fixed effect criteria ($W\geq0.65$, every LODO
+$\geq0.60$, above quality, and within 0.02 of $U$) with support from 31 domains
+and \SemanticUnionTaskFloor\ tasks; failure forbids rescue tuning. The
+supplement gives the earlier failed measurement and full protocol.
 
 Frozen exclusions of 290 zero-cost and 30 normalized-axiom tasks from 1697
 optimal sequential IPC tasks leave \CapFullTasks\ positive-cost, axiom-free
@@ -919,12 +938,23 @@ Parsing is fail-closed: missing or duplicate cells, incomplete traces, or cost
 disagreement invalidate the analysis rather than alter a denominator. A
 separately frozen secondary contract reports construction-charged micro-PAR2,
 planner CPU on positive jointly solved pairs, and image time, expanded nodes,
-and construction time on stated eligible pairs. The original logs lack the
-complete profiles required to evaluate the numerical upper bound; the later
-target-effort audit is explicitly post-hoc and changes no frozen estimand. The
-supplement records launch rules, digests, attestation, and parser checks.
+and construction time on stated eligible pairs. The original full-census logs
+lack the profiles required to evaluate the numerical upper bound; the profile
+experiments are separate, and the later target-effort audit is explicitly
+post-hoc. Neither changes a frozen estimand. The supplement records launch
+rules, digests, attestation, and parser checks.
 
 \subsection{Results}
+
+\paragraph{Predictor Audit (Q0).}
+Among \SemanticUnionCells\ cells, \SemanticUnionEligible\ solved runs are
+eligible. The shared \SemanticUnionPairs\ strict pairs span
+\SemanticUnionPairTasks\ tasks and \SemanticUnionPairDomains\ domains. Macro
+concordance is \SemanticUnionWidthMacro\ for $W$ (LODO
+\SemanticUnionWidthLodoMin--\SemanticUnionWidthLodoMax), versus
+\SemanticUnionAddMacro\ for $U$ and \SemanticUnionQualityMacro\ for quality.
+All effect criteria pass, but \SemanticUnionPairTasks$<\SemanticUnionTaskFloor$
+tasks; the gate fails, so the result is suggestive and no selector is tuned.
 
 \paragraph{Selection Behavior (Q1).}
 All \CapPrimaryTracePairs\ completed paired selectors have identical
@@ -945,9 +975,9 @@ outputs have the sharper limits $48n$ and $80n$.
 
 \paragraph{Coverage (Q2).}
 \CapPrimaryText\ \CapSensitivityText\ The five full-census rows in
-Table~\ref{tab:cap-aware-main} retain their fixed denominator and were not used
-to select a configuration. In the primary scope, the coverage difference is
-positive in eight domains, negative in three, and zero in 35.
+Table~\ref{tab:cap-aware-main} retain their fixed denominator and did not select
+a configuration. Across domains, the sign is positive/negative/zero in
+8/3/35.
 
 \paragraph{Operational Behavior (Q3).}
 The separately frozen secondary summaries retain their own eligibility rules.
@@ -985,121 +1015,91 @@ sensitivity and full representation summaries.
 \end{table}
 
 \paragraph{Post-Hoc Descriptive Diagnostics.}
-All \CapPosthocPrimaryFinitePairs\ finite-cap selections transform an
-exact-infeasible PDB (raw width exceeds eight), and the same-PDB coefficient
-$2\values W$ contracts strictly in all \CapPosthocPrimaryCompressionPairs\
-cases. This paired comparison isolates terminal capping; the supplement gives
-the coefficient distributions and per-bucket operational diagnostics.
-
-Table~\ref{tab:cap-posthoc-effort} evaluates the theorem's target measure. It
-requires blind completion, matching costs, certified counters, and one BDD
-piece per expanded bucket. On \CapPosthocPrimaryFiniteTripleSolvedPairs\
-finite-cap tasks, cap-aware effort is
-\CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind versus
-\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection; their
-ratio is \CapPosthocPrimaryFiniteCapExactEffortRatio. Exact-endpoint efforts
-are identical between selectors. The profiles needed for the upper bound were
-not logged, and conditioning on completion excludes timeouts and cannot
-explain coverage discordance.
+Every finite-cap selection transforms an exact-infeasible PDB and strictly
+contracts the same-PDB coefficient $2\values W$. Table~\ref{tab:cap-posthoc-effort}
+evaluates cumulative expanded-BDD effort on triple-solved, certified runs. On
+\CapPosthocPrimaryFiniteTripleSolvedPairs\ finite-cap tasks, cap-aware/blind,
+exact/blind, and cap-aware/exact ratios are respectively
+\CapPosthocPrimaryFiniteCapBlindEffortRatio,
+\CapPosthocPrimaryFiniteExactBlindEffortRatio, and
+\CapPosthocPrimaryFiniteCapExactEffortRatio; exact-endpoint efforts coincide.
+This conditional audit cannot explain coverage or timeouts, and the original
+full census lacks profiles for the numerical upper bound.
 
 \paragraph{Descriptive Controls.}
-Uncapped, unaligned M\&S solved
-\CapFullMsExactSolved/\CapFullTasks\ tasks, compared with
-\CapFullCapSolved\ for cap-aware selection, \CapFullBlindSolved\ for blind
-search, \CapFullExactSolved\ for exact-width selection, and
-\CapFullCegarSolved\ for the single CEGAR PDB. Thus cap-aware selection solves
-14 more tasks than CEGAR, one fewer than blind search, and 13 fewer than M\&S
-on this descriptive census. The M\&S control does not satisfy the
-merge/search-order alignment premise of Proposition~\ref{prop-ms} and is not a
-width-certified replacement.
+Unaligned M\&S solves \CapFullMsExactSolved/\CapFullTasks\ tasks, versus
+\CapFullCapSolved\ for cap-aware selection, \CapFullBlindSolved\ for blind,
+\CapFullExactSolved\ for exact width, and \CapFullCegarSolved\ for CEGAR. Its
+higher coverage is descriptive: it violates Proposition~\ref{prop-ms}'s order
+alignment and is not width-certified.
 
 \section{Related Work}
 
-\bddastar\ partitions frontiers by heuristic value
-\citep{edelkamp-reffel-ki1998}; SetA\ensuremath{^{*}} and \ghseta\ instead
-partition transitions \citep{jensen-et-al-aij2008}, while ADDA\ensuremath{^{*}}
-uses algebraic diagrams \citep{hansen-et-al-sara2002}. Even \hstar\ can
-increase BDD-node effort exponentially \citep{speck-et-al-icaps2020}. We give
-a sufficient condition and show that their construction has exponential width
-under its analyzed order; this is a representation-effort certificate for one
-architecture, not a runtime theorem. Residual width, its product construction,
-and Boolean Apply are standard \citep{wegener-2000,bryant-ieeecomp1986}. The
-new chain is the exact pre-goal bucket identity, accumulation of the
-cut-aligned product over cost layers, a ratio relative to blind search,
-incomparability with the Apply certificate based on total ADD size, and a
-jointly matching planning-task family.
+\bddastar\ partitions frontiers by value \citep{edelkamp-reffel-ki1998};
+SetA\ensuremath{^{*}} and \ghseta\ partition transitions
+\citep{jensen-et-al-aij2008}, and ADDA\ensuremath{^{*}} uses algebraic diagrams
+\citep{hansen-et-al-sara2002}. Even \hstar\ can cause exponential BDD effort
+\citep{speck-et-al-icaps2020}; its construction has exponential cofactor width.
+Residual width, products, and Apply are standard
+\citep{wegener-2000,bryant-ieeecomp1986}. New here are their connection to
+exact search buckets, the cut-aligned cumulative and blind-relative bounds,
+the Apply incomparability, and the matching planning family.
 
-PDBs \citep{culberson-schaeffer-compint1998,edelkamp-ecp2001}, automatic
-pattern selection \citep{haslum-et-al-aaai2007,rovner-et-al-icaps2019}, and
-their symbolic compilation \citep{edelkamp-et-al-ecai2012} predate this work.
-Prior PDB compression merges table entries
-\citep{felner-et-al-jair2007}; value compression instead coarsens the value
-range while retaining every entry \citep{sturtevant-et-al-aaai2017}. Our
-uniform cap is a special monotone value coarsening, not a new compression
-primitive. Its role here is to preserve consistency, contract every cofactor
-cut, and make a PDB feasible under an exact residual-width budget before the
-shared information score ranks patterns. Total ADD size is the closest
-alternative representation budget: its certificate is formally incomparable,
-and this study does not claim empirical superiority over an ADD-size filter.
+PDBs, automatic pattern selection, and symbolic compilation predate this work
+\citep{culberson-schaeffer-compint1998,edelkamp-ecp2001,
+haslum-et-al-aaai2007,rovner-et-al-icaps2019,edelkamp-et-al-ecai2012}.
+Compression may merge entries or coarsen values
+\citep{felner-et-al-jair2007,sturtevant-et-al-aaai2017}; our uniform cap is not
+a new primitive. Its role is to preserve consistency, contract every cut, and
+meet an exact width budget before ranking. Total ADD size is the closest
+incomparable representation budget; we claim no empirical superiority over it.
 
-Factored M\&S mappings \citep{torralba-phd2015,helmert-et-al-icaps2015} and
-potential heuristics \citep{pommerening-et-al-aaai2015,
-fiser-et-al-aaai2022,fiser-et-al-aij2024} are established; the potential
-results for delta-partitioned \ghseta\ concern a different architecture from
-our absolute-value buckets. The width of relaxed BDD heuristics bounds
-action-choice BDDs \citep{castro-et-al-icaps2019}, not a state-to-value ADD,
-and cofactor width is unrelated to planning novelty width. Variable ordering
-is directly relevant because the certificate is order-dependent
-\citep{kissmann-hoffmann-jair2014}; we fix rather than optimize it. Guarantees
-for symbolic versus explicit search \citep{speck-helmert-ecai2025} are
-complementary, while perimeter abstractions
-\citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} control fragmentation
-through a different search mechanism.
+Factored M\&S and potentials are established
+\citep{torralba-phd2015,helmert-et-al-icaps2015,pommerening-et-al-aaai2015,
+fiser-et-al-aaai2022,fiser-et-al-aij2024}; delta-partitioned \ghseta\ is a
+different architecture. Relaxed BDD heuristics bound action-choice diagrams
+\citep{castro-et-al-icaps2019}, and cofactor width is not planning novelty
+width. The certificate fixes its order \citep{kissmann-hoffmann-jair2014}.
+Symbolic/explicit guarantees \citep{speck-helmert-ecai2025} and perimeter
+abstractions \citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} address
+different mechanisms.
 
 \section{Limitations}
 
-The guarantee assumes fixed-order forward product-at-evaluation search,
-positive costs, consistent heuristics, and our duplicate/goal-test policy. It
-bounds BDD-node effort, not runtime or memory, and depends on the encoding,
-total extension, and variable order; bounded width is sufficient, not
-necessary. The construction establishes worst-case parameter necessity, not
-typical behavior. The sharper certificate requires cut profiles absent from
-the current logs. Consequently, the post-hoc audit only compares effort with
-blind search on triple-solved tasks. We did not run a matched ADD-size
-selector. Moreover, the marginal exact and cap-aware summaries use different
-completed traces; only the paired raw-to-capped analysis isolates terminal
-coarsening.
+The guarantee is specific to fixed-order forward product-at-evaluation search,
+positive costs, consistent heuristics, and our duplicate policy. It bounds BDD
+nodes, not time or memory; bounded width is sufficient, not necessary, and the
+construction is worst case. The full census lacks cut profiles. In the first
+profile experiment, zero recorded semantic-union effort made fragmentation
+ineligible and the other gates failed. The corrected study is conditional on
+solved profiles and has only \SemanticUnionPairTasks$<\SemanticUnionTaskFloor$
+supporting tasks. It cannot explain coverage or timeouts, and its diagnostic
+planner-time ratio is \SemanticUnionInstrumentationRatio. Neither study
+licenses predictor validation or new tuning.
 
-The experiment is a fixed-census case study at $K=8$ and one cap ladder, with
-one run per cell and a hard cutoff. We disclose and exclude the outcome-informed
-development screen from the primary complement. The
-\CapPrimaryMacroDeltaPoints-percentage-point coverage gain is modest and has
-no population-inferential interpretation; the frozen information score is not
-a planner-quality guarantee. Effort ratios condition on completed pairs and
-cannot explain coverage discordances or joint timeouts. Cap-aware construction
-takes 2.3\% longer on its completed paired denominator, and unaligned M\&S has
-higher descriptive coverage. A multi-$K$ replication with complete cofactor
-profiles and a matched ADD-size baseline is needed to test generality.
+The $K=8$ fixed-census case study has one run per cell and a hard cutoff. Its
+outcome-informed development screen is disclosed and excluded. The
+\CapPrimaryMacroDeltaPoints-point coverage gain has no population-inferential
+interpretation; effort ratios condition on completed pairs, construction is
+2.3\% slower on its paired denominator, and unaligned M\&S has higher coverage.
+In the separate multi-$K$ replication, matched-ADD and width results reverse
+across budgets and no construction gate passes; we select no favorable budget.
 
 % ============================ conclusions ================================
 \section{Conclusions}
 
-For product-at-evaluation forward \bddastar, cut-aligned cofactor profiles give
-a fixed-order certificate with blind-effort ratio
-$2\values Wn\leq2W^2n$; a polynomial-size family attains $\values Wn/120$.
-Safe coarsening cannot increase the certificate. On the fixed
-\CapPrimaryTasks-task, \CapFullDomains-domain complement, cap-aware selection
-has \CapPrimaryMacroDeltaPoints\ percentage points higher equal-domain macro
-coverage than exact-width selection (\CapPrimaryWins/\CapPrimaryLosses\ task
-wins/losses), our primary empirical result. On \CapPrimaryTracePairs\ completed
-identical-pool pairs, it adds \CapPrimarySemanticWins\ informative selections
-without losing under the frozen score. On the post-hoc
-\CapPosthocPrimaryFiniteTripleSolvedPairs-task finite-cap subset, its pooled
-effort is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times blind versus
-\CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact selection; selected
-patterns may differ. These results establish a formal representation-effort
-certificate and a scoped case study, not typical-case tightness, runtime
-dominance, or general planner superiority.
+Cut-aligned cofactor profiles bound product-at-evaluation \bddastar\ by
+$2\values Wn$ times blind effort; a planning family attains
+$\values Wn/120$, and safe coarsening contracts the certificate. The corrected
+study orders fragmentation by $W$ much better than by quality and similarly to
+$U$, but its task-support gate fails: evidence, not validation. At $K=8$,
+cap-aware selection gains \CapPrimaryMacroDeltaPoints\ macro-coverage points
+(\CapPrimaryWins/\CapPrimaryLosses\ wins/losses) and adds
+\CapPrimarySemanticWins\ informative same-pool selections. On the post-hoc
+finite-cap subset, effort is \CapPosthocPrimaryFiniteCapBlindEffortRatio\ times
+blind versus \CapPosthocPrimaryFiniteExactBlindEffortRatio\ for exact width.
+This is a representation certificate and scoped case study, not runtime or
+planner dominance.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
 % Flush every body float before measuring the final content page. The 2027

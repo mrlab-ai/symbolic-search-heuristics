@@ -25,6 +25,18 @@ POSTHOC_ANALYSIS_SIDECAR := \
 	$(POSTHOC_ANALYSIS_ARTIFACT_DIR)/analysis-v1.json.sha256
 POSTHOC_ANALYZER := ../experiments/analyze_pdb_cap_grid_posthoc_review.py
 POSTHOC_RENDERER := ../experiments/render_pdb_cap_grid_posthoc_review.py
+PROFILE_GENERATED_RESULT := generated/pdb-profile-predictors-v1.tex
+PROFILE_ANALYSIS_ARTIFACT_DIR := ../experiments/artifacts/pdb-profile-comparison
+PROFILE_ANALYSIS_ARTIFACT := $(PROFILE_ANALYSIS_ARTIFACT_DIR)/predictors-v1.json
+PROFILE_ANALYSIS_SIDECAR := $(PROFILE_ANALYSIS_ARTIFACT).sha256
+PROFILE_RENDERER := ../experiments/render_pdb_profile_predictors_paper.py
+SEMANTIC_UNION_GENERATED_RESULT := generated/pdb-profile-semantic-union-v1.tex
+SEMANTIC_UNION_ARTIFACT_DIR := \
+	../experiments/artifacts/pdb-profile-semantic-union
+SEMANTIC_UNION_ARTIFACT := $(SEMANTIC_UNION_ARTIFACT_DIR)/analysis-v1.json
+SEMANTIC_UNION_SIDECAR := $(SEMANTIC_UNION_ARTIFACT).sha256
+SEMANTIC_UNION_RENDERER := \
+	../experiments/render_pdb_profile_semantic_union_paper.py
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
 		submission update-bib clean
@@ -33,13 +45,15 @@ paper: paper.pdf
 
 paper.pdf: paper.tex $(AUTHOR_KIT_STYLE) $(AUTHOR_KIT_BST) \
 		$(GENERATED_RESULT) $(POSTHOC_GENERATED_RESULT) \
+		$(SEMANTIC_UNION_GENERATED_RESULT) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib) | author-kit-preflight
 	$(LATEXMK) $(LATEXFLAGS) $<
 
 supplement: supplement.pdf
 
 supplement.pdf: supplement.tex cap-study.tex $(GENERATED_RESULT) \
-		$(POSTHOC_GENERATED_RESULT) \
+		$(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
+		$(SEMANTIC_UNION_GENERATED_RESULT) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) $<
 
@@ -47,6 +61,16 @@ $(POSTHOC_GENERATED_RESULT): $(POSTHOC_RENDERER) \
 		$(POSTHOC_ANALYSIS_ARTIFACT) $(POSTHOC_ANALYSIS_SIDECAR)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(POSTHOC_RENDERER) \
 		--analysis $(POSTHOC_ANALYSIS_ARTIFACT) --output $@ --write
+
+$(PROFILE_GENERATED_RESULT): $(PROFILE_RENDERER) \
+		$(PROFILE_ANALYSIS_ARTIFACT) $(PROFILE_ANALYSIS_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(PROFILE_RENDERER) \
+		--analysis $(PROFILE_ANALYSIS_ARTIFACT) --output $@ --write
+
+$(SEMANTIC_UNION_GENERATED_RESULT): $(SEMANTIC_UNION_RENDERER) \
+		$(SEMANTIC_UNION_ARTIFACT) $(SEMANTIC_UNION_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SEMANTIC_UNION_RENDERER) \
+		--analysis $(SEMANTIC_UNION_ARTIFACT) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -85,7 +109,8 @@ author-kit-preflight:
 # This gate binds the accepted focused full-study artifact and prevents a
 # submission build from silently retaining synthetic, stale, or unreviewed
 # result bytes.
-submission-check: $(POSTHOC_GENERATED_RESULT)
+submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
+		$(SEMANTIC_UNION_GENERATED_RESULT)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
@@ -106,6 +131,20 @@ submission-check: $(POSTHOC_GENERATED_RESULT)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		$(POSTHOC_RENDERER) --analysis $(POSTHOC_ANALYSIS_ARTIFACT) \
 		--output $(POSTHOC_GENERATED_RESULT) --check
+	cd $(PROFILE_ANALYSIS_ARTIFACT_DIR) && \
+		sha256sum -c predictors-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(PROFILE_RENDERER) --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(PROFILE_RENDERER) --analysis $(PROFILE_ANALYSIS_ARTIFACT) \
+		--output $(PROFILE_GENERATED_RESULT) --check
+	cd $(SEMANTIC_UNION_ARTIFACT_DIR) && \
+		sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(SEMANTIC_UNION_RENDERER) --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(SEMANTIC_UNION_RENDERER) --analysis $(SEMANTIC_UNION_ARTIFACT) \
+		--output $(SEMANTIC_UNION_GENERATED_RESULT) --check
 
 # Provisional project audit assumption only, not an ICAPS 2027 requirement:
 # audit a two-PDF review bundle until the venue publishes its rules. The

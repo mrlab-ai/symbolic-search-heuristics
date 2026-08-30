@@ -7,6 +7,7 @@
 \usepackage{longtable}
 \usepackage{microtype}
 \usepackage{pdflscape}
+\usepackage{placeins}
 \usepackage[hyphens]{url}
 \def\UrlBreaks{\do\/\do-\do\_\do,\do=\do(\do)}
 
@@ -49,6 +50,8 @@
 % Paper-facing aggregates emitted by the reviewed, digest-pinned renderer.
 \input{generated/pdb-cap-grid-full-v1.tex}
 \input{generated/pdb-cap-grid-posthoc-v1.tex}
+\input{generated/pdb-profile-predictors-v1.tex}
+\input{generated/pdb-profile-semantic-union-v1.tex}
 
 \title{Tight Cofactor-Width Bounds for Heuristic Fragmentation
 in Forward Symbolic \astar{}: Supplementary Material}
@@ -65,7 +68,8 @@ families.
 Section 10 specifies the cap-aware exact-width selector. Section 11 discloses
 the focused development gate and the frozen full-evaluation contract. Section
 12 reports the focused full-evaluation results and representation summaries,
-and Section 13 expands the related-work comparison.
+Section 13 reports the two frozen predictor studies, and Section 14 expands
+the related-work comparison.
 
 \section{Search Setup and Bucket Identity}
 
@@ -1141,6 +1145,170 @@ Thus at every cut there are at most $d(N+1)$ distinct cofactors.
 \end{proof}
 
 \input{cap-study.tex}
+
+\clearpage
+\section{Frozen Predictor Studies}
+\label{sec:supp-predictors}
+
+The paper's explanatory question was evaluated twice under frozen gates.  The
+first study instrumented the full \ProfileTasks-task primary complement but
+did not measure its intended fragmentation denominator correctly.  The second
+study repaired that measurement on a deterministic, domain-balanced cohort.
+Neither gate passed, so no favorable budget or denominator was substituted and
+no rescue selector was tuned.
+
+\subsection{Initial Profile and Multi-Budget Matrix}
+
+The first matrix contains \ProfileTasks$\times$\ProfileConfigurations\ cells
+over \ProfileDomains\ domains.  For each solved heuristic run, the intended
+fragmentation response was cumulative expanded-bucket BDD nodes divided by
+the BDD-node total of the corresponding per-$g$ semantic unions.  Every
+recorded semantic-union total was zero, so the response had no eligible
+observation.  The dashes in the corresponding predictor rows are therefore a
+measurement failure, not zero concordance and not evidence of no effect.
+
+The complete layer profiles still permit an ex-post comparison of three
+one-sided certificates with observed cumulative expanded-BDD effort.  Their
+shared strict comparison contains 8,278 pairs in 41 domains.  As
+Table~\ref{tab:supp-initial-certificates} shows, the cut-aligned profile is
+only 0.002 above its width relaxation and 0.040 above Apply; the frozen
+sharper-certificate gate requires advantages of at least 0.02 over both and
+therefore fails.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Initial study: equal-domain concordance of each certificate with
+    observed effort. LODO is the leave-one-domain-out range; support is strict
+    comparable pairs/domains.}
+  \label{tab:supp-initial-certificates}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Certificate & Macro & LODO & Support \\
+    \midrule
+    \ProfileCertificateRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The same matrix compares cap-aware width filtering with the acceptance-matched
+ADD budgets $(K,U)=(2,8),(4,29),(8,55),(16,100),(32,204)$.  In
+Table~\ref{tab:supp-multibudget-width-add}, coverage differences are candidate
+minus reference on the full 1,327-task denominator, while effort ratios use
+the stated jointly solved eligible pairs.  Width filtering has lower pooled
+effort at four budgets but reverses at $K=16$; its coverage advantage also
+changes sign.  The aggregate frozen gate consequently fails.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Initial study: cap-aware width filtering versus its matched
+    cap-aware ADD-size filter.}
+  \label{tab:supp-multibudget-width-add}
+  \begin{tabular}{@{}rrrrr@{}}
+    \toprule
+    $K$ & $U$ & $\Delta$ coverage & Width/ADD effort & Pairs \\
+    \midrule
+    \ProfileWidthAddRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:supp-multibudget-cap} gives the two remaining fixed contrasts.
+Cap-aware width filtering versus exact-width selection has negative coverage
+at three budgets; versus profiled blind search it has no positive coverage
+budget.  Conditional effort directions are mixed in both comparisons.  Thus
+the cap-versus-exact construction gate and the downstream blind-coverage gate
+also fail.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Initial study: cap-aware width filtering versus exact-width
+    selection and profiled blind search. Coverage uses the full fixed
+    denominator; effort is conditional on the reported pairs.}
+  \label{tab:supp-multibudget-cap}
+  \begin{minipage}[t]{0.48\linewidth}
+    \centering
+    \textit{Reference: exact width}\\[2pt]
+    \begin{tabular}{@{}rrrr@{}}
+      \toprule
+      $K$ & $\Delta$ cov. & Cap/exact & Pairs \\
+      \midrule
+      \ProfileCapExactRows
+      \bottomrule
+    \end{tabular}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.48\linewidth}
+    \centering
+    \textit{Reference: profiled blind}\\[2pt]
+    \begin{tabular}{@{}rrrr@{}}
+      \toprule
+      $K$ & $\Delta$ cov. & Cap/blind & Pairs \\
+      \midrule
+      \ProfileCapBlindRows
+      \bottomrule
+    \end{tabular}
+  \end{minipage}
+\end{table}
+
+\FloatBarrier
+\subsection{Corrected Semantic-Union Follow-Up}
+
+Before running the repair, we froze a deterministic cohort: within each of the
+same 46 domains, tasks were ranked by the SHA-256 digest of
+\texttt{domain + NUL + problem} and the first six were selected (all five in
+\texttt{grid}).  This yields \SemanticUnionTasks\ tasks and
+\SemanticUnionCells\ cells for the 16 PDB configurations.  Limits remain 300
+CPU seconds and 8,192 MiB per cell.  A run is eligible only if it solves and
+both its bucket and cut-profile streams are complete, identity-consistent, and
+have positive semantic-union effort.  The ratio may be below one because
+materializing an Apply union can be larger than the sum of its input diagrams.
+
+The shared comparison admits only within-task pairs whose fragmentation,
+$W$, $U$, and frozen information-quality tuple are all strictly ordered;
+ties exclude the pair for every predictor.  Domain concordances receive equal
+weight.  The preregistered gate requires at least 31 domains and
+\SemanticUnionTaskFloor\ tasks, macro width concordance at least 0.65, every
+width LODO value at least 0.60, width above quality, and width within 0.02 of
+$U$.
+
+All \SemanticUnionCells\ cells completed.  There are
+\SemanticUnionEligible\ eligible solved profiles, 2,498 unsolved cells, and
+one solved cell whose search profile remains incomplete and ineligible.  The
+strict shared set has \SemanticUnionPairs\ pairs from
+\SemanticUnionPairTasks\ tasks in \SemanticUnionPairDomains\ domains.
+Table~\ref{tab:supp-semantic-union-predictors} shows a strong, stable ordering:
+width substantially exceeds the quality tuple and is 0.020 above total ADD
+size.  Every effect and domain criterion passes.  The task-support criterion
+does not: \SemanticUnionPairTasks$<\SemanticUnionTaskFloor$.  Consequently,
+the overall gate is \SemanticUnionGate, and the frozen consequence is to
+retain the theory-led paper and tune no new selector.  The instrumentation's
+pooled planner-time ratio against the earlier corresponding runs is
+\SemanticUnionInstrumentationRatio; this is diagnostic rather than a gate.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Corrected follow-up: equal-domain concordance with normalized
+    bucket fragmentation on one shared strict-pair denominator.}
+  \label{tab:supp-semantic-union-predictors}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Predictor & Macro & LODO range \\
+    \midrule
+    \SemanticUnionPredictorRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The single incomplete profile is a solved, resource-terminated run whose
+canonical plan and mapped exit code recover its coverage and cost but not the
+missing profile suffix.  The parser correction is deliberately narrower than
+scientific eligibility: it restores terminal classification while leaving the
+cell excluded from predictor analysis.  This preserves all frozen comparison
+rules and prevents a partial profile from entering the favorable result.
+
 \section{Additional Related-Work Detail}
 \label{sec:supp-related}
 
