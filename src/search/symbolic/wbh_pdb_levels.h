@@ -55,6 +55,7 @@ class PdbLevelSets {
     std::vector<int> pattern; // sorted pattern (FDR variable ids)
     std::map<int, BDD> level_sets; // distance d -> H_d (valid states)
     BDD dead_ends; // states mapping to dead-end abstract states
+    ADD h_add;
     AddStats add_stats;
     std::string selection_name;
     std::string selected_source;
@@ -132,6 +133,10 @@ public:
 
     const AddStats &get_add_stats() const {
         return add_stats;
+    }
+
+    const ADD &get_add() const {
+        return h_add;
     }
 
     long get_width_upper_bound() const {

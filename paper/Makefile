@@ -37,6 +37,23 @@ SEMANTIC_UNION_ARTIFACT := $(SEMANTIC_UNION_ARTIFACT_DIR)/analysis-v1.json
 SEMANTIC_UNION_SIDECAR := $(SEMANTIC_UNION_ARTIFACT).sha256
 SEMANTIC_UNION_RENDERER := \
 	../experiments/render_pdb_profile_semantic_union_paper.py
+ORDER_GENERATED_RESULT := generated/pdb-profile-order-intervention-v1.tex
+ORDER_ARTIFACT_DIR := \
+	../experiments/artifacts/pdb-profile-order-intervention
+ORDER_ARTIFACT := $(ORDER_ARTIFACT_DIR)/analysis-v1.json
+ORDER_SIDECAR := $(ORDER_ARTIFACT).sha256
+ORDER_RENDERER := \
+	../experiments/render_pdb_profile_order_intervention_paper.py
+HOLDOUT_GENERATED_RESULT := generated/pdb-profile-certificate-holdout-v1.tex
+HOLDOUT_ARTIFACT_DIR := \
+	../experiments/artifacts/pdb-profile-certificate-holdout
+HOLDOUT_ARTIFACT := $(HOLDOUT_ARTIFACT_DIR)/analysis-v1.json
+HOLDOUT_SIDECAR := $(HOLDOUT_ARTIFACT).sha256
+HOLDOUT_DENOMINATOR_AUDIT := \
+	$(HOLDOUT_ARTIFACT_DIR)/denominator-audit-v1.json
+HOLDOUT_DENOMINATOR_SIDECAR := $(HOLDOUT_DENOMINATOR_AUDIT).sha256
+HOLDOUT_RENDERER := \
+	../experiments/render_pdb_profile_certificate_holdout_paper.py
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
 		submission update-bib clean
@@ -44,8 +61,8 @@ SEMANTIC_UNION_RENDERER := \
 paper: paper.pdf
 
 paper.pdf: paper.tex $(AUTHOR_KIT_STYLE) $(AUTHOR_KIT_BST) \
-		$(GENERATED_RESULT) $(POSTHOC_GENERATED_RESULT) \
-		$(SEMANTIC_UNION_GENERATED_RESULT) \
+		$(ORDER_GENERATED_RESULT) \
+		$(HOLDOUT_GENERATED_RESULT) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib) | author-kit-preflight
 	$(LATEXMK) $(LATEXFLAGS) $<
 
@@ -53,7 +70,8 @@ supplement: supplement.pdf
 
 supplement.pdf: supplement.tex cap-study.tex $(GENERATED_RESULT) \
 		$(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
-		$(SEMANTIC_UNION_GENERATED_RESULT) \
+		$(SEMANTIC_UNION_GENERATED_RESULT) $(ORDER_GENERATED_RESULT) \
+		$(HOLDOUT_GENERATED_RESULT) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) $<
 
@@ -71,6 +89,19 @@ $(SEMANTIC_UNION_GENERATED_RESULT): $(SEMANTIC_UNION_RENDERER) \
 		$(SEMANTIC_UNION_ARTIFACT) $(SEMANTIC_UNION_SIDECAR)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SEMANTIC_UNION_RENDERER) \
 		--analysis $(SEMANTIC_UNION_ARTIFACT) --output $@ --write
+
+$(ORDER_GENERATED_RESULT): $(ORDER_RENDERER) \
+		$(ORDER_ARTIFACT) $(ORDER_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(ORDER_RENDERER) \
+		--analysis $(ORDER_ARTIFACT) --output $@ --write
+
+$(HOLDOUT_GENERATED_RESULT): $(HOLDOUT_RENDERER) $(HOLDOUT_ARTIFACT) \
+		$(HOLDOUT_SIDECAR) $(HOLDOUT_DENOMINATOR_AUDIT) \
+		$(HOLDOUT_DENOMINATOR_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(HOLDOUT_RENDERER) \
+		--analysis $(HOLDOUT_ARTIFACT) \
+		--denominator-audit $(HOLDOUT_DENOMINATOR_AUDIT) \
+		--output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -106,11 +137,12 @@ author-kit-preflight:
 		exit 2; \
 	}
 
-# This gate binds the accepted focused full-study artifact and prevents a
-# submission build from silently retaining synthetic, stale, or unreviewed
-# result bytes.
+# This gate binds every reviewed result artifact used by either PDF and
+# prevents a submission build from silently retaining synthetic, stale, or
+# unreviewed result bytes.
 submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
-		$(SEMANTIC_UNION_GENERATED_RESULT)
+		$(SEMANTIC_UNION_GENERATED_RESULT) $(ORDER_GENERATED_RESULT) \
+		$(HOLDOUT_GENERATED_RESULT)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
@@ -145,6 +177,20 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		$(SEMANTIC_UNION_RENDERER) --analysis $(SEMANTIC_UNION_ARTIFACT) \
 		--output $(SEMANTIC_UNION_GENERATED_RESULT) --check
+	cd $(ORDER_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(ORDER_RENDERER) --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(ORDER_RENDERER) --analysis $(ORDER_ARTIFACT) \
+		--output $(ORDER_GENERATED_RESULT) --check
+	cd $(HOLDOUT_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256 && \
+		sha256sum -c denominator-audit-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(HOLDOUT_RENDERER) --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(HOLDOUT_RENDERER) --analysis $(HOLDOUT_ARTIFACT) \
+		--denominator-audit $(HOLDOUT_DENOMINATOR_AUDIT) \
+		--output $(HOLDOUT_GENERATED_RESULT) --check
 
 # Provisional project audit assumption only, not an ICAPS 2027 requirement:
 # audit a two-PDF review bundle until the venue publishes its rules. The

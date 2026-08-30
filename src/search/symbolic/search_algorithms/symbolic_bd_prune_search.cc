@@ -98,7 +98,7 @@ void SymbolicBdPruneSearch::build_and_attach_pruners() {
     }
     if (sym_params.profile) {
         sym_params.profile->log_heuristic(
-            vars.get(), level_sets->get_add_stats());
+            vars.get(), level_sets->get_add(), level_sets->get_add_stats());
     }
     fw_pruner = make_shared<WbhPruner>(
         this, level_sets->get_level_sets(), level_sets->get_dead_ends());

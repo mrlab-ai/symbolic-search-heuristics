@@ -49,6 +49,17 @@ target.
 - Independent post-hoc diagnostics analyzer and fail-closed renderer:
   `experiments/analyze_pdb_cap_grid_posthoc_review.py` and
   `experiments/render_pdb_cap_grid_posthoc_review.py`
+- Prospective profile holdout runner, execution audit, recovery, and analyzer:
+  `experiments/exp_pdb_profile_certificate_holdout.py`,
+  `experiments/audit_pdb_profile_certificate_holdout.py`,
+  `experiments/recover_pdb_profile_certificate_holdout.py`, and
+  `experiments/analyze_pdb_profile_certificate_holdout.py`
+- Frozen denominator audit and fail-closed holdout renderer:
+  `experiments/analyze_pdb_profile_denominator_audit.py` and
+  `experiments/render_pdb_profile_certificate_holdout_paper.py`
+- Fixed-heuristic variable-order intervention runner and analyzer:
+  `experiments/exp_pdb_profile_order_intervention.py` and
+  `experiments/analyze_pdb_profile_order_intervention.py`
 
 ## Common benchmark and planner identity
 

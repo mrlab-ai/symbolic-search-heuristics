@@ -30,6 +30,10 @@
 \newcommand{\values}{\ensuremath{V}}
 \newcommand{\level}[2]{\ensuremath{H_{#2}}}
 \newcommand{\effort}{\ensuremath{\mathit{effort}}}
+\newcommand{\unioneffort}{\ensuremath{\mathit{unionEffort}}}
+\newcommand{\fragfactor}{\ensuremath{\mathit{frag}}}
+\newcommand{\profilebound}{\ensuremath{\mathcal{P}_{\pi}}}
+\newcommand{\profilescore}{\ensuremath{\mathcal{R}_{\pi}}}
 \newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
 \newcommand{\hrange}{\ensuremath{\mathrm{range}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
@@ -52,9 +56,11 @@
 \input{generated/pdb-cap-grid-posthoc-v1.tex}
 \input{generated/pdb-profile-predictors-v1.tex}
 \input{generated/pdb-profile-semantic-union-v1.tex}
+\input{generated/pdb-profile-order-intervention-v1.tex}
+\input{generated/pdb-profile-certificate-holdout-v1.tex}
 
-\title{Tight Cofactor-Width Bounds for Heuristic Fragmentation
-in Forward Symbolic \astar{}: Supplementary Material}
+\title{Why Heuristics Help or Hurt Symbolic Search:\\
+Cut-Aligned Cofactor Profiles\\Supplementary Material}
 \author{Anonymous for review}
 \date{}
 
@@ -1150,12 +1156,12 @@ Thus at every cut there are at most $d(N+1)$ distinct cofactors.
 \section{Frozen Predictor Studies}
 \label{sec:supp-predictors}
 
-The paper's explanatory question was evaluated twice under frozen gates.  The
-first study instrumented the full \ProfileTasks-task primary complement but
-did not measure its intended fragmentation denominator correctly.  The second
-study repaired that measurement on a deterministic, domain-balanced cohort.
-Neither gate passed, so no favorable budget or denominator was substituted and
-no rescue selector was tuned.
+The paper's explanatory question was developed in two frozen preliminary
+studies, tested on a disjoint prospective holdout, and challenged by a
+fixed-heuristic variable-order intervention.  The first study did not measure
+its intended fragmentation denominator correctly; the second repaired the
+measurement but missed its task-support floor.  Neither observation entered
+the holdout, and no favorable budget, denominator, or subset was substituted.
 
 \subsection{Initial Profile and Multi-Budget Matrix}
 
@@ -1308,6 +1314,216 @@ missing profile suffix.  The parser correction is deliberately narrower than
 scientific eligibility: it restores terminal classification while leaving the
 cell excluded from predictor analysis.  This preserves all frozen comparison
 rules and prevents a partial profile from entering the favorable result.
+
+\FloatBarrier
+\subsection{Prospective Certificate Holdout}
+
+The corrected follow-up fixes formulas and diagnostics but supplies no
+confirmatory observation.  Removing its exact 275-task development cohort
+from the 1,327-task source population leaves 1,052 tasks in 45 domains; no
+outcome enters the subtraction.  The holdout matrix contains profiled blind
+search, exact-width and cap-aware-width PDB selection at
+$K\in\{2,4,8,16,32\}$, cap-aware selection under acceptance-matched total-ADD
+budgets $(8,29,55,100,204)$, and unconstrained exact selection.  The matrix
+contains \HoldoutCells\ fresh cells at 300 CPU seconds and 8,192 MiB each.
+
+Every eligible heuristic cell must solve, have complete certified bucket and
+cofactor-profile streams, have positive semantic-union effort, conserve all
+per-$g$ events, and agree on the selected heuristic across three independent
+records.  Semantically duplicate configurations collapse within task only
+when every deterministic measurement agrees.  Each comparison uses one
+shared strict-pair set, weights domains equally, and repeats the complete
+calculation after removing each of the 45 domains.
+
+Lab skips a file-specific callback when its optional file is absent.  After
+the first fail-closed analysis rejected that missing parser contract, a
+parser-only correction initialized the declared profile fields from the
+always-present run log.  It affected 227 pre-search records and one
+search-resource record, hence no eligible observation; no raw run file was
+modified.  The correction receipt binds the old and new parser, test,
+execution-tree, and fetched-properties digests.
+
+Four comparisons were frozen.  First, $\profilescore$, normalized width, and
+normalized Apply predict $\fragfactor$.  Second, $\profilescore$ and the
+information tuple compete on $\fragfactor$.  Third and fourth, the same two
+predictors compete on expanded states and $\unioneffort$, with the information
+direction reversed.  Support requires 30 domains and 211 tasks.  The useful
+profile gate requires profile macro concordance at least 0.70, every LODO
+value at least 0.65, a profile advantage of at least 0.20 over information on
+fragmentation, and performance within 0.02 of both structural relaxations.
+The two-effect gate additionally requires information concordance at least
+0.80, every LODO value at least 0.75, and an information advantage of at least
+0.20 on both search-reduction targets.  The complete protocol fixes the
+sharper-profile and five-budget selector gates as well.
+
+A robustness audit was frozen after launch but before parsing any holdout or
+order-intervention outcome.  Because $\profilescore=\profilebound/U$ and
+$\fragfactor=\effort/U$ share $U=\unioneffort$, it compares the profile with
+the null predictor $1/U$ on one shared pair set.  It also compares the
+unnormalized profile, width, and Apply certificates with absolute bucket
+effort.  Passing requires the profile to exceed the inverse-denominator null
+by at least 0.20 and to remain within 0.02 of both absolute structural
+certificates, in addition to the same support and stability floors.  No
+alternative normalization or subset may rescue a failed gate.
+
+The sealed analysis contains \HoldoutEligibleObservations\ eligible semantic
+heuristics.  Table~\ref{tab:supp-holdout-two-effects} shows the frozen
+two-effect comparison.  Fragmentation has \HoldoutFragmentPairs\ shared strict
+pairs from \HoldoutFragmentPairTasks\ tasks in
+\HoldoutFragmentPairDomains\ domains; expanded states and unsplit effort have
+\HoldoutStatesPairTasks\ and \HoldoutUnionPairTasks\ supporting tasks.  The
+complete two-effect gate passes.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Prospective holdout: equal-domain directional concordance of the
+    information tuple and normalized profile.}
+  \label{tab:supp-holdout-two-effects}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Target & Information & Profile \\
+    \midrule
+    \HoldoutTwoEffectRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The representation comparison uses \HoldoutRepresentationPairs\ strict pairs
+from \HoldoutRepresentationPairTasks\ tasks in
+\HoldoutRepresentationPairDomains\ domains.  As
+Table~\ref{tab:supp-holdout-representation} reports, the useful-certificate
+gate passes.  The profile beats Apply in every LODO replicate, but is
+essentially tied with width and does not beat width in every replicate; the
+stronger profile-versus-both-relaxations gate therefore fails.  All ranges are
+over the 45 complete LODO replicates.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Prospective holdout: equal-domain concordance with normalized
+    fragmentation.}
+  \label{tab:supp-holdout-representation}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Predictor & Macro & LODO range \\
+    \midrule
+    \HoldoutRepresentationRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+On the separately frozen denominator audit, the normalized profile reaches
+\HoldoutDenominatorProfileMacro\ versus \HoldoutDenominatorNullMacro\ for
+$1/\unioneffort$.  It is higher in every LODO replicate, but not by the frozen
+0.20 margin, so the denominator gate fails.  For absolute bucket effort,
+Table~\ref{tab:supp-holdout-absolute} gives the unnormalized certificates; the
+profile reaches only \HoldoutAbsoluteProfileMacro\ and the 0.70-floor gate
+also fails.  These prespecified diagnostics limit the claim to conditional
+fragmentation; neither changes the primary response.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Prospective holdout: equal-domain concordance of unnormalized
+    certificates with absolute bucket effort.}
+  \label{tab:supp-holdout-absolute}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Certificate & Macro & LODO range \\
+    \midrule
+    \HoldoutAbsoluteRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Finally, Tables~\ref{tab:supp-holdout-width-add} and
+\ref{tab:supp-holdout-cap-exact} report every construction budget.  The pooled
+conditional-effort ratios are \HoldoutWidthAddPooledRatio\ and
+\HoldoutCapExactPooledRatio, while the summed full-denominator coverage
+differences are \HoldoutWidthAddCoverageDelta\ and
+\HoldoutCapExactCoverageDelta.  Both pooled-effort criteria pass, but both
+complete gates fail because the $K=16$ rows exceed the frozen loss tolerance
+of two coverage tasks.  Thus no favorable budget replaces either aggregate
+decision.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Prospective holdout: cap-aware width selection versus its
+    acceptance-matched ADD constraint.}
+  \label{tab:supp-holdout-width-add}
+  \begin{tabular}{@{}rrrrr@{}}
+    \toprule
+    $K$ & ADD budget & $\Delta$ coverage & Width/ADD & Pairs \\
+    \midrule
+    \HoldoutWidthAddRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Prospective holdout: cap-aware versus exact-width selection on
+    identical raw pools.}
+  \label{tab:supp-holdout-cap-exact}
+  \begin{tabular}{@{}rrrr@{}}
+    \toprule
+    $K$ & $\Delta$ coverage & Cap/exact & Pairs \\
+    \midrule
+    \HoldoutCapExactRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\FloatBarrier
+\subsection{Fixed-Heuristic Variable-Order Intervention}
+
+We next change representation while holding heuristic semantics fixed.  On
+each of the \OrderTasks-task prospective-cohort tasks, a deterministic
+goal-fill procedure constructs one PDB with at most 100,000 abstract states.
+The planner runs that PDB once under the fixed Gamer order and once under the
+untranslated Fast Downward order, with dynamic reordering disabled.  Pair
+eligibility requires identical patterns, PDB value counts, solution costs,
+expanded-state counts, and active values at every expanded $g$-layer.  Thus
+the intervention changes the decision-diagram order, not the search keys or
+the expanded state sets.
+
+Both profiles are complete on \OrderPairs\ task pairs.  Of these,
+\OrderDistinctPairs\ induce distinct orders and \OrderIdenticalPairs\ induce
+the same order.  The primary shared strict comparison contains
+\OrderStrictPairs\ task pairs in \OrderPairDomains\ domains, above the frozen
+support floor.  Table~\ref{tab:supp-order-intervention} reports equal-domain
+concordance for the direction of the fragmentation change.  The cut-aligned
+score reaches \OrderProfileMacro\ (micro \OrderProfileMicro), and every one
+of its 45 leave-one-domain-out values lies between \OrderProfileLodoMin\ and
+\OrderProfileLodoMax.  Maximum width and total ADD size are below chance in
+this directional comparison.  The frozen usefulness and sharper-profile
+gates are respectively a \OrderUsefulGate\ and a \OrderSharperGate.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Fixed-heuristic order intervention: equal-domain concordance with
+    the direction of normalized bucket fragmentation.}
+  \label{tab:supp-order-intervention}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Predictor & Macro & LODO range \\
+    \midrule
+    \OrderPredictorRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+As frozen secondary context, the corresponding absolute certificates predict
+total bucket effort with macro concordances
+\OrderAbsoluteProfileMacro\ (profile), \OrderAbsoluteWidthMacro\ (width), and
+\OrderAbsoluteAddMacro\ (ADD).  Total effort combines the BDD size of the
+unsplit expanded unions with their fragmentation; the reversal is therefore
+consistent with the two-effect decomposition and is not used to replace the
+primary response.
 
 \section{Additional Related-Work Detail}
 \label{sec:supp-related}

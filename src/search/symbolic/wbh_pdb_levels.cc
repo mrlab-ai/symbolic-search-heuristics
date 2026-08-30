@@ -980,7 +980,7 @@ PdbLevelSets::PdbLevelSets(
     // Heuristic ADD for statistics only. The search represents infinity as a
     // separate BDD; use a fresh numeric terminal so the statistics measure an
     // isomorphic total ADD, including dead-end pruning.
-    ADD h_add = vars->constant(0);
+    h_add = vars->constant(0);
     for (const auto &[distance, level] : level_sets) {
         h_add += level.Add() * vars->constant(distance);
     }

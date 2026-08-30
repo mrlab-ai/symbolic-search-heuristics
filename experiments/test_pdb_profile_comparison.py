@@ -107,6 +107,25 @@ class ProfileParserTests(unittest.TestCase):
         ]
         return "\n".join(map(line, events)) + "\n"
 
+    def joint_profile(self):
+        events = [json.loads(value) for value in self.profile().splitlines()]
+        events[0].update(
+            {
+                "version": 2,
+                "joint_residual_identity": (
+                    "cooccurring_signed_bdd_and_regular_add_pointer_pair"
+                ),
+            }
+        )
+        events[3].update(
+            {
+                "joint_cofactor_counts": [1, 2, 4],
+                "joint_cofactor_seconds": 0.4,
+            }
+        )
+        events[5]["joint_cofactor_seconds"] = 0.4
+        return "\n".join(map(line, events)) + "\n"
+
     def test_terminal_cut_is_validation_only_for_paper_sums(self):
         parsed = Parser.parse_profile_stream(self.profile())
         self.assertTrue(parsed["complete"])
@@ -120,11 +139,71 @@ class ProfileParserTests(unittest.TestCase):
         self.assertEqual(layer["terminal_residuals"], 2)
         self.assertEqual(layer["cofactor_counts"], [1, 2, 2])
 
+    def test_joint_profile_is_backward_compatible_and_fail_closed(self):
+        legacy = Parser.parse_profile_stream(self.profile())
+        self.assertEqual(legacy["schema_version"], 1)
+        self.assertIsNone(
+            legacy["layer_profiles"][0]["joint_cofactor_counts"]
+        )
+
+        parsed = Parser.parse_profile_stream(self.joint_profile())
+        self.assertEqual(parsed["schema_version"], 2)
+        self.assertEqual(
+            parsed["layer_profiles"][0]["joint_cofactor_counts"],
+            [1, 2, 4],
+        )
+
+        events = [json.loads(value) for value in self.joint_profile().splitlines()]
+        events[2].update(
+            {
+                "num_terminals": 2,
+                "cofactor_counts": [1, 1, 2],
+                "cofactor_width": 2,
+            }
+        )
+        events[3].update(
+            {
+                "bdd_nodes": 2,
+                "cofactor_counts": [1, 1, 2],
+                "cofactor_width": 2,
+                "joint_cofactor_counts": [1, 2, 4],
+            }
+        )
+        events[4]["layer_union_effort"] = 2
+        events[5]["sum_layer_bdd_nodes"] = 2
+        with self.assertRaisesRegex(Parser.ParseError, "projection/product"):
+            Parser.parse_profile_stream("\n".join(map(line, events)) + "\n")
+
     def test_truncated_prefix_is_incomplete(self):
         prefix = "\n".join(self.profile().splitlines()[:-1]) + "\n"
         parsed = Parser.parse_profile_stream(prefix)
         self.assertFalse(parsed["complete"])
         self.assertIsNone(parsed["summary"])
+
+    def test_missing_optional_profile_file_still_records_contract(self):
+        props = {"algorithm": "pdb_exact_k8"}
+        Parser.initialize_profile_contract("irrelevant run log", props)
+        self.assertTrue(props["wbh_profile_expected"])
+        self.assertFalse(props["wbh_profile_present"])
+        self.assertFalse(props["wbh_profile_prefix_certified"])
+        self.assertFalse(props["wbh_profile_complete"])
+        self.assertFalse(props["wbh_profile_certified"])
+        self.assertEqual(
+            props["wbh_profile_validation_error"],
+            "expected profile log is missing",
+        )
+
+        Parser.parse_profile_log(self.profile(), props)
+        self.assertTrue(props["wbh_profile_present"])
+        self.assertTrue(props["wbh_profile_prefix_certified"])
+        self.assertTrue(props["wbh_profile_complete"])
+        self.assertTrue(props["wbh_profile_certified"])
+        self.assertIsNone(props["wbh_profile_validation_error"])
+
+        blind = {"algorithm": "blind_fw"}
+        Parser.initialize_profile_contract("irrelevant run log", blind)
+        self.assertFalse(blind["wbh_profile_expected"])
+        self.assertTrue(blind["wbh_profile_certified"])
 
     def test_impossible_residual_profiles_are_rejected(self):
         lines = self.profile().splitlines()

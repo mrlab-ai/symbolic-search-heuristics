@@ -27,6 +27,7 @@ class WbhProfile {
     std::ofstream out;
     std::vector<int> state_indices;
     std::vector<int> state_levels;
+    ADD heuristic_add;
 
     struct LayerRecord {
         int g;
@@ -37,9 +38,11 @@ class WbhProfile {
         int piece_count;
         long bdd_nodes;
         std::vector<long> cofactor_counts;
+        std::vector<long> joint_cofactor_counts;
         long cofactor_width;
         double union_seconds;
         double cofactor_seconds;
+        double joint_cofactor_seconds;
     };
     std::vector<LayerRecord> forward_layers;
     std::unique_ptr<PendingLayer> pending_layer;
@@ -55,6 +58,7 @@ class WbhProfile {
     long sum_layer_bdd_nodes = 0;
     double union_seconds = 0;
     double cofactor_seconds = 0;
+    double joint_cofactor_seconds = 0;
     double heuristic_cofactor_seconds = 0;
     double serialization_seconds = 0;
     double output_seconds = 0;
@@ -73,7 +77,8 @@ public:
     // Emit the selected heuristic's exact state-cut profile. Candidate
     // profiles are intentionally omitted: this event describes the heuristic
     // actually used by the search.
-    void log_heuristic(SymVariables *vars, const AddStats &add_stats);
+    void log_heuristic(
+        SymVariables *vars, const ADD &add, const AddStats &add_stats);
 
     // Attach the heuristic search's existing per-g closed unions. On a solved
     // run, log_done profiles these unions without retaining duplicate BDDs

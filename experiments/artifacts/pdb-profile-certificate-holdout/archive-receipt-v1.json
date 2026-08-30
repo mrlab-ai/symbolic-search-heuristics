@@ -1,0 +1,17 @@
+{
+  "archive_bytes": 521015918,
+  "archive_path": "experiments/data/exp_pdb_profile_certificate_holdout.tar.zst",
+  "archive_self_contained": true,
+  "archive_sha256": "2ce6f1f1dc4abbcd9c50a9386752f29cacd7dafc8c01787d131ad4d886f28f65",
+  "dynamic_cell_tree_sha256": "4a3feb174508ff97823c04ff1a6c3e57aa7df2792a964220e043ab28a9052e23",
+  "execution_receipt_sha256": "4afca4a0847bac0a9f10bbf402903b406427afffb2357ae7474db77f9de14567",
+  "expanded_directory_removed": true,
+  "hard_link_count": 34553,
+  "member_count_excluding_root": 189866,
+  "recorded_utc": "2026-08-31T02:05:11Z",
+  "schema": "symbolic-search-heuristics/pdb-profile-certificate-holdout-archive/v1",
+  "symbolic_link_count": 0,
+  "tar_compare_passed": true,
+  "unsafe_member_count": 0,
+  "zstd_integrity_passed": true
+}

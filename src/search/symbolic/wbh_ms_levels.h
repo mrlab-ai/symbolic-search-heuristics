@@ -41,6 +41,7 @@ class MsLevelSets {
 
     std::map<int, BDD> level_sets; // goal distance d -> H_d (valid states)
     BDD dead_ends;
+    ADD h_add;
     // Init-distance level sets for the backward direction of bidirectional
     // search (built only with both_directions): the abstract init distance is
     // an admissible estimate of dist(init, s), so backward search may discard
@@ -95,6 +96,10 @@ public:
 
     const AddStats &get_add_stats() const {
         return add_stats;
+    }
+
+    const ADD &get_add() const {
+        return h_add;
     }
 
     long get_width_upper_bound() const {

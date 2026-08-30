@@ -16,6 +16,114 @@ using namespace std;
 
 namespace symbolic {
 namespace {
+struct ResidualPair {
+    DdNode *bdd;
+    DdNode *add;
+
+    bool operator==(const ResidualPair &other) const {
+        return bdd == other.bdd && add == other.add;
+    }
+};
+
+struct ResidualPairHash {
+    size_t operator()(const ResidualPair &pair) const {
+        size_t left = hash<DdNode *>{}(pair.bdd);
+        size_t right = hash<DdNode *>{}(pair.add);
+        return left ^ (right + 0x9e3779b9 + (left << 6) + (left >> 2));
+    }
+};
+
+DdNode *advance_bdd_residual(
+    DdManager *dd, DdNode *node, int expected_index, int level,
+    bool take_then) {
+    DdNode *regular = Cudd_Regular(node);
+    if (Cudd_IsConstant(regular)) {
+        return node;
+    }
+    const int node_index = Cudd_NodeReadIndex(regular);
+    const int node_level = Cudd_ReadPerm(dd, node_index);
+    if (node_level < level) {
+        ABORT(
+            "WBH joint profile encountered non-state BDD support between "
+            "certified unprimed cuts.");
+    }
+    if (node_level > level) {
+        return node;
+    }
+    if (node_index != expected_index) {
+        ABORT("WBH joint profile CUDD index/level certificate mismatch.");
+    }
+    const int complemented = Cudd_IsComplement(node);
+    DdNode *child = take_then ? Cudd_T(regular) : Cudd_E(regular);
+    return Cudd_NotCond(child, complemented);
+}
+
+DdNode *advance_add_residual(
+    DdManager *dd, DdNode *node, int expected_index, int level,
+    bool take_then) {
+    DdNode *regular = Cudd_Regular(node);
+    if (Cudd_IsConstant(regular)) {
+        return regular;
+    }
+    const int node_index = Cudd_NodeReadIndex(regular);
+    const int node_level = Cudd_ReadPerm(dd, node_index);
+    if (node_level < level) {
+        ABORT(
+            "WBH joint profile encountered non-state ADD support between "
+            "certified unprimed cuts.");
+    }
+    if (node_level > level) {
+        return regular;
+    }
+    if (node_index != expected_index) {
+        ABORT("WBH joint profile ADD index/level certificate mismatch.");
+    }
+    return Cudd_Regular(take_then ? Cudd_T(regular) : Cudd_E(regular));
+}
+
+vector<long> compute_joint_profile(
+    DdManager *dd, const BDD &bdd, const ADD &add,
+    const vector<int> &state_indices, const vector<int> &state_levels) {
+    unordered_set<ResidualPair, ResidualPairHash> frontier{
+        {bdd.getNode(), Cudd_Regular(add.getNode())}};
+    vector<long> counts;
+    counts.reserve(state_indices.size() + 1);
+    counts.push_back(1);
+
+    for (size_t position = 0; position < state_indices.size(); ++position) {
+        const int expected_index = state_indices[position];
+        const int level = state_levels[position];
+        if (Cudd_ReadPerm(dd, expected_index) != level) {
+            ABORT(
+                "WBH joint profile variable order changed after its "
+                "certificate was written (dynamic reordering is unsupported).");
+        }
+        unordered_set<ResidualPair, ResidualPairHash> next;
+        next.reserve(frontier.size() * 2);
+        for (const ResidualPair &pair : frontier) {
+            for (bool take_then : {false, true}) {
+                next.insert({
+                    advance_bdd_residual(
+                        dd, pair.bdd, expected_index, level, take_then),
+                    advance_add_residual(
+                        dd, pair.add, expected_index, level, take_then)});
+            }
+        }
+        frontier.swap(next);
+        counts.push_back(static_cast<long>(frontier.size()));
+    }
+
+    for (const ResidualPair &pair : frontier) {
+        if (!Cudd_IsConstant(Cudd_Regular(pair.bdd)) ||
+            !Cudd_IsConstant(Cudd_Regular(pair.add))) {
+            ABORT(
+                "WBH joint profile retains nonterminal support after the "
+                "final unprimed cut.");
+        }
+    }
+    return counts;
+}
+
 vector<long> compute_bdd_profile(
     DdManager *dd, const BDD &bdd, const vector<int> &state_indices,
     const vector<int> &state_levels) {
@@ -105,13 +213,15 @@ WbhProfile::WbhProfile(const string &path) {
         ABORT("Could not open WBH profile log file: " + path);
     }
     write_payload(
-        "{\"event\":\"schema\",\"version\":1,"
+        "{\"event\":\"schema\",\"version\":2,"
         "\"cut_convention\":\"unprimed_state_bits_in_cudd_level_order_"
         "including_terminal\","
         "\"node_count_convention\":\"regular_cudd_inner_nodes_of_semantic_"
         "union\","
         "\"residual_identity\":\"canonical_signed_cudd_pointer_with_"
-        "complement_polarity\"}");
+        "complement_polarity\","
+        "\"joint_residual_identity\":\"cooccurring_signed_bdd_and_regular_"
+        "add_pointer_pair\"}");
 }
 
 WbhProfile::~WbhProfile() {
@@ -193,7 +303,7 @@ void WbhProfile::log_variable_order(SymVariables *vars) {
 }
 
 void WbhProfile::log_heuristic(
-    SymVariables *vars, const AddStats &add_stats) {
+    SymVariables *vars, const ADD &add, const AddStats &add_stats) {
     if (heuristic_written) {
         ABORT("WBH profile received more than one selected heuristic.");
     }
@@ -219,6 +329,7 @@ void WbhProfile::log_heuristic(
             "cofactor width.");
     }
     heuristic_written = true;
+    heuristic_add = add;
     heuristic_cofactor_seconds += add_stats.cofactor_seconds;
 
     utils::Timer serialization_timer;
@@ -268,15 +379,26 @@ void WbhProfile::prepare_blind_layer(
     vector<long> profile = compute_bdd_profile(
         vars->getCudd()->getManager(), layer, state_indices, state_levels);
     const double event_cofactor_seconds = cofactor_timer();
+    vector<long> joint_profile;
+    double event_joint_cofactor_seconds = 0;
+    if (heuristic_written) {
+        utils::Timer joint_cofactor_timer;
+        joint_profile = compute_joint_profile(
+            vars->getCudd()->getManager(), layer, heuristic_add, state_indices,
+            state_levels);
+        event_joint_cofactor_seconds = joint_cofactor_timer();
+    }
     const long nodes = max(0, layer.nodeCount() - 1);
     const long width = *max_element(profile.begin(), profile.end());
 
     union_seconds += event_union_seconds;
     cofactor_seconds += event_cofactor_seconds;
+    joint_cofactor_seconds += event_joint_cofactor_seconds;
 
     pending_layer = make_unique<PendingLayer>(PendingLayer{
-        g, static_cast<int>(pieces.size()), nodes, move(profile), width,
-        event_union_seconds, event_cofactor_seconds});
+        g, static_cast<int>(pieces.size()), nodes, move(profile),
+        move(joint_profile), width, event_union_seconds, event_cofactor_seconds,
+        event_joint_cofactor_seconds});
 }
 
 void WbhProfile::finish_blind_layer(bool completed) {
@@ -299,9 +421,13 @@ void WbhProfile::finish_blind_layer(bool completed) {
           << ",\"bdd_nodes\":" << layer.bdd_nodes
           << ",\"cofactor_counts\":";
     append_long_vector(event, layer.cofactor_counts);
+    event << ",\"joint_cofactor_counts\":";
+    append_long_vector(event, layer.joint_cofactor_counts);
     event << ",\"cofactor_width\":" << layer.cofactor_width
           << ",\"union_seconds\":" << layer.union_seconds
-          << ",\"cofactor_seconds\":" << layer.cofactor_seconds << "}";
+          << ",\"cofactor_seconds\":" << layer.cofactor_seconds
+          << ",\"joint_cofactor_seconds\":"
+          << layer.joint_cofactor_seconds << "}";
     serialization_seconds += serialization_timer();
     write_payload(event.str());
     pending_layer.reset();
@@ -358,6 +484,7 @@ void WbhProfile::log_summary() {
           << (heuristic_written ? "true" : "false")
           << ",\"union_seconds\":" << union_seconds
           << ",\"cofactor_seconds\":" << cofactor_seconds
+          << ",\"joint_cofactor_seconds\":" << joint_cofactor_seconds
           << ",\"heuristic_cofactor_seconds\":"
           << heuristic_cofactor_seconds << ",\"serialization_seconds\":"
           << serialization_seconds << ",\"output_seconds\":"

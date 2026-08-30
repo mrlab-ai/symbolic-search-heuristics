@@ -65,6 +65,10 @@ public:
         return add_stats;
     }
 
+    const ADD &get_add() const {
+        return h_add;
+    }
+
     long get_width_upper_bound() const {
         return add_stats.width_upper_bound;
     }

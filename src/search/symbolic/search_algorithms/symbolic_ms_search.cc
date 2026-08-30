@@ -73,7 +73,7 @@ void SymbolicMsForwardSearch::initialize() {
     }
     if (sym_params.profile) {
         sym_params.profile->log_heuristic(
-            vars.get(), level_sets->get_add_stats());
+            vars.get(), level_sets->get_add(), level_sets->get_add_stats());
     }
 
     // A completed abstraction may prove the initial state dead. Record its

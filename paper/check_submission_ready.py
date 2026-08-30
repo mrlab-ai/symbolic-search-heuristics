@@ -41,6 +41,12 @@ GENERATED = ROOT / "generated" / "pdb-cap-grid-full-v1.tex"
 GENERATED_INPUT = r"\input{generated/pdb-cap-grid-full-v1.tex}"
 POSTHOC_GENERATED = ROOT / "generated" / "pdb-cap-grid-posthoc-v1.tex"
 POSTHOC_GENERATED_INPUT = r"\input{generated/pdb-cap-grid-posthoc-v1.tex}"
+ORDER_GENERATED_INPUT = (
+    r"\input{generated/pdb-profile-order-intervention-v1.tex}"
+)
+HOLDOUT_GENERATED_INPUT = (
+    r"\input{generated/pdb-profile-certificate-holdout-v1.tex}"
+)
 CAP_STUDY_INPUT = r"\input{cap-study.tex}"
 REFERENCES_START_LABEL = r"\label{paper:references-start}"
 
@@ -128,12 +134,16 @@ REVIEW_BUNDLE_FILENAMES = (
 
 REVIEW_DOCUMENT_MARKERS = {
     "paper.pdf": {
-        "required": ("Cofactor Width", "Anonymous submission", "Abstract"),
+        "required": (
+            "Cut-Aligned Cofactor Profiles",
+            "Anonymous submission",
+            "Abstract",
+        ),
         "forbidden": ("Supplementary Material",),
     },
     "supplement.pdf": {
         "required": (
-            "Cofactor Width",
+            "Cut-Aligned Cofactor Profiles",
             "Supplementary Material",
             "Anonymous for review",
             "Guide.",
@@ -337,19 +347,17 @@ REQUIRED_MAIN = (
     "/TemplateVersion (2027.1)",
     r"\author{Anonymous Submission}",
     r"\affiliations{}",
-    GENERATED_INPUT,
-    POSTHOC_GENERATED_INPUT,
-    r"\CapFullContextRows",
-    r"\CapPrimaryContrastRows",
-    r"\CapPrimaryMechanismRows",
-    r"\CapPrimarySecondaryRows",
-    r"\CapPrimarySecondaryText",
-    r"\CapScopeCaveat",
+    ORDER_GENERATED_INPUT,
+    HOLDOUT_GENERATED_INPUT,
+    r"\HoldoutTwoEffectRows",
+    r"\HoldoutSelectorRows",
 )
 
 REQUIRED_SUPPLEMENT = (
     GENERATED_INPUT,
     POSTHOC_GENERATED_INPUT,
+    ORDER_GENERATED_INPUT,
+    HOLDOUT_GENERATED_INPUT,
     CAP_STUDY_INPUT,
 )
 
@@ -381,6 +389,10 @@ REQUIRED_MANIFEST = (
     "experiments/requirements.txt",
     "experiments/analyze_pdb_cap_grid_posthoc_review.py",
     "experiments/render_pdb_cap_grid_posthoc_review.py",
+    "experiments/exp_pdb_profile_certificate_holdout.py",
+    "experiments/analyze_pdb_profile_certificate_holdout.py",
+    "experiments/analyze_pdb_profile_denominator_audit.py",
+    "experiments/exp_pdb_profile_order_intervention.py",
     "`experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json`",
     "`experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json.sha256`",
     "paper/generated/pdb-cap-grid-posthoc-v1.tex",
@@ -1110,8 +1122,11 @@ def _validate_source(name: str, text: str, required) -> None:
             raise SubmissionReadinessError(
                 f"{name}:{line}: unresolved submission marker ({description})"
             )
-    identity_text = active.replace(GENERATED_INPUT, "").replace(
-        POSTHOC_GENERATED_INPUT, ""
+    identity_text = (
+        active.replace(GENERATED_INPUT, "")
+        .replace(POSTHOC_GENERATED_INPUT, "")
+        .replace(ORDER_GENERATED_INPUT, "")
+        .replace(HOLDOUT_GENERATED_INPUT, "")
     )
     for description, pattern in FORBIDDEN_IDENTITY:
         match = pattern.search(identity_text)
@@ -1262,7 +1277,7 @@ def _review_bundle_self_test():
     # direct infrastructure/provenance scans, not by suppressing citations.
     safe_text = "SymK builds on prior work by Jendrik Seipp.\n"
     safe_first_page = (
-        "Bounding Heuristic Fragmentation with Cofactor Width\n"
+        "Why Heuristics Help or Hurt Symbolic Search: Cut-Aligned Cofactor Profiles\n"
         "Anonymous submission\nAbstract\n"
     )
     safe_action_markup = "<html><body>anonymous paper</body></html>"
@@ -1699,8 +1714,8 @@ def self_test():
     validate_fixture(
         (
             main.replace(
-                GENERATED_INPUT,
-                "\\setlength{\\tabcolsep}{1mm}\n" + GENERATED_INPUT,
+                ORDER_GENERATED_INPUT,
+                "\\setlength{\\tabcolsep}{1mm}\n" + ORDER_GENERATED_INPUT,
                 1,
             ),
             supplement,
@@ -1865,8 +1880,8 @@ def self_test():
         ),
         (
             main.replace(
-                GENERATED_INPUT,
-                "\\usepackage{times}\n" + GENERATED_INPUT,
+                ORDER_GENERATED_INPUT,
+                "\\usepackage{times}\n" + ORDER_GENERATED_INPUT,
                 1,
             ),
             supplement,
@@ -1876,8 +1891,8 @@ def self_test():
         ),
         (
             main.replace(
-                GENERATED_INPUT,
-                "\\setlength{\\pdfpagewidth}{8.5in}\n" + GENERATED_INPUT,
+                ORDER_GENERATED_INPUT,
+                "\\setlength{\\pdfpagewidth}{8.5in}\n" + ORDER_GENERATED_INPUT,
                 1,
             ),
             supplement,

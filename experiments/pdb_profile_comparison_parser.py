@@ -13,7 +13,7 @@ from collections import defaultdict
 from fractions import Fraction
 
 
-PROFILE_PARSER_PROTOCOL = "wbh-complete-cofactor-profile-jsonl-v1"
+PROFILE_PARSER_PROTOCOL = "wbh-complete-cofactor-profile-jsonl-v2"
 SELECTOR_PARSER_PROTOCOL = "pdb-width-or-total-add-selector-trace-v1"
 EXPANSION_PARSER_PROTOCOL = "wbh-schema-v2-active-values-by-g-v1"
 PROFILE_FILE = "wbh-profile.jsonl"
@@ -197,7 +197,7 @@ def parse_profile_stream(content: str) -> dict:
     if not events:
         raise ParseError("profile stream is too short")
     schema = events[0]
-    expected_schema = {
+    expected_schema_v1 = {
         "event": "schema",
         "version": 1,
         "cut_convention": (
@@ -208,15 +208,23 @@ def parse_profile_stream(content: str) -> dict:
             "canonical_signed_cudd_pointer_with_complement_polarity"
         ),
     }
-    if schema != expected_schema:
+    expected_schema_v2 = dict(
+        expected_schema_v1,
+        version=2,
+        joint_residual_identity=(
+            "cooccurring_signed_bdd_and_regular_add_pointer_pair"
+        ),
+    )
+    if schema not in (expected_schema_v1, expected_schema_v2):
         raise ParseError("profile schema event changed")
+    schema_version = schema["version"]
     if len(events) == 1:
         # The schema is flushed by the logger constructor.  A hard resource
         # exit before manager initialization may leave exactly this valid,
         # explicitly incomplete prefix.
         return {
             "complete": False,
-            "schema_version": 1,
+            "schema_version": schema_version,
             "state_bits": None,
             "manager_variables": None,
             "variable_order_sha256": None,
@@ -342,21 +350,22 @@ def parse_profile_stream(content: str) -> dict:
             counts = _profile_vector(
                 event.get("cofactor_counts"), state_bits, "layer profile"
             )
-            _exact_keys(
-                event,
-                {
-                    "event",
-                    "g",
-                    "completed",
-                    "piece_count",
-                    "bdd_nodes",
-                    "cofactor_counts",
-                    "cofactor_width",
-                    "union_seconds",
-                    "cofactor_seconds",
-                },
-                "layer_profile",
-            )
+            layer_keys = {
+                "event",
+                "g",
+                "completed",
+                "piece_count",
+                "bdd_nodes",
+                "cofactor_counts",
+                "cofactor_width",
+                "union_seconds",
+                "cofactor_seconds",
+            }
+            if schema_version == 2:
+                layer_keys.update(
+                    {"joint_cofactor_counts", "joint_cofactor_seconds"}
+                )
+            _exact_keys(event, layer_keys, "layer_profile")
             _int(event.get("g"), "layer g", 0)
             _int(event.get("piece_count"), "layer piece_count", 1)
             bdd_nodes = _int(event.get("bdd_nodes"), "layer bdd_nodes", 0)
@@ -375,6 +384,36 @@ def parse_profile_stream(content: str) -> dict:
                 raise ParseError("layer completed must be Boolean")
             _number(event.get("union_seconds"), "layer union time", 0)
             _number(event.get("cofactor_seconds"), "layer cofactor time", 0)
+            if schema_version == 2:
+                joint = event.get("joint_cofactor_counts")
+                if heuristic is None:
+                    if joint != []:
+                        raise ParseError(
+                            "joint profile exists without a heuristic profile"
+                        )
+                else:
+                    joint = _profile_vector(
+                        joint, state_bits, "joint cofactor profile"
+                    )
+                    heuristic_counts = heuristic["cofactor_counts"]
+                    for position, values in enumerate(
+                        zip(counts, heuristic_counts, joint)
+                    ):
+                        state_count, heuristic_count, joint_count = values
+                        if not (
+                            max(state_count, heuristic_count)
+                            <= joint_count
+                            <= state_count * heuristic_count
+                        ):
+                            raise ParseError(
+                                "joint cofactor profile violates projection/product "
+                                "bounds at cut {}".format(position)
+                            )
+                _number(
+                    event.get("joint_cofactor_seconds"),
+                    "layer joint cofactor time",
+                    0,
+                )
             layers.append(event)
         elif kind == "done":
             if phase != "body" or done is not None:
@@ -391,23 +430,22 @@ def parse_profile_stream(content: str) -> dict:
         elif kind == "summary":
             if summary is not None:
                 raise ParseError("profile summary is duplicated")
-            _exact_keys(
-                event,
-                {
-                    "event",
-                    "profiled_layer_attempts",
-                    "profiled_layers",
-                    "sum_layer_bdd_nodes",
-                    "heuristic_profiled",
-                    "union_seconds",
-                    "cofactor_seconds",
-                    "heuristic_cofactor_seconds",
-                    "serialization_seconds",
-                    "output_seconds",
-                    "solved",
-                },
-                "summary",
-            )
+            summary_keys = {
+                "event",
+                "profiled_layer_attempts",
+                "profiled_layers",
+                "sum_layer_bdd_nodes",
+                "heuristic_profiled",
+                "union_seconds",
+                "cofactor_seconds",
+                "heuristic_cofactor_seconds",
+                "serialization_seconds",
+                "output_seconds",
+                "solved",
+            }
+            if schema_version == 2:
+                summary_keys.add("joint_cofactor_seconds")
+            _exact_keys(event, summary_keys, "summary")
             summary = event
         else:
             raise ParseError("unknown profile event {!r}".format(kind))
@@ -444,6 +482,12 @@ def parse_profile_stream(content: str) -> dict:
             "output_seconds",
         ):
             _number(summary.get(field), "summary {}".format(field), 0)
+        if schema_version == 2:
+            _number(
+                summary.get("joint_cofactor_seconds"),
+                "summary joint_cofactor_seconds",
+                0,
+            )
     if done is not None:
         expected_effort = sum(
             event["bdd_nodes"]
@@ -468,7 +512,7 @@ def parse_profile_stream(content: str) -> dict:
         }
     return {
         "complete": complete,
-        "schema_version": 1,
+        "schema_version": schema_version,
         "state_bits": state_bits,
         "manager_variables": manager_variables,
         # The numerical certificate is meaningful only when the state-set and
@@ -493,6 +537,12 @@ def parse_profile_stream(content: str) -> dict:
                 # the analyzer from i=0,...,n-1 products.
                 "cofactor_counts": event["cofactor_counts"],
                 "cofactor_counts_sha256": _sha(event["cofactor_counts"]),
+                "joint_cofactor_counts": event.get("joint_cofactor_counts"),
+                "joint_cofactor_counts_sha256": (
+                    _sha(event["joint_cofactor_counts"])
+                    if event.get("joint_cofactor_counts")
+                    else None
+                ),
             }
             for event in layers
         ],
@@ -531,6 +581,12 @@ def parse_profile_log(content, props) -> None:
     props["wbh_profile_certified"] = parsed["complete"]
     props["wbh_profile_validation_error"] = None
     props.update({"wbh_profile_" + key: value for key, value in parsed.items()})
+
+
+def initialize_profile_contract(_content, props) -> None:
+    """Record the profile contract even when the optional log is absent."""
+    if "wbh_profile_expected" not in props:
+        parse_profile_log("", props)
 
 
 def parse_expansion_details(content, props) -> None:
@@ -1631,6 +1687,10 @@ def get_parser():
     from lab.parser import Parser
 
     parser = Parser()
+    # Lab skips file-specific callbacks when their file is absent.  run.log is
+    # always present, so initialize the contract there before optionally
+    # replacing its defaults with a parsed profile stream.
+    parser.add_function(initialize_profile_contract, file="run.log")
     parser.add_function(parse_expansion_details, file="wbh.jsonl")
     parser.add_function(parse_profile_log, file=PROFILE_FILE)
     parser.add_function(parse_selector_log, file="run.log")
