@@ -17,7 +17,7 @@ class ProtocolError(RuntimeError):
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROTOCOL_PATH = SCRIPT_DIR / "pdb_profile_semantic_union_protocol.md"
 PROTOCOL_SHA256 = (
-    "bb52d426568e41377e13eacdc503467bb8013277c282938639a2886828a954e2"
+    "ee6acc1d8437bb1725df2823ff5c0fb82e6fa41d84399ebb71ce7417a997bc7f"
 )
 PROTOCOL = "pdb-profile-semantic-union-measurement-v1"
 ANALYSIS_PROTOCOL = "pdb-profile-semantic-union-analysis-v1"

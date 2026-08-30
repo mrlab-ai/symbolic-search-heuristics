@@ -48,10 +48,11 @@ A cell is eligible only if it solves, has a complete certified schema-v2
 bucket stream, has a complete profile stream, reports a positive semantic
 union effort, and satisfies all fixed source, binary, option, task, selected
 heuristic, solution-cost, and event-conservation checks.  For every eligible
-cell, bucket effort must be at least semantic-union effort.  Duplicate
-configurations selecting the same normalized pattern, cap, exact ADD profile,
-and quality tuple are collapsed within a task; their deterministic numerator
-and denominator must agree exactly.
+cell, both efforts must be nonnegative.  Their ratio is not constrained to be
+at least one because an Apply-produced union can itself be larger than the sum
+of its input diagrams.  Duplicate configurations selecting the same normalized
+pattern, cap, exact ADD profile, and quality tuple are collapsed within a task;
+their deterministic numerator and denominator must agree exactly.
 
 All comparisons are within-task pairs of distinct selected heuristic
 semantics.  A comparison enters the shared primary set only when
