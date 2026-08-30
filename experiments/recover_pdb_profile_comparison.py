@@ -5758,6 +5758,7 @@ def self_test() -> None:
             ),
             mock.patch.object(module, "wave_intent_path", return_value=intent_path),
             mock.patch.object(module, "wave_receipt_path", return_value=receipt_path),
+            mock.patch.object(module, "_has_array_limit_amendment", return_value=False),
             mock.patch.object(module, "RESTORE_RECEIPT", restore_path),
             mock.patch.object(
                 module, "_expected_submit_intent", return_value={"created_utc": None, "x": 1}
@@ -5879,7 +5880,9 @@ def self_test() -> None:
             "account": E.ACCOUNT,
         },
     }
-    assert "--export=PATH" in _submission_argv(submission_wave, "c" * 64)
+    assert "--export=PATH" in _submission_argv(
+        submission_wave, "c" * 64, use_amendment=False
+    )
     assert str(_safe_run_root(1)) in text and str(_safe_run_root(25)) in text
     subprocess.run(
         ["bash", "-n"], input=text, text=True, check=True, capture_output=True
