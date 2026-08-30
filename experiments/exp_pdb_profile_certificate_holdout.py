@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import hashlib
+import importlib
 import importlib.metadata
 import json
 import os
@@ -71,6 +72,19 @@ LAUNCH_RECEIPT = (
 LAUNCH_RECEIPT_SCHEMA = (
     "symbolic-search-heuristics/pdb-profile-certificate-holdout-launch/v1"
 )
+EXPECTED_JOB_NAME = "exp_pdb_profile_certificate_holdout-02-start"
+PARTITION_REQUIREMENT_LABEL = "certificate holdout"
+RUNNER_SOURCE_FILES = (
+    "exp_pdb_profile_certificate_holdout.py",
+    "pdb_profile_certificate_holdout_protocol.py",
+    "pdb_profile_certificate_holdout_protocol.md",
+    "analyze_pdb_profile_certificate_holdout.py",
+    "pdb_profile_comparison_parser.py",
+    "wbh_parser.py",
+    "validate_wbh_log.py",
+)
+EXTRA_PARSER_MODULES = ()
+SOURCE_PROTOCOL = P.Source.PROTOCOL
 
 
 def _sha256_file(path: Path) -> str:
@@ -108,16 +122,7 @@ def _write_launch_receipt(job_id: str, job_file: Path, cached) -> None:
         raise LaunchError("Slurm returned an invalid job id")
     tree_hash, run_count, property_count = _run_input_tree_digest()
     source_files = {
-        name: SCRIPT_DIR / name
-        for name in (
-            "exp_pdb_profile_certificate_holdout.py",
-            "pdb_profile_certificate_holdout_protocol.py",
-            "pdb_profile_certificate_holdout_protocol.md",
-            "analyze_pdb_profile_certificate_holdout.py",
-            "pdb_profile_comparison_parser.py",
-            "wbh_parser.py",
-            "validate_wbh_log.py",
-        )
+        name: SCRIPT_DIR / name for name in RUNNER_SOURCE_FILES
     }
     receipt = {
         "schema": LAUNCH_RECEIPT_SCHEMA,
@@ -304,7 +309,7 @@ def make_experiment(cohort, cached):
             return header
 
         def _submit_job(self, job_name, job_file, job_dir, dependency=None):
-            if job_name != "exp_pdb_profile_certificate_holdout-02-start":
+            if job_name != EXPECTED_JOB_NAME:
                 raise LaunchError("unexpected launch job name")
             if LAUNCH_RECEIPT.exists():
                 raise LaunchError(
@@ -340,7 +345,7 @@ def make_experiment(cohort, cached):
                         "declared_run_count": P.CELL_COUNT,
                         "option_matrix_sha256": P.OPTION_MATRIX_SHA256,
                         "protocol_sha256": P.PROTOCOL_SHA256,
-                        "source_protocol": P.Source.PROTOCOL,
+                        "source_protocol": SOURCE_PROTOCOL,
                         "planner_revision": PLANNER_REVISION,
                         "planner_binary_sha256": PLANNER_BINARY_SHA256,
                         "preprocess_binary_sha256": PREPROCESS_BINARY_SHA256,
@@ -393,6 +398,9 @@ def make_experiment(cohort, cached):
     experiment.add_parser(experiment.PLANNER_PARSER)
     experiment.add_parser(wbh_parser.get_parser())
     experiment.add_parser(profile_parser.get_parser())
+    for module_name in EXTRA_PARSER_MODULES:
+        module = importlib.import_module(module_name)
+        experiment.add_parser(module.get_parser())
     experiment.add_step("build", experiment.build)
     experiment.add_step("start", experiment.start_runs)
     experiment.add_step("parse", experiment.parse)
@@ -419,7 +427,11 @@ def self_test() -> None:
     ):
         raise LaunchError("frozen array coverage changed")
     if PARTITION != "fat":
-        raise LaunchError("certificate holdout must use the fat partition")
+        raise LaunchError(
+            "{} must use the fat partition".format(
+                PARTITION_REQUIREMENT_LABEL
+            )
+        )
     print(
         "protocol OK: {} tasks x {} configs = {} cells; "
         "{} runs/array task; {} unthrottled {} array tasks".format(
