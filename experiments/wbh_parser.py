@@ -10,6 +10,7 @@ piece-metric certified.
 import json
 import math
 import re
+import stat
 from pathlib import Path
 
 from lab.parser import Parser
@@ -28,6 +29,16 @@ _PLAN_COST_LINE_RE = re.compile(
     r"^\[t=\d+\.\d{6}s, \d+ KB\] Plan cost: (0|[1-9][0-9]*)$",
     re.MULTILINE,
 )
+_PLAN_FILE_COST_RE = re.compile(
+    r"^; cost = (0|[1-9][0-9]*) \((?:unit|general) cost\)$"
+)
+_SEARCH_RAW_EXIT_RE = re.compile(r"^search raw exit code: (-?[0-9]+)$")
+_SEARCH_EFFECTIVE_EXIT_RE = re.compile(r"^search exit code: (-?[0-9]+)$")
+_SEARCH_RECONCILIATION_RE = re.compile(
+    r"^search resource-limit exit with complete plan: "
+    r"raw_exit_code=(-?[0-9]+) effective_exit_code=(-?[0-9]+)$"
+)
+_MAPPED_RESOURCE_EXITS = {22: 1, 23: 2, 24: 3}
 
 
 _METRIC_KEYS = (
@@ -73,6 +84,106 @@ def _append_validation_error(props, message):
     old = props.get("metrics_validation_error")
     props["metrics_validation_error"] = (
         message if not old else old + " | " + message)
+
+
+def _recover_mapped_resource_plan(run_dir, props):
+    """Recover coverage when post-solution profiling consumes the time limit.
+
+    The direct driver promotes a raw resource exit only after a complete plan
+    has been written.  Usually the search log also contains a timestamped
+    ``Plan cost`` line.  That line is emitted after terminal profiling,
+    however, so a resource signal during profiling can leave the canonical
+    plan and exact raw/effective mapping without the later line.  Accept only
+    that narrow case, using one stable, single-link regular ``sas_plan`` with
+    one canonical final cost footer.  The WBH parser subsequently checks the
+    recovered cost against its done event and solved summary.
+    """
+    effective = props.get("planner_exit_code")
+    if props.get("coverage") != 0 or effective not in (1, 2, 3):
+        return
+
+    root = Path(run_dir).resolve()
+    try:
+        run_log = (root / "run.log").read_text(encoding="utf-8")
+        entries = list(root.iterdir())
+    except (OSError, UnicodeError):
+        return
+    lines = run_log.splitlines()
+    raw = [
+        (index, match)
+        for index, line in enumerate(lines)
+        if (match := _SEARCH_RAW_EXIT_RE.fullmatch(line)) is not None
+    ]
+    final = [
+        (index, match)
+        for index, line in enumerate(lines)
+        if (match := _SEARCH_EFFECTIVE_EXIT_RE.fullmatch(line)) is not None
+    ]
+    mapped = [
+        (index, match)
+        for index, line in enumerate(lines)
+        if (match := _SEARCH_RECONCILIATION_RE.fullmatch(line)) is not None
+    ]
+    if not (len(raw) == len(final) == len(mapped) == 1):
+        return
+    raw_index, raw_match = raw[0]
+    marker_index, marker_match = mapped[0]
+    final_index, final_match = final[0]
+    raw_code = int(raw_match.group(1))
+    final_code = int(final_match.group(1))
+    marker_codes = (int(marker_match.group(1)), int(marker_match.group(2)))
+    if not (
+        raw_index < marker_index < final_index
+        and _MAPPED_RESOURCE_EXITS.get(raw_code) == effective
+        and final_code == effective
+        and marker_codes == (raw_code, effective)
+    ):
+        return
+
+    candidates = [
+        path
+        for path in entries
+        if path.name == "sas_plan"
+        or (
+            path.name.startswith("sas_plan.")
+            and path.name[len("sas_plan."):].isdigit()
+        )
+    ]
+    if len(candidates) != 1 or candidates[0].name != "sas_plan":
+        return
+    plan = candidates[0]
+    try:
+        before = plan.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            return
+        content = plan.read_text(encoding="utf-8")
+        after = plan.lstat()
+    except (OSError, UnicodeError):
+        return
+    identity = lambda value: (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+    if identity(before) != identity(after) or not content.endswith("\n"):
+        return
+    cost_lines = [
+        match
+        for line in content.splitlines()
+        if (match := _PLAN_FILE_COST_RE.fullmatch(line)) is not None
+    ]
+    if len(cost_lines) != 1 or not _PLAN_FILE_COST_RE.fullmatch(
+        content.splitlines()[-1]
+    ):
+        return
+
+    props["coverage"] = 1
+    props["solution_cost"] = int(cost_lines[0].group(1))
+    props["wbh_resource_plan_recovered"] = True
 
 
 def _invalidate_outcome(props, messages):
@@ -366,7 +477,9 @@ def parse_coverage(content, props):
     matches = list(_PLAN_COST_LINE_RE.finditer(content))
     errors = []
     if not plan_cost_mentions:
-        derived_coverage = 0
+        derived_coverage = (
+            1 if props.get("wbh_resource_plan_recovered") is True else 0
+        )
     elif len(plan_cost_mentions) == 1 and len(matches) == 1:
         derived_coverage = 1
         exact_cost = int(matches[0].group(1))
@@ -416,6 +529,7 @@ class WbhParser(Parser):
     """Lab parser that materializes the exact missing/empty WBH convention."""
 
     def parse(self, run_dir, props):
+        _recover_mapped_resource_plan(run_dir, props)
         super().parse(run_dir, props)
         # Lab deliberately skips functions for missing and zero-byte files.
         # Those are meaningful pre-search outcomes in this protocol, so emit

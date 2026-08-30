@@ -228,6 +228,42 @@ class WbhParserTest(unittest.TestCase):
         self.assertNotIn("metrics_validation_error", props)
         self.assertNotIn("unexplained_errors", props)
 
+    def test_recovers_mapped_plan_when_terminal_profile_precedes_plan_cost_log(self):
+        events = base_events()
+        summary = events.pop()
+        events.append({"event": "done", "effort": 5, "solution_cost": 5})
+        summary["solved"] = True
+        events.append(summary)
+        run_log = (
+            "search raw exit code: 23\n"
+            "search resource-limit exit with complete plan: "
+            "raw_exit_code=23 effective_exit_code=2\n"
+            "search exit code: 2\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "run.log").write_text(run_log, encoding="utf-8")
+            (root / "wbh.jsonl").write_text(
+                "".join(json.dumps(item) + "\n" for item in events),
+                encoding="utf-8",
+            )
+            (root / "sas_plan").write_text(
+                "(move a b)\n; cost = 5 (unit cost)\n", encoding="utf-8"
+            )
+            props = FakeProperties(
+                coverage=0,
+                unsolvable=0,
+                planner_exit_code=2,
+            )
+            wbh_parser.get_parser().parse(root, props)
+
+        self.assertEqual(props["coverage"], 1)
+        self.assertEqual(props["solution_cost"], 5)
+        self.assertIs(props["wbh_resource_plan_recovered"], True)
+        self.assertIs(props["wbh_solved_summary_certified"], True)
+        self.assertNotIn("metrics_validation_error", props)
+        self.assertNotIn("unexplained_errors", props)
+
     def test_actual_parser_stack_materializes_missing_and_empty_wbh(self):
         import exp_arrhenius_common as common
 
