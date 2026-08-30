@@ -178,6 +178,11 @@ def _outcome_class(record, label, validator_unavailable=False):
         record.get("pdb_profile_selector_prefix_certified") is True
     )
 
+    if not profile_expected and (
+        profile_present or profile_prefix or profile_complete
+    ):
+        raise AnalysisError("unprofiled blind cell emitted profile evidence")
+
     if outcome_class == "presearch":
         if expansion_present or profile_present or selector_present:
             raise AnalysisError("pre-search outcome unexpectedly emitted search evidence")
@@ -328,7 +333,12 @@ def validate_matrix(
         stratum_by_task[task] = stratum
         outcome_class = _outcome_class(record, label, validator_unavailable)
         expected_profile = label != "blind_fw"
-        if record.get("wbh_profile_expected") is not expected_profile:
+        profile_expectation = record.get("wbh_profile_expected")
+        parser_was_not_invoked = "wbh_profile_expected" not in record
+        if parser_was_not_invoked:
+            if expected_profile and outcome_class != "presearch":
+                raise AnalysisError("search cell lacks its profile parser contract")
+        elif profile_expectation is not expected_profile:
             raise AnalysisError("cell has the wrong profile expectation")
         heuristic = record.get("wbh_profile_heuristic_profile")
         if (

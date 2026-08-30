@@ -530,6 +530,11 @@ class AnalyzerEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(Analysis.AnalysisError, "schema-v2"):
             Analysis._outcome_class(record, "pdb_exact_k2")
 
+    def test_unprofiled_blind_rejects_profile_evidence(self):
+        record = self.resource_prefix()
+        with self.assertRaisesRegex(Analysis.AnalysisError, "unprofiled blind"):
+            Analysis._outcome_class(record, "blind_fw")
+
     def solved_missing_validator_record(self):
         return {
             "planner_exit_code": 36,
@@ -837,6 +842,20 @@ class AnalyzerEvidenceTests(unittest.TestCase):
                 Analysis.AnalysisError, "planner_time_limit"
             ):
                 Analysis.validate_matrix(changed, expected_tasks=1)
+
+    def test_matrix_accepts_profile_parser_omission_only_before_search(self):
+        records = self.presearch_matrix()
+        for record in records:
+            del record["wbh_profile_expected"]
+        Analysis.validate_matrix(records, expected_tasks=1)
+
+        changed = copy.deepcopy(records)
+        profiled = next(
+            record for record in changed if record["algorithm"] != "blind_fw"
+        )
+        profiled.update(self.resource_prefix())
+        with self.assertRaisesRegex(Analysis.AnalysisError, "parser contract"):
+            Analysis.validate_matrix(changed, expected_tasks=1)
 
 
 class ExpansionParserTests(unittest.TestCase):
