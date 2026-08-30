@@ -656,8 +656,17 @@ def _profile_certificate(candidate, blind, task, label):
                 "schema-v2 active V_g/bucket/piece profile is invalid"
             )
         active_by_g[g] = active
-    if not set(active_by_g).issubset(blind_layers):
-        raise AnalysisError("PDB active g layer is absent from profiled blind layers")
+    missing_blind_layers = set(active_by_g).difference(blind_layers)
+    if missing_blind_layers:
+        if blind_layers and min(missing_blind_layers) > max(blind_layers):
+            # Blind search can stop as soon as it generates a goal, while a
+            # heuristic configuration can still expand a terminal suffix of
+            # g layers.  No blind-based certificate exists for that suffix,
+            # so exclude the cell rather than silently dropping its effort.
+            return {"status": "reference_stopped_before_candidate_boundary"}
+        raise AnalysisError(
+            "PDB active interior g layer is absent from profiled blind layers"
+        )
 
     profile_bound = 0
     width_bound = 0

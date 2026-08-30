@@ -680,7 +680,7 @@ class AnalyzerEvidenceTests(unittest.TestCase):
         self.assertEqual(result["B_width"], 36)
         self.assertEqual(result["B_add_apply_cudd_safe"], 81)
 
-    def test_certificate_fails_on_order_or_missing_active_layer(self):
+    def test_certificate_fails_on_order_and_excludes_uncertified_suffix(self):
         candidate, blind = self.certificate_pair()
         changed = copy.deepcopy(blind)
         changed["wbh_profile_variable_order_sha256"] = "c" * 64
@@ -689,8 +689,21 @@ class AnalyzerEvidenceTests(unittest.TestCase):
         changed = copy.deepcopy(blind)
         changed["wbh_profile_layer_profiles"] = changed["wbh_profile_layer_profiles"][:-1]
         changed["wbh_profile_done"]["layer_union_effort"] = 3
-        with self.assertRaisesRegex(Analysis.AnalysisError, "absent"):
-            Analysis._profile_certificate(candidate, changed, ("d", "p"), "pdb_exact_k2")
+        result = Analysis._profile_certificate(
+            candidate, changed, ("d", "p"), "pdb_exact_k2"
+        )
+        self.assertEqual(
+            result["status"],
+            "reference_stopped_before_candidate_boundary",
+        )
+
+        changed = copy.deepcopy(blind)
+        del changed["wbh_profile_layer_profiles"][0]
+        changed["wbh_profile_done"]["layer_union_effort"] = 3
+        with self.assertRaisesRegex(Analysis.AnalysisError, "interior"):
+            Analysis._profile_certificate(
+                candidate, changed, ("d", "p"), "pdb_exact_k2"
+            )
 
         changed_candidate = copy.deepcopy(candidate)
         changed_candidate["wbh_expansion_profile"][0]["pieces"] = 3
