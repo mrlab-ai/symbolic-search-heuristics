@@ -47,6 +47,10 @@
 \newcommand{\values}{\ensuremath{V}}
 \newcommand{\level}[2]{\ensuremath{H_{#2}}}
 \newcommand{\effort}{\ensuremath{\mathit{effort}}}
+\newcommand{\unioneffort}{\ensuremath{\mathit{unionEffort}}}
+\newcommand{\fragfactor}{\ensuremath{\mathit{frag}}}
+\newcommand{\profilebound}{\ensuremath{\mathcal{P}_{\pi}}}
+\newcommand{\profilescore}{\ensuremath{\mathcal{R}_{\pi}}}
 \newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
 \newcommand{\hrange}{\ensuremath{\mathrm{range}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
@@ -121,6 +125,14 @@ size is not monotone under subsets: splitting a small diagram can produce large
 pieces. This raises our central question: which structural property explains
 when a heuristic fragments symbolic frontiers, and can it guide heuristic
 construction?
+
+A heuristic has two distinct effects in symbolic search. It changes which
+states are expanded, as in explicit search, but it also partitions the
+expanded sets into separately represented value buckets. A more informative
+heuristic can therefore reduce the unsplit search while making its buckets
+larger in aggregate. We separate these effects exactly and ask for different
+predictors: heuristic informativeness for search reduction, and
+representation compatibility for bucket fragmentation.
 
 The usual explicit-search intuition emphasizes heuristic quality. That is not
 sufficient in the symbolic setting. \citet{speck-et-al-icaps2020} show that
@@ -292,6 +304,24 @@ than blind search: a subset can have a much larger BDD than its superset,
 so both slicing and pruning can inflate representations. We seek a
 heuristic property that controls every value-selected subset.
 
+For any completed search, let $A_g(h)$ be the heuristic values whose
+nonempty buckets are expanded at cost $g$, and let
+$S_g^h=\bigcup_{v\in A_g(h)}B_{\task,h}(g,v)$ be their union. Define the
+corresponding unsplit representation effort and fragmentation factor by
+\[
+ \begin{aligned}
+ \unioneffort(\task,h)&=\sum_g\bddsize{S_g^h},\\
+ \fragfactor(\task,h)&=
+ \frac{\effort(\task,h)}{\unioneffort(\task,h)},
+ \end{aligned}
+\]
+whenever the denominator is positive. Hence
+$\effort=\unioneffort\cdot\fragfactor$ exactly. Blind search has one bucket
+per expanded layer and therefore $\fragfactor(\task,\hblind)=1$. The ratio
+need not exceed one because a union BDD can be larger than the sum of the
+reduced BDDs for its disjoint pieces. It isolates the representational effect
+of value partitioning without presuming its direction.
+
 % ===================== width-bounded heuristics ==========================
 \section{Bounded Cofactor Width}
 
@@ -446,6 +476,24 @@ $\values$.
 Apply Theorem~\ref{thm-bucket} to each of $T$ buckets (or the $\values$
 finite planning-state buckets), then relax the profile and use $T\leq W$.
 \end{proof}
+
+The partition theorem gives a run-level predictor that retains the cutwise
+interaction discarded by width. Define
+\[
+ \begin{aligned}
+ \profilebound(\task,h)&=
+ \sum_g |A_g(h)|\cutprod{S_g^h}{h},\\
+ \profilescore(\task,h)&=
+ \frac{\profilebound(\task,h)}{\unioneffort(\task,h)}.
+ \end{aligned}
+\]
+We call $\profilescore$ the \emph{normalized cut-aligned profile
+certificate}. Applying Theorem~\ref{thm-bucket} to every expanded bucket
+gives $\fragfactor(\task,h)\leq\profilescore(\task,h)$. Unlike heuristic
+quality, this quantity is designed to predict the representational effect
+conditional on the unsplit expanded sets. Unlike cofactor width, it retains
+where the heuristic and those sets are simultaneously complex. Width is the
+frontier-independent relaxation used to certify a heuristic before search.
 
 The effort measure sums each reduced bucket separately even if a shared
 unique table reuses nodes. The factor $n$ cannot be removed: the supplement
@@ -1039,7 +1087,9 @@ alignment and is not width-certified.
 SetA\ensuremath{^{*}} and \ghseta\ partition transitions
 \citep{jensen-et-al-aij2008}, and ADDA\ensuremath{^{*}} uses algebraic diagrams
 \citep{hansen-et-al-sara2002}. Even \hstar\ can cause exponential BDD effort
-\citep{speck-et-al-icaps2020}; its construction has exponential cofactor width.
+\citep{speck-et-al-icaps2020}; that work identifies size-aware heuristics as
+an open direction but gives no structural predictor. Its hard family has
+exponential cofactor width.
 Residual width, products, and Apply are standard
 \citep{wegener-2000,bryant-ieeecomp1986}. New here are their connection to
 exact search buckets, the cut-aligned cumulative and blind-relative bounds,

@@ -8,12 +8,36 @@ import unittest
 from fractions import Fraction
 
 import analyze_pdb_profile_order_intervention as Analysis
+import audit_pdb_profile_order_intervention as Audit
 import exp_pdb_profile_order_intervention as E
 import pdb_fixed_pattern_parser as Pattern
 import pdb_profile_order_intervention_protocol as P
+import recover_pdb_profile_order_intervention as Recovery
 
 
 class OrderInterventionTest(unittest.TestCase):
+    def test_audit_and_recovery_use_the_intervention_identity(self):
+        Recovery.configure()
+        receipt = Audit.Audit.load_launch_receipt()
+        self.assertEqual(receipt["job_id"], "1808968")
+        self.assertEqual(receipt["partition"], "fat")
+        self.assertEqual(receipt["array_throttle"], 0)
+        self.assertEqual(Audit.Audit.P.CELL_COUNT, P.CELL_COUNT)
+        self.assertEqual(
+            Recovery.Recovery.RECOVERY_SCHEMA,
+            Audit.Audit.RECOVERY_RECEIPT_SCHEMA,
+        )
+        cells = [
+            cell
+            for task in range(1, E.Base.EXPECTED_ARRAY_TASKS + 1)
+            for cell in Recovery.Recovery._task_cells(task)
+        ]
+        self.assertEqual(cells, list(range(1, P.CELL_COUNT + 1)))
+        self.assertEqual(
+            Audit.Audit._run_dir(P.CELL_COUNT).parent.name,
+            "runs-02101-02200",
+        )
+
     def eligible_record(self, *, effort=6, order="a" * 64):
         return {
             "coverage": 1,

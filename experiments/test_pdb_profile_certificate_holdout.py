@@ -7,13 +7,54 @@ import copy
 import unittest
 from collections import defaultdict
 from fractions import Fraction
+from unittest import mock
 
 import analyze_pdb_profile_certificate_holdout as Analysis
+import audit_pdb_profile_certificate_holdout as Audit
 import exp_pdb_profile_certificate_holdout as E
 import pdb_profile_certificate_holdout_protocol as P
+import recover_pdb_profile_certificate_holdout as Recovery
 
 
 class CertificateHoldoutAnalysisTest(unittest.TestCase):
+    def test_launch_receipt_seals_unthrottled_fat_submission(self):
+        receipt = Audit.load_launch_receipt()
+        self.assertEqual(receipt["job_id"], "1807967")
+        self.assertEqual(receipt["partition"], "fat")
+        self.assertEqual(receipt["array_throttle"], 0)
+        self.assertEqual(receipt["cells"], P.CELL_COUNT)
+
+    def test_scheduler_audit_checks_exact_tasks_and_partition(self):
+        output = (
+            "7_2|702|RUNNING|0:0|n2|4|fat\n"
+            "7_1|701|COMPLETED|0:0|n1|3|fat\n"
+        )
+        with mock.patch.object(
+            Audit.subprocess, "check_output", return_value=output
+        ):
+            rows = Audit.scheduler_rows("7", {1, 2})
+        self.assertEqual([row["array_task"] for row in rows], [1, 2])
+        self.assertEqual([row["state"] for row in rows], ["COMPLETED", "RUNNING"])
+
+        non_fat = output.replace("|fat\n", "|thin\n", 1)
+        with mock.patch.object(
+            Audit.subprocess, "check_output", return_value=non_fat
+        ):
+            with self.assertRaisesRegex(Audit.ExecutionAuditError, "non-fat"):
+                Audit.scheduler_rows("7", {1, 2})
+
+    def test_recovery_task_partition_covers_every_cell_once(self):
+        cells = [
+            cell
+            for task in range(1, E.EXPECTED_ARRAY_TASKS + 1)
+            for cell in Recovery._task_cells(task)
+        ]
+        self.assertEqual(cells, list(range(1, P.CELL_COUNT + 1)))
+        self.assertEqual(
+            Audit._run_dir(P.CELL_COUNT).parent.name,
+            "runs-17801-17900",
+        )
+
     def test_runner_is_full_unthrottled_fat_array(self):
         self.assertEqual(E.PARTITION, "fat")
         self.assertEqual(E.RUNS_PER_ARRAY_TASK, 18)
