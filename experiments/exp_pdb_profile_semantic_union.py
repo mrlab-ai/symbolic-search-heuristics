@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import importlib.metadata
 import json
@@ -62,6 +63,100 @@ RUNS_PER_ARRAY_TASK = 5
 SCHEDULER_TIME_LIMIT = "00:40:00"
 SCHEDULER_MEMORY = "9G"
 PIN_RE = re.compile(r"^[0-9a-f]{64}$")
+EXPECTED_ARRAY_TASKS = 880
+LAUNCH_RECEIPT = (
+    SCRIPT_DIR
+    / "artifacts"
+    / "pdb-profile-semantic-union"
+    / "launch-receipt-v1.json"
+)
+LAUNCH_RECEIPT_SCHEMA = (
+    "symbolic-search-heuristics/pdb-profile-semantic-union-launch/v1"
+)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _run_input_tree_digest() -> tuple[str, int, int]:
+    """Hash every generated run wrapper and immutable property record."""
+    digest = hashlib.sha256()
+    run_count = 0
+    property_count = 0
+    for path in sorted(EXPERIMENT_PATH.glob("runs-*/[0-9]*/run")):
+        relative = path.relative_to(EXPERIMENT_PATH).as_posix().encode("ascii")
+        digest.update(relative + b"\0" + bytes.fromhex(_sha256_file(path)))
+        run_count += 1
+    for path in sorted(EXPERIMENT_PATH.glob("runs-*/[0-9]*/static-properties")):
+        relative = path.relative_to(EXPERIMENT_PATH).as_posix().encode("ascii")
+        digest.update(relative + b"\0" + bytes.fromhex(_sha256_file(path)))
+        property_count += 1
+    if run_count != P.CELL_COUNT or property_count != P.CELL_COUNT:
+        raise LaunchError("generated run/property matrix is incomplete")
+    return digest.hexdigest(), run_count, property_count
+
+
+def _write_launch_receipt(job_id: str, job_file: Path, cached) -> None:
+    if not isinstance(job_id, str) or not job_id.isdigit():
+        raise LaunchError("Slurm returned an invalid job id")
+    tree_hash, run_count, property_count = _run_input_tree_digest()
+    source_files = {
+        name: SCRIPT_DIR / name
+        for name in (
+            "exp_pdb_profile_semantic_union.py",
+            "pdb_profile_semantic_union_protocol.py",
+            "pdb_profile_semantic_union_protocol.md",
+            "analyze_pdb_profile_semantic_union.py",
+            "pdb_profile_comparison_parser.py",
+            "wbh_parser.py",
+            "validate_wbh_log.py",
+        )
+    }
+    receipt = {
+        "schema": LAUNCH_RECEIPT_SCHEMA,
+        "recorded_utc": datetime.datetime.now(
+            datetime.timezone.utc
+        ).isoformat(timespec="seconds"),
+        "job_id": job_id,
+        "job_name": job_file.name,
+        "partition": PARTITION,
+        "qos": "normal",
+        "account": ACCOUNT,
+        "slurm_array": "1-{}".format(EXPECTED_ARRAY_TASKS),
+        "array_throttle": 0,
+        "array_tasks": EXPECTED_ARRAY_TASKS,
+        "runs_per_array_task": RUNS_PER_ARRAY_TASK,
+        "cells": P.CELL_COUNT,
+        "time_limit": SCHEDULER_TIME_LIMIT,
+        "memory_per_cpu": SCHEDULER_MEMORY,
+        "cpus_per_task": 1,
+        "lab_version": importlib.metadata.version("lab"),
+        "planner_revision": PLANNER_REVISION,
+        "revision_cache_attestation": cached.attest(),
+        "cohort_manifest_sha256": P.COHORT_MANIFEST_SHA256,
+        "option_matrix_sha256": P.OPTION_MATRIX_SHA256,
+        "protocol_sha256": P.PROTOCOL_SHA256,
+        "job_file_sha256": _sha256_file(job_file),
+        "static_experiment_properties_sha256": _sha256_file(
+            EXPERIMENT_PATH / "static-experiment-properties"
+        ),
+        "generated_run_input_tree_sha256": tree_hash,
+        "generated_run_files": run_count,
+        "generated_static_property_files": property_count,
+        "source_file_sha256": {
+            name: _sha256_file(path) for name, path in source_files.items()
+        },
+    }
+    LAUNCH_RECEIPT.parent.mkdir(parents=True, exist_ok=True)
+    raw = json.dumps(
+        receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("ascii") + b"\n"
+    LAUNCH_RECEIPT.write_bytes(raw)
 
 
 def parse_args(argv=None):
@@ -161,13 +256,53 @@ def make_experiment(cohort, cached):
         FastDownwardExperiment,
         FastDownwardRun,
     )
-    from lab.environments import SlurmEnvironment
+    from lab.environments import SlurmEnvironment, is_run_step
 
     import pdb_profile_comparison_parser as profile_parser
     import wbh_parser
 
     class ArrheniusEnvironment(SlurmEnvironment):
         MAX_TASKS = MAX_ARRAY_TASKS
+
+        def _get_job_header(self, step, is_last):
+            header = super()._get_job_header(step, is_last)
+            if is_run_step(step):
+                num_tasks = self._get_num_tasks(step)
+                if num_tasks != EXPECTED_ARRAY_TASKS:
+                    raise LaunchError("Slurm array task count changed")
+                required = {
+                    "#SBATCH --partition=fat",
+                    "#SBATCH --qos=normal",
+                    "#SBATCH --time={}".format(SCHEDULER_TIME_LIMIT),
+                    "#SBATCH --mem-per-cpu={}".format(SCHEDULER_MEMORY),
+                    "#SBATCH --cpus-per-task=1",
+                    "#SBATCH --array=1-{}".format(EXPECTED_ARRAY_TASKS),
+                    "#SBATCH --account={}".format(ACCOUNT),
+                }
+                lines = set(header.splitlines())
+                missing = sorted(required.difference(lines))
+                if missing:
+                    raise LaunchError(
+                        "Slurm header changed: missing {}".format(", ".join(missing))
+                    )
+                array_lines = [
+                    line for line in header.splitlines()
+                    if line.startswith("#SBATCH --array=")
+                ]
+                if array_lines != [
+                    "#SBATCH --array=1-{}".format(EXPECTED_ARRAY_TASKS)
+                ] or "%" in array_lines[0]:
+                    raise LaunchError("Slurm array unexpectedly has a throttle")
+            return header
+
+        def _submit_job(self, job_name, job_file, job_dir, dependency=None):
+            if job_name != "exp_pdb_profile_semantic_union-02-start":
+                raise LaunchError("unexpected launch job name")
+            job_id = super()._submit_job(
+                job_name, job_file, job_dir, dependency=dependency
+            )
+            _write_launch_receipt(job_id, Path(job_file), cached)
+            return job_id
 
     class JjFastDownwardExperiment(FastDownwardExperiment):
         def add_cached_algorithm(self, name, component_options, driver_options):
@@ -262,6 +397,8 @@ def self_test() -> None:
         raise LaunchError("Slurm run grouping changed")
     if PARTITION != "fat":
         raise LaunchError("semantic-union follow-up must use the fat partition")
+    if expected_grouping * EXPECTED_ARRAY_TASKS != P.CELL_COUNT:
+        raise LaunchError("frozen unthrottled array layout changed")
     print(
         "protocol OK: {} tasks x {} configs = {} cells; "
         "{} runs/array task; unthrottled {} partition".format(
