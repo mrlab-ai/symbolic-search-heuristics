@@ -1,0 +1,38 @@
+{
+  "authorization": {
+    "partition_request": "Move the job to the fat partition, which is less busy.",
+    "source": "interactive-user-instruction",
+    "throttle_request": "Remove the throttle."
+  },
+  "job_id": "1663659",
+  "main_launch_receipt_sha256": "53b2699b71883a3c4fecae48a6f1e5b11534383e5613213512151fe9afb5a9fe",
+  "mutations": {
+    "array_task_throttle": {
+      "from": 5,
+      "scope": "array-job",
+      "to": 0
+    },
+    "partition": {
+      "array_task_count": 491,
+      "array_task_first": 506,
+      "array_task_last": 996,
+      "from": "cpu",
+      "scope": "pending-array-elements",
+      "to": "fat"
+    }
+  },
+  "outcome_access": {
+    "planner_outcomes_parsed": false
+  },
+  "post_terminal_attestation": {
+    "array_task_count": 996,
+    "partition_counts": {
+      "cpu": 505,
+      "fat": 491
+    },
+    "throttle_terminal_accounting_available": false
+  },
+  "recorded_after_terminal": true,
+  "recorded_utc": "2026-08-30T12:36:14Z",
+  "schema": "symbolic-search-heuristics/pdb-profile-scheduler-mutation-receipt/v1"
+}

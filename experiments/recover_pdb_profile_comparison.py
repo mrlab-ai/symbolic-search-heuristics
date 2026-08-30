@@ -48,6 +48,9 @@ GRID_DIR = (SCRIPT_DIR / "data" / "exp_pdb_profile_comparison-grid-steps").resol
 START_SCRIPT = GRID_DIR / "exp_pdb_profile_comparison-02-start"
 PREREGISTRATION = SCRIPT_DIR / "pdb_profile_predictor_protocol.md"
 LAUNCH_RECEIPT = SCRIPT_DIR / "pdb_profile_comparison_launch_receipt.json"
+SCHEDULER_MUTATION_RECEIPT = (
+    SCRIPT_DIR / "pdb_profile_scheduler_mutation_receipt.json"
+)
 RUNTIME_RECEIPT = SCRIPT_DIR / "pdb_profile_slurm_runtime_receipt.json"
 RUNTIME_PROBE_OUTPUT = (
     SCRIPT_DIR
@@ -69,13 +72,16 @@ WAVES_DIR = ARTIFACT_DIR / "waves"
 VENV_PYTHON = SCRIPT_DIR / ".venv" / "bin" / "python"
 REQUIREMENTS = SCRIPT_DIR / "requirements.txt"
 
-SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-manifest/v3"
+SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-manifest/v4"
 WAVE_SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-wave/v1"
 CELL_SEAL_SCHEMA = "symbolic-search-heuristics/pdb-profile-prefix-cell/v1"
 WAVE_CELL_SEAL_SCHEMA = "symbolic-search-heuristics/pdb-profile-wave-prefix-cell/v1"
 RECEIPT_SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-receipt/v2"
 VERIFICATION_SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-verification/v3"
 LAUNCH_RECEIPT_SCHEMA = "symbolic-search-heuristics/pdb-profile-main-launch-receipt/v1"
+SCHEDULER_MUTATION_RECEIPT_SCHEMA = (
+    "symbolic-search-heuristics/pdb-profile-scheduler-mutation-receipt/v1"
+)
 RUNTIME_RECEIPT_SCHEMA = "symbolic-search-heuristics/pdb-profile-slurm-runtime-receipt/v1"
 STATIC_NAMES = frozenset({"domain.pddl", "problem.pddl", "run", "static-properties"})
 EXPECTED_ARRAY_TASKS = (
@@ -118,6 +124,7 @@ DEPENDENCY_PATHS = (
     SCRIPT_DIR / "selector_pilot_suite.txt",
     REQUIREMENTS.resolve(),
     LAUNCH_RECEIPT.resolve(),
+    SCHEDULER_MUTATION_RECEIPT.resolve(),
     RUNTIME_RECEIPT.resolve(),
     RUNTIME_PROBE_OUTPUT.resolve(),
     RUNTIME_PROBE_ERROR.resolve(),
@@ -156,6 +163,11 @@ def canonical_bytes(value) -> bytes:
         ).encode("ascii")
     except (TypeError, ValueError) as err:
         raise RecoveryError("artifact is not finite canonical JSON") from err
+
+
+def exact_json_equal(left, right) -> bool:
+    """Compare JSON values without Python's bool/int numeric coercion."""
+    return canonical_bytes(left) == canonical_bytes(right)
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -534,7 +546,10 @@ def load_main_launch_receipt() -> dict:
     }
     if not isinstance(value, dict) or set(value) != required:
         raise RecoveryError("main-array launch receipt structure changed")
-    if any(value.get(key) != expected_value for key, expected_value in expected.items()):
+    if any(
+        not exact_json_equal(value.get(key), expected_value)
+        for key, expected_value in expected.items()
+    ):
         raise RecoveryError("main-array launch receipt differs from the generated launch")
     if JOB_ID_RE.fullmatch(value.get("job_id", "")) is None:
         raise RecoveryError("main-array launch receipt has an invalid job ID")
@@ -544,6 +559,107 @@ def load_main_launch_receipt() -> dict:
         ) is None:
             raise RecoveryError("main-array launch receipt has an invalid timestamp")
     return value
+
+
+def load_scheduler_mutation_receipt(launch_receipt: dict) -> dict:
+    try:
+        value = json.loads(SCHEDULER_MUTATION_RECEIPT.read_text(encoding="ascii"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
+        raise RecoveryError("cannot read the scheduler-mutation receipt") from err
+    required = {
+        "schema",
+        "recorded_utc",
+        "recorded_after_terminal",
+        "job_id",
+        "main_launch_receipt_sha256",
+        "authorization",
+        "mutations",
+        "outcome_access",
+        "post_terminal_attestation",
+    }
+    fixed = {
+        "schema": SCHEDULER_MUTATION_RECEIPT_SCHEMA,
+        "recorded_after_terminal": True,
+        "job_id": launch_receipt["job_id"],
+        "main_launch_receipt_sha256": sha256_file(LAUNCH_RECEIPT),
+        "authorization": {
+            "source": "interactive-user-instruction",
+            "partition_request": "Move the job to the fat partition, which is less busy.",
+            "throttle_request": "Remove the throttle.",
+        },
+        "mutations": {
+            "array_task_throttle": {
+                "from": launch_receipt["array_throttle"],
+                "scope": "array-job",
+                "to": 0,
+            },
+            "partition": {
+                "array_task_count": 491,
+                "array_task_first": 506,
+                "array_task_last": EXPECTED_ARRAY_TASKS,
+                "from": launch_receipt["partition"],
+                "scope": "pending-array-elements",
+                "to": "fat",
+            },
+        },
+        "outcome_access": {"planner_outcomes_parsed": False},
+        "post_terminal_attestation": {
+            "array_task_count": EXPECTED_ARRAY_TASKS,
+            "partition_counts": {"cpu": 505, "fat": 491},
+            # Slurm's terminal per-task accounting preserves Partition, but
+            # it does not preserve the final ArrayTaskThrottle value.
+            "throttle_terminal_accounting_available": False,
+        },
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise RecoveryError("scheduler-mutation receipt structure changed")
+    if any(
+        not exact_json_equal(value.get(key), expected)
+        for key, expected in fixed.items()
+    ):
+        raise RecoveryError(
+            "scheduler-mutation receipt differs from the authorized change"
+        )
+    if not isinstance(value.get("recorded_utc"), str) or re.fullmatch(
+        r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", value["recorded_utc"]
+    ) is None:
+        raise RecoveryError("scheduler-mutation receipt has an invalid timestamp")
+    return value
+
+
+def expected_main_partition(
+    task_id: int, launch_receipt: dict, mutation_receipt: dict
+) -> str:
+    if mutation_receipt.get("job_id") != launch_receipt.get("job_id"):
+        raise RecoveryError("scheduler-mutation receipt refers to a different launch")
+    partition = mutation_receipt.get("mutations", {}).get("partition", {})
+    first = partition.get("array_task_first")
+    last = partition.get("array_task_last")
+    if type(first) is not int or type(last) is not int or not 1 <= first <= last:
+        raise RecoveryError("scheduler-mutation receipt has an invalid task range")
+    if first <= task_id <= last:
+        return partition.get("to")
+    return launch_receipt["partition"]
+
+
+def validate_main_partition_attestation(
+    records: list[dict], launch_receipt: dict, mutation_receipt: dict
+) -> None:
+    attestation = mutation_receipt.get("post_terminal_attestation", {})
+    if len(records) != attestation.get("array_task_count"):
+        raise RecoveryError("scheduler-mutation task count differs from accounting")
+    actual = dict(sorted(Counter(record["partition"] for record in records).items()))
+    if actual != attestation.get("partition_counts"):
+        raise RecoveryError("scheduler-mutation partition counts differ from accounting")
+    for record in records:
+        if record["partition"] != expected_main_partition(
+            record["array_task_id"], launch_receipt, mutation_receipt
+        ):
+            raise RecoveryError(
+                "array task {} has an unauthorized partition".format(
+                    record["array_task_id"]
+                )
+            )
 
 
 def load_slurm_runtime_receipt() -> dict:
@@ -616,7 +732,10 @@ def load_slurm_runtime_receipt() -> dict:
     }
     if not isinstance(value, dict) or set(value) != required:
         raise RecoveryError("Slurm runtime receipt structure changed")
-    if any(value.get(key) != expected for key, expected in fixed.items()):
+    if any(
+        not exact_json_equal(value.get(key), expected)
+        for key, expected in fixed.items()
+    ):
         raise RecoveryError("Slurm runtime receipt differs from its sealed probe")
     for key in ("recorded_utc", "submit_time"):
         if not isinstance(value.get(key), str) or re.fullmatch(
@@ -759,12 +878,18 @@ def array_task_for_run(run_id: int, group_to_slot: dict[int, int]) -> int:
 
 
 def parse_sacct(
-    raw: str, job_id: str, expected_tasks: set[int], launch_receipt: dict
+    raw: str,
+    job_id: str,
+    expected_tasks: set[int],
+    launch_receipt: dict,
+    mutation_receipt: dict,
 ) -> list[dict]:
     if JOB_ID_RE.fullmatch(job_id) is None:
         raise RecoveryError("job ID must be a positive decimal integer")
     records = {}
-    pattern = re.compile(r"^{}_([1-9][0-9]*)$".format(re.escape(job_id)))
+    pattern = re.compile(
+        r"^{}_(0|[1-9][0-9]*)$".format(re.escape(job_id))
+    )
     for line in raw.splitlines():
         if not line.strip():
             continue
@@ -806,7 +931,8 @@ def parse_sacct(
             or requested_cpus != str(launch_receipt["cpus_per_task"])
             or limit != launch_receipt["wall_time"]
             or account != launch_receipt["account"]
-            or partition != launch_receipt["partition"]
+            or partition
+            != expected_main_partition(task_id, launch_receipt, mutation_receipt)
             or qos != launch_receipt["qos"]
             or submit_line != launch_receipt["submit_line"]
         ):
@@ -839,11 +965,18 @@ def parse_sacct(
                 sorted(set(records) - expected_tasks)[:5],
             )
         )
-    return [records[task] for task in sorted(records)]
+    ordered = [records[task] for task in sorted(records)]
+    validate_main_partition_attestation(
+        ordered, launch_receipt, mutation_receipt
+    )
+    return ordered
 
 
 def scheduler_records(
-    job_id: str, expected_tasks: set[int], launch_receipt: dict
+    job_id: str,
+    expected_tasks: set[int],
+    launch_receipt: dict,
+    mutation_receipt: dict,
 ) -> list[dict]:
     if job_id != launch_receipt["job_id"]:
         raise RecoveryError("job ID differs from the sealed main-array launch receipt")
@@ -877,7 +1010,13 @@ def scheduler_records(
         )
     except (OSError, subprocess.CalledProcessError) as err:
         raise RecoveryError("cannot query sacct") from err
-    return parse_sacct(result.stdout, job_id, expected_tasks, launch_receipt)
+    return parse_sacct(
+        result.stdout,
+        job_id,
+        expected_tasks,
+        launch_receipt,
+        mutation_receipt,
+    )
 
 
 def dependency_records(protocol_revision: str) -> dict:
@@ -1882,6 +2021,7 @@ def freeze(main_job_id: str) -> None:
     if EXPECTED_ARRAY_TASKS != 996:
         raise RecoveryError("frozen grouping no longer yields 996 array tasks")
     launch_receipt = load_main_launch_receipt()
+    mutation_receipt = load_scheduler_mutation_receipt(launch_receipt)
     runtime_receipt = load_slurm_runtime_receipt()
     validate_slurm_runtime_probe_accounting(runtime_receipt)
     if main_job_id != launch_receipt["job_id"]:
@@ -1917,6 +2057,7 @@ def freeze(main_job_id: str) -> None:
         main_job_id,
         set(range(1, EXPECTED_ARRAY_TASKS + 1)),
         launch_receipt,
+        mutation_receipt,
     )
     counts, complete_hashes, cells = classify_cells(
         scheduler, launcher["group_to_slot"], materialized_code, source_records
@@ -1943,6 +2084,7 @@ def freeze(main_job_id: str) -> None:
         },
         "main_job_id": main_job_id,
         "main_launch_receipt": launch_receipt,
+        "scheduler_mutation_receipt": mutation_receipt,
         "slurm_runtime_receipt": runtime_receipt,
         "experiment": {
             "protocol": P.PROTOCOL,
@@ -2047,6 +2189,7 @@ def validate_manifest(value: dict) -> None:
         "paths",
         "main_job_id",
         "main_launch_receipt",
+        "scheduler_mutation_receipt",
         "slurm_runtime_receipt",
         "experiment",
         "original_launcher",
@@ -2063,11 +2206,20 @@ def validate_manifest(value: dict) -> None:
     if JJ.COMMIT_RE.fullmatch(value.get("protocol_revision", "")) is None:
         raise RecoveryError("manifest protocol revision is invalid")
     if (
-        value.get("main_launch_receipt") != load_main_launch_receipt()
+        not exact_json_equal(
+            value.get("main_launch_receipt"), load_main_launch_receipt()
+        )
         or value.get("main_job_id") != value["main_launch_receipt"]["job_id"]
     ):
         raise RecoveryError("manifest refers to a different main-array launch")
-    if value.get("slurm_runtime_receipt") != load_slurm_runtime_receipt():
+    if not exact_json_equal(
+        value.get("scheduler_mutation_receipt"),
+        load_scheduler_mutation_receipt(value["main_launch_receipt"]),
+    ):
+        raise RecoveryError("manifest refers to a different scheduler mutation")
+    if not exact_json_equal(
+        value.get("slurm_runtime_receipt"), load_slurm_runtime_receipt()
+    ):
         raise RecoveryError("manifest refers to a different Slurm runtime probe")
     experiment = value["experiment"]
     expected_experiment = {
@@ -2083,7 +2235,7 @@ def validate_manifest(value: dict) -> None:
         "runs_per_array_task": E.RUNS_PER_ARRAY_TASK,
         "array_throttle": E.ARRAY_THROTTLE,
     }
-    if experiment != expected_experiment:
+    if not exact_json_equal(experiment, expected_experiment):
         raise RecoveryError("manifest experiment identity changed")
     expected_paths = {
         "repository": str(REPO),
@@ -2338,6 +2490,7 @@ def validate_manifest(value: dict) -> None:
         "submit_line",
     }
     receipt = value["main_launch_receipt"]
+    mutation_receipt = value["scheduler_mutation_receipt"]
     if (
         not isinstance(scheduler, list)
         or [record.get("array_task_id") for record in scheduler]
@@ -2356,11 +2509,15 @@ def validate_manifest(value: dict) -> None:
             or record.get("requested_cpus") != str(receipt["cpus_per_task"])
             or record.get("time_limit") != receipt["wall_time"]
             or record.get("account") != receipt["account"]
-            or record.get("partition") != receipt["partition"]
+            or record.get("partition")
+            != expected_main_partition(
+                record.get("array_task_id"), receipt, mutation_receipt
+            )
             or record.get("qos") != receipt["qos"]
             or record.get("submit_line") != receipt["submit_line"]
         ):
             raise RecoveryError("manifest main-array scheduler identity changed")
+    validate_main_partition_attestation(scheduler, receipt, mutation_receipt)
     expected_scheduler_counts = dict(
         sorted(Counter(record["state_base"] for record in scheduler).items())
     )
@@ -3912,6 +4069,12 @@ def verify_recovery() -> None:
 
 
 def self_test() -> None:
+    assert exact_json_equal(
+        {"boolean": False, "integer": 0},
+        {"integer": 0, "boolean": False},
+    )
+    for left, right in ((False, 0), (True, 1), ({"x": False}, {"x": 0})):
+        assert not exact_json_equal(left, right)
     launch = {
         "job_id": "7",
         "job_name": "main-array",
@@ -3925,26 +4088,45 @@ def self_test() -> None:
         "qos": "normal",
         "submit_line": "sbatch --export PATH /sealed/main/start",
     }
-    scheduler_suffix = "|".join(
-        [
-            launch["job_name"],
-            launch["submit_time"],
-            launch["work_directory"],
-            launch["memory_per_cpu"],
-            str(launch["cpus_per_task"]),
-            launch["account"],
-            launch["partition"],
-            launch["qos"],
-            launch["submit_line"],
-        ]
-    )
+    mutation = {
+        "job_id": launch["job_id"],
+        "mutations": {
+            "partition": {
+                "array_task_first": 2,
+                "array_task_last": 2,
+                "to": "fat",
+            }
+        },
+        "post_terminal_attestation": {
+            "array_task_count": 2,
+            "partition_counts": {"cpu": 1, "fat": 1},
+        },
+    }
+
+    def scheduler_suffix(partition):
+        return "|".join(
+            [
+                launch["job_name"],
+                launch["submit_time"],
+                launch["work_directory"],
+                launch["memory_per_cpu"],
+                str(launch["cpus_per_task"]),
+                launch["account"],
+                partition,
+                launch["qos"],
+                launch["submit_line"],
+            ]
+        )
+
     completed = (
-        "7_1|8|COMPLETED|12|{wall}|0:0|n1|{suffix}\n"
-        "7_2|9|TIMEOUT|9000|{wall}|0:0|n2|{suffix}\n"
+        "7_1|8|COMPLETED|12|{wall}|0:0|n1|{cpu_suffix}\n"
+        "7_2|9|TIMEOUT|9000|{wall}|0:0|n2|{fat_suffix}\n"
     ).format(
-        wall=launch["wall_time"], suffix=scheduler_suffix
+        wall=launch["wall_time"],
+        cpu_suffix=scheduler_suffix("cpu"),
+        fat_suffix=scheduler_suffix("fat"),
     )
-    parsed = parse_sacct(completed, "7", {1, 2}, launch)
+    parsed = parse_sacct(completed, "7", {1, 2}, launch, mutation)
     assert [item["state_base"] for item in parsed] == ["COMPLETED", "TIMEOUT"]
     assert all(
         marker in MAIN_SACCT_FORMAT
@@ -3958,6 +4140,7 @@ def self_test() -> None:
             "7",
             {1, 2},
             launch,
+            mutation,
         )
     except RecoveryError:
         pass
@@ -3966,16 +4149,44 @@ def self_test() -> None:
     try:
         parse_sacct(
             "7_1|8|RUNNING|12|{wall}|0:0|n1|{suffix}\n".format(
-                wall=launch["wall_time"], suffix=scheduler_suffix
+                wall=launch["wall_time"], suffix=scheduler_suffix("cpu")
             ),
             "7",
             {1},
             launch,
+            mutation,
         )
     except RecoveryError:
         pass
     else:
         raise AssertionError("nonterminal scheduler row was accepted")
+    try:
+        parse_sacct(
+            completed.replace(scheduler_suffix("fat"), scheduler_suffix("cpu")),
+            "7",
+            {1, 2},
+            launch,
+            mutation,
+        )
+    except RecoveryError:
+        pass
+    else:
+        raise AssertionError("unauthorized scheduler partition was accepted")
+    try:
+        parse_sacct(
+            completed
+            + "7_0|10|COMPLETED|1|{wall}|0:0|n3|{suffix}\n".format(
+                wall=launch["wall_time"], suffix=scheduler_suffix("cpu")
+            ),
+            "7",
+            {1, 2},
+            launch,
+            mutation,
+        )
+    except RecoveryError:
+        pass
+    else:
+        raise AssertionError("unexpected zero-indexed scheduler task was accepted")
     synthetic_launcher = "\n".join(
         [
             "#SBATCH --array=1-{}%{}".format(EXPECTED_ARRAY_TASKS, E.ARRAY_THROTTLE),
