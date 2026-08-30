@@ -100,7 +100,7 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    launch, scheduler, status = Audit.make_status()
+    launch, scheduler, _, status = Audit.make_status()
     scheduler_by_task = {row["array_task"]: row for row in scheduler}
     incomplete = set(status["incomplete_cells"])
     recover_tasks = []

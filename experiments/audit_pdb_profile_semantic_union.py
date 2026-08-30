@@ -112,7 +112,20 @@ def cell_completeness():
     return dict(counts), incomplete
 
 
-def scheduler_rows(job_id: str):
+def scheduler_rows(job_id: str, expected_array_tasks=None):
+    if expected_array_tasks is None:
+        expected_array_tasks = set(range(1, E.EXPECTED_ARRAY_TASKS + 1))
+    else:
+        expected_array_tasks = set(expected_array_tasks)
+    if (
+        not expected_array_tasks
+        or any(
+            type(task) is not int
+            or not 1 <= task <= E.EXPECTED_ARRAY_TASKS
+            for task in expected_array_tasks
+        )
+    ):
+        raise ExecutionAuditError("expected Slurm task set is invalid")
     command = [
         "sacct",
         "-j",
@@ -138,7 +151,7 @@ def scheduler_rows(job_id: str):
         if not array_id.startswith(prefix) or not array_id[len(prefix):].isdigit():
             continue
         task = int(array_id[len(prefix):])
-        if not 1 <= task <= E.EXPECTED_ARRAY_TASKS:
+        if task not in expected_array_tasks:
             raise ExecutionAuditError("Slurm array task id is out of range")
         if partition != "fat":
             raise ExecutionAuditError("Slurm accounting reports a non-fat task")
@@ -157,13 +170,46 @@ def scheduler_rows(job_id: str):
         if task in by_task:
             raise ExecutionAuditError("Slurm accounting repeats an array task")
         by_task[task] = row
-    if len(by_task) != E.EXPECTED_ARRAY_TASKS:
+    if set(by_task) != expected_array_tasks:
         raise ExecutionAuditError(
-            "Slurm accounting has {} of {} array tasks".format(
-                len(by_task), E.EXPECTED_ARRAY_TASKS
+            "Slurm accounting has {} of {} expected array tasks".format(
+                len(by_task), len(expected_array_tasks)
             )
         )
     return [by_task[task] for task in sorted(by_task)]
+
+
+def recovery_executions(source_job_id: str):
+    executions = []
+    root = E.LAUNCH_RECEIPT.parent / "recovery"
+    for path in sorted(root.glob("wave-*/launch-receipt.json")):
+        try:
+            raw = path.read_bytes()
+            receipt = json.loads(raw.decode("ascii"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
+            raise ExecutionAuditError("cannot load a recovery receipt") from err
+        tasks = receipt.get("array_tasks") if isinstance(receipt, dict) else None
+        if (
+            receipt.get("schema")
+            != "symbolic-search-heuristics/"
+            "pdb-profile-semantic-union-recovery-launch/v1"
+            or receipt.get("source_job_id") != source_job_id
+            or receipt.get("partition") != "fat"
+            or receipt.get("array_throttle") != 0
+            or not isinstance(tasks, list)
+            or len(tasks) != len(set(tasks))
+            or any(type(task) is not int for task in tasks)
+            or not isinstance(receipt.get("job_id"), str)
+            or not receipt["job_id"].isdigit()
+        ):
+            raise ExecutionAuditError("recovery launch receipt semantics changed")
+        executions.append({
+            "receipt_path": path.relative_to(E.SCRIPT_DIR.parent).as_posix(),
+            "receipt_sha256": hashlib.sha256(raw).hexdigest(),
+            "receipt": receipt,
+            "scheduler_rows": scheduler_rows(receipt["job_id"], tasks),
+        })
+    return executions
 
 
 def dynamic_tree_digest():
@@ -191,14 +237,41 @@ def make_status():
     ):
         raise ExecutionAuditError("immutable generated run inputs changed")
     rows = scheduler_rows(launch["job_id"])
+    recoveries = recovery_executions(launch["job_id"])
     cell_counts, incomplete = cell_completeness()
     state_counts = dict(Counter(row["state"] for row in rows))
     terminal = all(row["state"] in TERMINAL_SCHEDULER_STATES for row in rows)
-    successful = terminal and set(state_counts) == {"COMPLETED"}
-    return launch, rows, {
+    recovered_completed = {
+        row["array_task"]
+        for execution in recoveries
+        for row in execution["scheduler_rows"]
+        if row["state"] == "COMPLETED"
+    }
+    effective_completed = {
+        row["array_task"]
+        for row in rows
+        if row["state"] == "COMPLETED"
+    } | recovered_completed
+    recovery_terminal = all(
+        row["state"] in TERMINAL_SCHEDULER_STATES
+        for execution in recoveries
+        for row in execution["scheduler_rows"]
+    )
+    successful = (
+        terminal
+        and recovery_terminal
+        and len(effective_completed) == E.EXPECTED_ARRAY_TASKS
+    )
+    return launch, rows, recoveries, {
         "scheduler_state_counts": state_counts,
         "scheduler_terminal": terminal,
         "scheduler_all_completed": successful,
+        "recovery_scheduler_state_counts": dict(Counter(
+            row["state"]
+            for execution in recoveries
+            for row in execution["scheduler_rows"]
+        )),
+        "effectively_completed_array_tasks": len(effective_completed),
         "cell_state_counts": cell_counts,
         "incomplete_cells": incomplete,
     }
@@ -212,7 +285,7 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
-    launch, rows, status = make_status()
+    launch, rows, recoveries, status = make_status()
     if not args.seal:
         public = dict(status)
         public["incomplete_cells"] = {
@@ -237,6 +310,7 @@ def main(argv=None):
         "scheduler_state_counts": status["scheduler_state_counts"],
         "cell_state_counts": status["cell_state_counts"],
         "scheduler_rows": rows,
+        "recovery_executions": recoveries,
         "dynamic_cell_tree_sha256": dynamic_hash,
         "dynamic_cell_files": dynamic_files,
     }
