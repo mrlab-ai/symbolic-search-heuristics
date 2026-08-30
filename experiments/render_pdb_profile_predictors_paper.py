@@ -41,7 +41,9 @@ DEFAULT_OUTPUT = (
 # Set exactly once, after outcome-blind recovery and analysis.  The committed
 # artifact sidecar is not by itself a scientific pin because both files could
 # otherwise drift together.
-EXPECTED_ANALYSIS_SHA256 = None
+EXPECTED_ANALYSIS_SHA256 = (
+    "7d882e4357ae6ec3782838973004f427b1b9bc191c12a624e71028a7946204ee"
+)
 
 MAX_ANALYSIS_BYTES = 128 * 1024 * 1024
 MAX_TEX_BYTES = 256 * 1024
