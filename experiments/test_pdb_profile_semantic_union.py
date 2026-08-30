@@ -4,15 +4,55 @@
 from __future__ import annotations
 
 import copy
+import subprocess
 import unittest
 from collections import defaultdict
+from unittest import mock
 
+import audit_pdb_profile_semantic_union as Audit
 import analyze_pdb_profile_semantic_union as Analysis
 import exp_pdb_profile_semantic_union as E
 import pdb_profile_semantic_union_protocol as P
 
 
 class SemanticUnionAnalysisTest(unittest.TestCase):
+    def test_launch_receipt_seals_an_unthrottled_fat_array(self):
+        receipt = Audit.load_launch_receipt()
+        self.assertEqual(receipt["job_id"], "1803519")
+        self.assertEqual(receipt["partition"], "fat")
+        self.assertEqual(receipt["array_throttle"], 0)
+        self.assertEqual(receipt["slurm_array"], "1-880")
+
+    def test_scheduler_audit_normalizes_admin_cancellation(self):
+        lines = []
+        for task in range(1, E.EXPECTED_ARRAY_TASKS + 1):
+            state = "CANCELLED by 0" if task == 454 else "COMPLETED"
+            lines.append(
+                "1803519_{}|{}|{}|0:0|n5|12|fat".format(
+                    task, 2000000 + task, state
+                )
+            )
+        output = "\n".join(lines) + "\n"
+        with mock.patch.object(subprocess, "check_output", return_value=output):
+            rows = Audit.scheduler_rows("1803519")
+        self.assertEqual(len(rows), E.EXPECTED_ARRAY_TASKS)
+        self.assertEqual(rows[453]["state"], "CANCELLED")
+
+    def test_scheduler_audit_rejects_nonfat_execution(self):
+        lines = [
+            "1803519_{}|{}|COMPLETED|0:0|n1|1|{}".format(
+                task, 2000000 + task, "main" if task == 1 else "fat"
+            )
+            for task in range(1, E.EXPECTED_ARRAY_TASKS + 1)
+        ]
+        with mock.patch.object(
+            subprocess, "check_output", return_value="\n".join(lines) + "\n"
+        ):
+            with self.assertRaisesRegex(
+                Audit.ExecutionAuditError, "non-fat"
+            ):
+                Audit.scheduler_rows("1803519")
+
     def presearch_record(self, label):
         record = {
             "algorithm": label,
