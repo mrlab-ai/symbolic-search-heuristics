@@ -88,6 +88,9 @@ RUNTIME_RECEIPT_SCHEMA = "symbolic-search-heuristics/pdb-profile-slurm-runtime-r
 ARRAY_LIMIT_AMENDMENT_SCHEMA = (
     "symbolic-search-heuristics/pdb-profile-recovery-array-limit-amendment/v1"
 )
+TERMINAL_ACCOUNTING_AMENDMENT_SCHEMA = (
+    "symbolic-search-heuristics/pdb-profile-recovery-terminal-accounting-amendment/v1"
+)
 STATIC_NAMES = frozenset({"domain.pddl", "problem.pddl", "run", "static-properties"})
 EXPECTED_ARRAY_TASKS = (
     P.CELL_COUNT + E.RUNS_PER_ARRAY_TASK - 1
@@ -1808,6 +1811,10 @@ def wave_amended_receipt_path(wave: int) -> Path:
     return wave_directory(wave) / "submit-receipt-array-limit.json"
 
 
+def wave_terminal_accounting_amendment_path(wave: int) -> Path:
+    return wave_directory(wave) / "terminal-accounting-amendment.json"
+
+
 def _has_array_limit_amendment(wave: int) -> bool:
     path = wave_array_limit_amendment_path(wave)
     return path.exists() or path.is_symlink()
@@ -1823,6 +1830,109 @@ def submission_receipt_path(wave: int) -> Path:
     if _has_array_limit_amendment(wave):
         return wave_amended_receipt_path(wave)
     return wave_receipt_path(wave)
+
+
+def validate_terminal_accounting_amendment(
+    prior: dict, manifest: dict, current_path: Path
+) -> None:
+    amendment_path = wave_terminal_accounting_amendment_path(1)
+    value = load_canonical_artifact(
+        amendment_path, TERMINAL_ACCOUNTING_AMENDMENT_SCHEMA
+    )
+    required = {
+        "schema",
+        "action",
+        "recorded_utc",
+        "manifest_sha256",
+        "wave",
+        "wave_manifest_sha256",
+        "job_id",
+        "submit_intent_sha256",
+        "submit_receipt_sha256",
+        "scheduler_mutation_receipt_sha256",
+        "protocol_dependency_amendment",
+        "normalization_policy",
+        "observed_terminal_accounting",
+        "outcome_access",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise RecoveryError("terminal-accounting amendment structure changed")
+    receipt_path = wave_amended_receipt_path(1)
+    receipt = load_canonical_artifact(receipt_path, RECEIPT_SCHEMA)
+    mutation_path = wave_directory(1) / "scheduler-mutation-receipt.json"
+    policy = {
+        "comment": "allow-empty-sacct-comment-only-with-exact-submit-line/v1",
+        "requested_memory": (
+            "allow-exact-per-cpu-or-cpu-scaled-unscoped-sacct-memory/v1"
+        ),
+    }
+    observation = {
+        "array_task_count": 566,
+        "comment_counts": {"empty": 566},
+        "requested_cpus_counts": {"2": 566},
+        "requested_memory_counts": {"18G": 566},
+        "submit_line_distinct_count": 1,
+    }
+    if (
+        value["action"] != "normalize-lossy-terminal-slurm-accounting"
+        or re.fullmatch(
+            r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ",
+            value.get("recorded_utc", ""),
+        )
+        is None
+        or value["manifest_sha256"] != sha256_file(MANIFEST)
+        or type(value["wave"]) is not int
+        or value["wave"] != 1
+        or value["wave_manifest_sha256"] != sha256_file(wave_manifest_path(1))
+        or value["job_id"] != receipt.get("recovery_job_id")
+        or value["submit_intent_sha256"]
+        != sha256_file(wave_amended_intent_path(1))
+        or value["submit_receipt_sha256"] != sha256_file(receipt_path)
+        or value["scheduler_mutation_receipt_sha256"]
+        != sha256_file(mutation_path)
+        or not exact_json_equal(value["normalization_policy"], policy)
+        or not exact_json_equal(value["observed_terminal_accounting"], observation)
+        or not exact_json_equal(
+            value["outcome_access"], {"planner_outcomes_parsed": False}
+        )
+    ):
+        raise RecoveryError("terminal-accounting amendment identity changed")
+    dependency = value["protocol_dependency_amendment"]
+    dependency_required = {
+        "path",
+        "prior_sha256",
+        "prior_size",
+        "prior_code_commit",
+        "amended_sha256",
+        "amended_size",
+        "amended_code_commit",
+    }
+    relative = current_path.relative_to(REPO).as_posix()
+    if (
+        not isinstance(dependency, dict)
+        or set(dependency) != dependency_required
+        or dependency["path"] != relative
+        or dependency["prior_sha256"] != prior["amended_sha256"]
+        or dependency["prior_size"] != prior["amended_size"]
+        or dependency["prior_code_commit"] != prior["amended_code_commit"]
+        or SHA256_RE.fullmatch(dependency.get("amended_sha256", "")) is None
+        or type(dependency.get("amended_size")) is not int
+        or dependency["amended_size"] < 1
+        or JJ.COMMIT_RE.fullmatch(dependency.get("amended_code_commit", ""))
+        is None
+        or current_path.stat().st_size != dependency["amended_size"]
+        or sha256_file(current_path) != dependency["amended_sha256"]
+        or not JJ.file_is_tracked_at(
+            REPO, dependency["amended_code_commit"], relative
+        )
+        or JJ.tracked_file_sha256(
+            REPO, dependency["amended_code_commit"], relative
+        )
+        != dependency["amended_sha256"]
+    ):
+        raise RecoveryError("terminal-accounting protocol amendment is invalid")
+    JJ.require_ancestor(REPO, prior["amended_code_commit"], dependency["amended_code_commit"])
+    JJ.require_ancestor(REPO, dependency["amended_code_commit"], JJ.current_commit(REPO))
 
 
 def validate_protocol_dependency_amendment(value, manifest: dict) -> None:
@@ -1850,21 +1960,20 @@ def validate_protocol_dependency_amendment(value, manifest: dict) -> None:
     ):
         raise RecoveryError("array-limit protocol dependency amendment is invalid")
     path = REPO / relative
-    if (
-        path.stat().st_size != value["amended_size"]
-        or sha256_file(path) != value["amended_sha256"]
-        or not JJ.file_is_tracked_at(
-            REPO, value["amended_code_commit"], relative
-        )
-        or JJ.tracked_file_sha256(
-            REPO, value["amended_code_commit"], relative
-        )
+    if not JJ.file_is_tracked_at(REPO, value["amended_code_commit"], relative) or (
+        JJ.tracked_file_sha256(REPO, value["amended_code_commit"], relative)
         != value["amended_sha256"]
     ):
-        raise RecoveryError("amended recovery protocol bytes changed")
+        raise RecoveryError("amended recovery protocol commit changed")
     JJ.require_ancestor(
         REPO, value["amended_code_commit"], JJ.current_commit(REPO)
     )
+    if (
+        path.stat().st_size == value["amended_size"]
+        and sha256_file(path) == value["amended_sha256"]
+    ):
+        return
+    validate_terminal_accounting_amendment(value, manifest, path)
 
 
 def wave_ready_path(wave: int) -> Path:
@@ -3780,6 +3889,30 @@ def memory_matches_per_cpu(value: str, expected: str = RECOVERY_MEMORY) -> bool:
         return False
 
 
+def scheduler_memory_matches(
+    value: str,
+    expected_per_cpu: str,
+    requested_cpus: int,
+    *,
+    accounting_normalization: bool,
+) -> bool:
+    if memory_matches_per_cpu(value, expected_per_cpu):
+        return True
+    if (
+        not accounting_normalization
+        or type(requested_cpus) is not int
+        or requested_cpus <= 1
+        or re.search(r"[cn]$", value or "") is not None
+    ):
+        return False
+    try:
+        return _memory_mib(value, require_per_cpu=False) == (
+            _memory_mib(expected_per_cpu, require_per_cpu=True) * requested_cpus
+        )
+    except RecoveryError:
+        return False
+
+
 def _time_seconds(value: str) -> int:
     match = re.fullmatch(r"(?:(\d+)-)?(\d+):(\d\d):(\d\d)", value or "")
     if match is None:
@@ -3791,22 +3924,44 @@ def _time_seconds(value: str) -> int:
     return ((days * 24 + hours) * 60 + minutes) * 60 + seconds
 
 
-def scheduler_metadata_matches(record: dict, expected: dict) -> bool:
+def scheduler_metadata_matches(
+    record: dict, expected: dict, *, accounting_normalization: bool = False
+) -> bool:
     try:
+        requested_cpus = int(record.get("requested_cpus", ""))
         return (
             record.get("job_name") == expected["job_name"]
             and record.get("work_dir") == expected["work_dir"]
-            and memory_matches_per_cpu(record.get("requested_memory", ""))
-            and int(record.get("requested_cpus", "")) == expected["requested_cpus"]
+            and scheduler_memory_matches(
+                record.get("requested_memory", ""),
+                expected.get("memory_per_cpu", RECOVERY_MEMORY),
+                requested_cpus,
+                accounting_normalization=accounting_normalization,
+            )
+            and requested_cpus == expected["requested_cpus"]
             and _time_seconds(record.get("time_limit", ""))
             == _time_seconds(expected["time_limit"])
             and record.get("account") == expected["account"]
             and record.get("partition") == expected["partition"]
             and record.get("qos") == expected["qos"]
-            and record.get("comment") == expected["comment"]
+            and (
+                record.get("comment") == expected["comment"]
+                or (
+                    accounting_normalization
+                    and record.get("comment") == ""
+                )
+            )
         )
     except (KeyError, TypeError, ValueError, RecoveryError):
         return False
+
+
+def terminal_scheduler_record_matches(
+    record: dict, expected: dict, expected_submit_line: str
+) -> bool:
+    return scheduler_metadata_matches(
+        record, expected, accounting_normalization=True
+    ) and record.get("submit_line") == expected_submit_line
 
 
 def _array_expression_tasks(
@@ -3886,6 +4041,7 @@ def _expected_scheduler_metadata(intent: dict) -> dict:
         "job_name": intent["job_name"],
         "work_dir": intent["work_directory"],
         "requested_cpus": requested_cpus,
+        "memory_per_cpu": RECOVERY_MEMORY,
         "time_limit": time_limit,
         "account": E.ACCOUNT,
         "partition": "cpu",
@@ -4985,10 +5141,10 @@ def validate_wave_scheduler(
     if [record["array_task_id"] for record in records] != expected_tasks:
         raise RecoveryError("recovery scheduler task order changed")
     for record in records:
-        if not scheduler_metadata_matches(record, expected):
+        if not terminal_scheduler_record_matches(
+            record, expected, intent["submit_line"]
+        ):
             raise RecoveryError("recovery scheduler metadata changed")
-        if record["submit_line"] != intent["submit_line"]:
-            raise RecoveryError("recovery scheduler submit command changed")
         if (
             normalized_slurm_state(record["state"]) != record["state_base"]
             or record["state_base"] not in RECOVERABLE_STATES | {"COMPLETED"}
@@ -5684,6 +5840,41 @@ def self_test() -> None:
     assert memory_matches_per_cpu("9Gc")
     assert memory_matches_per_cpu("9216Mc")
     assert not memory_matches_per_cpu("9Gn")
+    accounting_expected = {
+        "job_name": "pdbprof-b01-aaaaaaaaaaaa",
+        "work_dir": "/sealed/wave",
+        "requested_cpus": 2,
+        "memory_per_cpu": "9G",
+        "time_limit": "02:30:00",
+        "account": E.ACCOUNT,
+        "partition": "cpu",
+        "qos": "normal",
+        "comment": "pdbprof:sealed",
+    }
+    accounting_record = {
+        **accounting_expected,
+        "requested_memory": "18G",
+        "requested_cpus": "2",
+        "comment": "",
+        "submit_line": "sbatch --sealed --comment=pdbprof:sealed runner",
+    }
+    assert not scheduler_metadata_matches(accounting_record, accounting_expected)
+    assert terminal_scheduler_record_matches(
+        accounting_record,
+        accounting_expected,
+        accounting_record["submit_line"],
+    )
+    for changed in (
+        {**accounting_record, "requested_memory": "17G"},
+        {**accounting_record, "requested_memory": "18Gn"},
+        {**accounting_record, "comment": "pdbprof:wrong"},
+        {**accounting_record, "submit_line": "sbatch --changed runner"},
+    ):
+        assert not terminal_scheduler_record_matches(
+            changed,
+            accounting_expected,
+            accounting_record["submit_line"],
+        )
     assert _array_expression_tasks(
         "[1-5%{}]".format(E.ARRAY_THROTTLE)
     ) == set(range(1, 6))
