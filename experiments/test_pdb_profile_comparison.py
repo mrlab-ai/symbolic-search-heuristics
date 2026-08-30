@@ -282,6 +282,24 @@ def selector_record(
 
 
 class SelectorParserTests(unittest.TestCase):
+    def test_direct_pdb_summary_is_not_a_selector_trace(self):
+        content = (
+            "[t=0.298652s, 424260 KB] wbh PDB heuristic: "
+            "pattern_size=13, values=24, cofactor_width=25, "
+            "width_upper_bound=208"
+        )
+        self.assertIsNone(Parser.parse_selector_trace(content))
+
+    def test_selector_final_without_records_is_rejected(self):
+        content = (
+            "wbh PDB heuristic: pattern_size=1, "
+            "selected_source=goal_fill, abstract_states=6, "
+            "cofactor_width_budget=8, values=2, "
+            "cofactor_width=2, width_upper_bound=7"
+        )
+        with self.assertRaisesRegex(Parser.ParseError, "without selector"):
+            Parser.parse_selector_trace(content)
+
     def records(self, histogram_pairs=((0, 1), (1, 4), (2, 1))):
         histogram_counts = dict(histogram_pairs)
         raw = {

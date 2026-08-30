@@ -1374,6 +1374,7 @@ def parse_selector_trace(content: str) -> dict | None:
     events = []
     event_order = []
     final_matches = []
+    malformed_final_lines = []
     for line in content.splitlines():
         has_selector_marker = any(
             marker in line
@@ -1389,13 +1390,19 @@ def parse_selector_trace(content: str) -> dict | None:
         if "wbh PDB heuristic:" in line:
             final_match = FINAL_RE.fullmatch(line)
             if final_match is None:
-                raise ParseError("selector PDB final line is malformed")
-            final_matches.append(final_match)
-            event_order.append("final")
+                malformed_final_lines.append(line)
+            else:
+                final_matches.append(final_match)
+                event_order.append("final")
     if not events:
         if final_matches:
             raise ParseError("selector PDB final exists without selector records")
+        # Direct PDB configurations emit a shorter heuristic summary with no
+        # selector fields.  It belongs to their dedicated parser and is not a
+        # malformed selector trace.
         return None
+    if malformed_final_lines:
+        raise ParseError("selector PDB final line is malformed")
     markers = {marker for marker, _, _ in events}
     if len(markers) != 1:
         raise ParseError("trace mixes width and ADD selectors")
