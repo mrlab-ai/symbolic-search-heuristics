@@ -750,6 +750,23 @@ class AnalyzerEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(Analysis.AnalysisError, "component options"):
             Analysis.validate_matrix(changed, expected_tasks=1)
 
+    def test_matrix_accepts_only_exact_lab_time_limit_float(self):
+        records = self.presearch_matrix()
+        for record in records:
+            record["planner_time_limit"] = float(P.TIME_LIMIT_SECONDS)
+        Analysis.validate_matrix(records, expected_tasks=1)
+        for value in (
+            float(P.TIME_LIMIT_SECONDS) + 0.5,
+            str(P.TIME_LIMIT_SECONDS),
+            True,
+        ):
+            changed = copy.deepcopy(records)
+            changed[0]["planner_time_limit"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(
+                Analysis.AnalysisError, "planner_time_limit"
+            ):
+                Analysis.validate_matrix(changed, expected_tasks=1)
+
 
 class ExpansionParserTests(unittest.TestCase):
     def test_active_values_are_grouped_by_g_and_cutoff(self):

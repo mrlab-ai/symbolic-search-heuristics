@@ -227,7 +227,16 @@ def validate_matrix(records, expected_tasks=P.COHORT_TASKS):
         if key in matrix:
             raise AnalysisError("matrix contains a duplicate cell")
         for field, expected in fixed.items():
-            if record.get(field) != expected or type(record.get(field)) is not type(expected):
+            actual = record.get(field)
+            parser_normalized_time_limit = (
+                field == "planner_time_limit"
+                and type(actual) is float
+                and actual.is_integer()
+                and int(actual) == expected
+            )
+            if not parser_normalized_time_limit and (
+                actual != expected or type(actual) is not type(expected)
+            ):
                 raise AnalysisError("cell changed fixed field {}".format(field))
         if record.get("id") != [label, domain, problem]:
             raise AnalysisError("cell id differs from its matrix identity")
