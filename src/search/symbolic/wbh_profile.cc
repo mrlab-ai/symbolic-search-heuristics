@@ -1,5 +1,6 @@
 #include "wbh_profile.h"
 
+#include "closed_list.h"
 #include "sym_variables.h"
 #include "wbh_add_stats.h"
 
@@ -233,6 +234,23 @@ void WbhProfile::log_heuristic(
     write_payload(event.str());
 }
 
+void WbhProfile::attach_heuristic_closed(
+    SymVariables *vars, const shared_ptr<ClosedList> &closed) {
+    if (!heuristic_written) {
+        ABORT(
+            "WBH profile cannot attach heuristic layers before the selected "
+            "heuristic profile.");
+    }
+    if (!closed || !heuristic_closed.expired() || heuristic_layer_vars) {
+        ABORT(
+            "WBH profile received an invalid duplicate closed-list "
+            "attachment.");
+    }
+    verify_variable_order(vars);
+    heuristic_layer_vars = vars;
+    heuristic_closed = closed;
+}
+
 void WbhProfile::prepare_blind_layer(
     int g, SymVariables *vars, const Bucket &pieces) {
     if (pending_layer) {
@@ -292,6 +310,22 @@ void WbhProfile::finish_blind_layer(bool completed) {
 void WbhProfile::log_done(int solution_cost) {
     if (done_written) {
         return;
+    }
+    if (heuristic_layer_vars) {
+        if (!forward_layers.empty() || pending_layer) {
+            ABORT("WBH heuristic profile already contains layer records.");
+        }
+        shared_ptr<ClosedList> closed = heuristic_closed.lock();
+        if (!closed) {
+            ABORT("WBH heuristic profile lost its attached closed list.");
+        }
+        for (const auto &[g, layer] : closed->getClosedList()) {
+            if (g >= solution_cost) {
+                break;
+            }
+            prepare_blind_layer(g, heuristic_layer_vars, Bucket{layer});
+            finish_blind_layer(true);
+        }
     }
     done_written = true;
     long effort = 0;

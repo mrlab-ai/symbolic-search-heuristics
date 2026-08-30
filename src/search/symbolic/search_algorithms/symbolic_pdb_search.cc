@@ -160,6 +160,10 @@ void SymbolicPdbForwardSearch::initialize() {
     search_ptr->init(
         mgr, &level_sets->get_level_sets(), level_sets->get_dead_ends(),
         prune_only, batch_f_window);
+    if (sym_params.profile) {
+        sym_params.profile->attach_heuristic_closed(
+            vars.get(), search_ptr->getClosedShared());
+    }
     double construction_time = construction_timer();
     if (!construction_prelogged && sym_params.stats) {
         sym_params.stats->log_construction(

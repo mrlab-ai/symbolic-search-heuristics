@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace symbolic {
+class ClosedList;
 class SymVariables;
 struct AddStats;
 
@@ -42,6 +43,8 @@ class WbhProfile {
     };
     std::vector<LayerRecord> forward_layers;
     std::unique_ptr<PendingLayer> pending_layer;
+    SymVariables *heuristic_layer_vars = nullptr;
+    std::weak_ptr<ClosedList> heuristic_closed;
 
     bool variable_order_written = false;
     bool heuristic_written = false;
@@ -72,6 +75,13 @@ public:
     // actually used by the search.
     void log_heuristic(SymVariables *vars, const AddStats &add_stats);
 
+    // Attach the heuristic search's existing per-g closed unions. On a solved
+    // run, log_done profiles these unions without retaining duplicate BDDs
+    // during search. This supplies the semantic-union denominator needed to
+    // distinguish heuristic fragmentation from search-space reduction.
+    void attach_heuristic_closed(
+        SymVariables *vars, const std::shared_ptr<ClosedList> &closed);
+
     // Semantically union all pieces of one prepared forward blind layer and
     // retain its profile until the subsequent expansion reports whether it
     // completed. Call prepare only after Frontier::prepare succeeds and then
@@ -79,7 +89,8 @@ public:
     void prepare_blind_layer(int g, SymVariables *vars, const Bucket &pieces);
     void finish_blind_layer(bool completed);
 
-    // Emits the solved cost and exact-union blind effort over g < C.
+    // Emits the solved cost and exact-union effort over g < C. For an attached
+    // heuristic search, its per-g closed unions are profiled first.
     void log_done(int solution_cost);
 
     // Emits aggregate event counts and the overhead split into union,
