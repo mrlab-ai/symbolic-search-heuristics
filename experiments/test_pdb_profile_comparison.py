@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import tempfile
 import unittest
@@ -528,6 +529,76 @@ class AnalyzerEvidenceTests(unittest.TestCase):
         record["wbh_expansion_profile_certified"] = False
         with self.assertRaisesRegex(Analysis.AnalysisError, "schema-v2"):
             Analysis._outcome_class(record, "pdb_exact_k2")
+
+    def solved_missing_validator_record(self):
+        return {
+            "planner_exit_code": 36,
+            "error": "driver-input-error",
+            "coverage": 1,
+            "unsolvable": 0,
+            "unexplained_errors": list(Analysis.MISSING_VALIDATOR_ERRORS),
+            "wbh_expansion_profile_present": True,
+            "wbh_expansion_profile_certified": True,
+            "wbh_expansion_profile_complete": True,
+            "wbh_solved_summary_certified": True,
+            "wbh_profile_present": False,
+            "wbh_profile_prefix_certified": False,
+            "wbh_profile_complete": False,
+            "pdb_profile_selector_present": False,
+            "pdb_profile_selector_prefix_certified": False,
+        }
+
+    def test_only_sealed_missing_validator_outcome_is_solved(self):
+        record = self.solved_missing_validator_record()
+        self.assertEqual(
+            Analysis._outcome_class(record, "blind_fw", True),
+            "solved",
+        )
+        with self.assertRaisesRegex(Analysis.AnalysisError, "unauthorized"):
+            Analysis._outcome_class(record, "blind_fw", False)
+        for errors in (
+            ["driver-input-error"],
+            list(reversed(Analysis.MISSING_VALIDATOR_ERRORS)),
+            Analysis.MISSING_VALIDATOR_ERRORS + ["synthetic"],
+        ):
+            changed = copy.deepcopy(record)
+            changed["unexplained_errors"] = errors
+            with self.subTest(errors=errors), self.assertRaises(
+                Analysis.AnalysisError
+            ):
+                Analysis._outcome_class(changed, "blind_fw", True)
+
+    def test_lab_slurm_sentinel_is_the_only_generic_exception(self):
+        record = self.resource_prefix()
+        record["unexplained_errors"] = [Analysis.LAB_SLURM_ERROR]
+        self.assertEqual(
+            Analysis._outcome_class(record, "pdb_exact_k2"),
+            "search_resource",
+        )
+        record["unexplained_errors"].append("synthetic")
+        with self.assertRaisesRegex(Analysis.AnalysisError, "unexplained"):
+            Analysis._outcome_class(record, "pdb_exact_k2")
+
+    def test_runtime_receipt_is_byte_and_semantics_pinned(self):
+        self.assertTrue(Analysis.load_validator_unavailable_policy())
+        receipt = json.loads(Analysis.RUNTIME_RECEIPT.read_text(encoding="ascii"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "receipt.json"
+            changed = copy.deepcopy(receipt)
+            changed["hostname"] = "different"
+            path.write_text(json.dumps(changed), encoding="ascii")
+            with self.assertRaisesRegex(Analysis.AnalysisError, "bytes changed"):
+                Analysis.load_validator_unavailable_policy(path)
+
+            changed = copy.deepcopy(receipt)
+            changed["validator"]["available"] = True
+            raw = json.dumps(changed, sort_keys=True).encode("ascii")
+            path.write_bytes(raw)
+            with self.assertRaisesRegex(Analysis.AnalysisError, "absent validator"):
+                Analysis.load_validator_unavailable_policy(
+                    path,
+                    hashlib.sha256(raw).hexdigest(),
+                )
 
     def certificate_pair(self):
         order = "a" * 64

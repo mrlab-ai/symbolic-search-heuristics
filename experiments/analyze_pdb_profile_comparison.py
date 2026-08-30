@@ -39,6 +39,33 @@ OUTCOME_SPECS = {
     23: ("search-out-of-time", 0, 0, "search_resource"),
     24: ("search-out-of-memory-and-time", 0, 0, "search_resource"),
 }
+RUNTIME_RECEIPT = Path(__file__).with_name(
+    "pdb_profile_slurm_runtime_receipt.json"
+)
+RUNTIME_RECEIPT_SHA256 = (
+    "6e2f26bcc22d7e43fa6b8425943b7bc2d3bb905c8236d0a2ea6475bdcfd72f7d"
+)
+RUNTIME_RECEIPT_SCHEMA = (
+    "symbolic-search-heuristics/pdb-profile-slurm-runtime-receipt/v1"
+)
+ABSENT_VALIDATOR = {
+    "available": False,
+    "candidate": None,
+    "is_symlink": None,
+    "path": None,
+    "resolved_path": None,
+    "sha256": None,
+    "size": None,
+}
+LAB_SLURM_ERROR = "output-to-slurm.err"
+MISSING_VALIDATOR_ERROR = (
+    "run.err: Error: Trying to run validate but it was not found on the PATH.\n"
+)
+MISSING_VALIDATOR_ERRORS = [
+    "driver-input-error",
+    MISSING_VALIDATOR_ERROR,
+    LAB_SLURM_ERROR,
+]
 
 
 def _fraction(numerator, denominator):
@@ -75,6 +102,30 @@ def _canonical(value) -> bytes:
         raise AnalysisError("analysis is not finite canonical JSON") from err
 
 
+def load_validator_unavailable_policy(
+    path: Path = RUNTIME_RECEIPT,
+    expected_sha256: str = RUNTIME_RECEIPT_SHA256,
+) -> bool:
+    try:
+        raw = Path(path).read_bytes()
+    except OSError as err:
+        raise AnalysisError("cannot read the sealed Slurm runtime receipt") from err
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise AnalysisError("Slurm runtime receipt bytes changed")
+    try:
+        receipt = json.loads(raw.decode("ascii"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as err:
+        raise AnalysisError("Slurm runtime receipt is malformed") from err
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schema") != RUNTIME_RECEIPT_SCHEMA
+        or receipt.get("state") != "COMPLETED"
+        or receipt.get("validator") != ABSENT_VALIDATOR
+    ):
+        raise AnalysisError("Slurm runtime receipt does not seal an absent validator")
+    return True
+
+
 def load_records(path: Path) -> list[dict]:
     try:
         root = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -91,14 +142,22 @@ def load_records(path: Path) -> list[dict]:
     return records
 
 
-def _outcome_class(record, label):
+def _outcome_class(record, label, validator_unavailable=False):
     errors = record.get("unexplained_errors")
-    if errors not in (None, []):
+    missing_validator = errors == MISSING_VALIDATOR_ERRORS
+    if missing_validator:
+        if not validator_unavailable or record.get("planner_exit_code") != 36:
+            raise AnalysisError("cell has an unauthorized missing-validator outcome")
+    elif errors not in (None, [], [LAB_SLURM_ERROR]):
         raise AnalysisError("cell carries unexplained parser/execution errors")
     code = record.get("planner_exit_code")
-    if type(code) is not int or code not in OUTCOME_SPECS:
+    if code == 36 and missing_validator:
+        spec = ("driver-input-error", 1, 0, "solved")
+    elif type(code) is int and code in OUTCOME_SPECS:
+        spec = OUTCOME_SPECS[code]
+    else:
         raise AnalysisError("cell has an unrecognized planner terminal outcome")
-    expected_error, coverage, unsolvable, outcome_class = OUTCOME_SPECS[code]
+    expected_error, coverage, unsolvable, outcome_class = spec
     if (
         record.get("error") != expected_error
         or record.get("coverage") != coverage
@@ -176,7 +235,15 @@ def _outcome_class(record, label):
     return outcome_class
 
 
-def validate_matrix(records, expected_tasks=P.COHORT_TASKS):
+def validate_matrix(
+    records,
+    expected_tasks=P.COHORT_TASKS,
+    validator_unavailable=None,
+):
+    if validator_unavailable is None:
+        validator_unavailable = load_validator_unavailable_policy()
+    if type(validator_unavailable) is not bool:
+        raise AnalysisError("validator policy must be Boolean")
     expected_cells = expected_tasks * P.CONFIG_COUNT
     if len(records) != expected_cells:
         raise AnalysisError(
@@ -259,7 +326,7 @@ def validate_matrix(records, expected_tasks=P.COHORT_TASKS):
         if task in stratum_by_task and stratum_by_task[task] != stratum:
             raise AnalysisError("cohort stratum differs across configurations")
         stratum_by_task[task] = stratum
-        outcome_class = _outcome_class(record, label)
+        outcome_class = _outcome_class(record, label, validator_unavailable)
         expected_profile = label != "blind_fw"
         if record.get("wbh_profile_expected") is not expected_profile:
             raise AnalysisError("cell has the wrong profile expectation")
@@ -332,7 +399,13 @@ def _target_effort(record, label):
     return effort
 
 
-def config_summary(matrix, tasks, label, certificate_summaries=None):
+def config_summary(
+    matrix,
+    tasks,
+    label,
+    certificate_summaries=None,
+    validator_unavailable=False,
+):
     records = [matrix[(label, task)] for task in tasks]
     solved = sum(record["coverage"] for record in records)
     times = [record.get("planner_time") for record in records if record["coverage"]]
@@ -348,7 +421,8 @@ def config_summary(matrix, tasks, label, certificate_summaries=None):
         "tasks": len(tasks),
         "solved": solved,
         "terminal_outcomes": dict(Counter(
-            _outcome_class(record, label) for record in records
+            _outcome_class(record, label, validator_unavailable)
+            for record in records
         )),
         "coverage": _fraction(solved, len(tasks)),
         "solved_planner_time_total": sum(times),
@@ -983,7 +1057,11 @@ def blind_profile_overhead_summary(matrix, tasks):
 
 
 def make_analysis(records):
-    matrix, tasks, strata = validate_matrix(records)
+    validator_unavailable = load_validator_unavailable_policy()
+    matrix, tasks, strata = validate_matrix(
+        records,
+        validator_unavailable=validator_unavailable,
+    )
     certificate_rows, certificate_summaries, certificate_by_cell = (
         profile_certificates(matrix, tasks)
     )
@@ -1093,12 +1171,24 @@ def make_analysis(records):
             {
                 "label": label,
                 **config_summary(
-                    matrix, tasks, label, certificate_summaries
+                    matrix,
+                    tasks,
+                    label,
+                    certificate_summaries,
+                    validator_unavailable,
                 ),
             }
             for label in P.LABELS
         ],
         "comparisons": comparisons,
+        "execution_environment": {
+            "slurm_runtime_receipt_sha256": RUNTIME_RECEIPT_SHA256,
+            "external_validator_available": not validator_unavailable,
+            "accepted_lab_annotations": [
+                [LAB_SLURM_ERROR],
+                MISSING_VALIDATOR_ERRORS,
+            ],
+        },
         "blind_profile_overhead": blind_profile_overhead_summary(matrix, tasks),
         "theorem_certificate": {
             "protocol": PROFILE_CERTIFICATE_PROTOCOL,
