@@ -5,10 +5,12 @@
 records scheduler states, opaque tree hashes for completed cells, and full
 hash manifests for missing or interrupted cells.  It does not parse or report
 planner outcomes.  ``archive`` moves only interrupted dynamic prefixes into a
-resumable quarantine.  ``submit`` launches a generated one-cell-per-array
-runner, so no completed cell is touched.  ``verify`` derives the recovery job
-identity from the sealed submit receipt and proves that all untouched cell
-hashes remained identical.
+resumable quarantine.  ``submit`` launches a generated cell-exact runner, so
+no completed cell is touched.  If a sealed one-cell-per-task array exceeds a
+site's hard array-index limit, ``amend-array-limit`` can seal a batching
+wrapper only after proving that the rejected submission created no job.
+``verify`` derives the recovery job identity from the sealed submit receipt
+and proves that all untouched cell hashes remained identical.
 """
 
 from __future__ import annotations
@@ -83,6 +85,9 @@ SCHEDULER_MUTATION_RECEIPT_SCHEMA = (
     "symbolic-search-heuristics/pdb-profile-scheduler-mutation-receipt/v1"
 )
 RUNTIME_RECEIPT_SCHEMA = "symbolic-search-heuristics/pdb-profile-slurm-runtime-receipt/v1"
+ARRAY_LIMIT_AMENDMENT_SCHEMA = (
+    "symbolic-search-heuristics/pdb-profile-recovery-array-limit-amendment/v1"
+)
 STATIC_NAMES = frozenset({"domain.pddl", "problem.pddl", "run", "static-properties"})
 EXPECTED_ARRAY_TASKS = (
     P.CELL_COUNT + E.RUNS_PER_ARRAY_TASK - 1
@@ -112,6 +117,7 @@ TERMINAL_STATES = frozenset(
 RECOVERABLE_STATES = frozenset({"NODE_FAIL", "TIMEOUT"})
 RECOVERY_WALL_TIME = "02:30:00"
 RECOVERY_MEMORY = "9G"
+ARRAY_LIMIT_REJECTION = "allocation failure: Invalid job array specification"
 DEPENDENCY_PATHS = (
     Path(__file__).resolve(),
     Path(E.__file__).resolve(),
@@ -262,30 +268,35 @@ def validate_retry_source_decisions(
         "action",
         "tree_sha256",
     }
-    if len(decisions) != len(source_records):
+    if not decisions or len(decisions) < len(source_records):
         raise RecoveryError("retry source decision count changed")
     retry_hashes = {cell["run_id"]: cell["tree_sha256"] for cell in retry_inputs}
     protected = {item[0]: item[1] for item in protected_hashes}
     seen_runs = set()
     expected_retry_ids = []
-    for task, (record, decision) in enumerate(zip(source_records, decisions), 1):
+    source_task_ids = []
+    for decision in decisions:
         if not isinstance(decision, dict) or set(decision) != decision_keys:
             raise RecoveryError("retry source decision structure changed")
         run_id = decision["run_id"]
+        source_task = decision["source_array_task_id"]
         if (
             type(run_id) is not int
             or run_id < 1
             or run_id in seen_runs
-            or type(decision["source_array_task_id"]) is not int
-            or decision["source_array_task_id"] != task
-            or decision["scheduler_state"] != record["state_base"]
+            or type(source_task) is not int
+            or not 1 <= source_task <= len(source_records)
+            or decision["scheduler_state"]
+            != source_records[source_task - 1]["state_base"]
             or type(decision["completion_test_passed"]) is not bool
             or SHA256_RE.fullmatch(decision.get("tree_sha256", "")) is None
         ):
             raise RecoveryError("retry source decision identity changed")
         seen_runs.add(run_id)
+        source_task_ids.append(source_task)
         expected_action = recovery_wave_cell_action(
-            record["state_base"], decision["completion_test_passed"]
+            source_records[source_task - 1]["state_base"],
+            decision["completion_test_passed"],
         )
         if decision["action"] != expected_action:
             raise RecoveryError("retry source decision violates retry policy")
@@ -302,6 +313,11 @@ def validate_retry_source_decisions(
                 raise RecoveryError("protect decision is also retried")
     if sorted(retry_hashes) != sorted(expected_retry_ids):
         raise RecoveryError("retry decisions do not match the retry-input set")
+    if (
+        source_task_ids != sorted(source_task_ids)
+        or sorted(set(source_task_ids)) != expected_tasks
+    ):
+        raise RecoveryError("retry decisions do not cover scheduler tasks in order")
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -1170,10 +1186,20 @@ def verify_dependencies(manifest: dict) -> None:
     expected = manifest["dependencies"]
     if set(expected) != {path.relative_to(REPO).as_posix() for path in DEPENDENCY_PATHS}:
         raise RecoveryError("frozen recovery dependency set changed")
+    recovery_relative = Path(__file__).resolve().relative_to(REPO).as_posix()
     for relative, record in expected.items():
         path = REPO / relative
-        if path.stat().st_size != record["size"] or sha256_file(path) != record["sha256"]:
+        if path.stat().st_size == record["size"] and sha256_file(path) == record["sha256"]:
+            continue
+        if relative != recovery_relative:
             raise RecoveryError("recovery dependency changed: {}".format(relative))
+        amendment_path = wave_array_limit_amendment_path(1)
+        amendment = load_canonical_artifact(
+            amendment_path, ARRAY_LIMIT_AMENDMENT_SCHEMA
+        )
+        validate_protocol_dependency_amendment(
+            amendment.get("protocol_dependency_amendment"), manifest
+        )
 
 
 def _normalized_distribution_name(name: str) -> str:
@@ -1766,6 +1792,81 @@ def wave_receipt_path(wave: int) -> Path:
     return wave_directory(wave) / "submit-receipt.json"
 
 
+def wave_array_limit_amendment_path(wave: int) -> Path:
+    return wave_directory(wave) / "array-limit-amendment.json"
+
+
+def wave_batch_runner_path(wave: int) -> Path:
+    return wave_directory(wave) / "recover-cell-batches.sh"
+
+
+def wave_amended_intent_path(wave: int) -> Path:
+    return wave_directory(wave) / "submit-intent-array-limit.json"
+
+
+def wave_amended_receipt_path(wave: int) -> Path:
+    return wave_directory(wave) / "submit-receipt-array-limit.json"
+
+
+def _has_array_limit_amendment(wave: int) -> bool:
+    path = wave_array_limit_amendment_path(wave)
+    return path.exists() or path.is_symlink()
+
+
+def submission_intent_path(wave: int) -> Path:
+    if _has_array_limit_amendment(wave):
+        return wave_amended_intent_path(wave)
+    return wave_intent_path(wave)
+
+
+def submission_receipt_path(wave: int) -> Path:
+    if _has_array_limit_amendment(wave):
+        return wave_amended_receipt_path(wave)
+    return wave_receipt_path(wave)
+
+
+def validate_protocol_dependency_amendment(value, manifest: dict) -> None:
+    required = {
+        "path",
+        "frozen_sha256",
+        "frozen_size",
+        "amended_sha256",
+        "amended_size",
+        "amended_code_commit",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise RecoveryError("array-limit protocol dependency amendment changed")
+    relative = Path(__file__).resolve().relative_to(REPO).as_posix()
+    frozen = manifest["dependencies"].get(relative)
+    if (
+        frozen is None
+        or value["path"] != relative
+        or value["frozen_sha256"] != frozen["sha256"]
+        or value["frozen_size"] != frozen["size"]
+        or SHA256_RE.fullmatch(value.get("amended_sha256", "")) is None
+        or type(value.get("amended_size")) is not int
+        or value["amended_size"] < 1
+        or JJ.COMMIT_RE.fullmatch(value.get("amended_code_commit", "")) is None
+    ):
+        raise RecoveryError("array-limit protocol dependency amendment is invalid")
+    path = REPO / relative
+    if (
+        path.stat().st_size != value["amended_size"]
+        or sha256_file(path) != value["amended_sha256"]
+        or not JJ.file_is_tracked_at(
+            REPO, value["amended_code_commit"], relative
+        )
+        or JJ.tracked_file_sha256(
+            REPO, value["amended_code_commit"], relative
+        )
+        != value["amended_sha256"]
+    ):
+        raise RecoveryError("amended recovery protocol bytes changed")
+    JJ.require_ancestor(
+        REPO, value["amended_code_commit"], JJ.current_commit(REPO)
+    )
+
+
 def wave_ready_path(wave: int) -> Path:
     return wave_directory(wave) / "archive-ready.json"
 
@@ -2034,6 +2135,157 @@ driver_complete driver.log || fail "recovery run $RUN_ID lacks its final driver 
             runtime["execution_environment"]["validator"]["sha256"] or ""
         ),
     )
+
+
+def batch_runner_text(
+    wave: dict,
+    *,
+    job_name: str,
+    array_tasks: int,
+    cells_per_array_task: int,
+    srun_path: str,
+    srun_sha256: str,
+    env_path: str,
+    env_sha256: str,
+) -> str:
+    legacy = wave["runner"]
+    legacy_tasks = len(wave["run_ids"])
+    if (
+        type(array_tasks) is not int
+        or type(cells_per_array_task) is not int
+        or array_tasks < 1
+        or cells_per_array_task < 2
+        or array_tasks
+        != (legacy_tasks + cells_per_array_task - 1) // cells_per_array_task
+        or SAFE_NAME_RE.fullmatch(job_name) is None
+        or any(
+            not isinstance(path, str)
+            or not Path(path).is_absolute()
+            or "\n" in path
+            or "\r" in path
+            for path in (srun_path, env_path)
+        )
+        or any(
+            SHA256_RE.fullmatch(digest or "") is None
+            for digest in (srun_sha256, env_sha256)
+        )
+    ):
+        raise RecoveryError("invalid recovery batching contract")
+    legacy_path = wave_runner_path(wave["wave"])
+    wave_dir = wave_directory(wave["wave"])
+    index_setup = batch_array_index_setup_text(array_tasks)
+    return """#!/bin/bash -l
+#SBATCH --job-name={job_name}
+#SBATCH --output={wave_dir}/recovery-batch-slurm-%A_%a.log
+#SBATCH --error={wave_dir}/recovery-batch-slurm-%A_%a.err
+#SBATCH --open-mode=append
+#SBATCH --partition={partition}
+#SBATCH --qos={qos}
+#SBATCH --time={wall}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH --cpus-per-task={batch_cpus}
+#SBATCH --array=1-{array_tasks}%{throttle}
+#SBATCH --account={account}
+#SBATCH --no-requeue
+
+set -euo pipefail
+LEGACY_RUNNER={legacy_path}
+LEGACY_RUNNER_SHA256={legacy_sha256}
+SRUN={srun_path}
+SRUN_SHA256={srun_sha256}
+ENV={env_path}
+ENV_SHA256={env_sha256}
+LEGACY_TASKS={legacy_tasks}
+CELLS_PER_ARRAY_TASK={cells_per_array_task}
+
+fail() {{
+    printf '%s\\n' "$1" >&2
+    exit 2
+}}
+
+require_executable() {{
+    local path=$1
+    local expected=$2
+    [[ -f "$path" && ! -L "$path" && -x "$path" ]] || fail "sealed executable changed: $path"
+    local actual
+    actual=$(sha256sum -- "$path") || fail "cannot hash sealed executable: $path"
+    actual=${{actual%% *}}
+    [[ "$actual" == "$expected" ]] || fail "sealed executable hash changed: $path"
+}}
+
+attest_batch_inputs() {{
+    require_executable "$LEGACY_RUNNER" "$LEGACY_RUNNER_SHA256"
+    require_executable "$SRUN" "$SRUN_SHA256"
+    require_executable "$ENV" "$ENV_SHA256"
+}}
+
+attest_batch_inputs
+{index_setup}
+PIDS=()
+for ((LEGACY_TASK=FIRST; LEGACY_TASK<=LAST; LEGACY_TASK++)); do
+    (
+        exec "$SRUN" --exclusive --exact --nodes=1 --ntasks=1 \
+            --cpus-per-task=1 --mem-per-cpu={memory} --export=ALL \
+            "$ENV" "SLURM_ARRAY_TASK_ID=$LEGACY_TASK" "$LEGACY_RUNNER"
+    ) &
+    PIDS+=("$!")
+done
+STATUS=0
+for PID in "${{PIDS[@]}}"; do
+    if wait "$PID"; then
+        :
+    else
+        RETCODE=$?
+        if [[ $STATUS -eq 0 ]]; then
+            STATUS=$RETCODE
+        fi
+    fi
+done
+attest_batch_inputs
+exit "$STATUS"
+""".format(
+        job_name=job_name,
+        wave_dir=wave_dir,
+        partition=legacy["partition"],
+        qos=legacy["qos"],
+        wall=legacy["wall_time"],
+        memory=legacy["memory_per_cpu"],
+        batch_cpus=cells_per_array_task * legacy["cpus_per_task"],
+        array_tasks=array_tasks,
+        throttle=max(1, E.ARRAY_THROTTLE // cells_per_array_task),
+        account=legacy["account"],
+        legacy_path=_shell_single_quote(str(legacy_path)),
+        legacy_sha256=legacy["sha256"],
+        srun_path=_shell_single_quote(srun_path),
+        srun_sha256=srun_sha256,
+        env_path=_shell_single_quote(env_path),
+        env_sha256=env_sha256,
+        legacy_tasks=legacy_tasks,
+        cells_per_array_task=cells_per_array_task,
+        index_setup=index_setup,
+    )
+
+
+def batch_array_index_setup_text(array_tasks: int) -> str:
+    if type(array_tasks) is not int or array_tasks < 1:
+        raise RecoveryError("invalid batched recovery array-task count")
+    return """ARRAY_TASKS={array_tasks}
+[[ $SLURM_ARRAY_TASK_ID =~ ^[1-9][0-9]*$ ]] || fail 'invalid batched recovery array index'
+if (( ${{#SLURM_ARRAY_TASK_ID}} > ${{#ARRAY_TASKS}} )); then
+    fail 'batched recovery array index is outside the sealed array range'
+fi
+if (( ${{#SLURM_ARRAY_TASK_ID}} == ${{#ARRAY_TASKS}} )) \
+    && [[ "$SLURM_ARRAY_TASK_ID" > "$ARRAY_TASKS" ]]; then
+    fail 'batched recovery array index is outside the sealed array range'
+fi
+FIRST=$(( (SLURM_ARRAY_TASK_ID - 1) * CELLS_PER_ARRAY_TASK + 1 ))
+LAST=$(( FIRST + CELLS_PER_ARRAY_TASK - 1 ))
+if [[ $FIRST -lt 1 || $FIRST -gt $LEGACY_TASKS ]]; then
+    fail 'batched recovery array index is outside the sealed cell set'
+fi
+if [[ $LAST -gt $LEGACY_TASKS ]]; then
+    LAST=$LEGACY_TASKS
+fi""".format(array_tasks=array_tasks)
 
 
 def build_wave(
@@ -2974,7 +3226,7 @@ def load_all_waves(manifest: dict, manifest_digest: str) -> list[tuple[dict, str
         if index == 1:
             continue
         previous, previous_digest = result[index - 2]
-        receipt = wave_receipt_path(index - 1)
+        receipt = submission_receipt_path(index - 1)
         previous_receipt = load_wave_submit_receipt(previous, manifest_digest)
         expected_previous = {
             "wave": index - 1,
@@ -2990,6 +3242,16 @@ def load_all_waves(manifest: dict, manifest_digest: str) -> list[tuple[dict, str
         )
         if [item["run_id"] for item in decisions] != previous["run_ids"]:
             raise RecoveryError("retry decisions differ from the preceding wave")
+        previous_intent = load_wave_submit_intent(previous, manifest_digest)
+        cells_per = previous_intent.get("batching", {}).get(
+            "cells_per_array_task", 1
+        )
+        expected_source_tasks = [
+            position // cells_per + 1
+            for position in range(len(previous["run_ids"]))
+        ]
+        if [item["source_array_task_id"] for item in decisions] != expected_source_tasks:
+            raise RecoveryError("retry decisions changed the sealed batch mapping")
         newly_protected = sorted(
             [item["run_id"], item["tree_sha256"]]
             for item in decisions
@@ -3547,13 +3809,17 @@ def scheduler_metadata_matches(record: dict, expected: dict) -> bool:
         return False
 
 
-def _array_expression_tasks(expression: str) -> set[int]:
+def _array_expression_tasks(
+    expression: str, *, expected_throttle: int = E.ARRAY_THROTTLE
+) -> set[int]:
+    if type(expected_throttle) is not int or expected_throttle < 1:
+        raise RecoveryError("expected array throttle is invalid")
     expression = expression.strip()
     if expression.startswith("[") and expression.endswith("]"):
         expression = expression[1:-1]
     if "%" in expression:
         expression, throttle = expression.rsplit("%", 1)
-        if not throttle.isdigit() or int(throttle) != E.ARRAY_THROTTLE:
+        if not throttle.isdigit() or int(throttle) != expected_throttle:
             raise RecoveryError("scheduler array throttle changed")
     tasks = set()
     for segment in expression.split(","):
@@ -3569,17 +3835,31 @@ def _array_expression_tasks(expression: str) -> set[int]:
     return tasks
 
 
-def _tasks_from_display_id(display_id: str, job_id: str) -> set[int]:
+def _tasks_from_display_id(
+    display_id: str, job_id: str, *, expected_throttle: int
+) -> set[int]:
     if display_id == job_id:
         return set()
     prefix = job_id + "_"
     if not display_id.startswith(prefix):
         raise RecoveryError("scheduler row belongs to another array")
-    return _array_expression_tasks(display_id[len(prefix) :])
+    return _array_expression_tasks(
+        display_id[len(prefix) :], expected_throttle=expected_throttle
+    )
+
+
+def _intent_array_throttle(intent: dict) -> int:
+    expression = intent.get("array_spec")
+    if not isinstance(expression, str) or "%" not in expression:
+        raise RecoveryError("recovery intent lacks its sealed array throttle")
+    throttle = expression.rsplit("%", 1)[1]
+    if not throttle.isdigit() or int(throttle) < 1:
+        raise RecoveryError("recovery intent array throttle is invalid")
+    return int(throttle)
 
 
 def load_wave_submit_intent(wave: dict, manifest_digest: str) -> dict:
-    path = wave_intent_path(wave["wave"])
+    path = submission_intent_path(wave["wave"])
     intent = load_canonical_artifact(path, RECEIPT_SCHEMA)
     if (
         intent.get("action") != "submit-cell-exact-recovery"
@@ -3594,11 +3874,19 @@ def load_wave_submit_intent(wave: dict, manifest_digest: str) -> dict:
 
 
 def _expected_scheduler_metadata(intent: dict) -> dict:
+    batching = intent.get("batching")
+    requested_cpus = 1
+    time_limit = RECOVERY_WALL_TIME
+    if batching is not None:
+        if not isinstance(batching, dict):
+            raise RecoveryError("recovery intent batching metadata changed")
+        requested_cpus = batching.get("cpus_per_task")
+        time_limit = batching.get("wall_time")
     return {
         "job_name": intent["job_name"],
         "work_dir": intent["work_directory"],
-        "requested_cpus": 1,
-        "time_limit": RECOVERY_WALL_TIME,
+        "requested_cpus": requested_cpus,
+        "time_limit": time_limit,
         "account": E.ACCOUNT,
         "partition": "cpu",
         "qos": "normal",
@@ -3621,6 +3909,7 @@ def _scontrol_runner_matches(job_id: str, intent: dict) -> bool:
     if not rows:
         return False
     tasks = set()
+    expected_throttle = _intent_array_throttle(intent)
     for row in rows:
         fields = {}
         for token in row.split():
@@ -3641,7 +3930,11 @@ def _scontrol_runner_matches(job_id: str, intent: dict) -> bool:
             return False
         expression = fields.get("ArrayTaskId")
         if expression:
-            tasks.update(_array_expression_tasks(expression))
+            tasks.update(
+                _array_expression_tasks(
+                    expression, expected_throttle=expected_throttle
+                )
+            )
     return tasks == set(range(1, intent["array_tasks"] + 1))
 
 
@@ -3687,6 +3980,7 @@ def find_jobs_by_identity(intent: dict) -> set[str]:
     except (OSError, subprocess.CalledProcessError) as err:
         raise RecoveryError("cannot reconcile recovery scheduler identity") from err
     expected_tasks = set(range(1, intent["array_tasks"] + 1))
+    expected_throttle = _intent_array_throttle(intent)
     expected_metadata = _expected_scheduler_metadata(intent)
     groups = {}
     for line in accounted.stdout.splitlines():
@@ -3746,7 +4040,13 @@ def find_jobs_by_identity(intent: dict) -> set[str]:
                 if record["submit_line"] != intent["submit_line"]:
                     raise RecoveryError("job-name collision has a different submit command")
                 has_accounting_identity = True
-            tasks.update(_tasks_from_display_id(display_id, job_id))
+            tasks.update(
+                _tasks_from_display_id(
+                    display_id,
+                    job_id,
+                    expected_throttle=expected_throttle,
+                )
+            )
         if tasks != expected_tasks:
             raise RecoveryError("matching recovery job has a different array shape")
         if not has_accounting_identity and not _scontrol_runner_matches(job_id, intent):
@@ -3765,7 +4065,7 @@ def _seal_submit_receipt(
 ) -> None:
     if JOB_ID_RE.fullmatch(job_id) is None:
         raise RecoveryError("scheduler returned an invalid recovery job ID")
-    intent_path = wave_intent_path(wave["wave"])
+    intent_path = submission_intent_path(wave["wave"])
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "action": "cell-exact-recovery-submitted",
@@ -3782,7 +4082,7 @@ def _seal_submit_receipt(
         "receipt_source": source,
         "sbatch_stdout": stdout,
     }
-    path = wave_receipt_path(wave["wave"])
+    path = submission_receipt_path(wave["wave"])
     if path.exists() or path.is_symlink():
         existing = load_canonical_artifact(path, RECEIPT_SCHEMA)
         for field, value in receipt.items():
@@ -3805,8 +4105,373 @@ def _protected_recovered_cells(wave: dict) -> None:
             raise RecoveryError("protected recovered cell changed: {}".format(run_id))
 
 
-def _submission_argv(wave: dict, manifest_digest: str) -> list[str]:
+def _parse_slurm_max_array_size(text: str) -> int:
+    matches = re.findall(r"(?m)^MaxArraySize\s*=\s*([1-9][0-9]*)\s*$", text)
+    if len(matches) != 1 or int(matches[0]) < 2:
+        raise RecoveryError("cannot determine Slurm MaxArraySize")
+    return int(matches[0])
+
+
+def slurm_max_array_size() -> int:
+    try:
+        result = subprocess.run(
+            ["scontrol", "show", "config"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as err:
+        raise RecoveryError("cannot query Slurm MaxArraySize") from err
+    return _parse_slurm_max_array_size(result.stdout)
+
+
+def executable_identity(name: str, path_environment: str) -> dict:
+    if SAFE_NAME_RE.fullmatch(name) is None:
+        raise RecoveryError("unsafe executable name")
+    candidate = shutil.which(name, path=path_environment)
+    if candidate is None:
+        raise RecoveryError("required batching executable is absent: {}".format(name))
+    path = Path(candidate)
+    try:
+        resolved = path.resolve(strict=True)
+        status = resolved.lstat()
+    except OSError as err:
+        raise RecoveryError("cannot inspect batching executable: {}".format(name)) from err
+    if (
+        not stat.S_ISREG(status.st_mode)
+        or stat.S_ISLNK(status.st_mode)
+        or not os.access(resolved, os.X_OK)
+    ):
+        raise RecoveryError("batching executable is not canonical: {}".format(name))
+    return {
+        "path": str(resolved),
+        "size": resolved.stat().st_size,
+        "sha256": sha256_file(resolved),
+    }
+
+
+def _legacy_submission_contract(wave: dict) -> dict:
     runner = wave["runner"]
+    return {
+        **runner,
+        "array_tasks": len(wave["run_ids"]),
+        "array_throttle": E.ARRAY_THROTTLE,
+        "cells_per_array_task": 1,
+        "runner_path": str(wave_runner_path(wave["wave"])),
+        "work_directory": str(wave_directory(wave["wave"])),
+    }
+
+
+def _array_limit_nonce_payload(
+    manifest_digest: str,
+    wave_digest: str,
+    legacy_intent_digest: str,
+    run_ids_digest: str,
+    max_array_size: int,
+    cells_per_array_task: int,
+    array_tasks: int,
+    amended_protocol_digest: str,
+    srun: dict,
+    environment: dict,
+    execution_policy: dict,
+) -> dict:
+    return {
+        "manifest_sha256": manifest_digest,
+        "wave_manifest_sha256": wave_digest,
+        "legacy_submit_intent_sha256": legacy_intent_digest,
+        "run_ids_sha256": run_ids_digest,
+        "slurm_max_array_size": max_array_size,
+        "cells_per_array_task": cells_per_array_task,
+        "array_tasks": array_tasks,
+        "amended_protocol_sha256": amended_protocol_digest,
+        "srun": srun,
+        "env": environment,
+        "execution_policy": execution_policy,
+    }
+
+
+def array_limit_execution_policy() -> dict:
+    return {
+        "mode": "two-concurrent-exclusive-slurm-steps/v1",
+        "step_resources": {
+            "nodes": 1,
+            "tasks": 1,
+            "cpus_per_task": 1,
+            "memory_per_cpu": RECOVERY_MEMORY,
+        },
+        "step_environment": "sealed-env-overrides-SLURM_ARRAY_TASK_ID/v1",
+        "failure_policy": "launch-all-wait-all-return-first-nonzero/v1",
+        "byte_attestation": "legacy-runner-srun-env-pre-and-post/v1",
+        "batch_array_throttle": 2,
+        "maximum_concurrent_cells": 4,
+        "legacy_maximum_concurrent_cells": E.ARRAY_THROTTLE,
+    }
+
+
+def load_array_limit_amendment(
+    wave: dict, manifest: dict, manifest_digest: str
+) -> dict:
+    path = wave_array_limit_amendment_path(wave["wave"])
+    value = load_canonical_artifact(path, ARRAY_LIMIT_AMENDMENT_SCHEMA)
+    required = {
+        "schema",
+        "action",
+        "created_utc",
+        "manifest_sha256",
+        "wave",
+        "wave_manifest_sha256",
+        "legacy_submission",
+        "slurm_limit",
+        "protocol_dependency_amendment",
+        "outcome_access",
+        "batching",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise RecoveryError("array-limit amendment structure changed")
+    wave_digest = sha256_file(wave_manifest_path(wave["wave"]))
+    if (
+        value["action"]
+        != "replace-rejected-oversized-array-with-batched-wrapper"
+        or value["manifest_sha256"] != manifest_digest
+        or type(value["wave"]) is not int
+        or value["wave"] != wave["wave"]
+        or value["wave_manifest_sha256"] != wave_digest
+        or not exact_json_equal(
+            value["outcome_access"],
+            {
+                "planner_outcomes_parsed": False,
+                "completion_sentinels_inspected": False,
+            },
+        )
+    ):
+        raise RecoveryError("array-limit amendment identity changed")
+    validate_protocol_dependency_amendment(
+        value["protocol_dependency_amendment"], manifest
+    )
+
+    legacy = value["legacy_submission"]
+    legacy_required = {
+        "intent_path",
+        "intent_sha256",
+        "job_name",
+        "array_spec",
+        "array_tasks",
+        "requested_max_index",
+        "absence_checked_utc",
+        "matching_job_ids",
+        "test_only_exit_code",
+        "test_only_stdout",
+        "test_only_stderr",
+    }
+    intent_path = wave_intent_path(wave["wave"])
+    if not isinstance(legacy, dict) or set(legacy) != legacy_required:
+        raise RecoveryError("legacy rejected submission record changed")
+    legacy_intent = load_canonical_artifact(intent_path, RECEIPT_SCHEMA)
+    expected_legacy = _expected_submit_intent(
+        wave, manifest_digest, use_amendment=False
+    )
+    if any(
+        field != "created_utc"
+        and not exact_json_equal(legacy_intent.get(field), expected)
+        for field, expected in expected_legacy.items()
+    ):
+        raise RecoveryError("legacy rejected submit intent changed")
+    if (
+        legacy["intent_path"] != intent_path.relative_to(REPO).as_posix()
+        or legacy["intent_sha256"] != sha256_file(intent_path)
+        or legacy["job_name"] != legacy_intent["job_name"]
+        or legacy["array_spec"] != legacy_intent["array_spec"]
+        or legacy["array_tasks"] != legacy_intent["array_tasks"]
+        or legacy["requested_max_index"] != len(wave["run_ids"])
+        or type(legacy["array_tasks"]) is not int
+        or type(legacy["requested_max_index"]) is not int
+        or not isinstance(legacy["absence_checked_utc"], str)
+        or re.fullmatch(
+            r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ",
+            legacy["absence_checked_utc"],
+        )
+        is None
+        or legacy["matching_job_ids"] != []
+        or type(legacy["test_only_exit_code"]) is not int
+        or legacy["test_only_exit_code"] != 1
+        or type(legacy["test_only_stdout"]) is not str
+        or type(legacy["test_only_stderr"]) is not str
+        or legacy["test_only_stdout"] != ""
+        or legacy["test_only_stderr"].strip() != ARRAY_LIMIT_REJECTION
+    ):
+        raise RecoveryError("legacy rejection evidence changed")
+
+    limit = value["slurm_limit"]
+    if (
+        not isinstance(limit, dict)
+        or set(limit)
+        != {"query", "max_array_size", "maximum_array_index"}
+        or limit["query"] != "scontrol show config"
+        or type(limit["max_array_size"]) is not int
+        or limit["max_array_size"] < 2
+        or limit["maximum_array_index"] != limit["max_array_size"] - 1
+        or legacy["requested_max_index"] <= limit["maximum_array_index"]
+    ):
+        raise RecoveryError("sealed Slurm array limit changed")
+
+    batching = value["batching"]
+    batching_required = {
+        "path",
+        "size",
+        "sha256",
+        "nonce",
+        "job_name",
+        "array_spec",
+        "array_tasks",
+        "array_throttle",
+        "cells_per_array_task",
+        "run_ids_sha256",
+        "legacy_runner_path",
+        "legacy_runner_sha256",
+        "srun",
+        "env",
+        "execution_policy",
+        "wall_time",
+        "memory_per_cpu",
+        "cpus_per_task",
+        "partition",
+        "qos",
+        "account",
+        "requeue",
+        "submission_environment_export",
+    }
+    if not isinstance(batching, dict) or set(batching) != batching_required:
+        raise RecoveryError("batched submission contract changed")
+    run_ids_digest = sha256_bytes(canonical_bytes(wave["run_ids"]))
+    cells_per = (
+        len(wave["run_ids"]) + limit["maximum_array_index"] - 1
+    ) // limit["maximum_array_index"]
+    array_tasks = (len(wave["run_ids"]) + cells_per - 1) // cells_per
+    if cells_per != 2 or array_tasks != 566 or len(wave["run_ids"]) != 1132:
+        raise RecoveryError("array-limit amendment is not the audited 1132-to-566 mapping")
+    dependency = value["protocol_dependency_amendment"]
+    path_environment = manifest["runtime"]["execution_environment"]["path"]
+    srun = executable_identity("srun", path_environment)
+    environment = executable_identity("env", path_environment)
+    execution_policy = array_limit_execution_policy()
+    batch_throttle = max(1, E.ARRAY_THROTTLE // cells_per)
+    if batch_throttle != execution_policy["batch_array_throttle"]:
+        raise RecoveryError("batched recovery throttle changed")
+    nonce = sha256_bytes(
+        canonical_bytes(
+            _array_limit_nonce_payload(
+                manifest_digest,
+                wave_digest,
+                legacy["intent_sha256"],
+                run_ids_digest,
+                limit["max_array_size"],
+                cells_per,
+                array_tasks,
+                dependency["amended_sha256"],
+                srun,
+                environment,
+                execution_policy,
+            )
+        )
+    )[:16]
+    original_runner = wave["runner"]
+    expected_batching = {
+        "path": wave_batch_runner_path(wave["wave"])
+        .relative_to(REPO)
+        .as_posix(),
+        "size": batching.get("size"),
+        "sha256": batching.get("sha256"),
+        "nonce": nonce,
+        "job_name": "pdbprof-b{:02d}-{}".format(wave["wave"], nonce[:12]),
+        "array_spec": "1-{}%{}".format(array_tasks, batch_throttle),
+        "array_tasks": array_tasks,
+        "array_throttle": batch_throttle,
+        "cells_per_array_task": cells_per,
+        "run_ids_sha256": run_ids_digest,
+        "legacy_runner_path": wave_runner_path(wave["wave"])
+        .relative_to(REPO)
+        .as_posix(),
+        "legacy_runner_sha256": original_runner["sha256"],
+        "srun": srun,
+        "env": environment,
+        "execution_policy": execution_policy,
+        "wall_time": original_runner["wall_time"],
+        "memory_per_cpu": original_runner["memory_per_cpu"],
+        "cpus_per_task": cells_per * original_runner["cpus_per_task"],
+        "partition": original_runner["partition"],
+        "qos": original_runner["qos"],
+        "account": original_runner["account"],
+        "requeue": False,
+        "submission_environment_export": original_runner[
+            "submission_environment_export"
+        ],
+    }
+    if not exact_json_equal(batching, expected_batching):
+        raise RecoveryError("batched submission contract differs from derivation")
+    wrapper = batch_runner_text(
+        wave,
+        job_name=batching["job_name"],
+        array_tasks=array_tasks,
+        cells_per_array_task=cells_per,
+        srun_path=srun["path"],
+        srun_sha256=srun["sha256"],
+        env_path=environment["path"],
+        env_sha256=environment["sha256"],
+    )
+    runner_path = wave_batch_runner_path(wave["wave"])
+    if (
+        runner_path.is_symlink()
+        or not runner_path.is_file()
+        or not os.access(runner_path, os.X_OK)
+        or runner_path.stat().st_size != len(wrapper.encode("ascii"))
+        or batching["size"] != len(wrapper.encode("ascii"))
+        or batching["sha256"] != sha256_bytes(wrapper.encode("ascii"))
+        or runner_path.read_text(encoding="ascii") != wrapper
+    ):
+        raise RecoveryError("batched recovery runner changed")
+    if find_jobs_by_identity(legacy_intent):
+        raise RecoveryError(
+            "the rejected legacy submission appeared after its absence receipt"
+        )
+    return value
+
+
+def _submission_contract(
+    wave: dict,
+    manifest_digest: str,
+    *,
+    manifest: dict | None = None,
+    use_amendment: bool = True,
+) -> dict:
+    if use_amendment and _has_array_limit_amendment(wave["wave"]):
+        if manifest is None:
+            manifest, loaded_digest = load_manifest()
+            if loaded_digest != manifest_digest:
+                raise RecoveryError("submission manifest digest changed")
+        amendment = load_array_limit_amendment(wave, manifest, manifest_digest)
+        batching = amendment["batching"]
+        return {
+            **batching,
+            "runner_path": str(REPO / batching["path"]),
+            "work_directory": str(wave_directory(wave["wave"])),
+        }
+    return _legacy_submission_contract(wave)
+
+
+def _submission_argv(
+    wave: dict,
+    manifest_digest: str,
+    *,
+    manifest: dict | None = None,
+    use_amendment: bool = True,
+) -> list[str]:
+    runner = _submission_contract(
+        wave,
+        manifest_digest,
+        manifest=manifest,
+        use_amendment=use_amendment,
+    )
     comment = "pdbprof:{}:w{:04d}:{}".format(
         manifest_digest[:20], wave["wave"], runner["nonce"]
     )
@@ -3823,16 +4488,32 @@ def _submission_argv(wave: dict, manifest_digest: str) -> list[str]:
         "--cpus-per-task={}".format(runner["cpus_per_task"]),
         "--account={}".format(runner["account"]),
         "--no-requeue",
-        "--chdir={}".format(wave_directory(wave["wave"])),
+        "--chdir={}".format(runner["work_directory"]),
         "--comment={}".format(comment),
-        str(wave_runner_path(wave["wave"])),
+        runner["runner_path"],
     ]
 
 
-def _expected_submit_intent(wave: dict, manifest_digest: str) -> dict:
-    runner = wave["runner"]
-    argv = _submission_argv(wave, manifest_digest)
-    return {
+def _expected_submit_intent(
+    wave: dict,
+    manifest_digest: str,
+    *,
+    manifest: dict | None = None,
+    use_amendment: bool = True,
+) -> dict:
+    runner = _submission_contract(
+        wave,
+        manifest_digest,
+        manifest=manifest,
+        use_amendment=use_amendment,
+    )
+    argv = _submission_argv(
+        wave,
+        manifest_digest,
+        manifest=manifest,
+        use_amendment=use_amendment,
+    )
+    value = {
         "schema": RECEIPT_SCHEMA,
         "action": "submit-cell-exact-recovery",
         "created_utc": None,
@@ -3841,14 +4522,249 @@ def _expected_submit_intent(wave: dict, manifest_digest: str) -> dict:
         "wave_manifest_sha256": sha256_file(wave_manifest_path(wave["wave"])),
         "job_name": runner["job_name"],
         "array_spec": runner["array_spec"],
-        "array_tasks": len(runner["run_ids"]),
+        "array_tasks": runner["array_tasks"],
         "environment_export": runner["submission_environment_export"],
         "scheduler_comment": argv[-2].split("=", 1)[1],
-        "runner_path": str(wave_runner_path(wave["wave"])),
+        "runner_path": runner["runner_path"],
         "runner_sha256": runner["sha256"],
-        "work_directory": str(wave_directory(wave["wave"])),
+        "work_directory": runner["work_directory"],
         "submit_line": " ".join(argv),
     }
+    if use_amendment and _has_array_limit_amendment(wave["wave"]):
+        value["batching"] = {
+            "recovery_cells": len(wave["run_ids"]),
+            "cells_per_array_task": runner["cells_per_array_task"],
+            "legacy_runner_sha256": runner["legacy_runner_sha256"],
+            "array_throttle": runner["array_throttle"],
+            "cpus_per_task": runner["cpus_per_task"],
+            "memory_per_cpu": runner["memory_per_cpu"],
+            "wall_time": runner["wall_time"],
+            "execution_policy": runner["execution_policy"],
+        }
+    return value
+
+
+def submission_array_tasks(
+    wave: dict, manifest: dict, manifest_digest: str
+) -> int:
+    return _submission_contract(
+        wave, manifest_digest, manifest=manifest
+    )["array_tasks"]
+
+
+def submission_task_for_run_position(
+    wave: dict, position: int, manifest: dict, manifest_digest: str
+) -> int:
+    if type(position) is not int or not 0 <= position < len(wave["run_ids"]):
+        raise RecoveryError("recovery run position is invalid")
+    cells_per = _submission_contract(
+        wave, manifest_digest, manifest=manifest
+    )["cells_per_array_task"]
+    return position // cells_per + 1
+
+
+def amend_array_limit() -> None:
+    manifest, manifest_digest = load_manifest()
+    waves = load_all_waves(manifest, manifest_digest)
+    wave, wave_digest = waves[-1]
+    number = wave["wave"]
+    amendment_path = wave_array_limit_amendment_path(number)
+    batch_path = wave_batch_runner_path(number)
+    if amendment_path.exists() or amendment_path.is_symlink():
+        load_array_limit_amendment(wave, manifest, manifest_digest)
+        print("recovery array-limit amendment is already sealed")
+        return
+    if submission_receipt_path(number).exists() or wave_receipt_path(number).is_symlink():
+        raise RecoveryError("a submitted recovery wave cannot be amended")
+    legacy_intent_path = wave_intent_path(number)
+    if not legacy_intent_path.exists() or legacy_intent_path.is_symlink():
+        raise RecoveryError("array-limit amendment requires a sealed legacy intent")
+    legacy_intent = load_canonical_artifact(legacy_intent_path, RECEIPT_SCHEMA)
+    expected_legacy = _expected_submit_intent(
+        wave, manifest_digest, manifest=manifest, use_amendment=False
+    )
+    if any(
+        field != "created_utc"
+        and not exact_json_equal(legacy_intent.get(field), expected)
+        for field, expected in expected_legacy.items()
+    ):
+        raise RecoveryError("legacy rejected submit intent changed")
+    if find_jobs_by_identity(legacy_intent):
+        raise RecoveryError("legacy recovery job exists and cannot be amended")
+
+    maximum = slurm_max_array_size()
+    maximum_index = maximum - 1
+    legacy_tasks = len(wave["run_ids"])
+    if legacy_tasks <= maximum_index:
+        raise RecoveryError("legacy recovery array does not exceed MaxArraySize")
+    test_argv = _submission_argv(
+        wave, manifest_digest, manifest=manifest, use_amendment=False
+    )
+    test_argv.insert(1, "--test-only")
+    try:
+        rejection = subprocess.run(
+            test_argv,
+            cwd=wave_directory(number),
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as err:
+        raise RecoveryError("cannot test the rejected legacy submission") from err
+    if (
+        rejection.returncode == 0
+        or rejection.stdout != ""
+        or rejection.stderr.strip() != ARRAY_LIMIT_REJECTION
+    ):
+        raise RecoveryError("legacy submission rejection is not the sealed array limit")
+    if find_jobs_by_identity(legacy_intent):
+        raise RecoveryError("legacy recovery job appeared during rejection audit")
+
+    if JJ.working_copy_diff_summary(REPO):
+        raise RecoveryError("commit the amended recovery protocol before sealing it")
+    recovery_relative = Path(__file__).resolve().relative_to(REPO).as_posix()
+    amended_code_commit = JJ.parent_commit(REPO)
+    amended_digest = sha256_file(Path(__file__).resolve())
+    if (
+        not JJ.file_is_tracked_at(REPO, amended_code_commit, recovery_relative)
+        or JJ.tracked_file_sha256(
+            REPO, amended_code_commit, recovery_relative
+        )
+        != amended_digest
+    ):
+        raise RecoveryError("amended recovery protocol is not the committed parent")
+    frozen_dependency = manifest["dependencies"][recovery_relative]
+    dependency_amendment = {
+        "path": recovery_relative,
+        "frozen_sha256": frozen_dependency["sha256"],
+        "frozen_size": frozen_dependency["size"],
+        "amended_sha256": amended_digest,
+        "amended_size": Path(__file__).stat().st_size,
+        "amended_code_commit": amended_code_commit,
+    }
+
+    cells_per = (legacy_tasks + maximum_index - 1) // maximum_index
+    array_tasks = (legacy_tasks + cells_per - 1) // cells_per
+    if legacy_tasks != 1132 or cells_per != 2 or array_tasks != 566:
+        raise RecoveryError("only the audited 1132-to-566 array amendment is allowed")
+    run_ids_digest = sha256_bytes(canonical_bytes(wave["run_ids"]))
+    legacy_intent_digest = sha256_file(legacy_intent_path)
+    path_environment = manifest["runtime"]["execution_environment"]["path"]
+    srun = executable_identity("srun", path_environment)
+    environment = executable_identity("env", path_environment)
+    execution_policy = array_limit_execution_policy()
+    batch_throttle = max(1, E.ARRAY_THROTTLE // cells_per)
+    if batch_throttle != execution_policy["batch_array_throttle"]:
+        raise RecoveryError("batched recovery throttle changed")
+    nonce = sha256_bytes(
+        canonical_bytes(
+            _array_limit_nonce_payload(
+                manifest_digest,
+                wave_digest,
+                legacy_intent_digest,
+                run_ids_digest,
+                maximum,
+                cells_per,
+                array_tasks,
+                amended_digest,
+                srun,
+                environment,
+                execution_policy,
+            )
+        )
+    )[:16]
+    job_name = "pdbprof-b{:02d}-{}".format(number, nonce[:12])
+    wrapper = batch_runner_text(
+        wave,
+        job_name=job_name,
+        array_tasks=array_tasks,
+        cells_per_array_task=cells_per,
+        srun_path=srun["path"],
+        srun_sha256=srun["sha256"],
+        env_path=environment["path"],
+        env_sha256=environment["sha256"],
+    )
+    wrapper_raw = wrapper.encode("ascii")
+    if batch_path.exists() or batch_path.is_symlink():
+        if (
+            batch_path.is_symlink()
+            or not batch_path.is_file()
+            or not os.access(batch_path, os.X_OK)
+            or batch_path.read_bytes() != wrapper_raw
+        ):
+            raise RecoveryError("existing batched runner differs")
+    else:
+        write_text_artifact(batch_path, wrapper, executable=True)
+    original_runner = wave["runner"]
+    batching = {
+        "path": batch_path.relative_to(REPO).as_posix(),
+        "size": len(wrapper_raw),
+        "sha256": sha256_bytes(wrapper_raw),
+        "nonce": nonce,
+        "job_name": job_name,
+        "array_spec": "1-{}%{}".format(array_tasks, batch_throttle),
+        "array_tasks": array_tasks,
+        "array_throttle": batch_throttle,
+        "cells_per_array_task": cells_per,
+        "run_ids_sha256": run_ids_digest,
+        "legacy_runner_path": wave_runner_path(number)
+        .relative_to(REPO)
+        .as_posix(),
+        "legacy_runner_sha256": original_runner["sha256"],
+        "srun": srun,
+        "env": environment,
+        "execution_policy": execution_policy,
+        "wall_time": original_runner["wall_time"],
+        "memory_per_cpu": original_runner["memory_per_cpu"],
+        "cpus_per_task": cells_per * original_runner["cpus_per_task"],
+        "partition": original_runner["partition"],
+        "qos": original_runner["qos"],
+        "account": original_runner["account"],
+        "requeue": False,
+        "submission_environment_export": original_runner[
+            "submission_environment_export"
+        ],
+    }
+    value = {
+        "schema": ARRAY_LIMIT_AMENDMENT_SCHEMA,
+        "action": "replace-rejected-oversized-array-with-batched-wrapper",
+        "created_utc": utc_now(),
+        "manifest_sha256": manifest_digest,
+        "wave": number,
+        "wave_manifest_sha256": wave_digest,
+        "legacy_submission": {
+            "intent_path": legacy_intent_path.relative_to(REPO).as_posix(),
+            "intent_sha256": legacy_intent_digest,
+            "job_name": legacy_intent["job_name"],
+            "array_spec": legacy_intent["array_spec"],
+            "array_tasks": legacy_intent["array_tasks"],
+            "requested_max_index": legacy_tasks,
+            "absence_checked_utc": utc_now(),
+            "matching_job_ids": [],
+            "test_only_exit_code": rejection.returncode,
+            "test_only_stdout": rejection.stdout,
+            "test_only_stderr": rejection.stderr,
+        },
+        "slurm_limit": {
+            "query": "scontrol show config",
+            "max_array_size": maximum,
+            "maximum_array_index": maximum_index,
+        },
+        "protocol_dependency_amendment": dependency_amendment,
+        "outcome_access": {
+            "planner_outcomes_parsed": False,
+            "completion_sentinels_inspected": False,
+        },
+        "batching": batching,
+    }
+    write_artifact(amendment_path, value)
+    load_array_limit_amendment(wave, manifest, manifest_digest)
+    print(
+        "sealed array-limit amendment: {} cells as {} concurrent batches".format(
+            legacy_tasks, array_tasks
+        )
+    )
 
 
 def submit_recovery() -> None:
@@ -3857,9 +4773,11 @@ def submit_recovery() -> None:
     wave, wave_digest = waves[-1]
     if RESTORE_INTENT.exists() or RESTORE_RECEIPT.exists():
         raise RecoveryError("recovery was restored and may not be submitted")
-    expected_intent = _expected_submit_intent(wave, manifest_digest)
-    intent_path = wave_intent_path(wave["wave"])
-    receipt_path = wave_receipt_path(wave["wave"])
+    expected_intent = _expected_submit_intent(
+        wave, manifest_digest, manifest=manifest
+    )
+    intent_path = submission_intent_path(wave["wave"])
+    receipt_path = submission_receipt_path(wave["wave"])
     if receipt_path.exists() or receipt_path.is_symlink():
         load_wave_submit_receipt(wave, manifest_digest)
         raise RecoveryError("recovery submission is already sealed")
@@ -3874,6 +4792,8 @@ def submit_recovery() -> None:
             ):
                 raise RecoveryError("existing recovery submit intent changed")
         jobs = find_jobs_by_identity(intent)
+        if _has_array_limit_amendment(wave["wave"]):
+            _submission_contract(wave, manifest_digest, manifest=manifest)
         if len(jobs) == 1:
             job_id = next(iter(jobs))
             _seal_submit_receipt(
@@ -3886,6 +4806,21 @@ def submit_recovery() -> None:
         raise RecoveryError(
             "submission intent is unresolved and was not resubmitted; rerun --submit after Slurm accounting catches up"
         )
+
+    if _has_array_limit_amendment(wave["wave"]):
+        legacy_intent = load_canonical_artifact(
+            wave_intent_path(wave["wave"]), RECEIPT_SCHEMA
+        )
+        legacy_jobs = find_jobs_by_identity(legacy_intent)
+        if legacy_jobs:
+            raise RecoveryError(
+                "the rejected legacy submission appeared after its absence receipt"
+            )
+        contract = _submission_contract(
+            wave, manifest_digest, manifest=manifest
+        )
+        if contract["array_tasks"] > slurm_max_array_size() - 1:
+            raise RecoveryError("batched recovery still exceeds Slurm MaxArraySize")
 
     for prior_wave, prior_digest in waves[:-1]:
         verify_wave_ready(
@@ -3912,7 +4847,7 @@ def submit_recovery() -> None:
     intent = expected_intent
     try:
         result = subprocess.run(
-            _submission_argv(wave, manifest_digest),
+            _submission_argv(wave, manifest_digest, manifest=manifest),
             cwd=wave_directory(wave["wave"]),
             check=True,
             stdout=subprocess.PIPE,
@@ -3937,19 +4872,30 @@ def submit_recovery() -> None:
 
 def load_wave_submit_receipt(wave: dict, manifest_digest: str) -> dict:
     intent = load_wave_submit_intent(wave, manifest_digest)
-    receipt_path = wave_receipt_path(wave["wave"])
+    manifest, loaded_digest = load_manifest()
+    if loaded_digest != manifest_digest:
+        raise RecoveryError("submit receipt manifest digest changed")
+    expected_intent = _expected_submit_intent(
+        wave, manifest_digest, manifest=manifest
+    )
+    if any(
+        field != "created_utc"
+        and not exact_json_equal(intent.get(field), expected)
+        for field, expected in expected_intent.items()
+    ):
+        raise RecoveryError("recovery submit intent differs from its contract")
+    receipt_path = submission_receipt_path(wave["wave"])
     receipt = load_canonical_artifact(receipt_path, RECEIPT_SCHEMA)
-    runner = wave["runner"]
     required = {
         "action": "cell-exact-recovery-submitted",
         "manifest_sha256": manifest_digest,
         "wave": wave["wave"],
         "wave_manifest_sha256": sha256_file(wave_manifest_path(wave["wave"])),
-        "intent_sha256": sha256_file(wave_intent_path(wave["wave"])),
-        "job_name": runner["job_name"],
-        "array_spec": runner["array_spec"],
+        "intent_sha256": sha256_file(submission_intent_path(wave["wave"])),
+        "job_name": intent["job_name"],
+        "array_spec": intent["array_spec"],
         "scheduler_comment": intent["scheduler_comment"],
-        "runner_sha256": runner["sha256"],
+        "runner_sha256": intent["runner_sha256"],
     }
     if any(
         not exact_json_equal(receipt.get(field), expected)
@@ -4035,7 +4981,7 @@ def validate_wave_scheduler(
 ) -> None:
     intent = load_wave_submit_intent(wave, receipt["manifest_sha256"])
     expected = _expected_scheduler_metadata(intent)
-    expected_tasks = list(range(1, len(wave["run_ids"]) + 1))
+    expected_tasks = list(range(1, intent["array_tasks"] + 1))
     if [record["array_task_id"] for record in records] != expected_tasks:
         raise RecoveryError("recovery scheduler task order changed")
     for record in records:
@@ -4132,12 +5078,12 @@ def prepare_retry_wave() -> None:
     waves = load_all_waves(manifest, manifest_digest)
     current, current_digest = waves[-1]
     current_number = current["wave"]
-    current_receipt_path = wave_receipt_path(current_number)
+    current_receipt_path = submission_receipt_path(current_number)
     if not current_receipt_path.exists() and not current_receipt_path.is_symlink():
         if (
             current_number > 1
-            and not wave_intent_path(current_number).exists()
-            and not wave_intent_path(current_number).is_symlink()
+            and not submission_intent_path(current_number).exists()
+            and not submission_intent_path(current_number).is_symlink()
         ):
             _complete_retry_archive(
                 current, current_digest, manifest, manifest_digest
@@ -4146,9 +5092,10 @@ def prepare_retry_wave() -> None:
             return
         raise RecoveryError("latest recovery wave has not been submitted")
     receipt = load_wave_submit_receipt(current, manifest_digest)
+    current_intent = load_wave_submit_intent(current, manifest_digest)
     scheduler = detailed_recovery_records(
         receipt["recovery_job_id"],
-        set(range(1, len(current["run_ids"]) + 1)),
+        set(range(1, current_intent["array_tasks"] + 1)),
     )
     validate_wave_scheduler(current, receipt, scheduler)
     for wave, wave_digest in waves:
@@ -4166,7 +5113,11 @@ def prepare_retry_wave() -> None:
     protected = list(current["protected_recovered_cell_hashes"])
     retry_inputs = []
     source_decisions = []
-    for task, run_id in enumerate(current["run_ids"], 1):
+    cells_per = current_intent.get("batching", {}).get(
+        "cells_per_array_task", 1
+    )
+    for position, run_id in enumerate(current["run_ids"]):
+        task = position // cells_per + 1
         root = _safe_run_root(run_id)
         records = snapshot_tree(root)
         validate_static_inputs(root, records)
@@ -4242,9 +5193,10 @@ def verify_recovery() -> None:
             require_clean=False,
         )
         receipt = load_wave_submit_receipt(wave, manifest_digest)
+        intent = load_wave_submit_intent(wave, manifest_digest)
         scheduler = detailed_recovery_records(
             receipt["recovery_job_id"],
-            set(range(1, len(wave["run_ids"]) + 1)),
+            set(range(1, intent["array_tasks"] + 1)),
         )
         validate_wave_scheduler(wave, receipt, scheduler)
         wave_records.append(
@@ -4252,7 +5204,7 @@ def verify_recovery() -> None:
                 "wave": wave["wave"],
                 "wave_manifest_sha256": wave_digest,
                 "submit_receipt_sha256": sha256_file(
-                    wave_receipt_path(wave["wave"])
+                    submission_receipt_path(wave["wave"])
                 ),
                 "recovery_job_id": receipt["recovery_job_id"],
                 "scheduler_records": scheduler,
@@ -4274,7 +5226,12 @@ def verify_recovery() -> None:
             {
                 "run_id": cell["run_id"],
                 "latest_recovery_array_task_id": (
-                    latest["run_ids"].index(cell["run_id"]) + 1
+                    submission_task_for_run_position(
+                        latest,
+                        latest["run_ids"].index(cell["run_id"]),
+                        manifest,
+                        manifest_digest,
+                    )
                     if cell["run_id"] in latest["run_ids"]
                     else None
                 ),
@@ -4293,7 +5250,7 @@ def verify_recovery() -> None:
         "created_utc": existing["created_utc"] if existing else utc_now(),
         "manifest_sha256": manifest_digest,
         "latest_submit_receipt_sha256": sha256_file(
-            wave_receipt_path(latest["wave"])
+            submission_receipt_path(latest["wave"])
         ),
         "latest_recovery_job_id": wave_records[-1]["recovery_job_id"],
         "recovery_waves": wave_records,
@@ -4392,6 +5349,60 @@ def self_test() -> None:
     validate_retry_source_decisions(
         [source_record], [protect_decision], [], [[1, "a" * 64]]
     )
+    source_record_two = {
+        **source_record,
+        "array_task_id": 2,
+        "job_id_raw": "9",
+        "state": "TIMEOUT",
+        "state_base": "TIMEOUT",
+    }
+    batched_decisions = [
+        retry_decision,
+        {
+            **protect_decision,
+            "run_id": 2,
+            "tree_sha256": "b" * 64,
+        },
+        {
+            **retry_decision,
+            "run_id": 3,
+            "source_array_task_id": 2,
+            "scheduler_state": "TIMEOUT",
+            "tree_sha256": "c" * 64,
+        },
+        {
+            **retry_decision,
+            "run_id": 4,
+            "source_array_task_id": 2,
+            "scheduler_state": "TIMEOUT",
+            "tree_sha256": "d" * 64,
+        },
+    ]
+    validate_retry_source_decisions(
+        [source_record, source_record_two],
+        batched_decisions,
+        [
+            {"run_id": 1, "tree_sha256": "a" * 64},
+            {"run_id": 3, "tree_sha256": "c" * 64},
+            {"run_id": 4, "tree_sha256": "d" * 64},
+        ],
+        [[2, "b" * 64]],
+    )
+    try:
+        validate_retry_source_decisions(
+            [source_record, source_record_two],
+            [batched_decisions[0], batched_decisions[2], batched_decisions[1], batched_decisions[3]],
+            [
+                {"run_id": 1, "tree_sha256": "a" * 64},
+                {"run_id": 3, "tree_sha256": "c" * 64},
+                {"run_id": 4, "tree_sha256": "d" * 64},
+            ],
+            [[2, "b" * 64]],
+        )
+    except RecoveryError:
+        pass
+    else:
+        raise AssertionError("noncontiguous recovery batch mapping was accepted")
     adversarial_sources_and_decisions = (
         (
             [{**source_record, "state": "FAILED", "state_base": "FAILED"}],
@@ -4679,6 +5690,7 @@ def self_test() -> None:
     intent = {
         "job_name": "pdbprof-w01-aaaaaaaaaaaa",
         "created_utc": "2026-08-29T12:00:00Z",
+        "array_spec": "1-2%{}".format(E.ARRAY_THROTTLE),
         "array_tasks": 2,
         "work_directory": "/sealed/wave",
         "scheduler_comment": "pdbprof:sealed",
@@ -4854,6 +5866,7 @@ def self_test() -> None:
     assert "PACKAGE_PATHS=" in text and "CODE_PATHS=" in text
     submission_wave = {
         "wave": 1,
+        "run_ids": [1, 25],
         "runner": {
             "nonce": "a" * 16,
             "job_name": "pdbprof-w01-aaaaaaaaaaaa",
@@ -4871,6 +5884,68 @@ def self_test() -> None:
     subprocess.run(
         ["bash", "-n"], input=text, text=True, check=True, capture_output=True
     )
+    batch_wave = {
+        **submission_wave,
+        "runner": {
+            **submission_wave["runner"],
+            "sha256": sha256_bytes(text.encode("ascii")),
+        },
+    }
+    batch = batch_runner_text(
+        batch_wave,
+        job_name="pdbprof-b01-aaaaaaaaaaaa",
+        array_tasks=1,
+        cells_per_array_task=2,
+        srun_path="/usr/bin/srun",
+        srun_sha256="c" * 64,
+        env_path="/usr/bin/env",
+        env_sha256="d" * 64,
+    )
+    assert "#SBATCH --array=1-1%2" in batch
+    assert "#SBATCH --cpus-per-task=2" in batch
+    assert "ARRAY_TASKS=1" in batch
+    assert '"$SRUN" --exclusive --exact --nodes=1 --ntasks=1' in batch
+    assert '"$ENV" "SLURM_ARRAY_TASK_ID=$LEGACY_TASK"' in batch
+    assert batch.count("attest_batch_inputs") == 3
+    assert _parse_slurm_max_array_size("MaxArraySize = 1001\n") == 1001
+    assert _array_expression_tasks("[1-5%2]", expected_throttle=2) == set(
+        range(1, 6)
+    )
+    subprocess.run(
+        ["bash", "-n"], input=batch, text=True, check=True, capture_output=True
+    )
+    index_probe = """set -euo pipefail
+fail() {{ exit 2; }}
+LEGACY_TASKS=1132
+CELLS_PER_ARRAY_TASK=2
+{}
+printf '%s:%s\\n' "$FIRST" "$LAST"
+""".format(batch_array_index_setup_text(566))
+    for task_id, expected in (("1", "1:2\n"), ("566", "1131:1132\n")):
+        result = subprocess.run(
+            ["bash"],
+            input=index_probe,
+            text=True,
+            check=False,
+            capture_output=True,
+            env={**os.environ, "SLURM_ARRAY_TASK_ID": task_id},
+        )
+        assert result.returncode == 0 and result.stdout == expected
+    for task_id in (
+        "0",
+        "567",
+        "9223372036854775809",
+        "18446744073709551618",
+    ):
+        result = subprocess.run(
+            ["bash"],
+            input=index_probe,
+            text=True,
+            check=False,
+            capture_output=True,
+            env={**os.environ, "SLURM_ARRAY_TASK_ID": task_id},
+        )
+        assert result.returncode == 2 and result.stdout == ""
     print("pdb-profile cell-exact recovery self-test: PASS")
 
 
@@ -4881,6 +5956,7 @@ def parse_args(argv=None):
     actions.add_argument("--freeze", action="store_true")
     actions.add_argument("--archive", action="store_true")
     actions.add_argument("--restore", action="store_true")
+    actions.add_argument("--amend-array-limit", action="store_true")
     actions.add_argument("--submit", action="store_true")
     actions.add_argument("--retry", action="store_true")
     actions.add_argument("--verify", action="store_true")
@@ -4901,6 +5977,8 @@ def main(argv=None) -> int:
         archive_prefixes()
     elif args.restore:
         restore_prefixes()
+    elif args.amend_array_limit:
+        amend_array_limit()
     elif args.submit:
         submit_recovery()
     elif args.retry:
