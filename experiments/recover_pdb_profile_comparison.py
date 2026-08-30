@@ -73,7 +73,7 @@ VENV_PYTHON = SCRIPT_DIR / ".venv" / "bin" / "python"
 REQUIREMENTS = SCRIPT_DIR / "requirements.txt"
 
 SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-manifest/v4"
-WAVE_SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-wave/v1"
+WAVE_SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-wave/v3"
 CELL_SEAL_SCHEMA = "symbolic-search-heuristics/pdb-profile-prefix-cell/v1"
 WAVE_CELL_SEAL_SCHEMA = "symbolic-search-heuristics/pdb-profile-wave-prefix-cell/v1"
 RECEIPT_SCHEMA = "symbolic-search-heuristics/pdb-profile-recovery-receipt/v2"
@@ -109,7 +109,7 @@ TERMINAL_STATES = frozenset(
         "TIMEOUT",
     }
 )
-RECOVERABLE_STATE = "TIMEOUT"
+RECOVERABLE_STATES = frozenset({"NODE_FAIL", "TIMEOUT"})
 RECOVERY_WALL_TIME = "02:30:00"
 RECOVERY_MEMORY = "9G"
 DEPENDENCY_PATHS = (
@@ -146,6 +146,25 @@ RECOVERY_SACCT_FORMAT = (
     "ReqMem%64,ReqCPUS%64,Timelimit%32,Account%256,Partition%256,QOS%256,"
     "Comment%2048,SubmitLine%4096"
 )
+RECOVERY_SCHEDULER_RECORD_KEYS = frozenset(
+    {
+        "array_task_id",
+        "job_id_raw",
+        "state",
+        "state_base",
+        "job_name",
+        "submit",
+        "work_dir",
+        "requested_memory",
+        "requested_cpus",
+        "time_limit",
+        "account",
+        "partition",
+        "qos",
+        "comment",
+        "submit_line",
+    }
+)
 RUNTIME_PROBE_SACCT_FORMAT = (
     "JobID%256,State%64,JobName%512,Submit%64,WorkDir%2048,ReqMem%64,"
     "ReqCPUS%64,Timelimit%32,Account%256,Partition%256,QOS%256,SubmitLine%4096"
@@ -168,6 +187,121 @@ def canonical_bytes(value) -> bytes:
 def exact_json_equal(left, right) -> bool:
     """Compare JSON values without Python's bool/int numeric coercion."""
     return canonical_bytes(left) == canonical_bytes(right)
+
+
+def normalized_slurm_state(value: str) -> str:
+    if not isinstance(value, str) or not value.split():
+        raise RecoveryError("scheduler state is empty or non-textual")
+    base = value.split()[0].rstrip("+")
+    if not base:
+        raise RecoveryError("scheduler state has no canonical base")
+    return base
+
+
+def require_recoverable_cell_state(task_id: int, state: str, cell_label: str) -> None:
+    if state not in RECOVERABLE_STATES:
+        raise RecoveryError(
+            "{} belongs to scheduler task {} in state {}".format(
+                cell_label, task_id, state
+            )
+        )
+
+
+def recovery_wave_cell_action(state: str, complete: bool) -> str:
+    if type(complete) is not bool:
+        raise RecoveryError("recovery completion flag is not Boolean")
+    if state not in RECOVERABLE_STATES | {"COMPLETED"}:
+        raise RecoveryError("recovery wave has unsupported state {}".format(state))
+    if complete:
+        return "protect"
+    if state in RECOVERABLE_STATES:
+        return "retry"
+    raise RecoveryError("completed recovery task lacks its final driver sentinel")
+
+
+def recovery_retry_policy() -> dict:
+    return {
+        "completion_test": (
+            "last-line-shape-only;numeric-exit-value-not-recorded/v1"
+        ),
+        "complete_cell_action": "protect-regardless-of-allowed-scheduler-state",
+        "retry_incomplete_scheduler_states": sorted(RECOVERABLE_STATES),
+        "completed_incomplete_action": "fail-closed",
+        "unsupported_scheduler_state_action": "fail-closed",
+    }
+
+
+def validate_retry_source_decisions(
+    source_records: list[dict],
+    decisions: list[dict],
+    retry_inputs: list[dict],
+    protected_hashes: list[list],
+) -> None:
+    if not isinstance(source_records, list) or not isinstance(decisions, list):
+        raise RecoveryError("retry source records or decisions are not lists")
+    if any(not isinstance(record, dict) for record in source_records):
+        raise RecoveryError("retry source scheduler record is not an object")
+    expected_tasks = list(range(1, len(source_records) + 1))
+    if [record.get("array_task_id") for record in source_records] != expected_tasks:
+        raise RecoveryError("retry source scheduler task set changed")
+    for record in source_records:
+        if (
+            not isinstance(record, dict)
+            or set(record) != RECOVERY_SCHEDULER_RECORD_KEYS
+            or type(record["array_task_id"]) is not int
+            or JOB_ID_RE.fullmatch(record.get("job_id_raw", "")) is None
+            or normalized_slurm_state(record.get("state")) != record.get("state_base")
+            or record.get("state_base") not in RECOVERABLE_STATES | {"COMPLETED"}
+        ):
+            raise RecoveryError("retry source scheduler record changed")
+    decision_keys = {
+        "run_id",
+        "source_array_task_id",
+        "scheduler_state",
+        "completion_test_passed",
+        "action",
+        "tree_sha256",
+    }
+    if len(decisions) != len(source_records):
+        raise RecoveryError("retry source decision count changed")
+    retry_hashes = {cell["run_id"]: cell["tree_sha256"] for cell in retry_inputs}
+    protected = {item[0]: item[1] for item in protected_hashes}
+    seen_runs = set()
+    expected_retry_ids = []
+    for task, (record, decision) in enumerate(zip(source_records, decisions), 1):
+        if not isinstance(decision, dict) or set(decision) != decision_keys:
+            raise RecoveryError("retry source decision structure changed")
+        run_id = decision["run_id"]
+        if (
+            type(run_id) is not int
+            or run_id < 1
+            or run_id in seen_runs
+            or type(decision["source_array_task_id"]) is not int
+            or decision["source_array_task_id"] != task
+            or decision["scheduler_state"] != record["state_base"]
+            or type(decision["completion_test_passed"]) is not bool
+            or SHA256_RE.fullmatch(decision.get("tree_sha256", "")) is None
+        ):
+            raise RecoveryError("retry source decision identity changed")
+        seen_runs.add(run_id)
+        expected_action = recovery_wave_cell_action(
+            record["state_base"], decision["completion_test_passed"]
+        )
+        if decision["action"] != expected_action:
+            raise RecoveryError("retry source decision violates retry policy")
+        if expected_action == "retry":
+            expected_retry_ids.append(run_id)
+            if retry_hashes.get(run_id) != decision["tree_sha256"]:
+                raise RecoveryError("retry decision differs from its retry input")
+            if run_id in protected:
+                raise RecoveryError("retry decision is also protected")
+        else:
+            if protected.get(run_id) != decision["tree_sha256"]:
+                raise RecoveryError("protect decision differs from its protected hash")
+            if run_id in retry_hashes:
+                raise RecoveryError("protect decision is also retried")
+    if sorted(retry_hashes) != sorted(expected_retry_ids):
+        raise RecoveryError("retry decisions do not match the retry-input set")
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -920,7 +1054,7 @@ def parse_sacct(
         task_id = int(match.group(1))
         if task_id in records:
             raise RecoveryError("sacct repeats array task {}".format(task_id))
-        base_state = state.split()[0].rstrip("+")
+        base_state = normalized_slurm_state(state)
         if base_state not in TERMINAL_STATES:
             raise RecoveryError("array task {} is not terminal: {}".format(task_id, state))
         if (
@@ -1571,12 +1705,9 @@ def classify_cells(
         if status_name == "complete":
             complete_hashes.append([run_id, digest])
             continue
-        if task_state != RECOVERABLE_STATE:
-            raise RecoveryError(
-                "{} cell {} belongs to scheduler state {}".format(
-                    status_name, run_id, task_state
-                )
-            )
+        require_recoverable_cell_state(
+            task_id, task_state, "{} cell {}".format(status_name, run_id)
+        )
         recovery.append(
             {
                 "run_id": run_id,
@@ -1594,7 +1725,7 @@ def classify_cells(
     unsupported = [
         record
         for record in scheduler
-        if record["state_base"] not in {"COMPLETED", RECOVERABLE_STATE}
+        if record["state_base"] not in RECOVERABLE_STATES | {"COMPLETED"}
     ]
     if unsupported:
         raise RecoveryError("unsupported terminal state: {}".format(unsupported[0]["state"]))
@@ -1913,6 +2044,7 @@ def build_wave(
     *,
     previous_wave,
     source_scheduler_records,
+    source_cell_decisions: list[dict],
     retry_input_cells: list[dict],
     protected_recovered_cell_hashes: list[list],
     created_utc: str | None = None,
@@ -1927,6 +2059,10 @@ def build_wave(
         "wave": wave,
         "previous_wave": previous_wave,
         "run_ids": run_ids,
+        "source_scheduler_records_sha256": sha256_bytes(
+            canonical_bytes(source_scheduler_records)
+        ),
+        "source_cell_decisions": source_cell_decisions,
         "input_tree_hashes": input_digests,
         "protected_recovered_cell_hashes": protected_recovered_cell_hashes,
     }
@@ -1965,6 +2101,7 @@ def build_wave(
         "wave": wave,
         "previous_wave": previous_wave,
         "source_scheduler_records": source_scheduler_records,
+        "source_cell_decisions": source_cell_decisions,
         "retry_input_cells": retry_input_cells,
         "protected_recovered_cell_hashes": protected_recovered_cell_hashes,
         "run_ids": run_ids,
@@ -1972,6 +2109,7 @@ def build_wave(
             "planner_outcomes_parsed": False,
             "completion_test": "last-line-shape-only;numeric-exit-value-not-recorded/v1",
         },
+        "retry_policy": recovery_retry_policy(),
         "runner": contract,
     }
     return value, runner
@@ -2098,6 +2236,7 @@ def freeze(main_job_id: str) -> None:
             "array_tasks": EXPECTED_ARRAY_TASKS,
             "runs_per_array_task": E.RUNS_PER_ARRAY_TASK,
             "array_throttle": E.ARRAY_THROTTLE,
+            "recoverable_scheduler_states": sorted(RECOVERABLE_STATES),
         },
         "original_launcher": {
             "path": START_SCRIPT.relative_to(REPO).as_posix(),
@@ -2132,6 +2271,7 @@ def freeze(main_job_id: str) -> None:
             "source": "original-main-array",
             "scheduler_records_sha256": sha256_bytes(canonical_bytes(scheduler)),
         },
+        source_cell_decisions=[],
         retry_input_cells=[],
         protected_recovered_cell_hashes=[],
     )
@@ -2234,6 +2374,7 @@ def validate_manifest(value: dict) -> None:
         "array_tasks": EXPECTED_ARRAY_TASKS,
         "runs_per_array_task": E.RUNS_PER_ARRAY_TASK,
         "array_throttle": E.ARRAY_THROTTLE,
+        "recoverable_scheduler_states": sorted(RECOVERABLE_STATES),
     }
     if not exact_json_equal(experiment, expected_experiment):
         raise RecoveryError("manifest experiment identity changed")
@@ -2498,10 +2639,12 @@ def validate_manifest(value: dict) -> None:
     ):
         raise RecoveryError("manifest main-array scheduler task set changed")
     for record in scheduler:
+        if not isinstance(record, dict) or set(record) != scheduler_keys:
+            raise RecoveryError("manifest main-array scheduler record changed")
+        state_base = normalized_slurm_state(record["state"])
         if (
-            not isinstance(record, dict)
-            or set(record) != scheduler_keys
-            or record.get("state_base") not in TERMINAL_STATES
+            record["state_base"] != state_base
+            or state_base not in RECOVERABLE_STATES | {"COMPLETED"}
             or record.get("job_name") != receipt["job_name"]
             or record.get("submit_time") != receipt["submit_time"]
             or record.get("work_dir") != receipt["work_directory"]
@@ -2517,12 +2660,27 @@ def validate_manifest(value: dict) -> None:
             or record.get("submit_line") != receipt["submit_line"]
         ):
             raise RecoveryError("manifest main-array scheduler identity changed")
+    scheduler_states = {
+        record["array_task_id"]: record["state_base"] for record in scheduler
+    }
     validate_main_partition_attestation(scheduler, receipt, mutation_receipt)
     expected_scheduler_counts = dict(
         sorted(Counter(record["state_base"] for record in scheduler).items())
     )
-    if value["scheduler_state_counts"] != expected_scheduler_counts:
+    if not exact_json_equal(
+        value["scheduler_state_counts"], expected_scheduler_counts
+    ):
         raise RecoveryError("manifest main-array state counts changed")
+    expected_outcome_access = {
+        "planner_outcomes_parsed": False,
+        "completed_tree_contents_exposed": False,
+        "completed_tree_hashes_are_opaque": True,
+        "completion_test": (
+            "last-line-shape-only;numeric-exit-value-not-recorded/v1"
+        ),
+    }
+    if not exact_json_equal(value["outcome_access"], expected_outcome_access):
+        raise RecoveryError("manifest outcome-access contract changed")
     complete = value["complete_cell_tree_hashes"]
     complete_ids = []
     for item in complete:
@@ -2556,6 +2714,11 @@ def validate_manifest(value: dict) -> None:
             raise RecoveryError("manifest recovery path differs from its run ID")
         if cell["original_array_task_id"] != array_task_for_run(run_id, group_to_slot):
             raise RecoveryError("manifest recovery cell has the wrong array task")
+        require_recoverable_cell_state(
+            cell["original_array_task_id"],
+            scheduler_states[cell["original_array_task_id"]],
+            "manifest recovery cell {}".format(run_id),
+        )
         if cell["original_status"] not in {"missing", "interrupted"}:
             raise RecoveryError("manifest recovery cell has an invalid status")
         entries = cell["entries"]
@@ -2615,6 +2778,14 @@ def validate_manifest(value: dict) -> None:
         raise RecoveryError("manifest repeats or reorders recovery cells")
     if sorted(complete_ids + recovery_ids) != list(range(1, P.CELL_COUNT + 1)):
         raise RecoveryError("manifest cell partition is incomplete")
+    expected_cell_counts = Counter({"complete": len(complete_ids)})
+    expected_cell_counts.update(
+        cell["original_status"] for cell in value["recovery_cells"]
+    )
+    if not exact_json_equal(
+        value["cell_state_counts"], dict(sorted(expected_cell_counts.items()))
+    ):
+        raise RecoveryError("manifest cell-state counts changed")
     nonce = recovery_nonce(
         value["main_job_id"], launcher["sha256"], value["dependencies"], value["recovery_cells"]
     )
@@ -2654,10 +2825,12 @@ def validate_wave(value: dict, manifest: dict, manifest_digest: str) -> str:
         "wave",
         "previous_wave",
         "source_scheduler_records",
+        "source_cell_decisions",
         "retry_input_cells",
         "protected_recovered_cell_hashes",
         "run_ids",
         "outcome_access",
+        "retry_policy",
         "runner",
     }
     if not isinstance(value, dict) or set(value) != required or value.get("schema") != WAVE_SCHEMA:
@@ -2667,6 +2840,8 @@ def validate_wave(value: dict, manifest: dict, manifest_digest: str) -> str:
         raise RecoveryError("recovery wave number changed")
     if value.get("manifest_sha256") != manifest_digest:
         raise RecoveryError("recovery wave references a different base manifest")
+    if not exact_json_equal(value.get("retry_policy"), recovery_retry_policy()):
+        raise RecoveryError("recovery wave retry policy changed")
     run_ids = value.get("run_ids")
     base_ids = [cell["run_id"] for cell in manifest["recovery_cells"]]
     if (
@@ -2721,11 +2896,33 @@ def validate_wave(value: dict, manifest: dict, manifest_digest: str) -> str:
         if dynamic_top_names(entries) != cell["dynamic_top_names"]:
             raise RecoveryError("recovery retry dynamic names changed")
         retry_ids.append(run_id)
+    decisions = value.get("source_cell_decisions")
     if wave == 1:
-        if retry_inputs or protected or value["previous_wave"] is not None:
+        expected_source = {
+            "source": "original-main-array",
+            "scheduler_records_sha256": sha256_bytes(
+                canonical_bytes(manifest["scheduler_records"])
+            ),
+        }
+        if (
+            retry_inputs
+            or protected
+            or decisions != []
+            or value["previous_wave"] is not None
+            or not exact_json_equal(
+                value["source_scheduler_records"], expected_source
+            )
+        ):
             raise RecoveryError("first recovery wave has retry-only state")
-    elif retry_ids != run_ids or value["previous_wave"] is None:
-        raise RecoveryError("retry wave inputs do not match its run IDs")
+    else:
+        if retry_ids != run_ids or value["previous_wave"] is None:
+            raise RecoveryError("retry wave inputs do not match its run IDs")
+        validate_retry_source_decisions(
+            value["source_scheduler_records"],
+            decisions,
+            retry_inputs,
+            protected,
+        )
     rebuilt, runner_text_value = build_wave(
         manifest,
         manifest_digest,
@@ -2733,11 +2930,12 @@ def validate_wave(value: dict, manifest: dict, manifest_digest: str) -> str:
         run_ids,
         previous_wave=value["previous_wave"],
         source_scheduler_records=value["source_scheduler_records"],
+        source_cell_decisions=value["source_cell_decisions"],
         retry_input_cells=retry_inputs,
         protected_recovered_cell_hashes=protected,
         created_utc=value["created_utc"],
     )
-    if value != rebuilt:
+    if not exact_json_equal(value, rebuilt):
         raise RecoveryError("recovery wave contract changed")
     runner_path = wave_runner_path(wave)
     runner = value["runner"]
@@ -2777,16 +2975,38 @@ def load_all_waves(manifest: dict, manifest_digest: str) -> list[tuple[dict, str
             continue
         previous, previous_digest = result[index - 2]
         receipt = wave_receipt_path(index - 1)
+        previous_receipt = load_wave_submit_receipt(previous, manifest_digest)
         expected_previous = {
             "wave": index - 1,
             "wave_manifest_sha256": previous_digest,
             "submit_receipt_sha256": sha256_file(receipt),
-            "recovery_job_id": load_canonical_artifact(
-                receipt, RECEIPT_SCHEMA
-            )["recovery_job_id"],
+            "recovery_job_id": previous_receipt["recovery_job_id"],
         }
-        if wave["previous_wave"] != expected_previous:
+        if not exact_json_equal(wave["previous_wave"], expected_previous):
             raise RecoveryError("recovery wave chain changed")
+        decisions = wave["source_cell_decisions"]
+        validate_wave_scheduler(
+            previous, previous_receipt, wave["source_scheduler_records"]
+        )
+        if [item["run_id"] for item in decisions] != previous["run_ids"]:
+            raise RecoveryError("retry decisions differ from the preceding wave")
+        newly_protected = sorted(
+            [item["run_id"], item["tree_sha256"]]
+            for item in decisions
+            if item["action"] == "protect"
+        )
+        expected_protected = sorted(
+            previous["protected_recovered_cell_hashes"] + newly_protected
+        )
+        if not exact_json_equal(
+            wave["protected_recovered_cell_hashes"], expected_protected
+        ):
+            raise RecoveryError("retry wave protected-hash chain changed")
+        expected_retry_ids = [
+            item["run_id"] for item in decisions if item["action"] == "retry"
+        ]
+        if wave["run_ids"] != expected_retry_ids:
+            raise RecoveryError("retry wave run IDs differ from sealed decisions")
     return result
 
 
@@ -3566,7 +3786,11 @@ def _seal_submit_receipt(
     if path.exists() or path.is_symlink():
         existing = load_canonical_artifact(path, RECEIPT_SCHEMA)
         for field, value in receipt.items():
-            if field not in {"created_utc", "receipt_source", "sbatch_stdout"} and existing.get(field) != value:
+            if field not in {
+                "created_utc",
+                "receipt_source",
+                "sbatch_stdout",
+            } and not exact_json_equal(existing.get(field), value):
                 raise RecoveryError("existing submit receipt changed")
         return
     write_artifact(path, receipt)
@@ -3645,7 +3869,9 @@ def submit_recovery() -> None:
     if intent_path.exists() or intent_path.is_symlink():
         intent = load_wave_submit_intent(wave, manifest_digest)
         for field, expected in expected_intent.items():
-            if field != "created_utc" and intent.get(field) != expected:
+            if field != "created_utc" and not exact_json_equal(
+                intent.get(field), expected
+            ):
                 raise RecoveryError("existing recovery submit intent changed")
         jobs = find_jobs_by_identity(intent)
         if len(jobs) == 1:
@@ -3725,7 +3951,10 @@ def load_wave_submit_receipt(wave: dict, manifest_digest: str) -> dict:
         "scheduler_comment": intent["scheduler_comment"],
         "runner_sha256": runner["sha256"],
     }
-    if any(receipt.get(field) != expected for field, expected in required.items()):
+    if any(
+        not exact_json_equal(receipt.get(field), expected)
+        for field, expected in required.items()
+    ):
         raise RecoveryError("recovery submit receipt changed")
     if JOB_ID_RE.fullmatch(receipt.get("recovery_job_id", "")) is None:
         raise RecoveryError("submit receipt has an invalid job ID")
@@ -3761,7 +3990,9 @@ def detailed_recovery_records(job_id: str, expected_tasks: set[int]) -> list[dic
     except (OSError, subprocess.CalledProcessError) as err:
         raise RecoveryError("cannot query detailed recovery accounting") from err
     records = {}
-    pattern = re.compile(r"^{}_([1-9][0-9]*)$".format(re.escape(job_id)))
+    pattern = re.compile(
+        r"^{}_(0|[1-9][0-9]*)$".format(re.escape(job_id))
+    )
     for line in result.stdout.splitlines():
         if not line.strip():
             continue
@@ -3774,7 +4005,7 @@ def detailed_recovery_records(job_id: str, expected_tasks: set[int]) -> list[dic
         task = int(match.group(1))
         if task in records:
             raise RecoveryError("detailed sacct repeats a recovery task")
-        state_base = fields[2].split()[0].rstrip("+")
+        state_base = normalized_slurm_state(fields[2])
         if state_base not in TERMINAL_STATES:
             raise RecoveryError("recovery task is not terminal")
         records[task] = {
@@ -3800,7 +4031,7 @@ def detailed_recovery_records(job_id: str, expected_tasks: set[int]) -> list[dic
 
 
 def validate_wave_scheduler(
-    wave: dict, receipt: dict, records: list[dict], *, require_completed: bool
+    wave: dict, receipt: dict, records: list[dict]
 ) -> None:
     intent = load_wave_submit_intent(wave, receipt["manifest_sha256"])
     expected = _expected_scheduler_metadata(intent)
@@ -3812,8 +4043,11 @@ def validate_wave_scheduler(
             raise RecoveryError("recovery scheduler metadata changed")
         if record["submit_line"] != intent["submit_line"]:
             raise RecoveryError("recovery scheduler submit command changed")
-        if require_completed and record["state_base"] != "COMPLETED":
-            raise RecoveryError("latest recovery wave has an unsuccessful task")
+        if (
+            normalized_slurm_state(record["state"]) != record["state_base"]
+            or record["state_base"] not in RECOVERABLE_STATES | {"COMPLETED"}
+        ):
+            raise RecoveryError("recovery scheduler state violates retry policy")
 
 
 def _install_retry_wave_bundle(wave: dict, runner: str) -> str:
@@ -3916,7 +4150,7 @@ def prepare_retry_wave() -> None:
         receipt["recovery_job_id"],
         set(range(1, len(current["run_ids"]) + 1)),
     )
-    validate_wave_scheduler(current, receipt, scheduler, require_completed=False)
+    validate_wave_scheduler(current, receipt, scheduler)
     for wave, wave_digest in waves:
         verify_wave_ready(
             wave,
@@ -3931,19 +4165,32 @@ def prepare_retry_wave() -> None:
     _protected_recovered_cells(current)
     protected = list(current["protected_recovered_cell_hashes"])
     retry_inputs = []
+    source_decisions = []
     for task, run_id in enumerate(current["run_ids"], 1):
         root = _safe_run_root(run_id)
         records = snapshot_tree(root)
         validate_static_inputs(root, records)
         record = scheduler[task - 1]
         complete = driver_log_complete(root / "driver.log")
-        if record["state_base"] == "COMPLETED" and complete:
-            protected.append([run_id, snapshot_digest(records)])
-        else:
+        action = recovery_wave_cell_action(record["state_base"], complete)
+        tree_digest = snapshot_digest(records)
+        source_decisions.append(
+            {
+                "run_id": run_id,
+                "source_array_task_id": task,
+                "scheduler_state": record["state_base"],
+                "completion_test_passed": complete,
+                "action": action,
+                "tree_sha256": tree_digest,
+            }
+        )
+        if action == "protect":
+            protected.append([run_id, tree_digest])
+        elif action == "retry":
             retry_inputs.append(
                 {
                     "run_id": run_id,
-                    "tree_sha256": snapshot_digest(records),
+                    "tree_sha256": tree_digest,
                     "entries": records,
                     "dynamic_top_names": dynamic_top_names(records),
                 }
@@ -3966,6 +4213,7 @@ def prepare_retry_wave() -> None:
         [cell["run_id"] for cell in retry_inputs],
         previous_wave=previous,
         source_scheduler_records=scheduler,
+        source_cell_decisions=source_decisions,
         retry_input_cells=retry_inputs,
         protected_recovered_cell_hashes=protected,
     )
@@ -3985,7 +4233,7 @@ def verify_recovery() -> None:
     verify_quarantine(manifest, manifest_digest, require_clean=False)
     verify_cleanup_receipt(manifest_digest)
     wave_records = []
-    for index, (wave, wave_digest) in enumerate(waves):
+    for wave, wave_digest in waves:
         verify_wave_ready(
             wave,
             wave_digest,
@@ -3998,12 +4246,7 @@ def verify_recovery() -> None:
             receipt["recovery_job_id"],
             set(range(1, len(wave["run_ids"]) + 1)),
         )
-        validate_wave_scheduler(
-            wave,
-            receipt,
-            scheduler,
-            require_completed=index == len(waves) - 1,
-        )
+        validate_wave_scheduler(wave, receipt, scheduler)
         wave_records.append(
             {
                 "wave": wave["wave"],
@@ -4075,6 +4318,100 @@ def self_test() -> None:
     )
     for left, right in ((False, 0), (True, 1), ({"x": False}, {"x": 0})):
         assert not exact_json_equal(left, right)
+    assert RECOVERABLE_STATES == {"NODE_FAIL", "TIMEOUT"}
+    assert not ({"FAILED", "OUT_OF_MEMORY", "PREEMPTED"} & RECOVERABLE_STATES)
+    assert normalized_slurm_state("NODE_FAIL+") == "NODE_FAIL"
+    for state in sorted(RECOVERABLE_STATES):
+        require_recoverable_cell_state(1, state, "test cell")
+    for state in ("COMPLETED", "FAILED", "OUT_OF_MEMORY", "PREEMPTED"):
+        try:
+            require_recoverable_cell_state(1, state, "test cell")
+        except RecoveryError:
+            pass
+        else:
+            raise AssertionError("nonrecoverable scheduler state was accepted")
+    for state in ("NODE_FAIL", "TIMEOUT", "COMPLETED"):
+        assert recovery_wave_cell_action(state, True) == "protect"
+    for state in ("NODE_FAIL", "TIMEOUT"):
+        assert recovery_wave_cell_action(state, False) == "retry"
+    for state in ("COMPLETED", "FAILED", "OUT_OF_MEMORY", "PREEMPTED"):
+        for complete in (False, True):
+            if state == "COMPLETED" and complete:
+                continue
+            try:
+                recovery_wave_cell_action(state, complete)
+            except RecoveryError:
+                pass
+            else:
+                raise AssertionError("invalid recovery-wave action was accepted")
+    assert recovery_retry_policy() == {
+        "completion_test": (
+            "last-line-shape-only;numeric-exit-value-not-recorded/v1"
+        ),
+        "complete_cell_action": "protect-regardless-of-allowed-scheduler-state",
+        "retry_incomplete_scheduler_states": ["NODE_FAIL", "TIMEOUT"],
+        "completed_incomplete_action": "fail-closed",
+        "unsupported_scheduler_state_action": "fail-closed",
+    }
+    source_record = {
+        "array_task_id": 1,
+        "job_id_raw": "8",
+        "state": "NODE_FAIL",
+        "state_base": "NODE_FAIL",
+        "job_name": "recovery",
+        "submit": "2026-08-30T12:00:00",
+        "work_dir": "/sealed/wave",
+        "requested_memory": "9Gc",
+        "requested_cpus": "1",
+        "time_limit": RECOVERY_WALL_TIME,
+        "account": E.ACCOUNT,
+        "partition": "cpu",
+        "qos": "normal",
+        "comment": "sealed",
+        "submit_line": "sbatch sealed-runner",
+    }
+    retry_decision = {
+        "run_id": 1,
+        "source_array_task_id": 1,
+        "scheduler_state": "NODE_FAIL",
+        "completion_test_passed": False,
+        "action": "retry",
+        "tree_sha256": "a" * 64,
+    }
+    validate_retry_source_decisions(
+        [source_record],
+        [retry_decision],
+        [{"run_id": 1, "tree_sha256": "a" * 64}],
+        [],
+    )
+    protect_decision = {
+        **retry_decision,
+        "completion_test_passed": True,
+        "action": "protect",
+    }
+    validate_retry_source_decisions(
+        [source_record], [protect_decision], [], [[1, "a" * 64]]
+    )
+    adversarial_sources_and_decisions = (
+        (
+            [{**source_record, "state": "FAILED", "state_base": "FAILED"}],
+            [retry_decision],
+        ),
+        ([source_record], [{**retry_decision, "action": "protect"}]),
+        ([source_record], [{**retry_decision, "scheduler_state": "TIMEOUT"}]),
+    )
+    for bad_source, bad_decisions in adversarial_sources_and_decisions:
+        try:
+            validate_retry_source_decisions(
+                bad_source,
+                bad_decisions,
+                [{"run_id": 1, "tree_sha256": "a" * 64}],
+                [],
+            )
+        except RecoveryError:
+            pass
+        else:
+            raise AssertionError("tampered retry source decision was accepted")
     launch = {
         "job_id": "7",
         "job_name": "main-array",
