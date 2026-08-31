@@ -46,8 +46,31 @@ struct MaskedLayerStats {
     long cofactor_sum;
     long terminal_incidence;
     long partition_audit_effort;
+    vector<long> partition_bucket_efforts;
     double masked_seconds;
     double partition_audit_seconds;
+};
+
+struct ReducedBddSignature {
+    unsigned int index;
+    size_t then_handle;
+    size_t else_handle;
+
+    bool operator==(const ReducedBddSignature &other) const {
+        return index == other.index && then_handle == other.then_handle &&
+               else_handle == other.else_handle;
+    }
+};
+
+struct ReducedBddSignatureHash {
+    size_t operator()(const ReducedBddSignature &signature) const {
+        size_t result = hash<unsigned int>{}(signature.index);
+        result ^= hash<size_t>{}(signature.then_handle) + 0x9e3779b9 +
+                  (result << 6) + (result >> 2);
+        result ^= hash<size_t>{}(signature.else_handle) + 0x9e3779b9 +
+                  (result << 6) + (result >> 2);
+        return result;
+    }
 };
 
 long checked_add(long left, long right, const string &label) {
@@ -55,6 +78,92 @@ long checked_add(long left, long right, const string &label) {
         ABORT("WBH " + label + " overflow.");
     }
     return left + right;
+}
+
+long count_reduced_bucket_nodes(
+    const vector<DdNode *> &nodes,
+    const vector<pair<size_t, size_t>> &child_ids,
+    const vector<size_t> &ancestor_epochs, size_t epoch, size_t terminal_id,
+    long ancestor_count, vector<size_t> &memo_epochs,
+    vector<size_t> &memo_handles) {
+    // Synthetic signed handles use bit 0 as complement polarity.  Handle 0 is
+    // the regular BDD one terminal and handle 1 is BDD zero, matching CUDD.
+    const size_t bdd_one = 0;
+    const size_t bdd_zero = 1;
+    unordered_map<ReducedBddSignature, size_t, ReducedBddSignatureHash>
+        unique_nodes;
+    unique_nodes.reserve(static_cast<size_t>(ancestor_count));
+    vector<ReducedBddSignature> reduced_nodes;
+    reduced_nodes.reserve(static_cast<size_t>(ancestor_count));
+
+    auto make_node = [&](unsigned int index, size_t then_handle,
+                         size_t else_handle) {
+        if (then_handle == else_handle) {
+            return then_handle;
+        }
+        const size_t complement = then_handle & 1U;
+        if (complement) {
+            then_handle ^= 1U;
+            else_handle ^= 1U;
+        }
+        ReducedBddSignature signature{index, then_handle, else_handle};
+        auto [it, inserted] =
+            unique_nodes.emplace(signature, reduced_nodes.size() + 1);
+        if (inserted) {
+            reduced_nodes.push_back(signature);
+        }
+        if (it->second > numeric_limits<size_t>::max() / 2) {
+            ABORT("WBH reduced bucket signature handle overflow.");
+        }
+        return (it->second << 1U) | complement;
+    };
+
+    auto reduce_node = [&](auto &self, size_t node_id) -> size_t {
+        if (ancestor_epochs[node_id] != epoch) {
+            return bdd_zero;
+        }
+        if (memo_epochs[node_id] == epoch) {
+            return memo_handles[node_id];
+        }
+        DdNode *node = nodes[node_id];
+        size_t handle;
+        if (Cudd_IsConstant(node)) {
+            handle = node_id == terminal_id ? bdd_one : bdd_zero;
+        } else {
+            const auto [then_id, else_id] = child_ids[node_id];
+            if (then_id >= nodes.size() || else_id >= nodes.size()) {
+                ABORT("WBH reduced bucket signature has an invalid child.");
+            }
+            handle = make_node(
+                Cudd_NodeReadIndex(node), self(self, then_id),
+                self(self, else_id));
+        }
+        memo_epochs[node_id] = epoch;
+        memo_handles[node_id] = handle;
+        return handle;
+    };
+
+    const size_t root_handle = reduce_node(reduce_node, 0);
+    if (root_handle == bdd_zero) {
+        ABORT("WBH active terminal reduced to an empty signature bucket.");
+    }
+
+    long count = 0;
+    vector<unsigned char> reached(reduced_nodes.size() + 1, 0);
+    vector<size_t> stack{root_handle >> 1U};
+    while (!stack.empty()) {
+        const size_t node_id = stack.back();
+        stack.pop_back();
+        if (node_id == 0 || reached[node_id]) {
+            continue;
+        }
+        reached[node_id] = 1;
+        count = checked_add(count, 1, "partition-audit effort");
+        const ReducedBddSignature &signature = reduced_nodes[node_id - 1];
+        stack.push_back(signature.then_handle >> 1U);
+        stack.push_back(signature.else_handle >> 1U);
+    }
+    return count;
 }
 
 vector<int> validate_heuristic_terminals(const ADD &heuristic) {
@@ -198,11 +307,14 @@ MaskedLayerStats compute_masked_layer_stats(
     // O(D) auxiliary memory instead of materializing a value set per node.
     unordered_map<DdNode *, size_t> node_ids;
     vector<DdNode *> nodes;
+    const size_t invalid_node_id = numeric_limits<size_t>::max();
+    vector<pair<size_t, size_t>> child_ids;
     vector<pair<size_t, size_t>> parent_edges;
     auto add_node = [&](DdNode *node) {
         auto [it, inserted] = node_ids.emplace(node, nodes.size());
         if (inserted) {
             nodes.push_back(node);
+            child_ids.emplace_back(invalid_node_id, invalid_node_id);
         }
         return it->second;
     };
@@ -227,6 +339,7 @@ MaskedLayerStats compute_masked_layer_stats(
         }
         const size_t then_id = add_node(then_node);
         const size_t else_id = add_node(else_node);
+        child_ids[node_id] = {then_id, else_id};
         parent_edges.emplace_back(then_id, node_id);
         parent_edges.emplace_back(else_id, node_id);
         add_nodes = checked_add(add_nodes, 1, "masked ADD node count");
@@ -255,6 +368,11 @@ MaskedLayerStats compute_masked_layer_stats(
         ABORT("WBH masked profile active-value count overflow.");
     }
     const int active_values = static_cast<int>(active_terminal_ids.size());
+    sort(
+        active_terminal_ids.begin(), active_terminal_ids.end(),
+        [&](size_t left, size_t right) {
+            return Cudd_V(nodes[left]) < Cudd_V(nodes[right]);
+        });
     vector<int> active_value_list;
     active_value_list.reserve(active_terminal_ids.size());
     for (size_t terminal_id : active_terminal_ids) {
@@ -266,7 +384,6 @@ MaskedLayerStats compute_masked_layer_stats(
         }
         active_value_list.push_back(static_cast<int>(value));
     }
-    sort(active_value_list.begin(), active_value_list.end());
 
     long incidence = 0;
     vector<size_t> seen(nodes.size(), 0);
@@ -317,16 +434,47 @@ MaskedLayerStats compute_masked_layer_stats(
     const double event_masked_seconds = masked_timer();
     utils::Timer partition_timer;
     long partition_audit_effort = 0;
-    for (size_t terminal_id : active_terminal_ids) {
-        DdNode *terminal = nodes[terminal_id];
-        const double value = Cudd_V(terminal);
-        BDD bucket = layer * heuristic.BddInterval(value, value);
-        if (bucket.IsZero()) {
-            ABORT("WBH active masked terminal has an empty shadow bucket.");
+    vector<long> partition_bucket_efforts;
+    partition_bucket_efforts.reserve(active_terminal_ids.size());
+    if (active_terminal_ids.size() == 1) {
+        // With one active value, its characteristic bucket is exactly layer.
+        partition_audit_effort = max(0, layer.nodeCount() - 1);
+        partition_bucket_efforts.push_back(partition_audit_effort);
+    } else {
+        vector<size_t> memo_epochs(nodes.size(), 0);
+        vector<size_t> memo_handles(nodes.size(), 0);
+        for (size_t terminal_id : active_terminal_ids) {
+            if (epoch == numeric_limits<size_t>::max()) {
+                ABORT("WBH reduced bucket traversal epoch overflow.");
+            }
+            ++epoch;
+            long ancestor_count = 0;
+            ancestor_stack.push_back(terminal_id);
+            while (!ancestor_stack.empty()) {
+                const size_t node_id = ancestor_stack.back();
+                ancestor_stack.pop_back();
+                if (seen[node_id] == epoch) {
+                    continue;
+                }
+                seen[node_id] = epoch;
+                if (!Cudd_IsConstant(nodes[node_id])) {
+                    ancestor_count = checked_add(
+                        ancestor_count, 1,
+                        "reduced bucket ancestor count");
+                }
+                for (size_t position = parent_offsets[node_id];
+                     position < parent_offsets[node_id + 1]; ++position) {
+                    ancestor_stack.push_back(parent_ids[position]);
+                }
+            }
+            const long bucket_effort = count_reduced_bucket_nodes(
+                nodes, child_ids, seen, epoch, terminal_id, ancestor_count,
+                memo_epochs, memo_handles);
+            partition_bucket_efforts.push_back(bucket_effort);
+            partition_audit_effort = checked_add(
+                partition_audit_effort, bucket_effort,
+                "partition-audit effort");
         }
-        partition_audit_effort = checked_add(
-            partition_audit_effort, max(0, bucket.nodeCount() - 1),
-            "partition-audit effort");
     }
     if (partition_audit_effort > incidence) {
         ABORT(
@@ -336,7 +484,8 @@ MaskedLayerStats compute_masked_layer_stats(
     return {
         add_nodes, active_values, move(active_value_list), bottom_reachable,
         move(masked_profile), cofactor_sum, incidence,
-        partition_audit_effort, event_masked_seconds, partition_timer()};
+        partition_audit_effort, move(partition_bucket_efforts),
+        event_masked_seconds, partition_timer()};
 }
 
 DdNode *advance_bdd_residual(
@@ -626,9 +775,31 @@ void WbhProfile::run_masked_self_test(SymVariables *vars) {
         vector<long> joint = compute_joint_profile(
             dd, layer, heuristic, state_indices, state_levels);
         vector<int> values = validate_heuristic_terminals(heuristic);
-        return compute_masked_layer_stats(
+        MaskedLayerStats stats = compute_masked_layer_stats(
             vars, layer, heuristic, values, state_indices, state_levels,
             joint);
+        ADD masked = layer.Add().Ite(heuristic, vars->constant(-1));
+        vector<long> materialized_efforts;
+        long materialized_sum = 0;
+        for (int value : stats.active_values) {
+            BDD bucket = masked.BddInterval(value, value);
+            if (bucket.IsZero()) {
+                ABORT(
+                    "WBH masked self-test materialized an empty active bucket.");
+            }
+            const long effort = max(0, bucket.nodeCount() - 1);
+            materialized_efforts.push_back(effort);
+            materialized_sum = checked_add(
+                materialized_sum, effort,
+                "self-test materialized partition effort");
+        }
+        if (materialized_efforts != stats.partition_bucket_efforts ||
+            materialized_sum != stats.partition_audit_effort) {
+            ABORT(
+                "WBH reduced bucket signatures disagree with materialized "
+                "self-test buckets.");
+        }
+        return stats;
     };
 
     MaskedLayerStats parity = measure(x0 ^ x1, zero);
@@ -679,8 +850,59 @@ void WbhProfile::run_masked_self_test(SymVariables *vars) {
             support_variant.partition_audit_effort) {
         ABORT("WBH masked self-test failed support invariance.");
     }
+
+    // Exercise constant-heuristic bucket extraction from a larger masked ADD
+    // after creating many short-lived cubes.  The hidden-weighted-bit layer is
+    // nonempty and nontotal, and is deliberately expensive for ordered DDs.
+    const size_t pressure_bits = min<size_t>(12, state_indices.size());
+    const unsigned int assignment_count = 1U << pressure_bits;
+    BDD pressure_layer = vars->zeroBDD();
+    for (unsigned int assignment = 0; assignment < assignment_count;
+         ++assignment) {
+        unsigned int value = assignment;
+        unsigned int weight = 0;
+        while (value) {
+            weight += value & 1U;
+            value >>= 1U;
+        }
+        if (weight == 0 || !(assignment & (1U << (weight - 1)))) {
+            continue;
+        }
+        BDD cube = vars->oneBDD();
+        for (size_t bit = 0; bit < pressure_bits; ++bit) {
+            BDD variable = vars->getCudd()->bddVar(state_indices[bit]);
+            cube *= (assignment & (1U << bit)) ? variable : !variable;
+        }
+        pressure_layer += cube;
+    }
+    const long pressure_nodes = max(0, pressure_layer.nodeCount() - 1);
+    if (pressure_layer.IsZero() || (!pressure_layer).IsZero() ||
+        (pressure_bits >= 8 && pressure_nodes < 32)) {
+        ABORT(
+            "WBH masked self-test did not build a pressured nontrivial layer.");
+    }
+    MaskedLayerStats pressure = measure(pressure_layer, zero);
+    if (pressure.active_values != vector<int>{0} ||
+        pressure.bottom_reachable != true ||
+        pressure.partition_audit_effort != pressure_nodes) {
+        ABORT("WBH masked self-test failed pressured constant extraction.");
+    }
+
+    ADD pressure_heuristic = zero;
+    for (size_t bit = 0; bit < min<size_t>(3, pressure_bits); ++bit) {
+        pressure_heuristic +=
+            vars->getCudd()->bddVar(state_indices[bit]).Add() *
+            vars->constant(1U << bit);
+    }
+    MaskedLayerStats pressure_multivalue =
+        measure(pressure_layer, pressure_heuristic);
+    if (pressure_multivalue.active_values.size() < 2 ||
+        pressure_multivalue.partition_bucket_efforts.size() !=
+            pressure_multivalue.active_values.size()) {
+        ABORT("WBH masked self-test failed multivalue signature extraction.");
+    }
     verify_variable_order(vars);
-    cout << "WBH masked terminal-incidence self-test passed (5 cases)."
+    cout << "WBH masked terminal-incidence self-test passed (7 cases)."
          << endl;
 }
 
@@ -768,7 +990,8 @@ void WbhProfile::prepare_blind_layer(
     const double event_cofactor_seconds = cofactor_timer();
     vector<long> joint_profile;
     double event_joint_cofactor_seconds = 0;
-    MaskedLayerStats masked_stats{0, 0, {}, false, {}, 0, 0, 0, 0, 0};
+    MaskedLayerStats masked_stats{
+        0, 0, {}, false, {}, 0, 0, 0, {}, 0, 0};
     if (heuristic_written) {
         utils::Timer joint_cofactor_timer;
         joint_profile = compute_joint_profile(
