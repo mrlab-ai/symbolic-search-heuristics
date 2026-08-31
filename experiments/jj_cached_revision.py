@@ -51,6 +51,7 @@ def _run_jj(repo: Path, args: list[str]) -> bytes:
         completed = subprocess.run(
             command,
             check=True,
+            cwd=repo,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
