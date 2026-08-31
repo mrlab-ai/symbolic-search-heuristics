@@ -8,8 +8,10 @@ import unittest
 from fractions import Fraction
 
 import analyze_pdb_profile_joint_seed_validation as Analysis
+import audit_pdb_profile_joint_seed_validation as Audit
 import exp_pdb_profile_joint_seed_validation as E
 import pdb_profile_joint_seed_validation_protocol as P
+import recover_pdb_profile_joint_seed_validation as Recovery
 from test_pdb_profile_order_intervention import OrderInterventionTest
 
 
@@ -35,6 +37,24 @@ class JointSeedValidationTest(unittest.TestCase):
         self.assertEqual(E.Base.EXPECTED_ARRAY_TASKS, 842)
         self.assertEqual(E.Base.SCHEDULER_TIME_LIMIT, "00:30:00")
         E.Base.self_test()
+
+    def test_audit_and_recovery_pin_the_unthrottled_launch(self):
+        Audit.configure()
+        receipt = Audit.Audit.load_launch_receipt()
+        self.assertEqual(receipt["job_id"], "1812576")
+        self.assertEqual(receipt["partition"], "fat")
+        self.assertEqual(receipt["array_throttle"], 0)
+        Recovery.configure()
+        self.assertEqual(
+            Recovery.Recovery.RECOVERY_SCHEMA,
+            Audit.Audit.RECOVERY_RECEIPT_SCHEMA,
+        )
+        cells = [
+            cell
+            for task in range(1, E.Base.EXPECTED_ARRAY_TASKS + 1)
+            for cell in Recovery.Recovery._task_cells(task)
+        ]
+        self.assertEqual(cells, list(range(1, P.CELL_COUNT + 1)))
 
     def test_group_requires_semantically_identical_seed_cells(self):
         task = ("d", "p")
