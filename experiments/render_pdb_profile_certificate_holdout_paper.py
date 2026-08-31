@@ -208,8 +208,18 @@ def validate_primary(data):
         raise RenderError("mechanism gates contradict the frozen analysis")
 
     contrasts = _mapping(data.get("selector_contrasts"), "selector contrasts")
+    expected_contrasts = {
+        "matched_width_vs_add",
+        "cap_width_vs_exact_width",
+        "constrained_vs_unconstrained",
+        "selector_vs_profiled_blind",
+    }
+    if set(contrasts) != expected_contrasts:
+        raise RenderError("selector contrast set changed")
     width_add = contrasts.get("matched_width_vs_add")
     cap_exact = contrasts.get("cap_width_vs_exact_width")
+    constrained = contrasts.get("constrained_vs_unconstrained")
+    selector_blind = contrasts.get("selector_vs_profiled_blind")
     if not isinstance(width_add, list) or len(width_add) != len(
         Protocol.Source.MATCHED_BUDGETS
     ):
@@ -218,6 +228,10 @@ def validate_primary(data):
         Protocol.Source.MATCHED_BUDGETS
     ):
         raise RenderError("cap/exact contrast grid changed")
+    if not isinstance(constrained, list) or len(constrained) != 15:
+        raise RenderError("constrained/unconstrained contrast grid changed")
+    if not isinstance(selector_blind, list) or len(selector_blind) != 16:
+        raise RenderError("selector/blind contrast grid changed")
     for (k, u), item in zip(Protocol.Source.MATCHED_BUDGETS, width_add):
         _validate_contrast(
             item,
@@ -231,6 +245,27 @@ def validate_primary(data):
             "pdb_cap_width_k{}".format(k),
             "pdb_exact_k{}".format(k),
             "cap/exact K={}".format(k),
+        )
+    constrained_index = 0
+    for k, u in Protocol.Source.MATCHED_BUDGETS:
+        for label in (
+            "pdb_exact_k{}".format(k),
+            "pdb_cap_width_k{}".format(k),
+            "pdb_cap_add_u{}".format(u),
+        ):
+            _validate_contrast(
+                constrained[constrained_index],
+                label,
+                "pdb_exact_unconstrained",
+                "constrained/unconstrained {}".format(label),
+            )
+            constrained_index += 1
+    for label, item in zip(Protocol.LABELS[1:], selector_blind):
+        _validate_contrast(
+            item,
+            label,
+            "blind_fw_profiled",
+            "selector/blind {}".format(label),
         )
     expected_selector_gates = Primary.selector_gates(contrasts)
     if data.get("selector_gates") != expected_selector_gates:
@@ -302,6 +337,34 @@ def _pooled_ratio(contrasts):
     if reference <= 0:
         raise RenderError("selector pooled effort denominator is zero")
     return Fraction(candidate, reference)
+
+
+def _coverage_delta(contrasts):
+    return sum(
+        item["coverage"]["candidate_minus_reference"]
+        for item in contrasts
+    )
+
+
+def _eligible_pairs(contrasts):
+    return sum(
+        item["conditional_effort"]["eligible_pairs"]
+        for item in contrasts
+    )
+
+
+def _selector_stress_rows(groups):
+    rows = []
+    for label, contrasts in groups:
+        rows.append(
+            "  {} & {} & {:+d} & {} \\\\".format(
+                label,
+                Common._decimal(_pooled_ratio(contrasts)),
+                _coverage_delta(contrasts),
+                _eligible_pairs(contrasts),
+            )
+        )
+    return "%\n" + "\n".join(rows)
 
 
 def _combined_selector_rows(width_add, cap_exact):
@@ -379,6 +442,24 @@ def render(primary, audit, primary_digest, audit_digest):
     contrasts = primary["selector_contrasts"]
     width_add = contrasts["matched_width_vs_add"]
     cap_exact = contrasts["cap_width_vs_exact_width"]
+    constrained = contrasts["constrained_vs_unconstrained"]
+    selector_blind = contrasts["selector_vs_profiled_blind"]
+    cap_unconstrained = [
+        item for item in constrained
+        if item["candidate"].startswith("pdb_cap_width_k")
+    ]
+    cap_blind = [
+        item for item in selector_blind
+        if item["candidate"].startswith("pdb_cap_width_k")
+    ]
+    if len(cap_unconstrained) != 5 or len(cap_blind) != 5:
+        raise RenderError("cap-aware selector stress-test grid changed")
+    selector_stress_groups = (
+        ("All constrained/unconstrained", constrained),
+        ("Cap width/unconstrained", cap_unconstrained),
+        ("All heuristic selectors/blind", selector_blind),
+        ("Cap width/blind", cap_blind),
+    )
     mechanism_gates = primary["mechanism_gates"]
     selector_gates = primary["selector_gates"]
     audit_gates = audit["decision_gates"]
@@ -482,13 +563,65 @@ def render(primary, audit, primary_digest, audit_digest):
         ),
         Common._macro(
             "HoldoutCapExactCoverageDelta",
-            str(sum(item["coverage"]["candidate_minus_reference"] for item in cap_exact)),
+            str(_coverage_delta(cap_exact)),
+        ),
+        Common._macro(
+            "HoldoutConstrainedUnconstrainedPooledRatio",
+            Common._decimal(_pooled_ratio(constrained)),
+        ),
+        Common._macro(
+            "HoldoutConstrainedUnconstrainedCoverageDelta",
+            str(_coverage_delta(constrained)),
+        ),
+        Common._macro(
+            "HoldoutConstrainedUnconstrainedPairs",
+            str(_eligible_pairs(constrained)),
+        ),
+        Common._macro(
+            "HoldoutCapUnconstrainedPooledRatio",
+            Common._decimal(_pooled_ratio(cap_unconstrained)),
+        ),
+        Common._macro(
+            "HoldoutCapUnconstrainedCoverageDelta",
+            str(_coverage_delta(cap_unconstrained)),
+        ),
+        Common._macro(
+            "HoldoutCapUnconstrainedPairs",
+            str(_eligible_pairs(cap_unconstrained)),
+        ),
+        Common._macro(
+            "HoldoutAllSelectorsBlindPooledRatio",
+            Common._decimal(_pooled_ratio(selector_blind)),
+        ),
+        Common._macro(
+            "HoldoutAllSelectorsBlindCoverageDelta",
+            str(_coverage_delta(selector_blind)),
+        ),
+        Common._macro(
+            "HoldoutAllSelectorsBlindPairs",
+            str(_eligible_pairs(selector_blind)),
+        ),
+        Common._macro(
+            "HoldoutCapBlindPooledRatio",
+            Common._decimal(_pooled_ratio(cap_blind)),
+        ),
+        Common._macro(
+            "HoldoutCapBlindCoverageDelta",
+            str(_coverage_delta(cap_blind)),
+        ),
+        Common._macro(
+            "HoldoutCapBlindPairs",
+            str(_eligible_pairs(cap_blind)),
         ),
         Common._macro("HoldoutTwoEffectRows", two_effect_rows),
         Common._macro("HoldoutRepresentationRows", representation_rows),
         Common._macro("HoldoutAbsoluteRows", absolute_rows),
         Common._macro(
             "HoldoutSelectorRows", _combined_selector_rows(width_add, cap_exact)
+        ),
+        Common._macro(
+            "HoldoutSelectorStressRows",
+            _selector_stress_rows(selector_stress_groups),
         ),
         Common._macro("HoldoutWidthAddRows", _selector_rows(width_add, True)),
         Common._macro("HoldoutCapExactRows", _selector_rows(cap_exact, False)),

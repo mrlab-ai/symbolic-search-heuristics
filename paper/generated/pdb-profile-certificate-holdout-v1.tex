@@ -90,6 +90,18 @@
 \newcommand{\HoldoutCapExactPooledRatio}{0.971}
 \newcommand{\HoldoutWidthAddCoverageDelta}{3}
 \newcommand{\HoldoutCapExactCoverageDelta}{10}
+\newcommand{\HoldoutConstrainedUnconstrainedPooledRatio}{0.788}
+\newcommand{\HoldoutConstrainedUnconstrainedCoverageDelta}{68}
+\newcommand{\HoldoutConstrainedUnconstrainedPairs}{6633}
+\newcommand{\HoldoutCapUnconstrainedPooledRatio}{0.774}
+\newcommand{\HoldoutCapUnconstrainedCoverageDelta}{27}
+\newcommand{\HoldoutCapUnconstrainedPairs}{2215}
+\newcommand{\HoldoutAllSelectorsBlindPooledRatio}{1.154}
+\newcommand{\HoldoutAllSelectorsBlindCoverageDelta}{-60}
+\newcommand{\HoldoutAllSelectorsBlindPairs}{7207}
+\newcommand{\HoldoutCapBlindPooledRatio}{1.113}
+\newcommand{\HoldoutCapBlindCoverageDelta}{-13}
+\newcommand{\HoldoutCapBlindPairs}{2261}
 \newcommand{\HoldoutTwoEffectRows}{%
   Fragmentation $\mathit{frag}$ & 0.253 & 0.813 \\
   Expanded states & 0.965 & 0.078 \\
@@ -108,6 +120,11 @@
   8 & 55 & 2 & 0.906 & 8 & 0.875 \\
   16 & 100 & -11 & 1.116 & -4 & 1.044 \\
   32 & 204 & 3 & 0.984 & 6 & 0.967 \\}
+\newcommand{\HoldoutSelectorStressRows}{%
+  All constrained/unconstrained & 0.788 & +68 & 6633 \\
+  Cap width/unconstrained & 0.774 & +27 & 2215 \\
+  All heuristic selectors/blind & 1.154 & -60 & 7207 \\
+  Cap width/blind & 1.113 & -13 & 2261 \\}
 \newcommand{\HoldoutWidthAddRows}{%
   2 & 8 & 0 & 0.929 & 454 \\
   4 & 29 & 9 & 0.890 & 450 \\

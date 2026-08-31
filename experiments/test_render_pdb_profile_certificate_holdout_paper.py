@@ -41,6 +41,23 @@ class CertificateHoldoutRendererTest(unittest.TestCase):
         text = raw.decode("ascii")
         self.assertIn("\\newcommand{\\HoldoutTwoEffectRows}", text)
         self.assertIn("\\newcommand{\\HoldoutWidthAddRows}", text)
+        self.assertIn(
+            r"\newcommand{\HoldoutConstrainedUnconstrainedPooledRatio}{0.788}",
+            text,
+        )
+        self.assertIn(
+            r"\newcommand{\HoldoutCapUnconstrainedPooledRatio}{0.774}",
+            text,
+        )
+        self.assertIn(
+            r"\newcommand{\HoldoutAllSelectorsBlindPooledRatio}{1.154}",
+            text,
+        )
+        self.assertIn(
+            r"\newcommand{\HoldoutCapBlindPooledRatio}{1.113}",
+            text,
+        )
+        self.assertIn("\\newcommand{\\HoldoutSelectorStressRows}", text)
         self.assertIn(self.primary_digest, text)
         self.assertIn(self.audit_digest, text)
 
