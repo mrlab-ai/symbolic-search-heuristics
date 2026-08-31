@@ -6048,7 +6048,20 @@ def self_test() -> None:
             "execution_files": [["/tmp/source.py", "b" * 64, 1]],
         },
     }
-    text = runner_text([1, 25], "a" * 16, 1, fake_manifest)
+    # The production run tree may have been replaced by its verified archive
+    # by the time submission checks are repeated.  Exercise path confinement
+    # against a synthetic real-directory tree instead of depending on those
+    # retained raw bytes.
+    with tempfile.TemporaryDirectory() as directory:
+        synthetic_data = Path(directory) / "experiment-data"
+        for run_id in (1, 25):
+            (synthetic_data / run_relative(run_id)).mkdir(parents=True)
+        with mock.patch.object(
+            os.sys.modules[__name__], "DATA_DIR", synthetic_data
+        ):
+            text = runner_text([1, 25], "a" * 16, 1, fake_manifest)
+            assert str(_safe_run_root(1)) in text
+            assert str(_safe_run_root(25)) in text
     assert "#SBATCH --array=1-2%{}".format(E.ARRAY_THROTTLE) in text
     assert text.count('"$PYTHON" run > driver.log') == 1
     assert "#SBATCH --no-requeue" in text
@@ -6074,7 +6087,6 @@ def self_test() -> None:
     assert "--export=PATH" in _submission_argv(
         submission_wave, "c" * 64, use_amendment=False
     )
-    assert str(_safe_run_root(1)) in text and str(_safe_run_root(25)) in text
     subprocess.run(
         ["bash", "-n"], input=text, text=True, check=True, capture_output=True
     )
