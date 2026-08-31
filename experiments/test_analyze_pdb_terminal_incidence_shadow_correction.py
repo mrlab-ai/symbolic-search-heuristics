@@ -137,6 +137,10 @@ class TerminalIncidenceCorrectionTest(unittest.TestCase):
             Correction._excluded_outcome_provenance(),
         )
         self.assertEqual(
+            provenance["requested_mode_derivation"],
+            Correction._requested_mode_provenance(),
+        )
+        self.assertEqual(
             provenance["original_analyzer_sha256"],
             Correction.ORIGINAL_ANALYZER_SHA256,
         )
@@ -355,6 +359,151 @@ class TerminalIncidenceCorrectionTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "analysis failure"):
                 Correction.analyze_records(copy.deepcopy(self.records))
         self.assertIs(Original.OUTCOME_SPECS, original_table)
+
+    @staticmethod
+    def _direct_identity(label, mode=None, requested=None):
+        mode = Original.REQUESTED_MODES[label] if mode is None else mode
+        pattern = [1, 2]
+        pattern_sha = Original._sha(pattern)
+        value_cap = 8 if label == P.INTERVENTION_LABEL else None
+        record = {
+            "algorithm": label,
+            "construction_completed": True,
+            "pdb_fixed_pattern_present": True,
+            "pdb_fixed_pattern_certified": True,
+            "pdb_fixed_pattern": pattern,
+            "pdb_fixed_pattern_final": {
+                "mode": mode,
+                "state_budget": 100000,
+                "pattern": pattern,
+                "pattern_sha256": pattern_sha,
+                "value_cap": value_cap,
+                "pattern_size": 2,
+                "num_values": 3,
+                "cofactor_width": 3,
+                "width_upper_bound": 7,
+            },
+            "pdb_fixed_pattern_mode": mode,
+            "pdb_fixed_pattern_requested_mode": requested,
+            "pdb_fixed_pattern_observed_mode": mode,
+            "pdb_fixed_pattern_fallback": (
+                mode == "cegar_fallback_goal_fill"
+            ),
+            "pdb_fixed_pattern_validation_error": None,
+            "pdb_fixed_pattern_size": 2,
+            "pdb_fixed_pattern_sha256": pattern_sha,
+            "add_nodes": 4,
+            "num_terminals": 3,
+            "num_values": 3,
+            "width_upper_bound": 7,
+        }
+        heuristic = {
+            "add_nodes": 4,
+            "num_terminals": 3,
+            "num_values": 3,
+            "cofactor_width": 3,
+            "cofactor_counts": [1, 2, 3],
+        }
+        return record, heuristic
+
+    def test_requested_mode_reconstruction_matches_manual_correction(self):
+        cases = [(label, None) for label in P.LABELS]
+        cases.append(("pdb_cegar_shadow", "cegar_fallback_goal_fill"))
+        for label, mode in cases:
+            with self.subTest(label=label, mode=mode):
+                record, heuristic = self._direct_identity(label, mode=mode)
+                before = copy.deepcopy(record)
+                manual = dict(record)
+                manual["pdb_fixed_pattern_requested_mode"] = (
+                    Original.REQUESTED_MODES[label]
+                )
+                expected = Correction._FROZEN_SEMANTIC_IDENTITY(
+                    manual, label, heuristic
+                )
+                actual = Correction._semantic_identity_with_requested_mode(
+                    record, label, heuristic
+                )
+                self.assertEqual(actual, expected)
+                self.assertEqual(record, before)
+
+    def test_requested_mode_correction_fails_closed(self):
+        label = "pdb_goal_fill_shadow"
+        record, heuristic = self._direct_identity(label)
+        missing = dict(record)
+        del missing["pdb_fixed_pattern_requested_mode"]
+        with self.assertRaisesRegex(
+            Correction.CorrectionError, "lacks requested-mode"
+        ):
+            Correction._semantic_identity_with_requested_mode(
+                missing, label, heuristic
+            )
+        with self.assertRaisesRegex(
+            Correction.CorrectionError, "algorithm and label disagree"
+        ):
+            Correction._semantic_identity_with_requested_mode(
+                record, "pdb_goal_prefix_shadow", heuristic
+            )
+        unknown = dict(record)
+        unknown["algorithm"] = "unknown"
+        with self.assertRaisesRegex(
+            Correction.CorrectionError, "unknown label"
+        ):
+            Correction._semantic_identity_with_requested_mode(
+                unknown, "unknown", heuristic
+            )
+        wrong = dict(record)
+        wrong["pdb_fixed_pattern_requested_mode"] = "bdd_prefix"
+        with self.assertRaisesRegex(
+            Original.TerminalIncidenceAnalysisError,
+            "invalid direct identity",
+        ):
+            Correction._semantic_identity_with_requested_mode(
+                wrong, label, heuristic
+            )
+        correct = dict(record)
+        correct["pdb_fixed_pattern_requested_mode"] = (
+            Original.REQUESTED_MODES[label]
+        )
+        before = copy.deepcopy(correct)
+        self.assertEqual(
+            Correction._semantic_identity_with_requested_mode(
+                correct, label, heuristic
+            ),
+            Correction._FROZEN_SEMANTIC_IDENTITY(
+                correct, label, heuristic
+            ),
+        )
+        self.assertEqual(correct, before)
+        other_conjunct = dict(record)
+        other_conjunct["pdb_fixed_pattern_final"] = dict(
+            record["pdb_fixed_pattern_final"], state_budget=99999
+        )
+        with self.assertRaisesRegex(
+            Original.TerminalIncidenceAnalysisError,
+            "invalid direct identity",
+        ):
+            Correction._semantic_identity_with_requested_mode(
+                other_conjunct, label, heuristic
+            )
+
+    def test_semantic_identity_entry_point_restores_after_failure(self):
+        original = Original._semantic_identity
+
+        def fail(_records):
+            self.assertIs(
+                Original._semantic_identity,
+                Correction._semantic_identity_with_requested_mode,
+            )
+            raise RuntimeError("semantic analysis failure")
+
+        with mock.patch.object(
+            Correction, "_FROZEN_ANALYZE_RECORDS", side_effect=fail
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError, "semantic analysis failure"
+            ):
+                Correction.analyze_records(copy.deepcopy(self.records))
+        self.assertIs(Original._semantic_identity, original)
 
     def test_nonregular_original_analyzer_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:

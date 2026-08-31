@@ -28,11 +28,11 @@ ORIGINAL_ANALYZER_SHA256 = (
     "9359210856f18692f146b403dc9878df2f59bc5ba33b13650a8bf30cd25c54ba"
 )
 CORRECTION_ID = (
-    "pdb-terminal-incidence-shadow-input-contract-correction-v2"
+    "pdb-terminal-incidence-shadow-input-contract-correction-v3"
 )
 CORRECTION_SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-shadow-analysis-correction/v2"
+    "pdb-terminal-incidence-shadow-analysis-correction/v3"
 )
 ATTESTATION_ALIASES = (
     ("domain_source_sha256", "domain_sha256"),
@@ -76,9 +76,12 @@ EXCLUDED_OUTCOME_CLASS = "excluded_terminal_error"
 
 _FROZEN_VALIDATE_MATRIX = Original.validate_matrix
 _FROZEN_VALIDATE_INTERVENTION_CELLS = Original._validate_intervention_cells
+_FROZEN_SEMANTIC_IDENTITY = Original._semantic_identity
 _FROZEN_ANALYZE_RECORDS = Original.analyze_records
 _FROZEN_OUTCOME_SPECS = Original.OUTCOME_SPECS
 _FROZEN_OUTCOME_SPECS_COPY = dict(Original.OUTCOME_SPECS)
+_FROZEN_REQUESTED_MODES = Original.REQUESTED_MODES
+_FROZEN_REQUESTED_MODES_COPY = dict(Original.REQUESTED_MODES)
 
 
 def _sha256_file(path: Path) -> str:
@@ -107,11 +110,18 @@ def _assert_original_analyzer() -> None:
         raise CorrectionError("loaded original analyzer path changed")
     if Original.P is not P:
         raise CorrectionError("original analyzer protocol module changed")
+    if Original._semantic_identity is not _FROZEN_SEMANTIC_IDENTITY:
+        raise CorrectionError("original semantic identity entry point changed")
     if (
         Original.OUTCOME_SPECS is not _FROZEN_OUTCOME_SPECS
         or Original.OUTCOME_SPECS != _FROZEN_OUTCOME_SPECS_COPY
     ):
         raise CorrectionError("original analyzer outcome table changed")
+    if (
+        Original.REQUESTED_MODES is not _FROZEN_REQUESTED_MODES
+        or Original.REQUESTED_MODES != _FROZEN_REQUESTED_MODES_COPY
+    ):
+        raise CorrectionError("original requested-mode table changed")
     if _sha256_file(ORIGINAL_ANALYZER_PATH) != ORIGINAL_ANALYZER_SHA256:
         raise CorrectionError("frozen original analyzer bytes changed")
 
@@ -121,6 +131,18 @@ def _excluded_outcome_provenance() -> list[dict]:
         {"planner_exit_code": code, **EXCLUDED_TERMINAL_OUTCOMES[code]}
         for code in sorted(EXCLUDED_TERMINAL_OUTCOMES)
     ]
+
+
+def _requested_mode_provenance() -> dict:
+    return {
+        "field": "pdb_fixed_pattern_requested_mode",
+        "derived_from": "algorithm",
+        "applied_only_when_original_value_is_null": True,
+        "mapping": {
+            label: _FROZEN_REQUESTED_MODES_COPY[label]
+            for label in sorted(_FROZEN_REQUESTED_MODES_COPY)
+        },
+    }
 
 
 def _validate_excluded_terminal_contract(records, labels) -> None:
@@ -322,6 +344,41 @@ def _corrected_validate_intervention_cells():
         )
 
 
+def _semantic_identity_with_requested_mode(record, label, heuristic):
+    field = "pdb_fixed_pattern_requested_mode"
+    if field not in record:
+        raise CorrectionError("direct identity lacks requested-mode field")
+    if record.get("algorithm") != label:
+        raise CorrectionError("direct identity algorithm and label disagree")
+    try:
+        expected = _FROZEN_REQUESTED_MODES_COPY[label]
+    except KeyError as err:
+        raise CorrectionError("direct identity has an unknown label") from err
+    actual = record[field]
+    if actual is None:
+        corrected = dict(record)
+        corrected[field] = expected
+        return _FROZEN_SEMANTIC_IDENTITY(corrected, label, heuristic)
+    return _FROZEN_SEMANTIC_IDENTITY(record, label, heuristic)
+
+
+@contextlib.contextmanager
+def _corrected_semantic_identity():
+    if Original._semantic_identity is not _FROZEN_SEMANTIC_IDENTITY:
+        raise CorrectionError("original semantic identity entry point changed")
+    Original._semantic_identity = _semantic_identity_with_requested_mode
+    try:
+        yield
+    finally:
+        changed = (
+            Original._semantic_identity
+            is not _semantic_identity_with_requested_mode
+        )
+        Original._semantic_identity = _FROZEN_SEMANTIC_IDENTITY
+        if changed:
+            raise CorrectionError("corrected semantic identity entry point changed")
+
+
 def analyze_records(records):
     _assert_original_analyzer()
     _validate_excluded_terminal_contract(records, set(P.PRIMARY_LABELS))
@@ -333,7 +390,8 @@ def analyze_records(records):
     with _extended_outcome_specs():
         with _corrected_validate_matrix():
             with _corrected_validate_intervention_cells():
-                result = _FROZEN_ANALYZE_RECORDS(records)
+                with _corrected_semantic_identity():
+                    result = _FROZEN_ANALYZE_RECORDS(records)
     _assert_original_analyzer()
     _require_regular_file(CORRECTION_WRAPPER_PATH, "analysis correction wrapper")
     if _sha256_file(CORRECTION_WRAPPER_PATH) != correction_sha256:
@@ -351,6 +409,7 @@ def analyze_records(records):
                 alias: source for alias, source in ATTESTATION_ALIASES
             },
             "excluded_terminal_outcomes": _excluded_outcome_provenance(),
+            "requested_mode_derivation": _requested_mode_provenance(),
             "original_analyzer_sha256": ORIGINAL_ANALYZER_SHA256,
             "original_attestation_sha256": P.COST_ATTESTATION_SHA256,
             "attestation_alias_view_sha256": attestation_alias_view_sha256,
