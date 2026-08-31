@@ -47,6 +47,7 @@ class SymVariables {
     const long cudd_init_cache_size; // Initial cache size
     const long cudd_init_available_memory; // Maximum available memory (bytes)
     const bool gamer_ordering;
+    const int gamer_ordering_seed;
     const bool dynamic_reordering;
 
     Cudd *manager; // manager associated with this symbolic search

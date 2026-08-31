@@ -15,7 +15,8 @@ namespace symbolic {
 // Returns a optimized variable ordering that reorders the variables
 // according to the standard causal graph criterion
 void InfluenceGraph::compute_gamer_ordering(
-    vector<int> &var_order, const shared_ptr<AbstractTask> &task) {
+    vector<int> &var_order, const shared_ptr<AbstractTask> &task,
+    int random_seed) {
     TaskProxy task_proxy(*task);
 
     const causal_graph::CausalGraph &cg = task_proxy.get_causal_graph();
@@ -26,7 +27,8 @@ void InfluenceGraph::compute_gamer_ordering(
         }
     }
 
-    InfluenceGraph ig_partitions(task_proxy.get_variables().size());
+    InfluenceGraph ig_partitions(
+        task_proxy.get_variables().size(), random_seed);
     for (size_t v = 0; v < task_proxy.get_variables().size(); v++) {
         for (int v2 : cg.get_successors(v)) {
             if ((int)v != v2) {
@@ -127,9 +129,8 @@ double InfluenceGraph::compute_function(const vector<int> &order) const {
     return totalDistance;
 }
 
-InfluenceGraph::InfluenceGraph(int num) {
-    // TODO(speckd): we need to randomize the seed here
-    rng = make_shared<utils::RandomNumberGenerator>(0);
+InfluenceGraph::InfluenceGraph(int num, int random_seed) {
+    rng = make_shared<utils::RandomNumberGenerator>(random_seed);
     influence_graph.resize(num);
     for (auto &i : influence_graph) {
         i.resize(num, 0);

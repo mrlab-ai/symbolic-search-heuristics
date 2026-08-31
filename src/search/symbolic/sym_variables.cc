@@ -31,6 +31,7 @@ SymVariables::SymVariables(
       cudd_init_cache_size(16000000L),
       cudd_init_available_memory(0L),
       gamer_ordering(opts.get<bool>("gamer_ordering")),
+      gamer_ordering_seed(opts.get<int>("gamer_ordering_seed")),
       dynamic_reordering(opts.get<bool>("dynamic_reordering")),
       ax_comp(make_shared<SymAxiomCompilation>(this, task)) {
 }
@@ -38,7 +39,8 @@ SymVariables::SymVariables(
 void SymVariables::init() {
     vector<int> var_order;
     if (gamer_ordering) {
-        InfluenceGraph::compute_gamer_ordering(var_order, task);
+        InfluenceGraph::compute_gamer_ordering(
+            var_order, task, gamer_ordering_seed);
     } else {
         for (size_t i = 0; i < task_proxy.get_variables().size(); ++i) {
             var_order.push_back(i);
@@ -421,8 +423,12 @@ void SymVariables::print_options() const {
     utils::g_log << "CUDD Init: nodes=" << cudd_init_nodes
                  << " cache=" << cudd_init_cache_size
                  << " max_memory=" << cudd_init_available_memory << endl;
-    utils::g_log << "Variable Ordering: " << (gamer_ordering ? "gamer" : "fd")
-                 << endl;
+    utils::g_log << "Variable Ordering: "
+                 << (gamer_ordering ? "gamer" : "fd");
+    if (gamer_ordering) {
+        utils::g_log << " (seed " << gamer_ordering_seed << ")";
+    }
+    utils::g_log << endl;
     utils::g_log << "Dynamic reordering: "
                  << (dynamic_reordering ? "True" : "False") << endl;
 }
@@ -430,6 +436,9 @@ void SymVariables::print_options() const {
 void SymVariables::add_options_to_feature(plugins::Feature &feature) {
     feature.add_option<bool>(
         "gamer_ordering", "Use Gamer ordering optimization", "true");
+    feature.add_option<int>(
+        "gamer_ordering_seed",
+        "Random seed for Gamer ordering multi-start optimization", "0");
     feature.add_option<bool>(
         "dynamic_reordering", "Enable dynamic group sift reordering.", "false");
 }

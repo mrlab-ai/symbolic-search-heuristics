@@ -24,7 +24,7 @@ class InfluenceGraph {
     std::vector<int> randomize(const std::vector<int> &ordering) const;
 
 public:
-    InfluenceGraph(int num);
+    InfluenceGraph(int num, int random_seed = 0);
     void get_ordering(std::vector<int> &ordering) const;
     void optimize_variable_ordering_gamer(
         std::vector<int> &order, std::vector<int> &partition_begin,
@@ -36,7 +36,8 @@ public:
     }
 
     static void compute_gamer_ordering(
-        std::vector<int> &ordering, const std::shared_ptr<AbstractTask> &task);
+        std::vector<int> &ordering, const std::shared_ptr<AbstractTask> &task,
+        int random_seed = 0);
 };
 }
 
