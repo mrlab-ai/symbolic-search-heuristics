@@ -255,6 +255,46 @@ class ProfileParserTests(unittest.TestCase):
         self.assertFalse(parsed["complete"])
         self.assertIsNone(parsed["summary"])
 
+    def test_resource_exit_discards_only_a_torn_trailing_profile_line(self):
+        prefix = "\n".join(self.profile().splitlines()[:-1]) + "\n"
+        props = {"algorithm": "pdb_exact_k2", "planner_exit_code": 23}
+        Parser.parse_profile_log(prefix + '{"event":"layer', props)
+        self.assertTrue(props["wbh_profile_prefix_certified"])
+        self.assertFalse(props["wbh_profile_complete"])
+        self.assertTrue(props["wbh_profile_trailing_fragment_discarded"])
+
+        malformed = {"algorithm": "pdb_exact_k2", "planner_exit_code": 23}
+        Parser.parse_profile_log(prefix + '{"event":"layer"}\n', malformed)
+        self.assertFalse(malformed["wbh_profile_prefix_certified"])
+        self.assertFalse(
+            malformed["wbh_profile_trailing_fragment_discarded"]
+        )
+
+        duplicate = {"algorithm": "pdb_exact_k2", "planner_exit_code": 23}
+        Parser.parse_profile_log(
+            prefix + '{"event":"layer","event":"layer"}', duplicate
+        )
+        self.assertFalse(duplicate["wbh_profile_prefix_certified"])
+        self.assertFalse(
+            duplicate["wbh_profile_trailing_fragment_discarded"]
+        )
+
+        junk = {"algorithm": "pdb_exact_k2", "planner_exit_code": 23}
+        Parser.parse_profile_log(prefix + "not-json", junk)
+        self.assertFalse(junk["wbh_profile_prefix_certified"])
+        self.assertFalse(junk["wbh_profile_trailing_fragment_discarded"])
+
+        earlier_error = {
+            "algorithm": "pdb_exact_k2", "planner_exit_code": 23
+        }
+        Parser.parse_profile_log(
+            prefix + '{"x":???,"y":1e', earlier_error
+        )
+        self.assertFalse(earlier_error["wbh_profile_prefix_certified"])
+        self.assertFalse(
+            earlier_error["wbh_profile_trailing_fragment_discarded"]
+        )
+
     def test_missing_optional_profile_file_still_records_contract(self):
         props = {"algorithm": "pdb_exact_k8"}
         Parser.initialize_profile_contract("irrelevant run log", props)
@@ -1185,6 +1225,66 @@ class JjExporterTests(unittest.TestCase):
                 with self.assertRaisesRegex(JJ.JjCacheError, "symlink"):
                     JJ.export_revision(Path(directory), revision, destination)
             self.assertFalse(destination.exists())
+
+    def test_existing_cache_restores_build_mutated_tracked_source(self):
+        revision = "a" * 40
+        entry = JJ.TreeEntry("src/generated.in", "file", False)
+        original = b"pinned source\n"
+        manifest = [{
+            "path": entry.path,
+            "type": entry.file_type,
+            "executable": entry.executable,
+            "sha256": hashlib.sha256(original).hexdigest(),
+        }]
+        manifest_hash = hashlib.sha256(json.dumps(
+            manifest,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("ascii")).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache_root = root / "cache"
+            with mock.patch.object(
+                JJ, "resolve_pinned_commit", return_value=revision
+            ):
+                cached = JJ.JjCachedFastDownwardRevision(
+                    cache_root, root, revision, ["release_no_lp"]
+                )
+            source = cached.path / entry.path
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"mutated by build\n")
+            binary_dir = (
+                cached.path / "builds" / "release_no_lp" / "bin"
+            )
+            binary_dir.mkdir(parents=True)
+            downward = binary_dir / "downward"
+            preprocess = binary_dir / "preprocess"
+            downward.write_bytes(b"downward")
+            preprocess.write_bytes(b"preprocess")
+            sentinel = {
+                "protocol": JJ.EXPORT_PROTOCOL,
+                "revision": revision,
+                "tree_manifest_sha256": manifest_hash,
+                "build_options": ["release_no_lp"],
+                "downward_sha256": JJ.sha256_file(downward),
+                "preprocess_sha256": JJ.sha256_file(preprocess),
+            }
+            cached._sentinel().write_text(
+                json.dumps(sentinel, sort_keys=True, separators=(",", ":"))
+                + "\n",
+                encoding="ascii",
+            )
+            with (
+                mock.patch.object(
+                    JJ, "preflight_revision", return_value=(entry,)
+                ),
+                mock.patch.object(JJ, "_file_bytes", return_value=original),
+            ):
+                cached.cache()
+                self.assertEqual(cached.attest(), sentinel)
+            self.assertEqual(source.read_bytes(), original)
+            self.assertEqual(source.stat().st_mode & 0o111, 0)
 
 
 class SourceContractTests(unittest.TestCase):

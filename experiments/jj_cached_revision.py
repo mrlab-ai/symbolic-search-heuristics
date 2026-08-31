@@ -374,6 +374,12 @@ class JjCachedFastDownwardRevision:
         if self.path.exists():
             if not self._sentinel().is_file():
                 raise JjCacheError("existing revision cache lacks its sentinel")
+            # Some third-party build systems regenerate tracked Autotools
+            # inputs in place.  Normalize those generated changes back to the
+            # pinned commit before accepting or reusing an existing cache.
+            self._read_sentinel(self.path, verify_binaries=True)
+            self._restore_source_tree(self.path)
+            self.attest()
             return
         temporary = Path(
             tempfile.mkdtemp(prefix=".{}-".format(self.name), dir=self.revision_cache)
@@ -387,6 +393,7 @@ class JjCachedFastDownwardRevision:
             preprocess = source / "builds" / "release_no_lp" / "bin" / "preprocess"
             if not binary.is_file() or not preprocess.is_file():
                 raise JjCacheError("release_no_lp build did not create both binaries")
+            self._restore_source_tree(source)
             sentinel = {
                 "protocol": EXPORT_PROTOCOL,
                 "revision": self.local_rev,
@@ -411,9 +418,82 @@ class JjCachedFastDownwardRevision:
     def _sentinel_for(source: Path) -> Path:
         return source / "build_successful"
 
-    def attest(self) -> dict:
+    def _source_tree_digest(self, root: Path) -> str:
+        root = Path(root).resolve()
+        entries = preflight_revision(self.repo, self.local_rev)
+        manifest = []
+        for entry in entries:
+            target = root.joinpath(*PurePosixPath(entry.path).parts)
+            try:
+                info = target.lstat()
+            except OSError as err:
+                raise JjCacheError(
+                    "cached source tree is incomplete: {}".format(entry.path)
+                ) from err
+            if not stat.S_ISREG(info.st_mode) or target.is_symlink():
+                raise JjCacheError(
+                    "cached source has the wrong type: {}".format(entry.path)
+                )
+            executable = bool(info.st_mode & 0o111)
+            if executable != entry.executable:
+                raise JjCacheError(
+                    "cached source mode changed: {}".format(entry.path)
+                )
+            try:
+                payload_hash = sha256_file(target)
+            except OSError as err:
+                raise JjCacheError(
+                    "cannot hash cached source: {}".format(entry.path)
+                ) from err
+            manifest.append({
+                "path": entry.path,
+                "type": entry.file_type,
+                "executable": entry.executable,
+                "sha256": payload_hash,
+            })
+        raw = json.dumps(
+            manifest,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("ascii")
+        return hashlib.sha256(raw).hexdigest()
+
+    def _restore_source_tree(self, root: Path) -> None:
+        """Atomically restore every tracked source file from the pinned commit."""
+        root = Path(root).resolve()
+        for entry in preflight_revision(self.repo, self.local_rev):
+            target = root.joinpath(*PurePosixPath(entry.path).parts)
+            try:
+                target.parent.resolve().relative_to(root)
+            except (OSError, ValueError) as err:
+                raise JjCacheError(
+                    "cached source parent escapes: {}".format(entry.path)
+                ) from err
+            if target.parent.is_symlink():
+                raise JjCacheError(
+                    "cached source parent is a symlink: {}".format(entry.path)
+                )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            payload = _file_bytes(self.repo, self.local_rev, entry.path)
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=".jj-restore-", dir=target.parent
+            )
+            temporary = Path(temporary_name)
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(payload)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                temporary.chmod(0o755 if entry.executable else 0o644)
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    def _read_sentinel(self, path: Path, *, verify_binaries: bool) -> dict:
+        path = Path(path).resolve()
         try:
-            raw = self._sentinel().read_text(encoding="ascii")
+            raw = self._sentinel_for(path).read_text(encoding="ascii")
             value = json.loads(raw)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
             raise JjCacheError("cannot read revision-cache sentinel") from err
@@ -422,13 +502,47 @@ class JjCachedFastDownwardRevision:
             "revision": self.local_rev,
             "build_options": self.build_options,
         }
-        if not isinstance(value, dict) or any(value.get(k) != v for k, v in expected.items()):
-            raise JjCacheError("revision-cache sentinel identity changed")
-        binary = self.path / "builds" / "release_no_lp" / "bin" / "downward"
-        preprocess = self.path / "builds" / "release_no_lp" / "bin" / "preprocess"
         if (
-            value.get("downward_sha256") != sha256_file(binary)
-            or value.get("preprocess_sha256") != sha256_file(preprocess)
+            not isinstance(value, dict)
+            or set(value) != {
+                *expected,
+                "tree_manifest_sha256",
+                "downward_sha256",
+                "preprocess_sha256",
+            }
+            or any(value.get(key) != expected_value
+                   for key, expected_value in expected.items())
+            or any(
+                re.fullmatch(r"[0-9a-f]{64}", value.get(field, "")) is None
+                for field in (
+                    "tree_manifest_sha256",
+                    "downward_sha256",
+                    "preprocess_sha256",
+                )
+            )
         ):
-            raise JjCacheError("revision-cache binaries fail hash attestation")
+            raise JjCacheError("revision-cache sentinel identity changed")
+        if verify_binaries:
+            binary = path / "builds" / "release_no_lp" / "bin" / "downward"
+            preprocess = path / "builds" / "release_no_lp" / "bin" / "preprocess"
+            try:
+                binary_hash = sha256_file(binary)
+                preprocess_hash = sha256_file(preprocess)
+            except OSError as err:
+                raise JjCacheError("cannot hash revision-cache binaries") from err
+            if (
+                value["downward_sha256"] != binary_hash
+                or value["preprocess_sha256"] != preprocess_hash
+            ):
+                raise JjCacheError("revision-cache binaries fail hash attestation")
         return value
+
+    def attest_path(self, path: Path) -> dict:
+        path = Path(path).resolve()
+        value = self._read_sentinel(path, verify_binaries=True)
+        if value.get("tree_manifest_sha256") != self._source_tree_digest(path):
+            raise JjCacheError("revision-cache source tree fails hash attestation")
+        return value
+
+    def attest(self) -> dict:
+        return self.attest_path(self.path)

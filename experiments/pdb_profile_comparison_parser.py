@@ -135,6 +135,75 @@ def _load_json(text: str, label: str):
         raise ParseError("{} is invalid JSON: {}".format(label, err)) from err
 
 
+RESOURCE_EXIT_CODES = {1, 2, 3, 22, 23, 24}
+
+
+def _incomplete_json_fragment(fragment: str) -> bool:
+    """Return whether strict JSON parsing failed specifically at truncation."""
+    if not fragment.lstrip().startswith("{"):
+        return False
+
+    def reject_constant(token):
+        raise ParseError("nonfinite constant {}".format(token))
+
+    try:
+        json.loads(
+            fragment,
+            object_pairs_hook=_strict_object,
+            parse_constant=reject_constant,
+        )
+    except ParseError:
+        # Duplicate keys and nonfinite constants are complete invalid input,
+        # never evidence of an interrupted final write.
+        return False
+    except json.JSONDecodeError as err:
+        if err.pos == len(fragment):
+            return True
+        if err.msg.startswith("Unterminated string"):
+            return True
+        tail = fragment[err.pos:].strip()
+        if tail and any(
+            literal.startswith(tail) and literal != tail
+            for literal in ("true", "false", "null")
+        ):
+            return True
+        # The decoder can stop at the last complete digit when an exponent or
+        # fractional component is torn.  Accept only suffixes that end at EOF.
+        number = re.search(
+            r"-?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+-]?)?$", fragment
+        )
+        if (
+            number is not None
+            and err.pos >= number.start()
+            and re.search(r"(?:\.$|[eE][+-]?$)", fragment)
+        ):
+            return True
+        if fragment.endswith("-") and err.pos == len(fragment) - 1:
+            return True
+        if err.msg.startswith("Invalid \\uXXXX escape"):
+            escape = fragment.rfind("\\u")
+            return escape >= 0 and len(fragment) - escape < 6
+        return False
+    except (TypeError, ValueError, RecursionError):
+        return False
+    return False
+
+
+def _salvage_resource_prefix(content: str, props):
+    """Drop only a syntactically torn final line after a resource exit."""
+    if (
+        props.get("planner_exit_code") not in RESOURCE_EXIT_CODES
+        or content.endswith("\n")
+    ):
+        return None
+    prefix, separator, fragment = content.rpartition("\n")
+    if not separator or not prefix or not fragment:
+        return None
+    if _incomplete_json_fragment(fragment):
+        return prefix + "\n"
+    return None
+
+
 def _int(value, label, minimum=None):
     if type(value) is not int or (minimum is not None and value < minimum):
         raise ParseError("{} must be an integer{}".format(
@@ -733,6 +802,7 @@ def parse_profile_log(content, props) -> None:
     props["wbh_profile_expected"] = expected
     props["wbh_profile_present"] = bool(content)
     props["wbh_profile_parser_protocol"] = PROFILE_PARSER_PROTOCOL
+    props["wbh_profile_trailing_fragment_discarded"] = False
     if not content:
         props["wbh_profile_prefix_certified"] = False
         props["wbh_profile_complete"] = False
@@ -743,13 +813,27 @@ def parse_profile_log(content, props) -> None:
         return
     try:
         parsed = parse_profile_stream(content)
-    except ParseError as err:
-        props["wbh_profile_prefix_certified"] = False
-        props["wbh_profile_complete"] = False
-        props["wbh_profile_certified"] = False
-        props["wbh_profile_validation_error"] = str(err)
-        _add_error(props, str(err))
-        return
+    except ParseError as original_error:
+        salvaged = _salvage_resource_prefix(content, props)
+        if salvaged is not None:
+            try:
+                parsed = parse_profile_stream(salvaged)
+            except ParseError:
+                parsed = None
+            if parsed is not None and not parsed["complete"]:
+                props["wbh_profile_trailing_fragment_discarded"] = True
+            else:
+                parsed = None
+        else:
+            parsed = None
+        if parsed is None:
+            err = original_error
+            props["wbh_profile_prefix_certified"] = False
+            props["wbh_profile_complete"] = False
+            props["wbh_profile_certified"] = False
+            props["wbh_profile_validation_error"] = str(err)
+            _add_error(props, str(err))
+            return
     props["wbh_profile_prefix_certified"] = True
     props["wbh_profile_complete"] = parsed["complete"]
     props["wbh_profile_certified"] = parsed["complete"]
@@ -767,6 +851,7 @@ def parse_expansion_details(content, props) -> None:
     """Retain the g/h detail that the frozen aggregate parser discards."""
     props["wbh_expansion_parser_protocol"] = EXPANSION_PARSER_PROTOCOL
     props["wbh_expansion_profile_present"] = bool(content)
+    props["wbh_expansion_trailing_fragment_discarded"] = False
     if not content:
         props["wbh_expansion_profile_certified"] = False
         props["wbh_expansion_profile_complete"] = False
@@ -775,12 +860,26 @@ def parse_expansion_details(content, props) -> None:
     try:
         from validate_wbh_log import load_json_line, validate_v2_events
 
-        events = [
-            load_json_line(line)
-            for line in content.splitlines()
-            if line.strip()
-        ]
-        report = validate_v2_events(events)
+        def parse_events(payload):
+            parsed_events = [
+                load_json_line(line)
+                for line in payload.splitlines()
+                if line.strip()
+            ]
+            return parsed_events, validate_v2_events(parsed_events)
+
+        try:
+            events, report = parse_events(content)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            salvaged = _salvage_resource_prefix(content, props)
+            if salvaged is None:
+                raise
+            events, report = parse_events(salvaged)
+            if report["summary_present"]:
+                raise ValueError(
+                    "resource-prefix salvage unexpectedly retained a summary"
+                )
+            props["wbh_expansion_trailing_fragment_discarded"] = True
     except (ImportError, TypeError, ValueError, json.JSONDecodeError) as err:
         props["wbh_expansion_profile_certified"] = False
         props["wbh_expansion_profile_complete"] = False
