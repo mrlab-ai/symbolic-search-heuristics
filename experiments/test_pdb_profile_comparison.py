@@ -126,6 +126,50 @@ class ProfileParserTests(unittest.TestCase):
         events[5]["joint_cofactor_seconds"] = 0.4
         return "\n".join(map(line, events)) + "\n"
 
+    def masked_profile(self):
+        events = [json.loads(value) for value in self.joint_profile().splitlines()]
+        events[0].update(
+            {
+                "version": 3,
+                "masked_function": (
+                    "heuristic_on_layer_fresh_bottom_elsewhere"
+                ),
+                "terminal_incidence": (
+                    "sum_of_reachable_nonbottom_terminals_over_"
+                    "regular_inner_masked_add_nodes"
+                ),
+                "partition_audit_effort": (
+                    "sum_of_regular_cudd_inner_nodes_of_"
+                    "nonempty_layer_value_buckets_audit_only"
+                ),
+            }
+        )
+        events[3].update(
+            {
+                "masked_add_nodes": 3,
+                "active_value_count": 2,
+                "active_values": [0, 1],
+                "bottom_reachable": True,
+                "masked_cofactor_counts": [1, 2, 3],
+                "masked_cofactor_sum": 3,
+                "terminal_incidence": 5,
+                "partition_audit_effort": 4,
+                "masked_seconds": 0.5,
+                "partition_audit_seconds": 0.6,
+            }
+        )
+        events[4].update(
+            {
+                "masked_add_effort": 3,
+                "terminal_incidence_effort": 5,
+                "partition_audit_effort": 4,
+            }
+        )
+        events[5].update(
+            {"masked_seconds": 0.5, "partition_audit_seconds": 0.6}
+        )
+        return "\n".join(map(line, events)) + "\n"
+
     def test_terminal_cut_is_validation_only_for_paper_sums(self):
         parsed = Parser.parse_profile_stream(self.profile())
         self.assertTrue(parsed["complete"])
@@ -172,6 +216,37 @@ class ProfileParserTests(unittest.TestCase):
         events[4]["layer_union_effort"] = 2
         events[5]["sum_layer_bdd_nodes"] = 2
         with self.assertRaisesRegex(Parser.ParseError, "projection/product"):
+            Parser.parse_profile_stream("\n".join(map(line, events)) + "\n")
+
+    def test_masked_terminal_incidence_is_certified_and_fail_closed(self):
+        parsed = Parser.parse_profile_stream(self.masked_profile())
+        self.assertEqual(parsed["schema_version"], 3)
+        layer = parsed["layer_profiles"][0]
+        self.assertEqual(layer["masked_add_nodes"], 3)
+        self.assertEqual(layer["active_value_count"], 2)
+        self.assertEqual(layer["terminal_incidence"], 5)
+        self.assertEqual(layer["partition_audit_effort"], 4)
+
+        for field, value, message in (
+            ("active_value_count", 0, "canonical value set"),
+            ("terminal_incidence", 7, "terminal-incidence bounds"),
+            ("partition_audit_effort", 6, "terminal-incidence bounds"),
+        ):
+            events = [
+                json.loads(item) for item in self.masked_profile().splitlines()
+            ]
+            events[3][field] = value
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(Parser.ParseError, message):
+                    Parser.parse_profile_stream(
+                        "\n".join(map(line, events)) + "\n"
+                    )
+
+        events = [
+            json.loads(item) for item in self.masked_profile().splitlines()
+        ]
+        events[4]["terminal_incidence_effort"] = 4
+        with self.assertRaisesRegex(Parser.ParseError, "done terminal_incidence"):
             Parser.parse_profile_stream("\n".join(map(line, events)) + "\n")
 
     def test_truncated_prefix_is_incomplete(self):

@@ -14,9 +14,10 @@ class SymVariables;
 struct AddStats;
 
 /*
-  Optional complete cofactor-profile instrumentation. This is deliberately
-  separate from WbhStats: --wbh_profile_log writes its own JSON-lines stream,
-  and enabling it cannot change the frozen wbh.jsonl schema-v2 stream.
+  Optional complete cofactor and masked terminal-incidence instrumentation.
+  This is deliberately separate from WbhStats: --wbh_profile_log writes its
+  own JSON-lines stream, and enabling it cannot change the frozen wbh.jsonl
+  schema-v2 stream.
 
   Profiles are projected onto the unprimed Boolean state variables in their
   current CUDD level order. cofactor_counts therefore has one entry before
@@ -27,11 +28,15 @@ class WbhProfile {
     std::ofstream out;
     std::vector<int> state_indices;
     std::vector<int> state_levels;
+    std::vector<int> heuristic_values;
     ADD heuristic_add;
 
     struct LayerRecord {
         int g;
         long bdd_nodes;
+        long masked_add_nodes;
+        long terminal_incidence;
+        long partition_audit_effort;
     };
     struct PendingLayer {
         int g;
@@ -40,9 +45,19 @@ class WbhProfile {
         std::vector<long> cofactor_counts;
         std::vector<long> joint_cofactor_counts;
         long cofactor_width;
+        long masked_add_nodes;
+        int active_value_count;
+        std::vector<int> active_values;
+        bool bottom_reachable;
+        std::vector<long> masked_cofactor_counts;
+        long masked_cofactor_sum;
+        long terminal_incidence;
+        long partition_audit_effort;
         double union_seconds;
         double cofactor_seconds;
         double joint_cofactor_seconds;
+        double masked_seconds;
+        double partition_audit_seconds;
     };
     std::vector<LayerRecord> forward_layers;
     std::unique_ptr<PendingLayer> pending_layer;
@@ -59,6 +74,8 @@ class WbhProfile {
     double union_seconds = 0;
     double cofactor_seconds = 0;
     double joint_cofactor_seconds = 0;
+    double masked_seconds = 0;
+    double partition_audit_seconds = 0;
     double heuristic_cofactor_seconds = 0;
     double serialization_seconds = 0;
     double output_seconds = 0;
@@ -73,6 +90,11 @@ public:
     // Emit the certificate that maps every profile position to its CUDD
     // index/level, FDR variable, and within-variable binary bit.
     void log_variable_order(SymVariables *vars);
+
+    // Run small exact CUDD regression cases for complement edges, a missing
+    // bottom terminal, multiple active values, constants, and support
+    // invariance. This is opt-in test instrumentation and emits no event.
+    void run_masked_self_test(SymVariables *vars);
 
     // Emit the selected heuristic's exact state-cut profile. Candidate
     // profiles are intentionally omitted: this event describes the heuristic

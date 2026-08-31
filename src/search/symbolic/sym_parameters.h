@@ -40,14 +40,15 @@ struct SymParameters {
     bool non_stop;
 
     bool print_symbolic_task_size;
+    bool wbh_profile_self_test;
 
     // Width-bounded-heuristics instrumentation logger (PR1). Non-null iff the
     // wbh_log option is a non-empty path. Shared across all copies of this
     // struct so that forward and backward searches write to one file.
     std::shared_ptr<WbhStats> stats;
 
-    // Independent complete cofactor-profile stream. This is not folded into
-    // WbhStats so the frozen wbh.jsonl schema-v2 remains unchanged.
+    // Independent complete cofactor and masked-incidence profile stream. This
+    // is not folded into WbhStats, so frozen wbh.jsonl schema-v2 is unchanged.
     std::shared_ptr<WbhProfile> profile;
 
     SymParameters(

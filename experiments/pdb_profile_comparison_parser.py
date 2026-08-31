@@ -13,7 +13,7 @@ from collections import defaultdict
 from fractions import Fraction
 
 
-PROFILE_PARSER_PROTOCOL = "wbh-complete-cofactor-profile-jsonl-v2"
+PROFILE_PARSER_PROTOCOL = "wbh-masked-terminal-incidence-jsonl-v3-backcompat"
 SELECTOR_PARSER_PROTOCOL = "pdb-width-or-total-add-selector-trace-v1"
 EXPANSION_PARSER_PROTOCOL = "wbh-schema-v2-active-values-by-g-v1"
 PROFILE_FILE = "wbh-profile.jsonl"
@@ -215,7 +215,24 @@ def parse_profile_stream(content: str) -> dict:
             "cooccurring_signed_bdd_and_regular_add_pointer_pair"
         ),
     )
-    if schema not in (expected_schema_v1, expected_schema_v2):
+    expected_schema_v3 = dict(
+        expected_schema_v2,
+        version=3,
+        masked_function="heuristic_on_layer_fresh_bottom_elsewhere",
+        terminal_incidence=(
+            "sum_of_reachable_nonbottom_terminals_over_"
+            "regular_inner_masked_add_nodes"
+        ),
+        partition_audit_effort=(
+            "sum_of_regular_cudd_inner_nodes_of_"
+            "nonempty_layer_value_buckets_audit_only"
+        ),
+    )
+    if schema not in (
+        expected_schema_v1,
+        expected_schema_v2,
+        expected_schema_v3,
+    ):
         raise ParseError("profile schema event changed")
     schema_version = schema["version"]
     if len(events) == 1:
@@ -361,9 +378,24 @@ def parse_profile_stream(content: str) -> dict:
                 "union_seconds",
                 "cofactor_seconds",
             }
-            if schema_version == 2:
+            if schema_version >= 2:
                 layer_keys.update(
                     {"joint_cofactor_counts", "joint_cofactor_seconds"}
+                )
+            if schema_version == 3:
+                layer_keys.update(
+                    {
+                        "masked_add_nodes",
+                        "active_value_count",
+                        "active_values",
+                        "bottom_reachable",
+                        "masked_cofactor_counts",
+                        "masked_cofactor_sum",
+                        "terminal_incidence",
+                        "partition_audit_effort",
+                        "masked_seconds",
+                        "partition_audit_seconds",
+                    }
                 )
             _exact_keys(event, layer_keys, "layer_profile")
             _int(event.get("g"), "layer g", 0)
@@ -384,7 +416,7 @@ def parse_profile_stream(content: str) -> dict:
                 raise ParseError("layer completed must be Boolean")
             _number(event.get("union_seconds"), "layer union time", 0)
             _number(event.get("cofactor_seconds"), "layer cofactor time", 0)
-            if schema_version == 2:
+            if schema_version >= 2:
                 joint = event.get("joint_cofactor_counts")
                 if heuristic is None:
                     if joint != []:
@@ -414,18 +446,120 @@ def parse_profile_stream(content: str) -> dict:
                     "layer joint cofactor time",
                     0,
                 )
+            if schema_version == 3:
+                masked_nodes = _int(
+                    event.get("masked_add_nodes"), "masked add_nodes", 0
+                )
+                active_values = _int(
+                    event.get("active_value_count"), "active value count", 0
+                )
+                active_value_list = event.get("active_values")
+                if (
+                    not isinstance(active_value_list, list)
+                    or any(
+                        type(value) is not int or not 0 <= value <= INT_MAX
+                        for value in active_value_list
+                    )
+                    or active_value_list != sorted(set(active_value_list))
+                    or len(active_value_list) != active_values
+                ):
+                    raise ParseError("active_values is not a canonical value set")
+                incidence = _int(
+                    event.get("terminal_incidence"), "terminal incidence", 0
+                )
+                partition = _int(
+                    event.get("partition_audit_effort"),
+                    "partition audit effort",
+                    0,
+                )
+                cofactor_sum = _int(
+                    event.get("masked_cofactor_sum"),
+                    "masked cofactor sum",
+                    0,
+                )
+                bottom_reachable = event.get("bottom_reachable")
+                if type(bottom_reachable) is not bool:
+                    raise ParseError("bottom_reachable must be Boolean")
+                masked_counts = event.get("masked_cofactor_counts")
+                if heuristic is None:
+                    if any(
+                        value != 0
+                        for value in (
+                            masked_nodes,
+                            active_values,
+                            incidence,
+                            partition,
+                            cofactor_sum,
+                        )
+                    ) or any(
+                        (
+                            active_value_list != [],
+                            bottom_reachable,
+                            masked_counts != [],
+                        )
+                    ):
+                        raise ParseError(
+                            "masked layer statistics exist without a heuristic"
+                        )
+                else:
+                    masked_counts = _profile_vector(
+                        masked_counts, state_bits, "masked cofactor profile"
+                    )
+                    joint = event["joint_cofactor_counts"]
+                    if any(
+                        masked_count > joint_count
+                        for masked_count, joint_count in zip(
+                            masked_counts, joint
+                        )
+                    ):
+                        raise ParseError(
+                            "masked cofactor profile exceeds joint profile"
+                        )
+                    if (
+                        cofactor_sum != sum(masked_counts[:-1])
+                        or masked_counts[-1]
+                        != active_values + int(bottom_reachable)
+                        or not 1 <= active_values <= heuristic["num_terminals"]
+                        or masked_nodes > cofactor_sum
+                        or incidence < masked_nodes
+                        or incidence > masked_nodes * active_values
+                        or active_values > masked_nodes + 1
+                        or partition > incidence
+                    ):
+                        raise ParseError(
+                            "masked layer statistics violate "
+                            "terminal-incidence bounds"
+                        )
+                _number(event.get("masked_seconds"), "layer masked time", 0)
+                _number(
+                    event.get("partition_audit_seconds"),
+                    "layer partition audit time",
+                    0,
+                )
             layers.append(event)
         elif kind == "done":
             if phase != "body" or done is not None:
                 raise ParseError("done event is duplicated or out of order")
             phase = "done"
-            _exact_keys(
-                event,
-                {"event", "layer_union_effort", "solution_cost"},
-                "done",
-            )
+            done_keys = {"event", "layer_union_effort", "solution_cost"}
+            if schema_version == 3:
+                done_keys.update(
+                    {
+                        "masked_add_effort",
+                        "terminal_incidence_effort",
+                        "partition_audit_effort",
+                    }
+                )
+            _exact_keys(event, done_keys, "done")
             _int(event.get("solution_cost"), "solution cost", 0)
             _int(event.get("layer_union_effort"), "layer union effort", 0)
+            if schema_version == 3:
+                for field in (
+                    "masked_add_effort",
+                    "terminal_incidence_effort",
+                    "partition_audit_effort",
+                ):
+                    _int(event.get(field), "done {}".format(field), 0)
             done = event
         elif kind == "summary":
             if summary is not None:
@@ -443,8 +577,12 @@ def parse_profile_stream(content: str) -> dict:
                 "output_seconds",
                 "solved",
             }
-            if schema_version == 2:
+            if schema_version >= 2:
                 summary_keys.add("joint_cofactor_seconds")
+            if schema_version == 3:
+                summary_keys.update(
+                    {"masked_seconds", "partition_audit_seconds"}
+                )
             _exact_keys(event, summary_keys, "summary")
             summary = event
         else:
@@ -482,10 +620,17 @@ def parse_profile_stream(content: str) -> dict:
             "output_seconds",
         ):
             _number(summary.get(field), "summary {}".format(field), 0)
-        if schema_version == 2:
+        if schema_version >= 2:
             _number(
                 summary.get("joint_cofactor_seconds"),
                 "summary joint_cofactor_seconds",
+                0,
+            )
+        if schema_version == 3:
+            _number(summary.get("masked_seconds"), "summary masked_seconds", 0)
+            _number(
+                summary.get("partition_audit_seconds"),
+                "summary partition_audit_seconds",
                 0,
             )
     if done is not None:
@@ -496,6 +641,23 @@ def parse_profile_stream(content: str) -> dict:
         )
         if done["layer_union_effort"] != expected_effort:
             raise ParseError("done effort disagrees with completed layer profiles")
+        if schema_version == 3:
+            for done_field, layer_field in (
+                ("masked_add_effort", "masked_add_nodes"),
+                ("terminal_incidence_effort", "terminal_incidence"),
+                ("partition_audit_effort", "partition_audit_effort"),
+            ):
+                expected = sum(
+                    event[layer_field]
+                    for event in completed_layers
+                    if event["g"] < done["solution_cost"]
+                )
+                if done[done_field] != expected:
+                    raise ParseError(
+                        "done {} disagrees with completed layer profiles".format(
+                            done_field
+                        )
+                    )
     heuristic_paper_cuts = None
     if heuristic is not None:
         counts = heuristic["cofactor_counts"]
@@ -542,6 +704,18 @@ def parse_profile_stream(content: str) -> dict:
                     _sha(event["joint_cofactor_counts"])
                     if event.get("joint_cofactor_counts")
                     else None
+                ),
+                "masked_add_nodes": event.get("masked_add_nodes"),
+                "active_value_count": event.get("active_value_count"),
+                "active_values": event.get("active_values"),
+                "bottom_reachable": event.get("bottom_reachable"),
+                "masked_cofactor_counts": event.get(
+                    "masked_cofactor_counts"
+                ),
+                "masked_cofactor_sum": event.get("masked_cofactor_sum"),
+                "terminal_incidence": event.get("terminal_incidence"),
+                "partition_audit_effort": event.get(
+                    "partition_audit_effort"
                 ),
             }
             for event in layers

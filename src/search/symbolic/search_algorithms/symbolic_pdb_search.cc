@@ -13,6 +13,7 @@
 #include "../plan_reconstruction/sym_solution_cut.h"
 #include "../plan_selection/plan_selector.h"
 #include "../searches/heuristic_fw_search.h"
+#include "../searches/uniform_cost_search.h"
 
 #include <limits>
 
@@ -30,6 +31,7 @@ SymbolicPdbForwardSearch::SymbolicPdbForwardSearch(const plugins::Options &opts)
       value_cap(opts.get<int>("value_cap")),
       select_value_cap(opts.get<bool>("select_value_cap")),
       dynamic_reordering(opts.get<bool>("dynamic_reordering")),
+      shadow_partition(opts.get<bool>("shadow_partition")),
       prune_only(opts.get<bool>("prune_only")),
       batch_f_window(opts.get<int>("batch_f_window")) {
 }
@@ -77,6 +79,26 @@ void SymbolicPdbForwardSearch::initialize() {
         utils::g_log
             << "A finite total_add_node_budget requires "
                "pattern_selection=exact_width_filter."
+            << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+    }
+    if (shadow_partition && !sym_params.profile) {
+        utils::g_log
+            << "shadow_partition=true requires a nonempty wbh_profile_log."
+            << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+    }
+    if (shadow_partition && dynamic_reordering) {
+        utils::g_log
+            << "shadow_partition=true requires dynamic_reordering=false so "
+               "all masked certificates retain their recorded cut order."
+            << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
+    }
+    if (shadow_partition && (prune_only || batch_f_window != 0)) {
+        utils::g_log
+            << "shadow_partition=true cannot be combined with prune_only or "
+               "a nonzero batch_f_window."
             << endl;
         utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
     }
@@ -131,6 +153,26 @@ void SymbolicPdbForwardSearch::initialize() {
     if (sym_params.profile) {
         sym_params.profile->log_heuristic(
             vars.get(), level_sets->get_add(), level_sets->get_add_stats());
+    }
+
+    if (shadow_partition) {
+        auto search_ptr = unique_ptr<UniformCostSearch>(
+            new UniformCostSearch(this, sym_params));
+        search_ptr->init(mgr, true, nullptr);
+        const double construction_time = construction_timer();
+        if (sym_params.stats) {
+            sym_params.stats->log_construction(
+                "pdb_shadow_" + level_sets->get_selection_name(),
+                construction_time, state_budget, level_sets->get_value_cap(),
+                true);
+        }
+        auto sym_trs =
+            search_ptr->getStateSpaceShared()->get_transition_relations();
+        solution_registry->init(
+            vars, search_ptr->getClosedShared(), nullptr, sym_trs,
+            plan_data_base, true, simple);
+        search = move(search_ptr);
+        return;
     }
 
     // A completed PDB may prove the initial state dead. Record its construction
@@ -257,6 +299,16 @@ public:
             "its strongest feasible transform under the active exact width "
             "or total-ADD-node budget, then apply the frozen quality score "
             "across patterns.",
+            "false");
+        add_option<bool>(
+            "shadow_partition",
+            "Build and log the selected PDB but run forward blind uniform-cost "
+            "search. Each exact blind g-layer is partitioned by the PDB only "
+            "inside the profile stream, so all heuristics can be compared on "
+            "a fixed frontier without affecting search behavior. Requires "
+            "wbh_profile_log and dynamic_reordering=false, and records the "
+            "reconstructed partition cost as an audit target, not as a "
+            "predictor.",
             "false");
         add_option<bool>(
             "prune_only",

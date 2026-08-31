@@ -6,6 +6,7 @@
 #include "../plugins/plugin.h"
 #include "../task_utils/task_properties.h"
 #include "../utils/logging.h"
+#include "../utils/system.h"
 #include "../utils/timer.h"
 
 using namespace std;
@@ -29,7 +30,8 @@ SymParameters::SymParameters(
       batch_max_union_nodes(opts.get<int>("batch_max_union_nodes")),
       batch_max_union_ratio(opts.get<double>("batch_max_union_ratio")),
       non_stop(opts.get<bool>("non_stop")),
-      print_symbolic_task_size(opts.get<bool>("print_symbolic_task_size")) {
+      print_symbolic_task_size(opts.get<bool>("print_symbolic_task_size")),
+      wbh_profile_self_test(opts.get<bool>("wbh_profile_self_test")) {
     // Don't use edeletion with conditional effects
     if (mutex_type == MutexType::MUTEX_EDELETION &&
         (task_properties::has_conditional_effects(TaskProxy(*task)) ||
@@ -51,6 +53,13 @@ SymParameters::SymParameters(
     string wbh_profile_log = opts.get<string>("wbh_profile_log");
     if (!wbh_profile_log.empty()) {
         profile = make_shared<WbhProfile>(wbh_profile_log);
+    }
+    if (wbh_profile_self_test && !profile) {
+        utils::g_log
+            << "wbh_profile_self_test=true requires a nonempty "
+               "wbh_profile_log."
+            << endl;
+        utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
     }
 }
 
@@ -151,5 +160,11 @@ void SymParameters::add_options_to_feature(plugins::Feature &feature) {
         "blind layers. Empty disables profile logging. This option does not "
         "alter the wbh_log schema-v2 stream.",
         "\"\"");
+    feature.add_option<bool>(
+        "wbh_profile_self_test",
+        "Run exact two-bit CUDD regressions for the masked profile after "
+        "variable initialization. This is test instrumentation and should "
+        "remain disabled in experiments.",
+        "false");
 }
 }

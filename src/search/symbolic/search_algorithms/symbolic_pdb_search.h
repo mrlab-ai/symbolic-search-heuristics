@@ -27,6 +27,7 @@ class SymbolicPdbForwardSearch : public SymbolicSearch {
     const int value_cap;
     const bool select_value_cap;
     const bool dynamic_reordering;
+    const bool shadow_partition;
     const bool prune_only;
     const int batch_f_window;
 

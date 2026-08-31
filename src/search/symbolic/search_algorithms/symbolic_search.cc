@@ -41,6 +41,9 @@ SymbolicSearch::SymbolicSearch(const plugins::Options &opts)
     vars->init();
     if (sym_params.profile) {
         sym_params.profile->log_variable_order(vars.get());
+        if (sym_params.wbh_profile_self_test) {
+            sym_params.profile->run_masked_self_test(vars.get());
+        }
     }
     cout << endl;
 }

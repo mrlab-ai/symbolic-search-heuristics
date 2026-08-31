@@ -8,8 +8,12 @@
 #include "../utils/timer.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
+#include <set>
 #include <sstream>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 
 using namespace std;
@@ -32,6 +36,308 @@ struct ResidualPairHash {
         return left ^ (right + 0x9e3779b9 + (left << 6) + (left >> 2));
     }
 };
+
+struct MaskedLayerStats {
+    long add_nodes;
+    int active_value_count;
+    vector<int> active_values;
+    bool bottom_reachable;
+    vector<long> cofactor_counts;
+    long cofactor_sum;
+    long terminal_incidence;
+    long partition_audit_effort;
+    double masked_seconds;
+    double partition_audit_seconds;
+};
+
+long checked_add(long left, long right, const string &label) {
+    if (right > 0 && left > numeric_limits<long>::max() - right) {
+        ABORT("WBH " + label + " overflow.");
+    }
+    return left + right;
+}
+
+vector<int> validate_heuristic_terminals(const ADD &heuristic) {
+    set<int> values;
+    unordered_set<DdNode *> visited;
+    vector<DdNode *> stack{heuristic.getNode()};
+    while (!stack.empty()) {
+        DdNode *node = stack.back();
+        stack.pop_back();
+        if (Cudd_IsComplement(node)) {
+            ABORT("WBH heuristic ADD uses an unexpected complemented edge.");
+        }
+        if (!visited.insert(node).second) {
+            continue;
+        }
+        if (Cudd_IsConstant(node)) {
+            const double value = Cudd_V(node);
+            const double rounded = round(value);
+            if (!isfinite(value) || value != rounded || value < 0 ||
+                value > numeric_limits<int>::max()) {
+                ABORT(
+                    "WBH masked profiles require finite nonnegative integer "
+                    "heuristic terminals.");
+            }
+            values.insert(static_cast<int>(rounded));
+        } else {
+            stack.push_back(Cudd_T(node));
+            stack.push_back(Cudd_E(node));
+        }
+    }
+    return vector<int>(values.begin(), values.end());
+}
+
+vector<long> compute_add_profile(
+    DdManager *dd, const ADD &add, const vector<int> &state_indices,
+    const vector<int> &state_levels) {
+    if (Cudd_IsComplement(add.getNode())) {
+        ABORT("WBH masked ADD uses an unexpected complemented root.");
+    }
+    unordered_set<DdNode *> frontier{add.getNode()};
+    vector<long> counts;
+    counts.reserve(state_indices.size() + 1);
+    counts.push_back(1);
+    for (size_t position = 0; position < state_indices.size(); ++position) {
+        const int expected_index = state_indices[position];
+        const int level = state_levels[position];
+        if (Cudd_ReadPerm(dd, expected_index) != level) {
+            ABORT(
+                "WBH masked profile variable order changed after its "
+                "certificate was written.");
+        }
+        unordered_set<DdNode *> next;
+        next.reserve(frontier.size() * 2);
+        for (DdNode *node : frontier) {
+            if (Cudd_IsComplement(node)) {
+                ABORT(
+                    "WBH masked ADD uses an unexpected complemented edge.");
+            }
+            if (Cudd_IsConstant(node)) {
+                next.insert(node);
+                continue;
+            }
+            const int node_index = Cudd_NodeReadIndex(node);
+            const int node_level = Cudd_ReadPerm(dd, node_index);
+            if (node_level < level) {
+                ABORT(
+                    "WBH masked ADD depends on non-state support between "
+                    "certified cuts.");
+            }
+            if (node_level == level) {
+                if (node_index != expected_index) {
+                    ABORT(
+                        "WBH masked ADD CUDD index/level certificate "
+                        "mismatch.");
+                }
+                DdNode *then_node = Cudd_T(node);
+                DdNode *else_node = Cudd_E(node);
+                if (Cudd_IsComplement(then_node) ||
+                    Cudd_IsComplement(else_node)) {
+                    ABORT(
+                        "WBH masked ADD uses an unexpected complemented "
+                        "edge.");
+                }
+                next.insert(then_node);
+                next.insert(else_node);
+            } else {
+                next.insert(node);
+            }
+        }
+        frontier.swap(next);
+        counts.push_back(static_cast<long>(frontier.size()));
+    }
+    for (DdNode *node : frontier) {
+        if (Cudd_IsComplement(node) || !Cudd_IsConstant(node)) {
+            ABORT(
+                "WBH masked ADD retains nonterminal or complemented support "
+                "after the final certified cut.");
+        }
+    }
+    return counts;
+}
+
+MaskedLayerStats compute_masked_layer_stats(
+    SymVariables *vars, const BDD &layer, const ADD &heuristic,
+    const vector<int> &heuristic_values,
+    const vector<int> &state_indices, const vector<int> &state_levels,
+    const vector<long> &joint_profile) {
+    utils::Timer masked_timer;
+    if (heuristic_values.empty()) {
+        ABORT("WBH masked profile encountered an ADD without terminals.");
+    }
+    ADD bottom = vars->constant(-1);
+    DdNode *bottom_node = bottom.getNode();
+    ADD masked = layer.Add().Ite(heuristic, bottom);
+    if (Cudd_IsComplement(masked.getNode())) {
+        ABORT("WBH masked ADD uses an unexpected complemented root.");
+    }
+    DdNode *root = masked.getNode();
+    vector<long> masked_profile = compute_add_profile(
+        vars->getCudd()->getManager(), masked, state_indices, state_levels);
+    if (masked_profile.size() != joint_profile.size()) {
+        ABORT("WBH masked and joint profiles use different cut counts.");
+    }
+    long cofactor_sum = 0;
+    for (size_t cut = 0; cut < masked_profile.size(); ++cut) {
+        if (masked_profile[cut] > joint_profile[cut]) {
+            ABORT(
+                "WBH masked cofactor count exceeds the joint-profile "
+                "certificate.");
+        }
+        if (cut + 1 < masked_profile.size()) {
+            cofactor_sum = checked_add(
+                cofactor_sum, masked_profile[cut],
+                "masked cofactor-profile sum");
+        }
+    }
+
+    // Build reverse ADD edges once. For each active terminal, traverse its
+    // ancestors with an epoch-marked visited vector. This counts exactly the
+    // inner nodes from which that value is reachable, in O(D + I) time and
+    // O(D) auxiliary memory instead of materializing a value set per node.
+    unordered_map<DdNode *, size_t> node_ids;
+    vector<DdNode *> nodes;
+    vector<pair<size_t, size_t>> parent_edges;
+    auto add_node = [&](DdNode *node) {
+        auto [it, inserted] = node_ids.emplace(node, nodes.size());
+        if (inserted) {
+            nodes.push_back(node);
+        }
+        return it->second;
+    };
+    add_node(root);
+    long add_nodes = 0;
+    vector<size_t> active_terminal_ids;
+    for (size_t node_id = 0; node_id < nodes.size(); ++node_id) {
+        DdNode *node = nodes[node_id];
+        if (Cudd_IsComplement(node)) {
+            ABORT("WBH masked ADD uses an unexpected complemented edge.");
+        }
+        if (Cudd_IsConstant(node)) {
+            if (node != bottom_node) {
+                active_terminal_ids.push_back(node_id);
+            }
+            continue;
+        }
+        DdNode *then_node = Cudd_T(node);
+        DdNode *else_node = Cudd_E(node);
+        if (Cudd_IsComplement(then_node) || Cudd_IsComplement(else_node)) {
+            ABORT("WBH masked ADD uses an unexpected complemented edge.");
+        }
+        const size_t then_id = add_node(then_node);
+        const size_t else_id = add_node(else_node);
+        parent_edges.emplace_back(then_id, node_id);
+        parent_edges.emplace_back(else_id, node_id);
+        add_nodes = checked_add(add_nodes, 1, "masked ADD node count");
+    }
+
+    vector<size_t> parent_offsets(nodes.size() + 1, 0);
+    for (const auto &edge : parent_edges) {
+        ++parent_offsets[edge.first + 1];
+    }
+    for (size_t node_id = 0; node_id < nodes.size(); ++node_id) {
+        parent_offsets[node_id + 1] += parent_offsets[node_id];
+    }
+    vector<size_t> next_parent = parent_offsets;
+    vector<size_t> parent_ids(parent_edges.size());
+    for (const auto &[child, parent] : parent_edges) {
+        parent_ids[next_parent[child]++] = parent;
+    }
+    parent_edges.clear();
+    parent_edges.shrink_to_fit();
+
+    if (active_terminal_ids.empty()) {
+        ABORT("WBH masked profile received an empty prepared layer.");
+    }
+    if (active_terminal_ids.size() >
+        static_cast<size_t>(numeric_limits<int>::max())) {
+        ABORT("WBH masked profile active-value count overflow.");
+    }
+    const int active_values = static_cast<int>(active_terminal_ids.size());
+    vector<int> active_value_list;
+    active_value_list.reserve(active_terminal_ids.size());
+    for (size_t terminal_id : active_terminal_ids) {
+        DdNode *terminal = nodes[terminal_id];
+        const double value = Cudd_V(terminal);
+        if (value != round(value) || value < 0 ||
+            value > numeric_limits<int>::max()) {
+            ABORT("WBH active terminal is not a certified heuristic value.");
+        }
+        active_value_list.push_back(static_cast<int>(value));
+    }
+    sort(active_value_list.begin(), active_value_list.end());
+
+    long incidence = 0;
+    vector<size_t> seen(nodes.size(), 0);
+    size_t epoch = 0;
+    vector<size_t> ancestor_stack;
+    for (size_t terminal_id : active_terminal_ids) {
+        if (epoch == numeric_limits<size_t>::max()) {
+            ABORT("WBH terminal-incidence traversal epoch overflow.");
+        }
+        ++epoch;
+        ancestor_stack.push_back(terminal_id);
+        while (!ancestor_stack.empty()) {
+            const size_t node_id = ancestor_stack.back();
+            ancestor_stack.pop_back();
+            if (seen[node_id] == epoch) {
+                continue;
+            }
+            seen[node_id] = epoch;
+            if (!Cudd_IsConstant(nodes[node_id])) {
+                incidence = checked_add(
+                    incidence, 1, "terminal-incidence certificate");
+            }
+            for (size_t position = parent_offsets[node_id];
+                 position < parent_offsets[node_id + 1]; ++position) {
+                ancestor_stack.push_back(parent_ids[position]);
+            }
+        }
+    }
+    const bool bottom_reachable = !(!layer).IsZero();
+    const long expected_terminals =
+        static_cast<long>(active_values) + (bottom_reachable ? 1 : 0);
+    if (masked_profile.back() != expected_terminals) {
+        ABORT(
+            "WBH masked terminal census disagrees with active values and "
+            "bottom reachability.");
+    }
+    if (active_values > 0 &&
+        add_nodes > numeric_limits<long>::max() / active_values) {
+        ABORT("WBH masked ADD product bound overflow.");
+    }
+    if (incidence < add_nodes || incidence > add_nodes * active_values) {
+        ABORT("WBH terminal incidence violates its ADD product bounds.");
+    }
+    if (add_nodes > cofactor_sum) {
+        ABORT("WBH masked ADD node count exceeds its cofactor-profile sum.");
+    }
+
+    const double event_masked_seconds = masked_timer();
+    utils::Timer partition_timer;
+    long partition_audit_effort = 0;
+    for (size_t terminal_id : active_terminal_ids) {
+        DdNode *terminal = nodes[terminal_id];
+        const double value = Cudd_V(terminal);
+        BDD bucket = layer * heuristic.BddInterval(value, value);
+        if (bucket.IsZero()) {
+            ABORT("WBH active masked terminal has an empty shadow bucket.");
+        }
+        partition_audit_effort = checked_add(
+            partition_audit_effort, max(0, bucket.nodeCount() - 1),
+            "partition-audit effort");
+    }
+    if (partition_audit_effort > incidence) {
+        ABORT(
+            "WBH partition-audit effort exceeds its terminal-incidence "
+            "certificate.");
+    }
+    return {
+        add_nodes, active_values, move(active_value_list), bottom_reachable,
+        move(masked_profile), cofactor_sum, incidence,
+        partition_audit_effort, event_masked_seconds, partition_timer()};
+}
 
 DdNode *advance_bdd_residual(
     DdManager *dd, DdNode *node, int expected_index, int level,
@@ -213,7 +519,7 @@ WbhProfile::WbhProfile(const string &path) {
         ABORT("Could not open WBH profile log file: " + path);
     }
     write_payload(
-        "{\"event\":\"schema\",\"version\":2,"
+        "{\"event\":\"schema\",\"version\":3,"
         "\"cut_convention\":\"unprimed_state_bits_in_cudd_level_order_"
         "including_terminal\","
         "\"node_count_convention\":\"regular_cudd_inner_nodes_of_semantic_"
@@ -221,7 +527,12 @@ WbhProfile::WbhProfile(const string &path) {
         "\"residual_identity\":\"canonical_signed_cudd_pointer_with_"
         "complement_polarity\","
         "\"joint_residual_identity\":\"cooccurring_signed_bdd_and_regular_"
-        "add_pointer_pair\"}");
+        "add_pointer_pair\","
+        "\"masked_function\":\"heuristic_on_layer_fresh_bottom_elsewhere\","
+        "\"terminal_incidence\":\"sum_of_reachable_nonbottom_terminals_over_"
+        "regular_inner_masked_add_nodes\","
+        "\"partition_audit_effort\":\"sum_of_regular_cudd_inner_nodes_of_"
+        "nonempty_layer_value_buckets_audit_only\"}");
 }
 
 WbhProfile::~WbhProfile() {
@@ -302,6 +613,77 @@ void WbhProfile::log_variable_order(SymVariables *vars) {
     write_payload(event.str());
 }
 
+void WbhProfile::run_masked_self_test(SymVariables *vars) {
+    verify_variable_order(vars);
+    if (state_indices.size() < 2) {
+        ABORT("WBH masked self-test requires at least two state bits.");
+    }
+    DdManager *dd = vars->getCudd()->getManager();
+    BDD x0 = vars->getCudd()->bddVar(state_indices[0]);
+    BDD x1 = vars->getCudd()->bddVar(state_indices[1]);
+    ADD zero = vars->constant(0);
+    auto measure = [&](const BDD &layer, const ADD &heuristic) {
+        vector<long> joint = compute_joint_profile(
+            dd, layer, heuristic, state_indices, state_levels);
+        vector<int> values = validate_heuristic_terminals(heuristic);
+        return compute_masked_layer_stats(
+            vars, layer, heuristic, values, state_indices, state_levels,
+            joint);
+    };
+
+    MaskedLayerStats parity = measure(x0 ^ x1, zero);
+    if (parity.add_nodes != 3 || parity.active_values != vector<int>{0} ||
+        parity.bottom_reachable != true || parity.terminal_incidence != 3 ||
+        parity.partition_audit_effort != 2) {
+        ABORT("WBH masked self-test failed complement-edge parity.");
+    }
+
+    MaskedLayerStats total = measure(vars->oneBDD(), x0.Add());
+    if (total.add_nodes != 1 || total.active_values != vector<int>({0, 1}) ||
+        total.bottom_reachable != false || total.terminal_incidence != 2 ||
+        total.partition_audit_effort != 2) {
+        ABORT("WBH masked self-test failed the bottom-absent case.");
+    }
+
+    MaskedLayerStats equality = measure(!(x0 ^ x1), x0.Add());
+    if (equality.add_nodes != 3 ||
+        equality.active_values != vector<int>({0, 1}) ||
+        equality.terminal_incidence != 4 ||
+        equality.partition_audit_effort != 4) {
+        ABORT("WBH masked self-test failed the two-value case.");
+    }
+
+    MaskedLayerStats constant = measure(vars->oneBDD(), vars->constant(7));
+    if (constant.add_nodes != 0 ||
+        constant.active_values != vector<int>{7} ||
+        constant.bottom_reachable != false ||
+        constant.terminal_incidence != 0 ||
+        constant.partition_audit_effort != 0) {
+        ABORT("WBH masked self-test failed the constant case.");
+    }
+
+    BDD support = !x0;
+    MaskedLayerStats support_zero = measure(support, zero);
+    MaskedLayerStats support_variant =
+        measure(support, x0.Add() * x1.Add());
+    if (support_zero.add_nodes != 1 ||
+        support_zero.terminal_incidence != 1 ||
+        support_zero.partition_audit_effort != 1 ||
+        support_zero.active_values != support_variant.active_values ||
+        support_zero.bottom_reachable != support_variant.bottom_reachable ||
+        support_zero.cofactor_counts != support_variant.cofactor_counts ||
+        support_zero.add_nodes != support_variant.add_nodes ||
+        support_zero.terminal_incidence !=
+            support_variant.terminal_incidence ||
+        support_zero.partition_audit_effort !=
+            support_variant.partition_audit_effort) {
+        ABORT("WBH masked self-test failed support invariance.");
+    }
+    verify_variable_order(vars);
+    cout << "WBH masked terminal-incidence self-test passed (5 cases)."
+         << endl;
+}
+
 void WbhProfile::log_heuristic(
     SymVariables *vars, const ADD &add, const AddStats &add_stats) {
     if (heuristic_written) {
@@ -330,6 +712,11 @@ void WbhProfile::log_heuristic(
     }
     heuristic_written = true;
     heuristic_add = add;
+    heuristic_values = validate_heuristic_terminals(add);
+    if (heuristic_values.size() !=
+        static_cast<size_t>(add_stats.num_terminals)) {
+        ABORT("WBH heuristic terminal validation disagrees with ADD stats.");
+    }
     heuristic_cofactor_seconds += add_stats.cofactor_seconds;
 
     utils::Timer serialization_timer;
@@ -381,12 +768,17 @@ void WbhProfile::prepare_blind_layer(
     const double event_cofactor_seconds = cofactor_timer();
     vector<long> joint_profile;
     double event_joint_cofactor_seconds = 0;
+    MaskedLayerStats masked_stats{0, 0, {}, false, {}, 0, 0, 0, 0, 0};
     if (heuristic_written) {
         utils::Timer joint_cofactor_timer;
         joint_profile = compute_joint_profile(
             vars->getCudd()->getManager(), layer, heuristic_add, state_indices,
             state_levels);
         event_joint_cofactor_seconds = joint_cofactor_timer();
+        masked_stats = compute_masked_layer_stats(
+            vars, layer, heuristic_add, heuristic_values, state_indices,
+            state_levels, joint_profile);
+        verify_variable_order(vars);
     }
     const long nodes = max(0, layer.nodeCount() - 1);
     const long width = *max_element(profile.begin(), profile.end());
@@ -394,11 +786,19 @@ void WbhProfile::prepare_blind_layer(
     union_seconds += event_union_seconds;
     cofactor_seconds += event_cofactor_seconds;
     joint_cofactor_seconds += event_joint_cofactor_seconds;
+    masked_seconds += masked_stats.masked_seconds;
+    partition_audit_seconds += masked_stats.partition_audit_seconds;
 
     pending_layer = make_unique<PendingLayer>(PendingLayer{
         g, static_cast<int>(pieces.size()), nodes, move(profile),
-        move(joint_profile), width, event_union_seconds, event_cofactor_seconds,
-        event_joint_cofactor_seconds});
+        move(joint_profile), width, masked_stats.add_nodes,
+        masked_stats.active_value_count, move(masked_stats.active_values),
+        masked_stats.bottom_reachable,
+        move(masked_stats.cofactor_counts), masked_stats.cofactor_sum,
+        masked_stats.terminal_incidence,
+        masked_stats.partition_audit_effort, event_union_seconds,
+        event_cofactor_seconds, event_joint_cofactor_seconds,
+        masked_stats.masked_seconds, masked_stats.partition_audit_seconds});
 }
 
 void WbhProfile::finish_blind_layer(bool completed) {
@@ -410,7 +810,9 @@ void WbhProfile::finish_blind_layer(bool completed) {
     if (completed) {
         ++profiled_layers;
         sum_layer_bdd_nodes += layer.bdd_nodes;
-        forward_layers.push_back({layer.g, layer.bdd_nodes});
+        forward_layers.push_back({
+            layer.g, layer.bdd_nodes, layer.masked_add_nodes,
+            layer.terminal_incidence, layer.partition_audit_effort});
     }
 
     utils::Timer serialization_timer;
@@ -424,10 +826,25 @@ void WbhProfile::finish_blind_layer(bool completed) {
     event << ",\"joint_cofactor_counts\":";
     append_long_vector(event, layer.joint_cofactor_counts);
     event << ",\"cofactor_width\":" << layer.cofactor_width
+          << ",\"masked_add_nodes\":" << layer.masked_add_nodes
+          << ",\"active_value_count\":" << layer.active_value_count
+          << ",\"active_values\":";
+    append_int_vector(event, layer.active_values);
+    event << ",\"bottom_reachable\":"
+          << (layer.bottom_reachable ? "true" : "false")
+          << ",\"masked_cofactor_counts\":";
+    append_long_vector(event, layer.masked_cofactor_counts);
+    event << ",\"masked_cofactor_sum\":" << layer.masked_cofactor_sum
+          << ",\"terminal_incidence\":" << layer.terminal_incidence
+          << ",\"partition_audit_effort\":"
+          << layer.partition_audit_effort
           << ",\"union_seconds\":" << layer.union_seconds
           << ",\"cofactor_seconds\":" << layer.cofactor_seconds
           << ",\"joint_cofactor_seconds\":"
-          << layer.joint_cofactor_seconds << "}";
+          << layer.joint_cofactor_seconds
+          << ",\"masked_seconds\":" << layer.masked_seconds
+          << ",\"partition_audit_seconds\":"
+          << layer.partition_audit_seconds << "}";
     serialization_seconds += serialization_timer();
     write_payload(event.str());
     pending_layer.reset();
@@ -455,15 +872,31 @@ void WbhProfile::log_done(int solution_cost) {
     }
     done_written = true;
     long effort = 0;
+    long masked_add_effort = 0;
+    long terminal_incidence_effort = 0;
+    long partition_audit_effort = 0;
     for (const LayerRecord &record : forward_layers) {
         if (record.g < solution_cost) {
-            effort += record.bdd_nodes;
+            effort = checked_add(effort, record.bdd_nodes, "layer effort");
+            masked_add_effort = checked_add(
+                masked_add_effort, record.masked_add_nodes,
+                "masked-ADD effort");
+            terminal_incidence_effort = checked_add(
+                terminal_incidence_effort, record.terminal_incidence,
+                "terminal-incidence effort");
+            partition_audit_effort = checked_add(
+                partition_audit_effort, record.partition_audit_effort,
+                "partition-audit effort");
         }
     }
 
     utils::Timer serialization_timer;
     ostringstream event;
     event << "{\"event\":\"done\",\"layer_union_effort\":" << effort
+          << ",\"masked_add_effort\":" << masked_add_effort
+          << ",\"terminal_incidence_effort\":"
+          << terminal_incidence_effort
+          << ",\"partition_audit_effort\":" << partition_audit_effort
           << ",\"solution_cost\":" << solution_cost << "}";
     serialization_seconds += serialization_timer();
     write_payload(event.str());
@@ -485,6 +918,9 @@ void WbhProfile::log_summary() {
           << ",\"union_seconds\":" << union_seconds
           << ",\"cofactor_seconds\":" << cofactor_seconds
           << ",\"joint_cofactor_seconds\":" << joint_cofactor_seconds
+          << ",\"masked_seconds\":" << masked_seconds
+          << ",\"partition_audit_seconds\":"
+          << partition_audit_seconds
           << ",\"heuristic_cofactor_seconds\":"
           << heuristic_cofactor_seconds << ",\"serialization_seconds\":"
           << serialization_seconds << ",\"output_seconds\":"
