@@ -62,9 +62,10 @@
 \input{generated/pdb-profile-semantic-union-v1.tex}
 \input{generated/pdb-profile-order-intervention-v1.tex}
 \input{generated/pdb-profile-certificate-holdout-v1.tex}
+\input{generated/pdb-profile-joint-seed-validation-v1.tex}
 
-\title{Why Heuristics Help or Hurt Symbolic Search:\\
-Cut-Aligned Cofactor Profiles\\Supplementary Material}
+\title{Heuristic Fragmentation in Symbolic Search:\\
+Cofactor Certificates and Their Limits\\Supplementary Material}
 \author{Anonymous for review}
 \date{}
 
@@ -72,14 +73,11 @@ Cut-Aligned Cofactor Profiles\\Supplementary Material}
 \maketitle
 
 \paragraph{Guide.}
-Sections 1--9 give the complete proofs connecting cofactor width to symbolic
-search, fragmentation, safe caps, pruning, lower bounds, and heuristic
-families.
-Section 10 specifies the cap-aware exact-width selector. Section 11 discloses
-the focused development gate and the frozen full-evaluation contract. Section
-12 reports the focused full-evaluation results and representation summaries,
-Section 13 reports the two frozen predictor studies, and Section 14 expands
-the related-work comparison.
+The first part gives the complete proofs connecting co-occurring profiles and
+cofactor width to symbolic search, safe caps, pruning, lower bounds, and
+heuristic families.  The second part specifies the cap-aware selector and
+reports the development, remeasurement, selector, and prospective unseen-order
+studies.  The final section expands the related-work comparison.
 
 \section{Search Setup and Bucket Identity}
 
@@ -1189,11 +1187,12 @@ Thus at every cut there are at most $d(N+1)$ distinct cofactors.
 \label{sec:supp-predictors}
 
 The paper's explanatory question was developed in two frozen preliminary
-studies, tested on a disjoint prospective holdout, and challenged by a
+studies, followed by a disjoint frozen remeasurement cohort, and challenged by a
 fixed-heuristic variable-order intervention.  The first study did not measure
 its intended fragmentation denominator correctly; the second repaired the
 measurement but missed its task-support floor.  Neither observation entered
-the holdout, and no favorable budget, denominator, or subset was substituted.
+the paper as confirmatory evidence, and no favorable budget, denominator, or
+subset was substituted.
 
 \subsection{Initial Profile and Multi-Budget Matrix}
 
@@ -1348,12 +1347,14 @@ cell excluded from predictor analysis.  This preserves all frozen comparison
 rules and prevents a partial profile from entering the favorable result.
 
 \FloatBarrier
-\subsection{Prospective Certificate Holdout}
+\subsection{Frozen Certificate Remeasurement}
 
 The corrected follow-up fixes formulas and diagnostics but supplies no
 confirmatory observation.  Removing its exact 275-task development cohort
-from the 1,327-task source population leaves 1,052 tasks in 45 domains; no
-outcome enters the subtraction.  The holdout matrix contains profiled blind
+from the 1,327-task source population leaves 1,052 tasks in 45 domains.  This
+deterministic complement is fixed without outcome-based filtering, but its
+tasks occurred in an earlier matrix; it is therefore a remeasurement cohort,
+not an unseen-task holdout.  The matrix contains profiled blind
 search, exact-width and cap-aware-width PDB selection at
 $K\in\{2,4,8,16,32\}$, cap-aware selection under acceptance-matched total-ADD
 budgets $(8,29,55,100,204)$, and unconstrained exact selection.  The matrix
@@ -1388,8 +1389,9 @@ The two-effect gate additionally requires information concordance at least
 0.20 on both search-reduction targets.  The complete protocol fixes the
 sharper-profile and five-budget selector gates as well.
 
-A robustness audit was frozen after launch but before parsing any holdout or
-order-intervention outcome.  Because $\profilescore=\profilebound/U$ and
+A robustness audit was frozen after launch but before parsing any
+remeasurement or two-order analysis outcome.  Because
+$\profilescore=\profilebound/U$ and
 $\fragfactor=\effort/U$ share $U=\unioneffort$, it compares the profile with
 the null predictor $1/U$ on one shared pair set.  It also compares the
 unnormalized profile, width, and Apply certificates with absolute bucket
@@ -1409,7 +1411,7 @@ complete two-effect gate passes.
 \begin{table}[htbp]
   \centering
   \small
-  \caption{Prospective holdout: equal-domain directional concordance of the
+  \caption{Frozen remeasurement: equal-domain directional concordance of the
     information tuple and normalized profile.}
   \label{tab:supp-holdout-two-effects}
   \begin{tabular}{@{}lrr@{}}
@@ -1433,7 +1435,7 @@ over the 45 complete LODO replicates.
 \begin{table}[htbp]
   \centering
   \small
-  \caption{Prospective holdout: equal-domain concordance with normalized
+  \caption{Frozen remeasurement: equal-domain concordance with normalized
     fragmentation.}
   \label{tab:supp-holdout-representation}
   \begin{tabular}{@{}lrr@{}}
@@ -1457,7 +1459,7 @@ fragmentation; neither changes the primary response.
 \begin{table}[htbp]
   \centering
   \small
-  \caption{Prospective holdout: equal-domain concordance of unnormalized
+  \caption{Frozen remeasurement: equal-domain concordance of unnormalized
     certificates with absolute bucket effort.}
   \label{tab:supp-holdout-absolute}
   \begin{tabular}{@{}lrr@{}}
@@ -1482,7 +1484,7 @@ decision.
 \begin{table}[htbp]
   \centering
   \small
-  \caption{Prospective holdout: cap-aware width selection versus its
+  \caption{Frozen remeasurement: cap-aware width selection versus its
     acceptance-matched ADD constraint.}
   \label{tab:supp-holdout-width-add}
   \begin{tabular}{@{}rrrrr@{}}
@@ -1497,7 +1499,7 @@ decision.
 \begin{table}[htbp]
   \centering
   \small
-  \caption{Prospective holdout: cap-aware versus exact-width selection on
+  \caption{Frozen remeasurement: cap-aware versus exact-width selection on
     identical raw pools.}
   \label{tab:supp-holdout-cap-exact}
   \begin{tabular}{@{}rrrr@{}}
@@ -1510,10 +1512,10 @@ decision.
 \end{table}
 
 \FloatBarrier
-\subsection{Fixed-Heuristic Variable-Order Intervention}
+\subsection{Developmental Two-Order Intervention}
 
 We next change representation while holding heuristic semantics fixed.  On
-each of the \OrderTasks-task prospective-cohort tasks, a deterministic
+each of the \OrderTasks-task remeasurement-cohort tasks, a deterministic
 goal-fill procedure constructs one PDB with at most 100,000 abstract states.
 The planner runs that PDB once under the fixed Gamer order and once under the
 untranslated Fast Downward order, with dynamic reordering disabled.  Pair
@@ -1556,6 +1558,92 @@ total bucket effort with macro concordances
 unsplit expanded unions with their fragmentation; the reversal is therefore
 consistent with the two-effect decomposition and is not used to replace the
 primary response.
+
+This two-order comparison was designed before the co-occurring profile and
+did not include the denominator-only null.  It therefore served as development
+evidence rather than as the paper's final validation.  The prospective
+four-seed study below repeats the intervention with previously unused order
+perturbations, the tighter metric, and a frozen null comparison.
+
+\FloatBarrier
+\subsection{Prospective Unseen-Order Validation}
+
+The protocol was frozen before generating or inspecting planner output for
+Gamer-order seeds 1, 2, 3, or 4; legacy seed 0 is excluded.  The benchmark
+tasks themselves were previously measured, so this is an unseen-order
+validation rather than an unseen-task holdout.  The matrix contains
+\SeedValidationCells\ cells: one deterministic 100,000-state goal-fill PDB on
+each of \SeedValidationTasks\ tasks under each seed.  Every cell retains the
+same 300-second aggregate CPU limit and 8,192 MiB limit.
+
+A task enters only if all four runs solve with complete schema-v2 bucket and
+cofactor streams and positive semantic-union effort.  Pattern, finite-value
+count, solution cost, expanded-state count, and active values at every cost
+layer must agree exactly across seeds.  The \SeedValidationEligibleTasks\
+eligible tasks induce \SeedValidationDistinctOrderPairs\ distinct-order and
+\SeedValidationIdenticalOrderPairs\ identical-order pairs.  As in the earlier
+analyses, every comparison uses one shared within-task strict set, weights
+domains equally, and reports all 45 LODO replicates.
+
+The primary rule was fixed at 150 pairs, 75 tasks, and 25 domains; co-occurring
+macro concordance at least 0.65; an advantage of at least 0.02 over
+$1/\unioneffort$; and no worse performance than that null in any LODO
+replicate.  Its shared set contains \SeedPrimaryPairs\ pairs from
+\SeedPrimaryPairTasks\ tasks and \SeedPrimaryPairDomains\ domains.
+Table~\ref{tab:supp-seed-normalized} gives the result.  Co-occurrence is much
+more concordant than the three structural relaxations, but reaches only
+\SeedJointMacro\ against \SeedNullMacro\ for the null.  The observed margin
+is \SeedJointNullMargin, and the LODO non-worsening criterion also fails.
+Consequently, the frozen primary decision is \SeedPrimaryGate.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Prospective unseen-order validation: equal-domain concordance with
+    normalized bucket fragmentation on one shared strict-pair set.}
+  \label{tab:supp-seed-normalized}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Predictor & Macro & LODO range \\
+    \midrule
+    \SeedNormalizedRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The tightness difference is substantial.  Across
+\SeedJointCartesianRatioCount\ eligible seed observations, the co-occurring
+certificate is a median \SeedJointCartesianMedianRatio\ of the Cartesian
+certificate (mean \SeedJointCartesianMeanRatio).  Thus infeasible cross-pairs
+in the Cartesian product obscure the directional signal, even though removing
+them does not produce evidence beyond the normalization null.
+
+The prespecified absolute comparison has \SeedAbsolutePairs\ strict pairs
+from \SeedAbsolutePairTasks\ tasks in \SeedAbsolutePairDomains\ domains.
+Table~\ref{tab:supp-seed-absolute} shows that the co-occurring certificate
+reaches \SeedAbsoluteJointMacro\ and passes its 0.65 secondary gate.  It is
+close to width and ADD, while unsplit effort is markedly stronger.  This
+supports the certificate as an absolute bound-related diagnostic, not as an
+independent scalar account of total effort.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Prospective unseen-order validation: equal-domain concordance of
+    unnormalized quantities with absolute bucket effort.}
+  \label{tab:supp-seed-absolute}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Quantity & Macro & LODO range \\
+    \midrule
+    \SeedAbsoluteRows
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The protocol requires a theory-first paper after a failed primary decision.
+No seed, subset, response, threshold, or additional adaptive experiment is
+used to replace it.
 
 \section{Additional Related-Work Detail}
 \label{sec:supp-related}

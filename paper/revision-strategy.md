@@ -479,3 +479,36 @@ gate therefore fails and its frozen consequence applies: do not tune a rescue
 selector. The manuscript keeps the theory-and-algorithm framing, reports the
 strong but under-supported signal as suggestive, and does not claim that width
 is a validated predictor of relative planner performance.
+
+## Round 7: Prospective Unseen-Order Decision
+
+The decisive follow-up uses four previously unseen Gamer-order seeds while
+holding the PDB, heuristic values, costs, expanded states, and active buckets
+fixed. It covers 4,208 completed cells (1,052 tasks by four seeds). After the
+frozen completeness and invariance checks, 440 tasks remain eligible. The
+primary shared strict set contains 1,832 distinct-order pairs from 313 tasks
+in 40 domains, comfortably exceeding every support floor.
+
+The co-occurring certificate recovers structural signal that the relaxations
+lose: its equal-domain concordance with normalized fragmentation is 0.631,
+compared with 0.494 for the Cartesian profile, 0.480 for the width relaxation,
+and 0.474 for the ADD relaxation. It is also substantially tighter: across
+1,760 eligible observations, its ratio to the Cartesian certificate has
+median 0.205 and mean 0.251. However, the denominator-only null reaches 0.641,
+giving a margin of -0.009, and the leave-one-domain-out non-worsening criterion
+fails. The preregistered primary decision is therefore a failure. The
+unnormalized co-occurring certificate reaches 0.733 on 2,237 strict pairs and
+passes its secondary gate, but unsplit effort is stronger at 0.905.
+
+The strongest supported framing is consequently theory-first:
+**Heuristic Fragmentation in Symbolic Search: Cofactor Certificates and Their
+Limits.** The new scientific contribution is the co-occurring certificate,
+its tight worst-case theory, and the empirical diagnosis of what its
+Cartesian and width relaxations discard. It is a useful representation
+diagnostic, not an independent scalar predictor of relative performance. The
+width-constrained selectors are a mixed design stress test: they reduce
+conditional effort relative to unconstrained heuristic selection but remain
+worse than blind search. No seed, task subset, denominator, threshold, or
+adaptive experiment replaces the failed primary decision, and the title,
+abstract, contribution list, limitations, and conclusion all preserve that
+boundary.

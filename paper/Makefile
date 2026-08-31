@@ -54,6 +54,13 @@ HOLDOUT_DENOMINATOR_AUDIT := \
 HOLDOUT_DENOMINATOR_SIDECAR := $(HOLDOUT_DENOMINATOR_AUDIT).sha256
 HOLDOUT_RENDERER := \
 	../experiments/render_pdb_profile_certificate_holdout_paper.py
+SEED_GENERATED_RESULT := generated/pdb-profile-joint-seed-validation-v1.tex
+SEED_ARTIFACT_DIR := \
+	../experiments/artifacts/pdb-profile-joint-seed-validation
+SEED_ARTIFACT := $(SEED_ARTIFACT_DIR)/analysis-v1.json
+SEED_SIDECAR := $(SEED_ARTIFACT).sha256
+SEED_RENDERER := \
+	../experiments/render_pdb_profile_joint_seed_validation_paper.py
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
 		submission update-bib clean
@@ -63,6 +70,7 @@ paper: paper.pdf
 paper.pdf: paper.tex $(AUTHOR_KIT_STYLE) $(AUTHOR_KIT_BST) \
 		$(ORDER_GENERATED_RESULT) \
 		$(HOLDOUT_GENERATED_RESULT) \
+		$(SEED_GENERATED_RESULT) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib) | author-kit-preflight
 	$(LATEXMK) $(LATEXFLAGS) $<
 
@@ -72,6 +80,7 @@ supplement.pdf: supplement.tex cap-study.tex $(GENERATED_RESULT) \
 		$(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		$(SEMANTIC_UNION_GENERATED_RESULT) $(ORDER_GENERATED_RESULT) \
 		$(HOLDOUT_GENERATED_RESULT) \
+		$(SEED_GENERATED_RESULT) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) $<
 
@@ -102,6 +111,11 @@ $(HOLDOUT_GENERATED_RESULT): $(HOLDOUT_RENDERER) $(HOLDOUT_ARTIFACT) \
 		--analysis $(HOLDOUT_ARTIFACT) \
 		--denominator-audit $(HOLDOUT_DENOMINATOR_AUDIT) \
 		--output $@ --write
+
+$(SEED_GENERATED_RESULT): $(SEED_RENDERER) $(SEED_ARTIFACT) \
+		$(SEED_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SEED_RENDERER) \
+		--analysis $(SEED_ARTIFACT) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -142,7 +156,7 @@ author-kit-preflight:
 # unreviewed result bytes.
 submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		$(SEMANTIC_UNION_GENERATED_RESULT) $(ORDER_GENERATED_RESULT) \
-		$(HOLDOUT_GENERATED_RESULT)
+		$(HOLDOUT_GENERATED_RESULT) $(SEED_GENERATED_RESULT)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
@@ -191,6 +205,12 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		$(HOLDOUT_RENDERER) --analysis $(HOLDOUT_ARTIFACT) \
 		--denominator-audit $(HOLDOUT_DENOMINATOR_AUDIT) \
 		--output $(HOLDOUT_GENERATED_RESULT) --check
+	cd $(SEED_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(SEED_RENDERER) --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		$(SEED_RENDERER) --analysis $(SEED_ARTIFACT) \
+		--output $(SEED_GENERATED_RESULT) --check
 
 # Provisional project audit assumption only, not an ICAPS 2027 requirement:
 # audit a two-PDF review bundle until the venue publishes its rules. The

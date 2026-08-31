@@ -47,6 +47,9 @@ ORDER_GENERATED_INPUT = (
 HOLDOUT_GENERATED_INPUT = (
     r"\input{generated/pdb-profile-certificate-holdout-v1.tex}"
 )
+SEED_GENERATED_INPUT = (
+    r"\input{generated/pdb-profile-joint-seed-validation-v1.tex}"
+)
 CAP_STUDY_INPUT = r"\input{cap-study.tex}"
 REFERENCES_START_LABEL = r"\label{paper:references-start}"
 
@@ -135,7 +138,7 @@ REVIEW_BUNDLE_FILENAMES = (
 REVIEW_DOCUMENT_MARKERS = {
     "paper.pdf": {
         "required": (
-            "Cut-Aligned Cofactor Profiles",
+            "Heuristic Fragmentation in Symbolic Search",
             "Anonymous submission",
             "Abstract",
         ),
@@ -143,7 +146,7 @@ REVIEW_DOCUMENT_MARKERS = {
     },
     "supplement.pdf": {
         "required": (
-            "Cut-Aligned Cofactor Profiles",
+            "Heuristic Fragmentation in Symbolic Search",
             "Supplementary Material",
             "Anonymous for review",
             "Guide.",
@@ -349,8 +352,10 @@ REQUIRED_MAIN = (
     r"\affiliations{}",
     ORDER_GENERATED_INPUT,
     HOLDOUT_GENERATED_INPUT,
+    SEED_GENERATED_INPUT,
     r"\HoldoutTwoEffectRows",
-    r"\HoldoutSelectorRows",
+    r"\HoldoutSelectorStressRows",
+    r"\SeedNormalizedRows",
 )
 
 REQUIRED_SUPPLEMENT = (
@@ -358,6 +363,7 @@ REQUIRED_SUPPLEMENT = (
     POSTHOC_GENERATED_INPUT,
     ORDER_GENERATED_INPUT,
     HOLDOUT_GENERATED_INPUT,
+    SEED_GENERATED_INPUT,
     CAP_STUDY_INPUT,
 )
 
@@ -1127,6 +1133,7 @@ def _validate_source(name: str, text: str, required) -> None:
         .replace(POSTHOC_GENERATED_INPUT, "")
         .replace(ORDER_GENERATED_INPUT, "")
         .replace(HOLDOUT_GENERATED_INPUT, "")
+        .replace(SEED_GENERATED_INPUT, "")
     )
     for description, pattern in FORBIDDEN_IDENTITY:
         match = pattern.search(identity_text)
@@ -1277,7 +1284,7 @@ def _review_bundle_self_test():
     # direct infrastructure/provenance scans, not by suppressing citations.
     safe_text = "SymK builds on prior work by Jendrik Seipp.\n"
     safe_first_page = (
-        "Why Heuristics Help or Hurt Symbolic Search: Cut-Aligned Cofactor Profiles\n"
+        "Heuristic Fragmentation in Symbolic Search: Cofactor Certificates and Their Limits\n"
         "Anonymous submission\nAbstract\n"
     )
     safe_action_markup = "<html><body>anonymous paper</body></html>"
