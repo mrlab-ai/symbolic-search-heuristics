@@ -133,6 +133,10 @@ class TerminalIncidenceCorrectionTest(unittest.TestCase):
             dict(Correction.ATTESTATION_ALIASES),
         )
         self.assertEqual(
+            provenance["excluded_terminal_outcomes"],
+            Correction._excluded_outcome_provenance(),
+        )
+        self.assertEqual(
             provenance["original_analyzer_sha256"],
             Correction.ORIGINAL_ANALYZER_SHA256,
         )
@@ -207,6 +211,150 @@ class TerminalIncidenceCorrectionTest(unittest.TestCase):
                 "protocol module changed",
             ):
                 Correction._assert_original_analyzer()
+
+    def test_original_outcome_table_drift_fails_closed(self):
+        with mock.patch.object(Original, "OUTCOME_SPECS", {}):
+            with self.assertRaisesRegex(
+                Correction.CorrectionError,
+                "outcome table changed",
+            ):
+                Correction._assert_original_analyzer()
+
+    def test_exact_excluded_terminal_outcomes_are_accepted_and_restored(self):
+        phase = {
+            30: (None, False, False),
+            34: (None, True, True),
+            247: (None, False, False),
+            250: (True, True, True),
+        }
+        records = copy.deepcopy(self.records)
+        original_table = Original.OUTCOME_SPECS
+        for index, code in enumerate(sorted(Correction.EXCLUDED_TERMINAL_OUTCOMES)):
+            expected = Correction.EXCLUDED_TERMINAL_OUTCOMES[code]
+            record = records[index]
+            construction, profile, expansion = phase[code]
+            record.update({
+                "planner_exit_code": code,
+                "error": expected["error"],
+                "coverage": expected["coverage"],
+                "unsolvable": expected["unsolvable"],
+                "unexplained_errors": [
+                    expected["error"],
+                    Original.LAB_SLURM_ERROR,
+                ],
+                "construction_completed": construction,
+                "wbh_profile_present": profile,
+                "wbh_expansion_profile_present": expansion,
+            })
+        matrix, _tasks, outcomes = Correction.validate_matrix(records)
+        self.assertEqual(len(matrix), P.CELL_COUNT)
+        for index, code in enumerate(sorted(Correction.EXCLUDED_TERMINAL_OUTCOMES)):
+            record = records[index]
+            key = (record["algorithm"], (record["domain"], record["problem"]))
+            self.assertEqual(
+                outcomes[key], Correction.EXCLUDED_OUTCOME_CLASS
+            )
+        self.assertIs(Original.OUTCOME_SPECS, original_table)
+
+    def test_excluded_terminal_near_matches_fail_closed(self):
+        expected = Correction.EXCLUDED_TERMINAL_OUTCOMES[250]
+        base = copy.deepcopy(self.records[0])
+        base.update({
+            "planner_exit_code": 250,
+            "error": expected["error"],
+            "coverage": expected["coverage"],
+            "unsolvable": expected["unsolvable"],
+            "unexplained_errors": [
+                expected["error"],
+                Original.LAB_SLURM_ERROR,
+            ],
+            "construction_completed": True,
+            "wbh_profile_present": True,
+            "wbh_expansion_profile_present": True,
+        })
+        mutations = (
+            ("error", "changed"),
+            ("coverage", 1),
+            ("unsolvable", 1),
+            ("construction_completed", None),
+            ("wbh_profile_present", False),
+            ("wbh_expansion_profile_present", False),
+        )
+        for field, value in mutations:
+            with self.subTest(field=field):
+                changed = copy.deepcopy(base)
+                changed[field] = value
+                with self.assertRaisesRegex(
+                    Correction.CorrectionError,
+                    "fields changed",
+                ):
+                    Correction._validate_excluded_terminal_contract(
+                        [changed], set(P.PRIMARY_LABELS)
+                    )
+        for errors in ([], [expected["error"]], [Original.LAB_SLURM_ERROR]):
+            with self.subTest(errors=errors):
+                changed = copy.deepcopy(base)
+                changed["unexplained_errors"] = errors
+                with self.assertRaisesRegex(
+                    Correction.CorrectionError,
+                    "invalidating evidence",
+                ):
+                    Correction._validate_excluded_terminal_contract(
+                        [changed], set(P.PRIMARY_LABELS)
+                    )
+
+    def test_unknown_primary_terminal_fails_closed(self):
+        unknown = copy.deepcopy(self.records[0])
+        unknown["planner_exit_code"] = 251
+        with self.assertRaisesRegex(
+            Correction.CorrectionError,
+            "unrecognized terminal outcome",
+        ):
+            Correction._validate_excluded_terminal_contract(
+                [unknown], set(P.PRIMARY_LABELS)
+            )
+
+    def test_failed_gate_does_not_read_intervention_terminal_outcome(self):
+        records = copy.deepcopy(self.records)
+        intervention = next(
+            record for record in records
+            if record["algorithm"] == P.INTERVENTION_LABEL
+        )
+        intervention["planner_exit_code"] = "outcome remains blinded"
+        intervention["wbh_profile_parser_protocol"] = "unread-after-failed-gate"
+        result = Correction.analyze_records(records)
+        self.assertFalse(result["gates"]["pass"])
+        self.assertEqual(
+            result["intervention"]["status"],
+            "not_analyzed_primary_gate_failed",
+        )
+
+    def test_passing_gate_validates_intervention_terminal_outcome(self):
+        records = copy.deepcopy(self.records)
+        intervention = next(
+            record for record in records
+            if record["algorithm"] == P.INTERVENTION_LABEL
+        )
+        intervention["planner_exit_code"] = "malformed-after-passing-gate"
+        with mock.patch.object(
+            Original, "primary_gates", return_value={"pass": True}
+        ):
+            with self.assertRaisesRegex(
+                Correction.CorrectionError,
+                "unrecognized terminal outcome",
+            ):
+                Correction.analyze_records(records)
+
+    def test_outcome_table_is_restored_after_analysis_failure(self):
+        original_table = Original.OUTCOME_SPECS
+        with mock.patch.object(
+            Correction,
+            "_FROZEN_ANALYZE_RECORDS",
+            side_effect=RuntimeError("analysis failure"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "analysis failure"):
+                Correction.analyze_records(copy.deepcopy(self.records))
+        self.assertIs(Original.OUTCOME_SPECS, original_table)
 
     def test_nonregular_original_analyzer_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
