@@ -27,6 +27,8 @@
 \newcommand{\width}{\ensuremath{\mathsf{w}}}
 \newcommand{\cutcount}[2]{\ensuremath{c_{#1}(#2)}}
 \newcommand{\cutprod}[2]{\ensuremath{\mathcal{C}_{\pi}(#1,#2)}}
+\newcommand{\jointcount}[3]{\ensuremath{j_{#1}(#2,#3)}}
+\newcommand{\jointprofile}[2]{\ensuremath{\mathcal{J}_{\pi}(#1,#2)}}
 \newcommand{\values}{\ensuremath{V}}
 \newcommand{\level}[2]{\ensuremath{H_{#2}}}
 \newcommand{\effort}{\ensuremath{\mathit{effort}}}
@@ -34,6 +36,8 @@
 \newcommand{\fragfactor}{\ensuremath{\mathit{frag}}}
 \newcommand{\profilebound}{\ensuremath{\mathcal{P}_{\pi}}}
 \newcommand{\profilescore}{\ensuremath{\mathcal{R}_{\pi}}}
+\newcommand{\jointbound}{\ensuremath{\mathcal{P}^{\mathcal J}_{\pi}}}
+\newcommand{\jointscore}{\ensuremath{\mathcal{R}^{\mathcal J}_{\pi}}}
 \newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
 \newcommand{\hrange}{\ensuremath{\mathrm{range}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
@@ -280,11 +284,27 @@ cofactor width are
   \width_\pi(f)=\max_{0\leq i\leq n}|\sub{i}{f}|.
 \]
 Write $\cutcount{i}{f}=|\sub{i}{f}|$. For a state set $S$ and heuristic
-$h$, their cut-aligned \emph{cofactor-profile product} is
+$h$, define the co-occurring residual-pair count and its cumulative profile by
+\[
+ \jointcount{i}{S}{h}=
+ \left|\left\{(\chi_S|_\rho,h|_\rho)
+       \mid\rho\in\{0,1\}^i\right\}\right|,
+ \qquad
+ \jointprofile{S}{h}=\sum_{i=0}^{n-1}\jointcount{i}{S}{h}.
+\]
+Their cut-aligned Cartesian profile product is
 \[
   \cutprod{S}{h}=\sum_{i=0}^{n-1}
   \cutcount{i}{\chi_S}\cutcount{i}{h}.
 \]
+Projection onto either component and inclusion in the Cartesian product give
+\[
+ \max\{\cutcount{i}{\chi_S},\cutcount{i}{h}\}
+ \leq\jointcount{i}{S}{h}
+ \leq\cutcount{i}{\chi_S}\cutcount{i}{h}
+\]
+at every cut. Thus $\jointprofile{S}{h}\leq\cutprod{S}{h}$, with equality
+only when every cross-pair is realized at every cut.
 For a Boolean function $f$, $\bdd{f}$ is its reduced ordered BDD with
 complemented edges under $\pi$, and $\bddsize{f}$ counts regular inner
 nodes, as in CUDD. A residual is represented by a signed pointer: its regular
@@ -344,7 +364,8 @@ $\phi(0)=0$, $\phi(\infty)=\infty$, and
 Then $h=\phi\circ q$ is admissible and consistent and
 $\cutcount{i}{h}\leq\cutcount{i}{q}$ for every cut $i$. Consequently,
 $\width_\pi(h)\leq\width_\pi(q)$ and
-$\cutprod{S}{h}\leq\cutprod{S}{q}$ for every state set $S$.
+$\jointprofile{S}{h}\leq\jointprofile{S}{q}$ and
+$\cutprod{S}{h}\leq\cutprod{S}{q}$ for every fixed state set $S$.
 \end{proposition}
 
 \begin{proof}
@@ -360,9 +381,13 @@ $\phi(q(s))\leq\max(0,q(s))\leq\hstar(s)$. If $q(s)=\infty$, raw
 admissibility implies $\hstar(s)=\infty$. The transformed heuristic is
 therefore admissible, consistent, and zero on goals. Finally,
 $(\phi\circ q)|_\rho=\phi\circ(q|_\rho)$, so the terminal map may merge
-cofactors but cannot create any. This proves the cutwise inequality; taking a
-maximum proves the width inequality, and multiplying by the nonnegative
-state-set cut counts and summing proves the profile-product inequality.
+cofactors but cannot create any. Moreover,
+$(\chi_S|_\rho,q|_\rho)\mapsto
+(\chi_S|_\rho,\phi\circ(q|_\rho))$ maps the old co-occurring pairs onto the
+new ones, so their number cannot increase. This proves the joint-profile
+inequality. Taking a maximum proves the width inequality, and multiplying by
+the nonnegative state-set cut counts and summing proves the Cartesian-profile
+inequality.
 \end{proof}
 
 Rectification $\phi_+(a)=\max(0,a)$ is one instance. For
@@ -386,8 +411,9 @@ $\phi_{\kappa_2}\circ q$ and
 $\width_\pi(\phi_{\kappa_1}\circ q)\leq
 \width_\pi(\phi_{\kappa_2}\circ q)$. Thus increasing $\kappa$ weakly
 strengthens the heuristic, whereas decreasing it weakly contracts every cut
-count, the profile product with any fixed set, and the coarse $2\values Wn$
-certificate.
+count, both profiles with any fixed set, and the coarse $2\values Wn$
+certificate. This does not assert monotonicity of run-level profiles: changing
+the heuristic may change the expanded sets to which they are applied.
 
 Let $\mathrm{ADD}_\pi(h)$ be the reduced ordered ADD of $h$ under $\pi$
 \citep{bahar-et-al-iccad1993}, and let $|\mathrm{ADD}_\pi(h)|$ count
@@ -485,6 +511,7 @@ Let $S\subseteq\{0,1\}^n$ and $U\subseteq\hrange(h)$. Then
 \[
 \bddsize{S\cap h^{-1}(U)}
 \leq\cofcount(\chi_{S\cap h^{-1}(U)})
+\leq\jointprofile{S}{h}
 \leq\cutprod{S}{h}
 \leq W\cofcount(\chi_S)
 \leq Wn(\bddsize{S}+2).
@@ -503,7 +530,7 @@ $(\chi_S|_{\rho_u},h|_{\rho_u})\in R_i$. This map is injective by
 Lemma~\ref{lem-pair}. Consequently,
 \[
  |\sub{i}{\chi_{S\cap h^{-1}(U)}}|
- \leq|R_i|
+ \leq|R_i|=\jointcount{i}{S}{h}
  \leq\cutcount{i}{\chi_S}\cutcount{i}{h}
  \leq W|\sub{i}{\chi_S}|.
 \]
@@ -516,6 +543,7 @@ inequalities.
 Let $S\subseteq\{0,1\}^n$. Then
 \[
  \sum_{v\in\hrange(h)}\bddsize{S\cap\level{h}{v}}
+ \leq T\jointprofile{S}{h}
  \leq T\cutprod{S}{h}
  \leq TW\cofcount(\chi_S)
  \leq TWn(\bddsize{S}+2)
@@ -528,7 +556,8 @@ $\values=|h(\states)\setminus\{\infty\}|$.
 
 \begin{proof}
 Theorem~\ref{thm-bucket} with $U=\{v\}$ bounds every bucket by
-$\cutprod{S}{h}$. Sum over the $T$ terminals, relax the profile, and use
+$\jointprofile{S}{h}$. Sum over the $T$ terminals, relax first to the
+Cartesian profile and then to width, and use
 $T\leq W$ from Proposition~\ref{prop-range}; Lemma~\ref{lem-qsize}
 converts cofactor count to reduced size. If only finite values attained on
 planning states are included, there are at most $\values$ nonempty
@@ -563,7 +592,7 @@ internal and the other is the 1-terminal.
 Hence
 \[
  \bddsize{S\cap h^{-1}(U)}
- \leq\min\{\cutprod{S}{h},\,2(A+1)b+A\},
+ \leq\min\{\jointprofile{S}{h},\,2(A+1)b+A\},
 \]
 where the first certificate is Theorem~\ref{thm-bucket}.  More precisely, if
 $b_g=\bddsize{L_g}$ and $\values_g$ is the number of nonempty selected
@@ -572,7 +601,7 @@ combined search-level certificate
 \[
  \effort(\task,h)
  \leq\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
- \values_g\min\{\cutprod{L_g}{h},\,2(A+1)b_g+A\}.
+ \values_g\min\{\jointprofile{L_g}{h},\,2(A+1)b_g+A\}.
 \]
 Relaxing this to the Apply term and using at most $\values$ buckets on each
 of the $N$ nonempty layers below $\copt$ gives
@@ -628,6 +657,8 @@ Then
  \begin{aligned}
  \effort(\task,h)
  &\leq\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
+      \values_g\jointprofile{L_g}{h} \\
+ &\leq\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
       \values_g\cutprod{L_g}{h} \\
  &\leq\values
    \sum_{\substack{g<\copt\\L_g\ne\emptyset}}
@@ -644,8 +675,9 @@ Then
 \begin{proof}
 Lemma~\ref{lem-identity} selects exactly these $\values_g$ buckets on layer
 $g$, and Theorem~\ref{thm-bucket} bounds each bucket by
-$\cutprod{L_g}{h}$. This proves the first inequality.  The next two follow
-from $\values_g\leq\values$ and
+$\jointprofile{L_g}{h}$. This proves the first inequality. Relaxing to the
+Cartesian profile proves the second. The next two follow from
+$\values_g\leq\values$ and
 $\cutprod{L_g}{h}\leq W\cofcount(\chi_{L_g})$.
 Lemma~\ref{lem-qsize} then bounds each cofactor count by
 $n(\bddsize{L_g}+2)$.

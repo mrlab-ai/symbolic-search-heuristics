@@ -42,6 +42,8 @@
 \newcommand{\width}{\ensuremath{\mathsf{w}}}
 \newcommand{\cutcount}[2]{\ensuremath{c_{#1}(#2)}}
 \newcommand{\cutprod}[2]{\ensuremath{\mathcal{C}_{\pi}(#1,#2)}}
+\newcommand{\jointcount}[3]{\ensuremath{j_{#1}(#2,#3)}}
+\newcommand{\jointprofile}[2]{\ensuremath{\mathcal{J}_{\pi}(#1,#2)}}
 \newcommand{\values}{\ensuremath{V}}
 \newcommand{\level}[2]{\ensuremath{H_{#2}}}
 \newcommand{\effort}{\ensuremath{\mathit{effort}}}
@@ -49,6 +51,8 @@
 \newcommand{\fragfactor}{\ensuremath{\mathit{frag}}}
 \newcommand{\profilebound}{\ensuremath{\mathcal{P}_{\pi}}}
 \newcommand{\profilescore}{\ensuremath{\mathcal{R}_{\pi}}}
+\newcommand{\jointbound}{\ensuremath{\mathcal{P}^{\mathcal J}_{\pi}}}
+\newcommand{\jointscore}{\ensuremath{\mathcal{R}^{\mathcal J}_{\pi}}}
 \newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
 \newcommand{\hrange}{\ensuremath{\mathrm{range}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
@@ -292,14 +296,30 @@ $\cofcount(f) = \sum_{i=0}^{n-1} |\sub{i}{f}|$.
 \end{definition}
 
 Write $\cutcount{i}{f}=|\sub{i}{f}|$ for its cut-$i$ cofactor count.
-For a state set $S$ and heuristic $h$, define their \emph{cut-aligned
-cofactor-profile product} by
+For a state set $S$ and heuristic $h$, define the number of residual pairs
+that actually co-occur under one prefix by
+\[
+ \jointcount{i}{S}{h}=
+ \left|\left\{(\chi_S|_\rho,h|_\rho)
+       \mid \rho\in\{0,1\}^i\right\}\right|,
+\]
+and their \emph{co-occurring cofactor profile} by
+\[
+  \jointprofile{S}{h}=\sum_{i=0}^{n-1}\jointcount{i}{S}{h}.
+\]
+Its Cartesian relaxation is the \emph{cut-aligned cofactor-profile product}
 \[
   \cutprod{S}{h}=\sum_{i=0}^{n-1}
   \cutcount{i}{\chi_S}\cutcount{i}{h}.
 \]
-It measures how many residual pairs are possible when both functions are cut
-at the same position in the search order.
+At every cut,
+\[
+ \max\{\cutcount{i}{\chi_S},\cutcount{i}{h}\}
+ \leq\jointcount{i}{S}{h}
+ \leq\cutcount{i}{\chi_S}\cutcount{i}{h}.
+\]
+The first quantity retains which residuals arise from the \emph{same} prefix;
+the second counts all possible cross-pairs.
 
 \begin{lemma}
 \label{lem-qsize}
@@ -384,11 +404,15 @@ every $a\in\mathbb Z$ and integer $c\geq0$ satisfy
 Then $h=\phi\circ q$ is admissible and consistent and
 $\cutcount{i}{h}\leq\cutcount{i}{q}$ for every cut $i$. Consequently,
 $\width_\pi(h)\leq\width_\pi(q)$ and
-$\cutprod{S}{h}\leq\cutprod{S}{q}$ for every state set $S$.
+$\jointprofile{S}{h}\leq\jointprofile{S}{q}$ and
+$\cutprod{S}{h}\leq\cutprod{S}{q}$ for every fixed state set $S$.
 \end{proposition}
 
 Monotonicity and the cost condition transfer consistency and imply
-$\phi(a)\leq\max(0,a)$; terminal mapping cannot create cofactors. Thus both
+$\phi(a)\leq\max(0,a)$; terminal mapping cannot create cofactors. Mapping
+$(\chi_S|_\rho,q|_\rho)$ to
+$(\chi_S|_\rho,\phi\circ(q|_\rho))$ also cannot create co-occurring pairs.
+Thus both
 rectification and the cap
 $\phi_\kappa(a)=\min(\max(0,a),\kappa)$ for finite $a$ (and
 $\phi_\kappa(\infty)=\infty$) are safe and width nonincreasing. The cap has
@@ -398,8 +422,9 @@ $\phi_{\kappa_1}\circ q$ is a terminal relabeling of
 $\phi_{\kappa_2}\circ q$, so every cut count, its profile product with any
 fixed set, and its cofactor width are no larger. Caps therefore form a nested
 safety--informativeness ladder: increasing $\kappa$ weakly strengthens the
-heuristic, while decreasing it weakly contracts both the profile-sensitive and
-coarse $2\values Wn$ certificates.
+heuristic, while decreasing it weakly contracts both fixed-set profiles and
+the coarse $2\values Wn$ certificate. This fixed-set statement does not imply
+monotonicity of a complete run, whose expanded sets may change with the cap.
 
 Let $\mathrm{ADD}_\pi(h)$ be the reduced ordered ADD under $\pi$
 \citep{bahar-et-al-iccad1993}.
@@ -429,8 +454,9 @@ witnessed on genuine states apply to every extension.
 
 Fix $\pi$ and write $W=\width_\pi(h)$. At every cut, the cofactor of a
 value-selected subset is determined by the pair consisting of the state-set
-cofactor and the heuristic cofactor.  Thus the cut-aligned product satisfies
-$\cutprod{S}{h}\leq\width_\pi(h)\cofcount(\chi_S)$.
+cofactor and the heuristic cofactor induced by the same prefix. Thus
+$\jointprofile{S}{h}\leq\cutprod{S}{h}\leq
+\width_\pi(h)\cofcount(\chi_S)$.
 
 \begin{theorem}[bucket bound]
 \label{thm-bucket}
@@ -439,6 +465,7 @@ Let $S \subseteq \{0,1\}^n$ and $U \subseteq \hrange(h)$. Then
 \begin{aligned}
 \bddsize{S \cap h^{-1}(U)}
   &\leq \cofcount(\chi_{S \cap h^{-1}(U)}) \\
+  &\leq \jointprofile{S}{h} \\
   &\leq \cutprod{S}{h} \\
   &\leq W\cofcount(\chi_S) \\
   &\leq Wn(\bddsize{S}+2).
@@ -447,11 +474,12 @@ Let $S \subseteq \{0,1\}^n$ and $U \subseteq \hrange(h)$. Then
 \end{theorem}
 
 \begin{proof}[Proof sketch]
-At cut $i$, equal pairs $(\chi_S|_\rho,h|_\rho)$ induce equal slice
-cofactors, so their number is at most
-$\cutcount{i}{\chi_S}\cutcount{i}{h}$. Sum over cuts, relax each heuristic
-cut count to $W$, and apply Lemma~\ref{lem-qsize}. The supplement gives the
-explicit injection.
+At cut $i$, equal co-occurring pairs
+$(\chi_S|_\rho,h|_\rho)$ induce equal slice cofactors. Map each distinct
+slice residual injectively to a witnessing pair, sum over cuts, relax the
+co-occurring pairs to their Cartesian product, then relax each heuristic cut
+count to $W$. Lemma~\ref{lem-qsize} completes the chain; the supplement gives
+the explicit injection.
 \end{proof}
 
 This covers a bucket ($U=\{v\}$), recognized-dead-end removal, and
@@ -464,6 +492,7 @@ Let $S \subseteq \{0,1\}^n$. Then
 \[
 \begin{aligned}
 \sum_{v \in \hrange(h)} \bddsize{S \cap \level{h}{v}}
+  &\leq T\jointprofile{S}{h} \\
   &\leq T\cutprod{S}{h} \\
   &\leq TW\cofcount(\chi_S) \\
   &\leq TWn(\bddsize{S}+2) \\
@@ -484,19 +513,25 @@ The partition theorem gives a run-level predictor that retains the cutwise
 interaction discarded by width. Define
 \[
  \begin{aligned}
+ \jointbound(\task,h)&=
+ \sum_g |A_g(h)|\jointprofile{S_g^h}{h},\\
+ \jointscore(\task,h)&=
+ \frac{\jointbound(\task,h)}{\unioneffort(\task,h)},\\
  \profilebound(\task,h)&=
  \sum_g |A_g(h)|\cutprod{S_g^h}{h},\\
  \profilescore(\task,h)&=
  \frac{\profilebound(\task,h)}{\unioneffort(\task,h)}.
- \end{aligned}
+\end{aligned}
 \]
-We call $\profilescore$ the \emph{normalized cut-aligned profile
-certificate}. Applying Theorem~\ref{thm-bucket} to every expanded bucket
-gives $\fragfactor(\task,h)\leq\profilescore(\task,h)$. Unlike heuristic
-quality, this quantity is designed to predict the representational effect
-conditional on the unsplit expanded sets. Unlike cofactor width, it retains
-where the heuristic and those sets are simultaneously complex. Width is the
-frontier-independent relaxation used to certify a heuristic before search.
+We call $\jointscore$ the \emph{normalized co-occurring profile certificate};
+$\profilescore$ is its normalized Cartesian relaxation. Applying
+Theorem~\ref{thm-bucket} to every expanded bucket gives
+$\fragfactor\leq\jointscore\leq\profilescore$. Unlike heuristic quality,
+$\jointscore$ is designed to explain the representational effect conditional
+on the unsplit expanded sets. Unlike its Cartesian and width relaxations, it
+retains which state-set and heuristic residuals arise from the same prefixes.
+Width is the frontier-independent relaxation used to certify a heuristic
+before search.
 
 The effort measure sums each reduced bucket separately even if a shared
 unique table reuses nodes. The factor $n$ cannot be removed: the supplement
@@ -509,7 +544,7 @@ $b=\bddsize{S}$, relabeling its terminals by membership in $U$
 $A$ nodes. Materializing both polarities of $S$ uses at most $2b$ ordinary
 nodes, so standard Boolean Apply \citep[Sec.~4.3]{bryant-ieeecomp1986} gives
 $\bddsize{S\cap h^{-1}(U)}\leq2(A+1)b+A$. Thus the two certificates
-combine as $\min\{\cutprod{S}{h},2(A+1)b+A\}$. With the bucket identity
+combine as $\min\{\jointprofile{S}{h},2(A+1)b+A\}$. With the bucket identity
 below, the ADD certificate yields the blind-effort ratio bound
 $\values(3A+2)$. A nonconstant ADD has one root and at most $W$ nodes on
 each other level, so $A\leq1+(n-1)W$ and the ratio is at most
