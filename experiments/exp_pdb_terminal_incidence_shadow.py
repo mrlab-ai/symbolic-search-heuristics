@@ -23,11 +23,13 @@ RUNNER_SOURCE_FILES = (
     "suite_wbh_operator_costs.json",
     "suite_wbh_operator_costs.json.sha256",
     "pdb_terminal_incidence_source_scan.slurm",
-    "artifacts/pdb-terminal-incidence-shadow/source-audit-launch-receipt-v1.json",
-    "artifacts/pdb-terminal-incidence-shadow/source-audit-execution-receipt-v1.json",
+    "artifacts/pdb-terminal-incidence-shadow/source-audit-launch-intent-v2.json",
+    "artifacts/pdb-terminal-incidence-shadow/source-audit-launch-receipt-v2.json",
+    "artifacts/pdb-terminal-incidence-shadow/source-audit-execution-receipt-v2.json",
     "analyze_pdb_terminal_incidence_shadow.py",
     "audit_pdb_terminal_incidence_shadow.py",
     "recover_pdb_terminal_incidence_shadow.py",
+    "launch_pdb_terminal_incidence_source_audit.py",
     "pdb_fixed_pattern_parser.py",
     "pdb_profile_comparison_parser.py",
     "pdb_profile_comparison_protocol.py",
@@ -40,6 +42,7 @@ RUNNER_SOURCE_FILES = (
     "validate_wbh_log.py",
     "jj_cached_revision.py",
     "requirements-pdb-terminal-incidence-shadow.txt",
+    "pdb_terminal_incidence_source_audit_code.sha256",
 )
 
 
@@ -94,6 +97,9 @@ def configure() -> None:
         "source_audit_execution_receipt_sha256": (
             P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
         ),
+        "source_audit_code_manifest_sha256": (
+            P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
+        ),
         "cohort_seed": P.COHORT_SEED,
         "cohort_family_count": P.COHORT_FAMILIES,
         "cohort_directory_family_sha256": P.DIRECTORY_FAMILY_JSON_SHA256,
@@ -119,6 +125,13 @@ def configure() -> None:
             P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
         ),
         "source_audit_slurm_sha256": P.SOURCE_AUDIT_SLURM_SHA256,
+        "source_audit_intent_sha256": P.SOURCE_AUDIT_INTENT_SHA256,
+        "source_audit_code_manifest_sha256": (
+            P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
+        ),
+        "source_audit_output_tree_sha256": (
+            P.SOURCE_AUDIT_OUTPUT_TREE_SHA256
+        ),
         "cohort_seed": P.COHORT_SEED,
         "cohort_task_name_sha256": P.TASK_NAME_SHA256,
         "cohort_source_path_sha256": P.SOURCE_PATH_SHA256,

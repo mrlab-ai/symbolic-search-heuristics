@@ -786,6 +786,10 @@ def parse_profile_stream(content: str) -> dict:
                 "partition_audit_effort": event.get(
                     "partition_audit_effort"
                 ),
+                "masked_seconds": event.get("masked_seconds"),
+                "partition_audit_seconds": event.get(
+                    "partition_audit_seconds"
+                ),
             }
             for event in layers
         ],

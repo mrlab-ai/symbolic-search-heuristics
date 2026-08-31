@@ -108,6 +108,8 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
                 "masked_cofactor_sum": 3,
                 "terminal_incidence": incidence,
                 "partition_audit_effort": partition,
+                "masked_seconds": 0.5,
+                "partition_audit_seconds": 0.25,
             })
             expansions.append({
                 "g": g,
@@ -238,12 +240,28 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
         observation = primary["by_cell"][(P.PRIMARY_LABELS[0], self.task)]
         self.assertEqual(observation["E"], 2)
         self.assertEqual(observation["I"], 4)
+        self.assertEqual(observation["kD"], 4)
         self.assertEqual(observation["mQ"], 6)
         self.assertEqual(observation["mJ"], 8)
         self.assertEqual(observation["Cartesian"], 10)
         self.assertEqual(observation["width"], 12)
         self.assertEqual(observation["ADD"], 26)
         self.assertEqual(observation["U"], 6)
+        diagnostics = Analysis.secondary_diagnostics(
+            primary["observations"]
+        )
+        self.assertEqual(
+            diagnostics["tightness"]["I"]["equal_family_macro"][
+                "value"
+            ],
+            0.5,
+        )
+        self.assertEqual(
+            diagnostics["computation_time"][
+                "pooled_masked_over_partition_ratio"
+            ],
+            2.0,
+        )
 
     def test_metric_cost_horizon_uses_completed_g_sequence_not_range(self):
         records = self.solved_matrix()
@@ -391,17 +409,18 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
 
     @staticmethod
     def comparison_observation(task, semantic, e, i, controls=None):
-        controls = controls or (i, i, i, i, i)
+        controls = controls or (i, i, i, i, i, i)
         return {
             "task": task,
             "semantic_id": semantic,
             "E": e,
             "I": i,
-            "mQ": controls[0],
-            "mJ": controls[1],
-            "Cartesian": controls[2],
-            "width": controls[3],
-            "ADD": controls[4],
+            "kD": controls[0],
+            "mQ": controls[1],
+            "mJ": controls[2],
+            "Cartesian": controls[3],
+            "width": controls[4],
+            "ADD": controls[5],
             "U": 10,
         }
 
@@ -441,10 +460,10 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
             task = (directory, "p{}".format(index))
             grouped[task] = {
                 "a": self.comparison_observation(
-                    task, "a", 1, 1, (2, 2, 2, 2, 2)
+                    task, "a", 1, 1, (2, 2, 2, 2, 2, 2)
                 ),
                 "b": self.comparison_observation(
-                    task, "b", 2, 2, (1, 1, 1, 1, 1)
+                    task, "b", 2, 2, (1, 1, 1, 1, 1, 1)
                 ),
             }
         with mock.patch.multiple(
@@ -495,7 +514,7 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
         self.assertFalse(gates["support"]["pass"])
         self.assertFalse(gates["pass"])
 
-    def test_cap8_is_exact_coarsening_and_must_not_increase(self):
+    def test_cap8_certificates_decrease_but_partition_effort_may_rise(self):
         records = []
         for label in P.LABELS:
             active = 8 if label == P.INTERVENTION_LABEL else 9
@@ -514,7 +533,9 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
         intervention = Analysis.cap8_intervention(
             matrix, tasks, primary
         )
-        self.assertTrue(intervention["nonincrease_certified"])
+        self.assertTrue(
+            intervention["observed_terminal_map_consequences_hold"]
+        )
         self.assertEqual(intervention["eligible_pairs"], 1)
 
         records[-1] = self.solved_record(
@@ -526,10 +547,13 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
         )
         matrix, tasks, _ = Analysis.validate_matrix(records, expected_tasks=1)
         primary = Analysis.primary_observations(matrix, tasks)
-        with self.assertRaisesRegex(
-            Analysis.TerminalIncidenceAnalysisError, "monotonicity"
-        ):
-            Analysis.cap8_intervention(matrix, tasks, primary)
+        intervention = Analysis.cap8_intervention(matrix, tasks, primary)
+        self.assertTrue(
+            intervention["observed_terminal_map_consequences_hold"]
+        )
+        self.assertEqual(
+            intervention["sum_deltas"]["partition_effort_delta"], 2
+        )
 
     def test_cap8_preserves_reencoded_infinity_terminal(self):
         records = self.solved_matrix(pattern=[2])
@@ -546,7 +570,9 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
         matrix, tasks, _ = Analysis.validate_matrix(records, expected_tasks=1)
         primary = Analysis.primary_observations(matrix, tasks)
         intervention = Analysis.cap8_intervention(matrix, tasks, primary)
-        self.assertTrue(intervention["nonincrease_certified"])
+        self.assertTrue(
+            intervention["observed_terminal_map_consequences_hold"]
+        )
         self.assertEqual(intervention["eligible_pairs"], 1)
 
     def test_parser_invalidated_cap8_outcome_excludes_intervention_pair(self):

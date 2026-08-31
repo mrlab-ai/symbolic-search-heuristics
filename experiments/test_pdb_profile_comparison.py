@@ -226,6 +226,8 @@ class ProfileParserTests(unittest.TestCase):
         self.assertEqual(layer["active_value_count"], 2)
         self.assertEqual(layer["terminal_incidence"], 5)
         self.assertEqual(layer["partition_audit_effort"], 4)
+        self.assertEqual(layer["masked_seconds"], 0.5)
+        self.assertEqual(layer["partition_audit_seconds"], 0.6)
 
         for field, value, message in (
             ("active_value_count", 0, "canonical value set"),

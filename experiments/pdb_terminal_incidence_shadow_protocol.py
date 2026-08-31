@@ -19,7 +19,7 @@ class ProtocolError(RuntimeError):
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROTOCOL_PATH = SCRIPT_DIR / "pdb_terminal_incidence_shadow_protocol.md"
 PROTOCOL_SHA256 = (
-    "e1ec3a7c32b214a4f616e17c44d4e546c1e4da1dcd47bafb55be1907311bdf86"
+    "f0bbc8fce135b21e268e8bf9c31698b976fd7baa8413d13632c3c1b29c344c13"
 )
 COST_ATTESTATION_PATH = (
     SCRIPT_DIR / "pdb_terminal_incidence_shadow_cost_attestation.json"
@@ -33,22 +33,40 @@ COST_ATTESTATION_RECORDS_SHA256 = (
 SOURCE_AUDIT_ARTIFACT_DIR = (
     SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-shadow"
 )
+SOURCE_AUDIT_INTENT_PATH = (
+    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-launch-intent-v2.json"
+)
 SOURCE_AUDIT_LAUNCH_RECEIPT_PATH = (
-    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-launch-receipt-v1.json"
+    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-launch-receipt-v2.json"
 )
 SOURCE_AUDIT_EXECUTION_RECEIPT_PATH = (
-    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-execution-receipt-v1.json"
+    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-execution-receipt-v2.json"
+)
+SOURCE_AUDIT_CODE_MANIFEST_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_source_audit_code.sha256"
+)
+SOURCE_AUDIT_INTENT_SHA256 = (
+    "e6ab40376b6e46e60011ce652e9496e1085412189b64428b00aa64ac973e8c94"
 )
 SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256 = (
-    "04d8dc8961ec6bfe69a59c58d716300034121ae864655d7d0f40babb17bc4327"
+    "fface210968fe9874e4857d4201d32a6db553a9d1c6c34d35d50f0af21f4ce98"
 )
 SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256 = (
-    "d636861b14e9bf12e1733d888d232afd922bc78ddbdb9cc2c64f2a9f632de5c5"
+    "2922b93fa2503c609ddc37cc4984613531278700dfeaba856357eda45f6695b2"
 )
 SOURCE_AUDIT_SLURM_SHA256 = (
-    "59db7e9eb5550b8ab6bbf4826db9e02a058a2b8d9d306795ba1e4844ed3cb744"
+    "03d31ac88cfe6254a2a8872d53cd9cc504486fe501e7ef676c6c6e8473427eab"
 )
-SOURCE_AUDIT_JOB_ID = "1851160"
+SOURCE_AUDIT_CODE_MANIFEST_SHA256 = (
+    "77325d690ed7b3ed04c53b4f62214976d3073581a0259a6d398e3e642ce14e37"
+)
+SOURCE_AUDIT_OUTPUT_TREE_SHA256 = (
+    "36e2dcc52f17ae7748cd4ed0d7b7d0123eb1cfa8217cf70986db291bad45656a"
+)
+SOURCE_AUDIT_LAUNCHER_SHA256 = (
+    "c08f6fcab8379ebfc658ad508e240af35f39bde1f25ae6829beaa351aa5b29b8"
+)
+SOURCE_AUDIT_JOB_ID = "1853346"
 
 PROTOCOL = "pdb-terminal-incidence-shadow-measurement-v1"
 ANALYSIS_PROTOCOL = "pdb-terminal-incidence-shadow-analysis-v1"
@@ -550,6 +568,7 @@ def validate_cost_attestation(cohort) -> dict:
 
 def validate_source_audit_receipts() -> None:
     paths_and_hashes = (
+        (SOURCE_AUDIT_INTENT_PATH, SOURCE_AUDIT_INTENT_SHA256),
         (
             SOURCE_AUDIT_LAUNCH_RECEIPT_PATH,
             SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256,
@@ -568,17 +587,48 @@ def validate_source_audit_receipts() -> None:
         if actual_hash != expected_hash:
             raise ProtocolError("source-audit receipt bytes changed")
         try:
-            receipt = json.loads(path.read_text(encoding="ascii"))
+            raw = path.read_bytes()
+            receipt = json.loads(raw.decode("ascii"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
             raise ProtocolError("cannot load source-audit receipt") from err
-        if not isinstance(receipt, dict):
+        if (
+            not isinstance(receipt, dict)
+            or raw != canonical_json(receipt) + b"\n"
+        ):
             raise ProtocolError("source-audit receipt is not an object")
         receipts.append(receipt)
-    launch, execution = receipts
+    intent, launch, execution = receipts
+    expected_distributions = {
+        "contourpy": "1.3.3",
+        "cycler": "0.12.1",
+        "fonttools": "4.64.0",
+        "kiwisolver": "1.5.1",
+        "lab": "8.10",
+        "matplotlib": "3.11.1",
+        "numpy": "2.5.2",
+        "packaging": "26.3",
+        "pillow": "12.3.0",
+        "pyparsing": "3.3.2",
+        "python-dateutil": "2.9.0.post0",
+        "simplejson": "4.1.2",
+        "six": "1.17.0",
+        "txt2tags": "3.9",
+    }
+    output_dir = str(
+        SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v2"
+    )
+    candidate = str(
+        SCRIPT_DIR
+        / "data"
+        / "pdb_terminal_incidence_source_audit_v2_candidate.json"
+    )
+    slurm_script = str(
+        SCRIPT_DIR / "pdb_terminal_incidence_source_scan.slurm"
+    )
     launch_fixed = {
         "schema": (
             "symbolic-search-heuristics/"
-            "pdb-terminal-incidence-source-audit-launch/v1"
+            "pdb-terminal-incidence-source-audit-launch/v2"
         ),
         "job_id": SOURCE_AUDIT_JOB_ID,
         "partition": "fat",
@@ -586,6 +636,7 @@ def validate_source_audit_receipts() -> None:
         "account": "naiss2025-5-561-cpu",
         "array": "0-45",
         "array_throttle": 0,
+        "array_tasks": 46,
         "cpus_per_task": 1,
         "time_limit": "00:30:00",
         "memory_per_cpu": "8G",
@@ -593,16 +644,42 @@ def validate_source_audit_receipts() -> None:
         "cohort_manifest_sha256": COHORT_MANIFEST_SHA256,
         "translator_source_sha256": TRANSLATOR_SOURCE_SHA256,
         "slurm_script_sha256": SOURCE_AUDIT_SLURM_SHA256,
+        "code_manifest_sha256": SOURCE_AUDIT_CODE_MANIFEST_SHA256,
+        "launcher_sha256": SOURCE_AUDIT_LAUNCHER_SHA256,
+        "launch_intent_sha256": SOURCE_AUDIT_INTENT_SHA256,
+        "output_dir": output_dir,
+        "candidate_attestation": candidate,
+        "python_version": REQUIRED_PYTHON_VERSION,
+        "python_executable": (
+            "/home/jendrik/.local/share/uv/python/"
+            "cpython-3.12.13-linux-x86_64-gnu/bin/python3.12"
+        ),
+        "python_executable_sha256": (
+            "021044895e95be79dc2f110367607e684119afbc8ce75f6f0eec94844e0acec7"
+        ),
+        "python_environment_sha256": (
+            "4256d52c7331ace41f456a98f21dda4485ab9dd82ac0eb11697291feb1da0819"
+        ),
+        "python_distributions": expected_distributions,
+        "python_requirements_sha256": (
+            "9176e14c79ca81d624fd5eca3c6eb79b799ecb8f08b39301c7c250b97d526422"
+        ),
+        "submit_command": ["sbatch", "--parsable", slurm_script],
     }
     execution_fixed = {
         "schema": (
             "symbolic-search-heuristics/"
-            "pdb-terminal-incidence-source-audit-execution/v1"
+            "pdb-terminal-incidence-source-audit-execution/v2"
         ),
+        "launch_receipt_sha256": SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256,
         "job_id": SOURCE_AUDIT_JOB_ID,
         "partition": "fat",
+        "array_throttle": 0,
         "shards": 46,
         "scheduler_state_counts": {"COMPLETED": 46},
+        "output_tree_sha256": SOURCE_AUDIT_OUTPUT_TREE_SHA256,
+        "output_tree_files": 92,
+        "code_manifest_sha256": SOURCE_AUDIT_CODE_MANIFEST_SHA256,
         "source_audit_passed": True,
         "attestation_sha256": COST_ATTESTATION_SHA256,
         "attestation_records_sha256": COST_ATTESTATION_RECORDS_SHA256,
@@ -616,11 +693,48 @@ def validate_source_audit_receipts() -> None:
     }
     if any(launch.get(key) != value for key, value in launch_fixed.items()):
         raise ProtocolError("source-audit launch receipt semantics changed")
+    expected_intent = {
+        key: value for key, value in launch.items()
+        if key not in {"job_id", "launch_intent_sha256"}
+    }
+    expected_intent["schema"] = launch_fixed["schema"] + "/intent"
+    if intent != expected_intent:
+        raise ProtocolError("source-audit launch intent semantics changed")
     if any(
         execution.get(key) != value
         for key, value in execution_fixed.items()
     ):
         raise ProtocolError("source-audit execution receipt semantics changed")
+    rows = execution.get("scheduler_rows")
+    if (
+        not isinstance(rows, list)
+        or len(rows) != 46
+        or [row.get("array_task") for row in rows] != list(range(46))
+        or any(
+            not isinstance(row, dict)
+            or set(row) != {
+                "array_task", "state", "exit_code", "elapsed", "partition"
+            }
+            or row["state"] != "COMPLETED"
+            or row["exit_code"] != "0:0"
+            or row["partition"] != "fat"
+            or not isinstance(row["elapsed"], str)
+            for row in rows
+        )
+    ):
+        raise ProtocolError("source-audit scheduler evidence changed")
+    if sha256_file(SOURCE_AUDIT_CODE_MANIFEST_PATH) != (
+        SOURCE_AUDIT_CODE_MANIFEST_SHA256
+    ):
+        raise ProtocolError("source-audit code manifest bytes changed")
+    if sha256_file(SCRIPT_DIR / "pdb_terminal_incidence_source_scan.slurm") != (
+        SOURCE_AUDIT_SLURM_SHA256
+    ):
+        raise ProtocolError("source-audit Slurm bytes changed")
+    if sha256_file(
+        SCRIPT_DIR / "launch_pdb_terminal_incidence_source_audit.py"
+    ) != SOURCE_AUDIT_LAUNCHER_SHA256:
+        raise ProtocolError("source-audit launcher bytes changed")
 
 
 def validate_protocol_without_sources() -> None:

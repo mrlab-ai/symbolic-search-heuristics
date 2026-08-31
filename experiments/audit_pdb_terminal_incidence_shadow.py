@@ -45,6 +45,9 @@ LAUNCH_INTENT = LAUNCH_RECEIPT.with_name("launch-intent-v1.json")
 BUILD_RECEIPT = LAUNCH_RECEIPT.with_name("build-receipt-v1.json")
 LAUNCH_RECEIPT_PIN = LAUNCH_RECEIPT.with_name("launch-receipt-v1.sha256")
 try:
+    pin_info = LAUNCH_RECEIPT_PIN.lstat()
+    if LAUNCH_RECEIPT_PIN.is_symlink() or not stat.S_ISREG(pin_info.st_mode):
+        raise OSError("launch receipt pin is not a regular file")
     LAUNCH_RECEIPT_SHA256 = LAUNCH_RECEIPT_PIN.read_text(
         encoding="ascii"
     ).strip()
@@ -66,14 +69,18 @@ EXECUTION_RECEIPT_PIN = EXECUTION_RECEIPT.with_name(
 )
 PARSE_RECEIPT = EXECUTION_RECEIPT.with_name("parse-receipt-v1.json")
 PARSE_RECEIPT_PIN = EXECUTION_RECEIPT.with_name("parse-receipt-v1.sha256")
+PARSE_INTENT = EXECUTION_RECEIPT.with_name("parse-intent-v1.json")
 PARSE_RECEIPT_SCHEMA = (
     "symbolic-search-heuristics/pdb-terminal-incidence-shadow-parse/v1"
 )
+PARSE_INTENT_SCHEMA = "{}/intent".format(PARSE_RECEIPT_SCHEMA)
 FETCH_RECEIPT = EXECUTION_RECEIPT.with_name("fetch-receipt-v1.json")
 FETCH_RECEIPT_PIN = EXECUTION_RECEIPT.with_name("fetch-receipt-v1.sha256")
+FETCH_INTENT = EXECUTION_RECEIPT.with_name("fetch-intent-v1.json")
 FETCH_RECEIPT_SCHEMA = (
     "symbolic-search-heuristics/pdb-terminal-incidence-shadow-fetch/v1"
 )
+FETCH_INTENT_SCHEMA = "{}/intent".format(FETCH_RECEIPT_SCHEMA)
 EVAL_PROPERTIES = Path(str(EXPERIMENT_PATH) + "-eval") / "properties"
 RECOVERY_RECEIPT_SCHEMA = (
     "symbolic-search-heuristics/"
@@ -110,6 +117,7 @@ TERMINAL_SCHEDULER_STATES = {
 
 
 def _sha256_file(path: Path) -> str:
+    _require_regular_file(Path(path), "hashed artifact")
     digest = hashlib.sha256()
     try:
         with Path(path).open("rb") as stream:
@@ -120,7 +128,17 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _require_regular_file(path: Path, label: str) -> None:
+    try:
+        info = path.lstat()
+    except OSError as err:
+        raise ExecutionAuditError("{} is not a regular file".format(label)) from err
+    if path.is_symlink() or not stat.S_ISREG(info.st_mode):
+        raise ExecutionAuditError("{} is not a regular file".format(label))
+
+
 def _read_pin(path: Path, label: str) -> str:
+    _require_regular_file(path, "{} SHA-256 pin".format(label))
     try:
         raw = path.read_bytes()
     except OSError as err:
@@ -136,8 +154,7 @@ def _read_pin(path: Path, label: str) -> str:
 
 def _load_pinned_json(path: Path, pin: Path, label: str) -> tuple[str, dict]:
     expected = _read_pin(pin, label)
-    if path.is_symlink() or not path.is_file():
-        raise ExecutionAuditError("{} is not a regular file".format(label))
+    _require_regular_file(path, label)
     try:
         raw = path.read_bytes()
         value = json.loads(raw.decode("ascii"))
@@ -173,6 +190,7 @@ def _launch_receipt_bytes() -> tuple[bytes, dict]:
         raise ExecutionAuditError(
             "launch receipt SHA-256 is not pinned after submission"
         )
+    _require_regular_file(LAUNCH_RECEIPT, "launch receipt")
     try:
         raw = LAUNCH_RECEIPT.read_bytes()
         receipt = json.loads(raw.decode("ascii"))
@@ -256,6 +274,13 @@ def load_launch_receipt() -> dict:
             P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
         ),
         "source_audit_slurm_sha256": P.SOURCE_AUDIT_SLURM_SHA256,
+        "source_audit_intent_sha256": P.SOURCE_AUDIT_INTENT_SHA256,
+        "source_audit_code_manifest_sha256": (
+            P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
+        ),
+        "source_audit_output_tree_sha256": (
+            P.SOURCE_AUDIT_OUTPUT_TREE_SHA256
+        ),
         "generated_run_files": EXPECTED_CELLS,
         "generated_static_property_files": EXPECTED_CELLS,
         "materialized_pddl_inputs": True,
@@ -274,6 +299,7 @@ def load_launch_receipt() -> dict:
     ):
         if SHA256_RE.fullmatch(receipt.get(field, "")) is None:
             raise ExecutionAuditError("launch receipt has an invalid hash")
+    _require_regular_file(LAUNCH_INTENT, "launch intent")
     try:
         intent_raw = LAUNCH_INTENT.read_bytes()
         intent = json.loads(intent_raw.decode("ascii"))
@@ -294,6 +320,7 @@ def load_launch_receipt() -> dict:
         ).encode("ascii") + b"\n"
     ):
         raise ExecutionAuditError("launch intent semantics changed")
+    _require_regular_file(BUILD_RECEIPT, "build receipt")
     if _sha256_file(BUILD_RECEIPT) != receipt["build_receipt_sha256"]:
         raise ExecutionAuditError("build receipt bytes changed")
     try:
@@ -833,6 +860,16 @@ def load_execution_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
     ):
         raise ExecutionAuditError("execution receipt semantics changed")
     if verify_live:
+        input_hash, run_files, property_files = _run_input_tree_digest()
+        if any((
+            input_hash != launch["generated_run_input_tree_sha256"],
+            run_files != launch["generated_run_files"],
+            property_files != launch["generated_static_property_files"],
+            launch["generated_pddl_input_files"] != 2 * run_files,
+        )):
+            raise ExecutionAuditError(
+                "sealed immutable generated run inputs changed"
+            )
         tree_hash, files = dynamic_tree_digest()
         if (
             tree_hash != receipt["dynamic_cell_tree_sha256"]
@@ -869,7 +906,9 @@ def _parsed_properties_tree_digest() -> tuple[str, int]:
 
 
 def validate_before_parse() -> None:
-    if any(path.exists() for path in (PARSE_RECEIPT, PARSE_RECEIPT_PIN)):
+    if any(path.exists() or path.is_symlink() for path in (
+        PARSE_INTENT, PARSE_RECEIPT, PARSE_RECEIPT_PIN
+    )):
         raise ExecutionAuditError("parse provenance already exists")
     if Path(str(EXPERIMENT_PATH) + "-eval").exists():
         raise ExecutionAuditError("evaluation directory exists before parsing")
@@ -878,18 +917,43 @@ def validate_before_parse() -> None:
         for run_id in range(1, EXPECTED_CELLS + 1)
     ):
         raise ExecutionAuditError("parsed properties already exist")
-    load_execution_receipt(verify_live=True)
+    execution_sha, _ = load_execution_receipt(verify_live=True)
+    _write_exclusive_json(
+        PARSE_INTENT,
+        {
+            "schema": PARSE_INTENT_SCHEMA,
+            "execution_receipt_sha256": execution_sha,
+            "experiment_path": str(EXPERIMENT_PATH.resolve()),
+            "expected_property_files": EXPECTED_CELLS,
+        },
+        "parse intent",
+    )
+
+
+def _load_parse_intent(execution_sha: str) -> tuple[str, dict]:
+    raw, intent = _load_recovery_json(PARSE_INTENT, "parse intent")
+    expected = {
+        "schema": PARSE_INTENT_SCHEMA,
+        "execution_receipt_sha256": execution_sha,
+        "experiment_path": str(EXPERIMENT_PATH.resolve()),
+        "expected_property_files": EXPECTED_CELLS,
+    }
+    if intent != expected:
+        raise ExecutionAuditError("parse intent semantics changed")
+    return hashlib.sha256(raw).hexdigest(), intent
 
 
 def seal_parse() -> None:
-    if PARSE_RECEIPT_PIN.exists():
+    if PARSE_RECEIPT_PIN.exists() or PARSE_RECEIPT_PIN.is_symlink():
         raise ExecutionAuditError("parse receipt pin already exists")
     execution_sha, _ = load_execution_receipt(verify_live=True)
+    intent_sha, _ = _load_parse_intent(execution_sha)
     tree_hash, files = _parsed_properties_tree_digest()
     digest = _write_exclusive_json(
         PARSE_RECEIPT,
         {
             "schema": PARSE_RECEIPT_SCHEMA,
+            "parse_intent_sha256": intent_sha,
             "execution_receipt_sha256": execution_sha,
             "properties_tree_sha256": tree_hash,
             "property_files": files,
@@ -901,12 +965,14 @@ def seal_parse() -> None:
 
 def load_parse_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
     execution_sha, _ = load_execution_receipt(verify_live=verify_live)
+    intent_sha, _ = _load_parse_intent(execution_sha)
     digest, receipt = _load_pinned_json(
         PARSE_RECEIPT, PARSE_RECEIPT_PIN, "parse receipt"
     )
     if (
         receipt != {
             "schema": PARSE_RECEIPT_SCHEMA,
+            "parse_intent_sha256": intent_sha,
             "execution_receipt_sha256": execution_sha,
             "properties_tree_sha256": receipt.get("properties_tree_sha256"),
             "property_files": EXPECTED_CELLS,
@@ -927,17 +993,43 @@ def load_parse_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
 
 
 def validate_before_fetch() -> None:
-    if any(path.exists() for path in (FETCH_RECEIPT, FETCH_RECEIPT_PIN)):
+    if any(path.exists() or path.is_symlink() for path in (
+        FETCH_INTENT, FETCH_RECEIPT, FETCH_RECEIPT_PIN
+    )):
         raise ExecutionAuditError("fetch provenance already exists")
     if EVAL_PROPERTIES.parent.exists():
         raise ExecutionAuditError("evaluation directory already exists")
-    load_parse_receipt(verify_live=True)
+    parse_sha, _ = load_parse_receipt(verify_live=True)
+    _write_exclusive_json(
+        FETCH_INTENT,
+        {
+            "schema": FETCH_INTENT_SCHEMA,
+            "parse_receipt_sha256": parse_sha,
+            "properties_path": str(EVAL_PROPERTIES.resolve()),
+            "expected_records": EXPECTED_CELLS,
+        },
+        "fetch intent",
+    )
+
+
+def _load_fetch_intent(parse_sha: str) -> tuple[str, dict]:
+    raw, intent = _load_recovery_json(FETCH_INTENT, "fetch intent")
+    expected = {
+        "schema": FETCH_INTENT_SCHEMA,
+        "parse_receipt_sha256": parse_sha,
+        "properties_path": str(EVAL_PROPERTIES.resolve()),
+        "expected_records": EXPECTED_CELLS,
+    }
+    if intent != expected:
+        raise ExecutionAuditError("fetch intent semantics changed")
+    return hashlib.sha256(raw).hexdigest(), intent
 
 
 def seal_fetch() -> None:
-    if FETCH_RECEIPT_PIN.exists():
+    if FETCH_RECEIPT_PIN.exists() or FETCH_RECEIPT_PIN.is_symlink():
         raise ExecutionAuditError("fetch receipt pin already exists")
     parse_sha, _ = load_parse_receipt(verify_live=True)
+    intent_sha, _ = _load_fetch_intent(parse_sha)
     if EVAL_PROPERTIES.is_symlink() or not EVAL_PROPERTIES.is_file():
         raise ExecutionAuditError("fetched properties are not a regular file")
     try:
@@ -950,6 +1042,7 @@ def seal_fetch() -> None:
         FETCH_RECEIPT,
         {
             "schema": FETCH_RECEIPT_SCHEMA,
+            "fetch_intent_sha256": intent_sha,
             "parse_receipt_sha256": parse_sha,
             "properties_path": str(EVAL_PROPERTIES.resolve()),
             "properties_sha256": _sha256_file(EVAL_PROPERTIES),
@@ -962,11 +1055,13 @@ def seal_fetch() -> None:
 
 def load_fetch_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
     parse_sha, _ = load_parse_receipt(verify_live=verify_live)
+    intent_sha, _ = _load_fetch_intent(parse_sha)
     digest, receipt = _load_pinned_json(
         FETCH_RECEIPT, FETCH_RECEIPT_PIN, "fetch receipt"
     )
     expected = {
         "schema": FETCH_RECEIPT_SCHEMA,
+        "fetch_intent_sha256": intent_sha,
         "parse_receipt_sha256": parse_sha,
         "properties_path": str(EVAL_PROPERTIES.resolve()),
         "properties_sha256": receipt.get("properties_sha256"),

@@ -28,7 +28,7 @@ DEFAULT_BENCHMARKS = Path(
     "/nobackup/proj/disk/dfsplan/personal/jendrik/downward-benchmarks-wbh"
 )
 DEFAULT_SHARDS = (
-    SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v2"
+    SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v3"
 )
 DEFAULT_CODE_MANIFEST = (
     SCRIPT_DIR / "pdb_terminal_incidence_source_audit_code.sha256"
@@ -89,6 +89,20 @@ TRANSLATOR_FILES = (
     "src/translate/tools.py",
     "src/translate/variable_order.py",
 )
+
+CONTROLLED_PATH = "/usr/bin:/bin"
+UNSET_PYTHON_ENV = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV")
+
+
+def validate_execution_environment() -> None:
+    if any(name in os.environ for name in UNSET_PYTHON_ENV):
+        raise SourceAuditError("source-audit Python environment is not clean")
+    if (
+        os.environ.get("PYTHONNOUSERSITE") != "1"
+        or os.environ.get("PATH") != CONTROLLED_PATH
+        or sys.flags.no_user_site != 1
+    ):
+        raise SourceAuditError("source-audit execution environment changed")
 
 
 def translator_source_digest() -> str:
@@ -241,6 +255,7 @@ def _scan_task(task, benchmarks: Path, timeout: int) -> dict:
 
 
 def scan(args) -> None:
+    validate_execution_environment()
     code = validate_code_manifest(
         args.code_manifest.resolve(), args.code_manifest_sha256
     )

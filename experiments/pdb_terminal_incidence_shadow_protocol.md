@@ -42,6 +42,17 @@ eligible only if every cost is strictly positive. Every task is normalized
 with the translator's default `axiom_based` normalization and is eligible only
 if it has zero normalized axioms. The exact 460-task attestation is hashed and
 is a launch precondition. There is no task replacement after this audit.
+The audit is rerun as 46 unthrottled tasks on the `fat` partition. Before
+submission, an exclusive intent pins the Slurm script, every executed Python
+source, the interpreter, installed distributions, benchmark revision, cohort,
+translator tree, and clean Jujutsu commit. Both submission and Slurm use
+`export=NONE`; the job then installs a fixed `PATH`, disables the user site,
+unsets inherited Python environment variables, and verifies the absolute
+Python and `sha256sum` executables. All 46 tasks must complete, and
+independently assembling their fresh shards must reproduce the frozen
+attestation byte for byte. The shard/log tree is hashed both before and after
+assembly and must be unchanged. The intent, launch receipt, scheduler rows,
+shard/log tree, environment contract, and execution receipt are all hashed.
 
 ## Frozen measurements
 
@@ -68,6 +79,12 @@ Planner limits are 300 seconds and 8,192 MiB per cell. Slurm uses one CPU,
 three sequential cells per array element, and no array throttle. The runner
 uses Python 3.12 and Downward Lab 8.10 from the separately pinned environment
 manifest.
+After the array completes, immutable run inputs and raw cell outputs are sealed
+before parsing. Parsing and fetching each write an exclusive pre-operation
+intent before Lab may mutate output, then an exclusive receipt and external
+SHA-256 pin. Every downstream validation rehashes both immutable inputs and its
+upstream artifacts. The confirmatory analyzer accepts only the resulting
+sealed evaluation file and writes its result exclusively without overwrite.
 
 ## Eligibility and fixed horizon
 
@@ -117,15 +134,17 @@ sum over retained layers without an additional active-value multiplier:
 
 The preregistered controls, computed on the same layers, are:
 
+- masked ADD product `kD=sum_g k_g D_g`, where `D_g` is the number of
+  regular inner nodes in the masked ADD;
 - masked cofactor relaxation `mQ=sum_g k_g sum_{i<n} c_i(m_g)`;
 - masked joint relaxation `mJ=sum_g k_g sum_{i<n} j_i(L_g,h)`;
 - Cartesian relaxation `C=sum_g k_g sum_{i<n} c_i(L_g)c_i(h)`;
 - width relaxation `W=sum_g k_g width(h) sum_{i<n}c_i(L_g)`;
 - ADD apply relaxation `A=sum_g k_g(2(D_h+1)|L_g|+D_h)`.
 
-The masked ADD node count is diagnostic only and is not a predictor. The exact
-partition effort is a target/oracle only and is never used as a predictor or
-selection feature.
+The unmultiplied masked ADD node count is diagnostic only and is not a
+predictor. The exact partition effort is a target/oracle only and is never
+used as a predictor or selection feature.
 
 Every certificate identity and inequality is rechecked. In particular,
 `E <= I <= kD <= kQ(m) <= kJ(L,h)` must hold layerwise, with the parser's
@@ -150,7 +169,8 @@ The strong terminal-incidence claim passes only if all conditions hold:
   contributing grand-shared strict pairs, at least 25 eligible families, and
   at least 600 such pairs;
 - equal-family macro concordance of `I` is at least 0.65;
-- `I` exceeds each of `mQ`, `mJ`, Cartesian, width, and ADD by at least 0.02;
+- `I` exceeds each of `kD`, `mQ`, `mJ`, Cartesian, width, and ADD by at least
+  0.02;
 - for each control, a paired family bootstrap with 10,000 replicates and seed
   20260831 has a strictly positive 95% lower confidence bound for the
   `I-control` macro difference;
@@ -164,13 +184,32 @@ pair filter, seed, or fallback analysis may be tuned after results are read.
 If the gate fails, the result is reported as a failed mechanistic hypothesis;
 there is no rescue panel.
 
+Secondary, non-gating diagnostics report certificate tightness as `E/P` for
+every predictor `P` (with `0/0` defined as one), averaged first over distinct
+semantic PDBs within task, then over tasks within family, and finally with
+equal family weight. Family quartiles use the nearest-rank rule. They also
+compare the logged time for masked ADD construction, masked cofactor profiling,
+and terminal-incidence traversal with the separately timed exact per-value
+partition audit. Timing is reported as pooled totals and as an equal-family
+mean of taskwise ratios; it is descriptive and does not enter the primary gate.
+
 ## Intervention and downstream guided study
 
 The cap-8 intervention is analyzed only after the primary gate, using the same
 fixed frontier. For each task where uncapped and cap-8 goal-fill semantics are
 both certified, report the change in active terminal count, terminal incidence,
-and exact partition effort. The theorem predicts nonincrease under fixed
-frontier and order. Any increase is an implementation or analysis failure.
+and exact partition effort. On a fixed frontier, cap-8 is a terminal relabeling
+of the masked ADD followed by reduction. It therefore cannot increase the
+active terminal count or terminal incidence; an increase in either certificate
+is an implementation or analysis failure. The analysis also checks the other
+forced numerical consequences available in the frozen logs: bottom
+reachability is unchanged, while masked ADD nodes, masked and joint cofactor
+counts, and whole-heuristic cofactor counts do not increase. These are checks
+of observed consequences; the cap identity itself follows from the fixed
+planner construction and is not inferred from those summaries. Exact partition
+effort is a separate diagnostic and may change in either direction: a reduced
+BDD for a union can be larger than the sum of the reduced BDDs for its disjoint
+pieces.
 
 Only if the complete primary gate passes may a separate, prospectively frozen
 guided-search experiment be launched. The shadow result alone supports a

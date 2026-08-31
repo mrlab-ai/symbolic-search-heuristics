@@ -27,22 +27,34 @@ SLURM_SCRIPT = SCRIPT_DIR / "pdb_terminal_incidence_source_scan.slurm"
 CODE_MANIFEST = (
     SCRIPT_DIR / "pdb_terminal_incidence_source_audit_code.sha256"
 )
-OUTPUT_DIR = SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v2"
+OUTPUT_DIR = SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v3"
 CANDIDATE = (
-    SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v2_candidate.json"
+    SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v3_candidate.json"
 )
 ARTIFACT_DIR = SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-shadow"
-INTENT = ARTIFACT_DIR / "source-audit-launch-intent-v2.json"
-LAUNCH_RECEIPT = ARTIFACT_DIR / "source-audit-launch-receipt-v2.json"
-EXECUTION_RECEIPT = ARTIFACT_DIR / "source-audit-execution-receipt-v2.json"
+INTENT = ARTIFACT_DIR / "source-audit-launch-intent-v3.json"
+LAUNCH_RECEIPT = ARTIFACT_DIR / "source-audit-launch-receipt-v3.json"
+EXECUTION_RECEIPT = ARTIFACT_DIR / "source-audit-execution-receipt-v3.json"
 LAUNCH_SCHEMA = (
-    "symbolic-search-heuristics/pdb-terminal-incidence-source-audit-launch/v2"
+    "symbolic-search-heuristics/pdb-terminal-incidence-source-audit-launch/v3"
 )
 EXECUTION_SCHEMA = (
-    "symbolic-search-heuristics/pdb-terminal-incidence-source-audit-execution/v2"
+    "symbolic-search-heuristics/pdb-terminal-incidence-source-audit-execution/v3"
 )
 ARRAY_TASKS = 46
+CONTROLLED_PATH = "/usr/bin:/bin"
+UNSET_PYTHON_ENV = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV")
+PYTHON_COMMAND = (
+    REPO
+    / "experiments"
+    / "data"
+    / "pdb-terminal-incidence-shadow-venv"
+    / "bin"
+    / "python"
+)
+SHA256SUM_COMMAND = Path("/usr/bin/sha256sum")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+JJ_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 MANIFEST_ASSIGNMENT_RE = re.compile(
     r'^code_manifest_sha256="([0-9a-f]{64})"$'
 )
@@ -88,6 +100,37 @@ def _load_json(path: Path, label: str) -> tuple[bytes, dict]:
     return raw, value
 
 
+def _execution_environment(code: dict) -> dict:
+    try:
+        python_resolved = PYTHON_COMMAND.resolve(strict=True)
+        sha256sum_resolved = SHA256SUM_COMMAND.resolve(strict=True)
+    except OSError as err:
+        raise LaunchAuditError("source-audit executable is absent") from err
+    if not python_resolved.is_file() or not sha256sum_resolved.is_file():
+        raise LaunchAuditError("source-audit executable is not regular")
+    python_sha = _sha256(python_resolved)
+    sha256sum_sha = _sha256(sha256sum_resolved)
+    if (
+        code.get("python_executable") != str(python_resolved)
+        or code.get("python_executable_sha256") != python_sha
+    ):
+        raise LaunchAuditError("source-audit Python executable changed")
+    return {
+        "submission_export": "NONE",
+        "slurm_export": "NONE",
+        "unset_variables": list(UNSET_PYTHON_ENV),
+        "python_no_user_site": "1",
+        "python_no_user_site_flag": 1,
+        "path": CONTROLLED_PATH,
+        "python_command": str(PYTHON_COMMAND),
+        "python_executable": str(python_resolved),
+        "python_executable_sha256": python_sha,
+        "sha256sum_command": str(SHA256SUM_COMMAND),
+        "sha256sum_executable": str(sha256sum_resolved),
+        "sha256sum_executable_sha256": sha256sum_sha,
+    }
+
+
 def _slurm_preflight() -> tuple[str, str, dict]:
     if SLURM_SCRIPT.is_symlink() or not SLURM_SCRIPT.is_file():
         raise LaunchAuditError("source-audit Slurm script is not regular")
@@ -103,6 +146,7 @@ def _slurm_preflight() -> tuple[str, str, dict]:
         "#SBATCH --mem-per-cpu=8G",
         "#SBATCH --time=00:30:00",
         "#SBATCH --output={}/slurm-%A_%a.out".format(OUTPUT_DIR),
+        "#SBATCH --export=NONE",
     }
     if not required <= set(lines):
         raise LaunchAuditError("source-audit Slurm header changed")
@@ -116,6 +160,7 @@ def _slurm_preflight() -> tuple[str, str, dict]:
         "#SBATCH --mem-per-cpu=",
         "#SBATCH --time=",
         "#SBATCH --output=",
+        "#SBATCH --export=",
     )
     if any(sum(line.startswith(prefix) for line in lines) != 1
            for prefix in prefixes):
@@ -132,11 +177,58 @@ def _slurm_preflight() -> tuple[str, str, dict]:
         raise LaunchAuditError("source-audit code manifest is not pinned")
     manifest_sha = assignments[0].group(1)
     code = Source.validate_code_manifest(CODE_MANIFEST, manifest_sha)
+    environment = _execution_environment(code)
+    required_environment_lines = {
+        "unset {}".format(" ".join(UNSET_PYTHON_ENV)),
+        'export PYTHONNOUSERSITE="1"',
+        'export PATH="{}"'.format(CONTROLLED_PATH),
+        'python_executable="{}"'.format(PYTHON_COMMAND),
+        'python_executable_sha256="{}"'.format(
+            environment["python_executable_sha256"]
+        ),
+        'sha256sum_executable="{}"'.format(SHA256SUM_COMMAND),
+        'sha256sum_executable_sha256="{}"'.format(
+            environment["sha256sum_executable_sha256"]
+        ),
+        'exec "${python_executable}" \\',
+    }
+    if (
+        not required_environment_lines <= set(lines)
+        or any(lines.count(line) != 1 for line in required_environment_lines)
+    ):
+        raise LaunchAuditError("source-audit execution environment changed")
     return _sha256(SLURM_SCRIPT), manifest_sha, code
 
 
-def _fixed_materials() -> dict:
+def _clean_repository_commit() -> str:
+    try:
+        changed = subprocess.check_output(
+            ["jj", "diff", "--summary"], cwd=REPO, text=True
+        )
+        commit_id = subprocess.check_output(
+            [
+                "jj", "log", "-r", "@-", "--no-graph",
+                "-T", 'commit_id ++ "\\n"',
+            ],
+            cwd=REPO,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError) as err:
+        raise LaunchAuditError("cannot attest the source-audit commit") from err
+    if changed or JJ_COMMIT_RE.fullmatch(commit_id) is None:
+        raise LaunchAuditError(
+            "source-audit launch requires a clean committed working copy"
+        )
+    return commit_id
+
+
+def _fixed_materials(repository_commit_id: str | None = None) -> dict:
     slurm_sha, manifest_sha, code = _slurm_preflight()
+    environment = _execution_environment(code)
+    if repository_commit_id is None:
+        repository_commit_id = _clean_repository_commit()
+    if JJ_COMMIT_RE.fullmatch(repository_commit_id) is None:
+        raise LaunchAuditError("source-audit repository commit is invalid")
     return {
         "partition": "fat",
         "qos": "normal",
@@ -153,8 +245,10 @@ def _fixed_materials() -> dict:
         "slurm_script_sha256": slurm_sha,
         "code_manifest_sha256": manifest_sha,
         "launcher_sha256": _sha256(Path(__file__)),
+        "repository_commit_id": repository_commit_id,
         "output_dir": str(OUTPUT_DIR),
         "candidate_attestation": str(CANDIDATE),
+        "execution_environment": environment,
         **{key: code[key] for key in (
             "python_version",
             "python_executable",
@@ -166,13 +260,17 @@ def _fixed_materials() -> dict:
     }
 
 
+def _submit_command() -> list[str]:
+    return ["sbatch", "--parsable", "--export=NONE", str(SLURM_SCRIPT)]
+
+
 def launch() -> None:
     if any(path.exists() for path in (
         INTENT, LAUNCH_RECEIPT, EXECUTION_RECEIPT, OUTPUT_DIR, CANDIDATE
     )):
         raise LaunchAuditError("source-audit launch artifacts already exist")
     materials = _fixed_materials()
-    command = ["sbatch", "--parsable", str(SLURM_SCRIPT)]
+    command = _submit_command()
     intent = {
         "schema": LAUNCH_SCHEMA + "/intent",
         **materials,
@@ -208,8 +306,9 @@ def _load_launch() -> tuple[str, dict]:
     launch_raw, receipt = _load_json(
         LAUNCH_RECEIPT, "source-audit launch receipt"
     )
-    materials = _fixed_materials()
-    command = ["sbatch", "--parsable", str(SLURM_SCRIPT)]
+    repository_commit_id = intent.get("repository_commit_id")
+    materials = _fixed_materials(repository_commit_id)
+    command = _submit_command()
     expected_intent = {
         "schema": LAUNCH_SCHEMA + "/intent",
         **materials,
@@ -313,6 +412,11 @@ def seal() -> None:
         "--code-manifest", str(CODE_MANIFEST),
         "--code-manifest-sha256", launch_receipt["code_manifest_sha256"],
     ])
+    sealed_tree_sha, sealed_tree_files = _output_tree(launch_receipt["job_id"])
+    if (sealed_tree_sha, sealed_tree_files) != (tree_sha, tree_files):
+        raise LaunchAuditError(
+            "source-audit output tree changed while assembling"
+        )
     if CANDIDATE.read_bytes() != P.COST_ATTESTATION_PATH.read_bytes():
         raise LaunchAuditError("source-audit candidate differs from frozen attestation")
     candidate = json.loads(CANDIDATE.read_text(encoding="ascii"))
@@ -328,6 +432,7 @@ def seal() -> None:
         "output_tree_sha256": tree_sha,
         "output_tree_files": tree_files,
         "code_manifest_sha256": launch_receipt["code_manifest_sha256"],
+        "execution_environment": launch_receipt["execution_environment"],
         "source_audit_passed": True,
         "attestation_sha256": _sha256(CANDIDATE),
         "attestation_records_sha256": candidate["records_sha256"],

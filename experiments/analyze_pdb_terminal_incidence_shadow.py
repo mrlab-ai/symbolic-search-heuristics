@@ -8,6 +8,7 @@ import hashlib
 import itertools
 import json
 import math
+import os
 import random
 import re
 from collections import Counter, defaultdict
@@ -48,7 +49,7 @@ OUTCOME_SPECS = {
     24: ("search-out-of-memory-and-time", 0, 0, "search_resource"),
 }
 
-PREDICTORS = ("I", "mQ", "mJ", "Cartesian", "width", "ADD")
+PREDICTORS = ("I", "kD", "mQ", "mJ", "Cartesian", "width", "ADD")
 PRIMARY_PREDICTOR = "I"
 CONTROLS = PREDICTORS[1:]
 REQUESTED_MODES = {
@@ -224,6 +225,9 @@ def _fixed_properties():
         ),
         "source_audit_execution_receipt_sha256": (
             P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
+        ),
+        "source_audit_code_manifest_sha256": (
+            P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
         ),
         "cohort_seed": P.COHORT_SEED,
         "cohort_family_count": P.COHORT_FAMILIES,
@@ -810,6 +814,8 @@ def _observation(record, task, label, frontier):
     totals = {key: 0 for key in PREDICTORS}
     active_terminal_sum = 0
     masked_add_sum = 0
+    masked_seconds = 0.0
+    partition_audit_seconds = 0.0
     layer_rows = []
     for frontier_layer in frontier["layers"]:
         g = frontier_layer["g"]
@@ -830,6 +836,17 @@ def _observation(record, task, label, frontier):
                 "layer g={} has noninteger masked statistics".format(g)
             )
         k, masked_nodes, masked_sum, incidence, effort = values
+        layer_masked_seconds = layer.get("masked_seconds")
+        layer_partition_seconds = layer.get("partition_audit_seconds")
+        if any(
+            type(value) not in (int, float)
+            or not math.isfinite(value)
+            or value < 0
+            for value in (layer_masked_seconds, layer_partition_seconds)
+        ):
+            raise TerminalIncidenceAnalysisError(
+                "layer g={} has invalid certificate timings".format(g)
+            )
         if any((
             state_counts != frontier_layer["cofactor_counts"],
             not isinstance(joint, list),
@@ -888,6 +905,7 @@ def _observation(record, task, label, frontier):
             "g": g,
             "E": effort,
             "I": incidence,
+            "kD": k_d,
             "mQ": masked_q,
             "mJ": masked_j,
             "Cartesian": cartesian,
@@ -896,12 +914,17 @@ def _observation(record, task, label, frontier):
             "active_terminals": k,
             "active_values": active_values,
             "masked_add_nodes": masked_nodes,
+            "bottom_reachable": layer.get("bottom_reachable"),
+            "masked_cofactor_counts": masked,
+            "joint_cofactor_counts": joint,
         }
         layer_rows.append(row)
         for predictor in PREDICTORS:
             totals[predictor] += row[predictor]
         active_terminal_sum += k
         masked_add_sum += masked_nodes
+        masked_seconds += layer_masked_seconds
+        partition_audit_seconds += layer_partition_seconds
 
     totals["E"] = sum(row["E"] for row in layer_rows)
     if any(totals["E"] > totals[key] for key in PREDICTORS):
@@ -938,6 +961,11 @@ def _observation(record, task, label, frontier):
         "U": frontier["union_effort"],
         "active_terminal_sum": active_terminal_sum,
         "masked_add_node_sum": masked_add_sum,
+        "timing_measurements": [{
+            "config": label,
+            "masked_seconds": masked_seconds,
+            "partition_audit_seconds": partition_audit_seconds,
+        }],
         "layers": layer_rows,
     }
 
@@ -993,6 +1021,9 @@ def primary_observations(matrix, tasks):
                     "duplicate PDB semantics have different measurements"
                 )
             previous["configs"].append(label)
+            previous["timing_measurements"].extend(
+                observation["timing_measurements"]
+            )
             by_cell[(label, task)] = previous
     observations = [
         item for task in tasks for item in grouped.get(task, {}).values()
@@ -1426,6 +1457,30 @@ def cap8_intervention(matrix, tasks, primary):
             raise TerminalIncidenceAnalysisError(
                 "cap-8 intervention changed the goal-fill pattern"
             )
+        raw_identity = uncapped["semantic_identity"]
+        capped_identity = capped["semantic_identity"]
+        if any((
+            capped_identity["add_nodes"] > raw_identity["add_nodes"],
+            capped_identity["num_terminals"]
+            > raw_identity["num_terminals"],
+            capped_identity["num_values"] > raw_identity["num_values"],
+            len(capped_identity["heuristic_cofactor_counts"])
+            != len(raw_identity["heuristic_cofactor_counts"]),
+            any(
+                cap_count > raw_count
+                for cap_count, raw_count in zip(
+                    capped_identity["heuristic_cofactor_counts"],
+                    raw_identity["heuristic_cofactor_counts"],
+                )
+            ),
+        )):
+            raise TerminalIncidenceAnalysisError(
+                "cap-8 heuristic violates terminal-map consequences"
+            )
+        if len(uncapped["layers"]) != len(capped["layers"]):
+            raise TerminalIncidenceAnalysisError(
+                "cap-8 intervention changed the retained layer count"
+            )
         layer_rows = []
         for raw, cap in zip(uncapped["layers"], capped["layers"]):
             if raw["g"] != cap["g"]:
@@ -1433,14 +1488,29 @@ def cap8_intervention(matrix, tasks, primary):
                     "cap-8 intervention changed the retained layers"
                 )
             if any((
+                cap["bottom_reachable"] != raw["bottom_reachable"],
+                cap["masked_add_nodes"] > raw["masked_add_nodes"],
                 cap["active_terminals"] > raw["active_terminals"],
                 cap["I"] > raw["I"],
-                cap["E"] > raw["E"],
+                any(
+                    cap_count > raw_count
+                    for cap_count, raw_count in zip(
+                        cap["masked_cofactor_counts"],
+                        raw["masked_cofactor_counts"],
+                    )
+                ),
+                any(
+                    cap_count > raw_count
+                    for cap_count, raw_count in zip(
+                        cap["joint_cofactor_counts"],
+                        raw["joint_cofactor_counts"],
+                    )
+                ),
+                any(value > 9 for value in cap["active_values"]),
             )):
                 raise TerminalIncidenceAnalysisError(
-                    "cap-8 intervention violates monotonicity at g={}".format(
-                        raw["g"]
-                    )
+                    "cap-8 intervention violates terminal-map consequences "
+                    "at g={}".format(raw["g"])
                 )
             layer_rows.append({
                 "g": raw["g"],
@@ -1464,10 +1534,10 @@ def cap8_intervention(matrix, tasks, primary):
         if any(row[key] > 0 for key in (
             "active_terminal_delta",
             "terminal_incidence_delta",
-            "partition_effort_delta",
         )):
             raise TerminalIncidenceAnalysisError(
-                "cap-8 intervention violates run-level monotonicity"
+                "cap-8 intervention violates run-level terminal-map "
+                "monotonicity"
             )
         rows.append(row)
     return {
@@ -1475,7 +1545,7 @@ def cap8_intervention(matrix, tasks, primary):
         "outcome_classes": dict(Counter(intervention_outcomes.values())),
         "cell_statuses": dict(statuses),
         "eligible_pairs": len(rows),
-        "nonincrease_certified": True,
+        "observed_terminal_map_consequences_hold": True,
         "strict_decreases": {
             key: sum(row[key] < 0 for row in rows)
             for key in (
@@ -1493,6 +1563,117 @@ def cap8_intervention(matrix, tasks, primary):
             )
         },
         "rows": rows,
+    }
+
+
+def _nearest_rank(values, numerator, denominator):
+    ordered = sorted(values)
+    if not ordered:
+        return None
+    index = math.ceil(numerator * len(ordered) / denominator) - 1
+    return ordered[index]
+
+
+def secondary_diagnostics(observations):
+    by_task = defaultdict(list)
+    for observation in observations:
+        by_task[observation["task"]].append(observation)
+
+    tightness = {}
+    for predictor in PREDICTORS:
+        task_values = {}
+        for task, rows in by_task.items():
+            ratios = []
+            for row in rows:
+                target = row["E"]
+                certificate = row[predictor]
+                if certificate == 0:
+                    if target != 0:
+                        raise TerminalIncidenceAnalysisError(
+                            "zero certificate has positive partition effort"
+                        )
+                    ratios.append(Fraction(1, 1))
+                else:
+                    ratios.append(Fraction(target, certificate))
+            task_values[task] = _mean(ratios)
+        family_values = {}
+        for family in sorted(set(P.DIRECTORY_TO_FAMILY.values())):
+            values = [
+                value for task, value in task_values.items()
+                if P.DIRECTORY_TO_FAMILY.get(task[0], task[0]) == family
+            ]
+            if values:
+                family_values[family] = _mean(values)
+        tightness[predictor] = {
+            "definition": "task-first equal-family mean of E/predictor",
+            "tasks": len(task_values),
+            "families": len(family_values),
+            "equal_family_macro": _fraction_record(
+                _mean(family_values.values())
+            ),
+            "family_quantiles_nearest_rank": {
+                "q25": _fraction_record(
+                    _nearest_rank(family_values.values(), 1, 4)
+                ),
+                "q50": _fraction_record(
+                    _nearest_rank(family_values.values(), 1, 2)
+                ),
+                "q75": _fraction_record(
+                    _nearest_rank(family_values.values(), 3, 4)
+                ),
+            },
+            "family_values": {
+                family: _fraction_record(value)
+                for family, value in family_values.items()
+            },
+        }
+
+    timing_by_task = defaultdict(lambda: [0.0, 0.0, 0])
+    for observation in observations:
+        task = observation["task"]
+        for timing in observation["timing_measurements"]:
+            timing_by_task[task][0] += timing["masked_seconds"]
+            timing_by_task[task][1] += timing["partition_audit_seconds"]
+            timing_by_task[task][2] += 1
+    task_ratios = {
+        task: masked / partition
+        for task, (masked, partition, _cells) in timing_by_task.items()
+        if partition > 0
+    }
+    family_ratios = {}
+    for family in sorted(set(P.DIRECTORY_TO_FAMILY.values())):
+        values = [
+            value for task, value in task_ratios.items()
+            if P.DIRECTORY_TO_FAMILY.get(task[0], task[0]) == family
+        ]
+        if values:
+            family_ratios[family] = sum(values) / len(values)
+    total_masked = sum(value[0] for value in timing_by_task.values())
+    total_partition = sum(value[1] for value in timing_by_task.values())
+    return {
+        "tightness": tightness,
+        "computation_time": {
+            "masked_scope": (
+                "masked ADD construction, masked cofactor profile, and "
+                "terminal-incidence traversal"
+            ),
+            "partition_scope": "exact per-active-value bucket construction",
+            "cells": sum(value[2] for value in timing_by_task.values()),
+            "tasks": len(timing_by_task),
+            "tasks_with_positive_partition_time": len(task_ratios),
+            "families_with_positive_partition_time": len(family_ratios),
+            "pooled_masked_seconds": total_masked,
+            "pooled_partition_audit_seconds": total_partition,
+            "pooled_masked_over_partition_ratio": (
+                total_masked / total_partition
+                if total_partition > 0 else None
+            ),
+            "equal_family_mean_of_task_ratios": (
+                sum(family_ratios.values()) / len(family_ratios)
+                if family_ratios else None
+            ),
+            "family_mean_task_ratios": family_ratios,
+        },
     }
 
 
@@ -1550,6 +1731,9 @@ def analyze_records(records, expected_tasks=P.COHORT_TASKS):
         },
         "comparison": public_comparison,
         "gates": gates,
+        "secondary_diagnostics": secondary_diagnostics(
+            primary["observations"]
+        ),
         "intervention": intervention,
         "guided_study_authorized": gates["pass"],
     }
@@ -1586,11 +1770,15 @@ def main(argv=None):
     }
     payload = _canonical(result) + b"\n"
     if args.output:
-        if args.output.exists():
+        try:
+            with args.output.open("xb") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except FileExistsError as err:
             raise TerminalIncidenceAnalysisError(
                 "refusing to overwrite analysis output"
-            )
-        args.output.write_bytes(payload)
+            ) from err
     else:
         print(payload.decode("ascii"), end="")
     return 0

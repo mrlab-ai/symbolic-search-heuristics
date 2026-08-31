@@ -63,6 +63,13 @@ class TerminalIncidenceShadowRecoveryTest(unittest.TestCase):
                 P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
             ),
             "source_audit_slurm_sha256": P.SOURCE_AUDIT_SLURM_SHA256,
+            "source_audit_intent_sha256": P.SOURCE_AUDIT_INTENT_SHA256,
+            "source_audit_code_manifest_sha256": (
+                P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
+            ),
+            "source_audit_output_tree_sha256": (
+                P.SOURCE_AUDIT_OUTPUT_TREE_SHA256
+            ),
             "revision_cache_attestation": attestation,
             "experiment_code_path": "code-pinned",
             "experiment_code_attestation": attestation,
@@ -215,6 +222,122 @@ class TerminalIncidenceShadowRecoveryTest(unittest.TestCase):
     def test_unpinned_launch_receipt_fails_closed(self):
         with self.assertRaisesRegex(Audit.ExecutionAuditError, "not pinned"):
             Audit.load_launch_receipt()
+
+    def test_sha256_pin_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "target.sha256"
+            target.write_text("a" * 64 + "\n", encoding="ascii")
+            link = root / "pin.sha256"
+            link.symlink_to(target)
+            with self.assertRaisesRegex(
+                Audit.ExecutionAuditError, "not a regular file"
+            ):
+                Audit._read_pin(link, "test receipt")
+
+    def test_live_execution_verification_rehashes_immutable_inputs(self):
+        digest = "a" * 64
+        launch = {
+            "job_id": "1234",
+            "generated_run_input_tree_sha256": digest,
+            "generated_run_files": 2,
+            "generated_static_property_files": 2,
+            "generated_pddl_input_files": 4,
+        }
+        receipt = {
+            "schema": Audit.EXECUTION_RECEIPT_SCHEMA,
+            "launch_receipt_sha256": Audit.LAUNCH_RECEIPT_SHA256,
+            "job_id": "1234",
+            "array_throttle": 0,
+            "partition": Audit.PARTITION,
+            "scheduler_state_counts": {"COMPLETED": 1},
+            "cell_state_counts": {"complete": 2},
+            "scheduler_rows": [],
+            "recovery_executions": [],
+            "dynamic_cell_tree_sha256": digest,
+            "dynamic_cell_files": 2,
+        }
+        with (
+            mock.patch.object(Audit, "EXPECTED_CELLS", 2),
+            mock.patch.object(Audit, "load_launch_receipt", return_value=launch),
+            mock.patch.object(
+                Audit, "_load_pinned_json", return_value=(digest, receipt)
+            ),
+            mock.patch.object(
+                Audit, "_run_input_tree_digest", return_value=("b" * 64, 2, 2)
+            ),
+            mock.patch.object(
+                Audit, "dynamic_tree_digest", return_value=(digest, 2)
+            ),
+        ):
+            with self.assertRaisesRegex(
+                Audit.ExecutionAuditError, "immutable generated run inputs"
+            ):
+                Audit.load_execution_receipt(verify_live=True)
+
+    def test_parse_and_fetch_intents_precede_and_bind_receipts(self):
+        execution_sha = "e" * 64
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            experiment = root / "experiment"
+            experiment.mkdir()
+            parse_intent = root / "parse-intent.json"
+            parse_receipt = root / "parse-receipt.json"
+            parse_pin = root / "parse-receipt.sha256"
+            fetch_intent = root / "fetch-intent.json"
+            fetch_receipt = root / "fetch-receipt.json"
+            fetch_pin = root / "fetch-receipt.sha256"
+            properties = root / "experiment-eval" / "properties"
+            with (
+                mock.patch.object(Audit, "EXPERIMENT_PATH", experiment),
+                mock.patch.object(Audit, "EXPECTED_CELLS", 0),
+                mock.patch.object(Audit, "PARSE_INTENT", parse_intent),
+                mock.patch.object(Audit, "PARSE_RECEIPT", parse_receipt),
+                mock.patch.object(Audit, "PARSE_RECEIPT_PIN", parse_pin),
+                mock.patch.object(Audit, "FETCH_INTENT", fetch_intent),
+                mock.patch.object(Audit, "FETCH_RECEIPT", fetch_receipt),
+                mock.patch.object(Audit, "FETCH_RECEIPT_PIN", fetch_pin),
+                mock.patch.object(Audit, "EVAL_PROPERTIES", properties),
+                mock.patch.object(
+                    Audit,
+                    "load_execution_receipt",
+                    return_value=(execution_sha, {}),
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                Audit.validate_before_parse()
+                self.assertTrue(parse_intent.is_file())
+                with self.assertRaisesRegex(
+                    Audit.ExecutionAuditError, "parse provenance already exists"
+                ):
+                    Audit.validate_before_parse()
+                Audit.seal_parse()
+                parse_digest = hashlib.sha256(parse_receipt.read_bytes()).hexdigest()
+                parse_pin.write_text(parse_digest + "\n", encoding="ascii")
+                loaded_parse_sha, loaded_parse = Audit.load_parse_receipt()
+                self.assertEqual(loaded_parse_sha, parse_digest)
+                self.assertEqual(
+                    loaded_parse["parse_intent_sha256"],
+                    hashlib.sha256(parse_intent.read_bytes()).hexdigest(),
+                )
+
+                Audit.validate_before_fetch()
+                self.assertTrue(fetch_intent.is_file())
+                with self.assertRaisesRegex(
+                    Audit.ExecutionAuditError, "fetch provenance already exists"
+                ):
+                    Audit.validate_before_fetch()
+                properties.parent.mkdir()
+                properties.write_text("{}\n", encoding="ascii")
+                Audit.seal_fetch()
+                fetch_digest = hashlib.sha256(fetch_receipt.read_bytes()).hexdigest()
+                fetch_pin.write_text(fetch_digest + "\n", encoding="ascii")
+                loaded_fetch_sha, loaded_fetch = Audit.load_fetch_receipt()
+                self.assertEqual(loaded_fetch_sha, fetch_digest)
+                self.assertEqual(
+                    loaded_fetch["fetch_intent_sha256"],
+                    hashlib.sha256(fetch_intent.read_bytes()).hexdigest(),
+                )
 
     def test_scheduler_audit_requires_exact_fat_task_set(self):
         output = (
