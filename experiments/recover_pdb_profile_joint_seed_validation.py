@@ -15,6 +15,10 @@ def configure() -> None:
     Recovery.P = P
     Recovery.RECOVERY_SCHEMA = SeedAudit.Audit.RECOVERY_RECEIPT_SCHEMA
     Recovery.RECOVERY_JOB_PREFIX = "pdb-joint-seed-validation-recovery"
+    # Recovery keeps every cell's pinned 300-second aggregate CPU budget.  A
+    # larger scheduler-only envelope lets the remaining cells run serially
+    # even when wall time substantially exceeds process CPU time.
+    Recovery.E.SCHEDULER_TIME_LIMIT = "01:00:00"
 
 
 def main(argv=None):

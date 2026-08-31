@@ -49,6 +49,10 @@ class JointSeedValidationTest(unittest.TestCase):
             Recovery.Recovery.RECOVERY_SCHEMA,
             Audit.Audit.RECOVERY_RECEIPT_SCHEMA,
         )
+        self.assertEqual(
+            Recovery.Recovery.E.SCHEDULER_TIME_LIMIT,
+            "01:00:00",
+        )
         cells = [
             cell
             for task in range(1, E.Base.EXPECTED_ARRAY_TASKS + 1)
