@@ -229,6 +229,9 @@ def _fixed_properties():
         "source_audit_code_manifest_sha256": (
             P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
         ),
+        "source_audit_repository_commit_id": (
+            P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
+        ),
         "cohort_seed": P.COHORT_SEED,
         "cohort_family_count": P.COHORT_FAMILIES,
         "cohort_directory_family_sha256": P.DIRECTORY_FAMILY_JSON_SHA256,

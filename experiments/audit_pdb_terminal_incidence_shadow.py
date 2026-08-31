@@ -281,6 +281,9 @@ def load_launch_receipt() -> dict:
         "source_audit_output_tree_sha256": (
             P.SOURCE_AUDIT_OUTPUT_TREE_SHA256
         ),
+        "source_audit_repository_commit_id": (
+            P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
+        ),
         "generated_run_files": EXPECTED_CELLS,
         "generated_static_property_files": EXPECTED_CELLS,
         "materialized_pddl_inputs": True,

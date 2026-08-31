@@ -70,6 +70,9 @@ class TerminalIncidenceShadowRecoveryTest(unittest.TestCase):
             "source_audit_output_tree_sha256": (
                 P.SOURCE_AUDIT_OUTPUT_TREE_SHA256
             ),
+            "source_audit_repository_commit_id": (
+                P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
+            ),
             "revision_cache_attestation": attestation,
             "experiment_code_path": "code-pinned",
             "experiment_code_attestation": attestation,

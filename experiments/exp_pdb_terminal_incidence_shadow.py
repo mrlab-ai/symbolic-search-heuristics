@@ -23,9 +23,9 @@ RUNNER_SOURCE_FILES = (
     "suite_wbh_operator_costs.json",
     "suite_wbh_operator_costs.json.sha256",
     "pdb_terminal_incidence_source_scan.slurm",
-    "artifacts/pdb-terminal-incidence-shadow/source-audit-launch-intent-v2.json",
-    "artifacts/pdb-terminal-incidence-shadow/source-audit-launch-receipt-v2.json",
-    "artifacts/pdb-terminal-incidence-shadow/source-audit-execution-receipt-v2.json",
+    "artifacts/pdb-terminal-incidence-shadow/source-audit-launch-intent-v3.json",
+    "artifacts/pdb-terminal-incidence-shadow/source-audit-launch-receipt-v3.json",
+    "artifacts/pdb-terminal-incidence-shadow/source-audit-execution-receipt-v3.json",
     "analyze_pdb_terminal_incidence_shadow.py",
     "audit_pdb_terminal_incidence_shadow.py",
     "recover_pdb_terminal_incidence_shadow.py",
@@ -100,6 +100,9 @@ def configure() -> None:
         "source_audit_code_manifest_sha256": (
             P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
         ),
+        "source_audit_repository_commit_id": (
+            P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
+        ),
         "cohort_seed": P.COHORT_SEED,
         "cohort_family_count": P.COHORT_FAMILIES,
         "cohort_directory_family_sha256": P.DIRECTORY_FAMILY_JSON_SHA256,
@@ -131,6 +134,9 @@ def configure() -> None:
         ),
         "source_audit_output_tree_sha256": (
             P.SOURCE_AUDIT_OUTPUT_TREE_SHA256
+        ),
+        "source_audit_repository_commit_id": (
+            P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
         ),
         "cohort_seed": P.COHORT_SEED,
         "cohort_task_name_sha256": P.TASK_NAME_SHA256,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,39 +35,42 @@ SOURCE_AUDIT_ARTIFACT_DIR = (
     SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-shadow"
 )
 SOURCE_AUDIT_INTENT_PATH = (
-    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-launch-intent-v2.json"
+    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-launch-intent-v3.json"
 )
 SOURCE_AUDIT_LAUNCH_RECEIPT_PATH = (
-    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-launch-receipt-v2.json"
+    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-launch-receipt-v3.json"
 )
 SOURCE_AUDIT_EXECUTION_RECEIPT_PATH = (
-    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-execution-receipt-v2.json"
+    SOURCE_AUDIT_ARTIFACT_DIR / "source-audit-execution-receipt-v3.json"
 )
 SOURCE_AUDIT_CODE_MANIFEST_PATH = (
     SCRIPT_DIR / "pdb_terminal_incidence_source_audit_code.sha256"
 )
 SOURCE_AUDIT_INTENT_SHA256 = (
-    "e6ab40376b6e46e60011ce652e9496e1085412189b64428b00aa64ac973e8c94"
+    "74dddb3d6645d8e3ac1dadabd270953be8cabc9bc9212dac4e41d7e0a14aae29"
 )
 SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256 = (
-    "fface210968fe9874e4857d4201d32a6db553a9d1c6c34d35d50f0af21f4ce98"
+    "71fd4ec9f9f5f171bf3af16ef09eb8ec0a15a7550bb24b69cb6ec61b2f7c33e2"
 )
 SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256 = (
-    "2922b93fa2503c609ddc37cc4984613531278700dfeaba856357eda45f6695b2"
+    "ccdf3d50e2f64281639892fcd08c194adb4049f657920ae8d6647b6b4bffe689"
 )
 SOURCE_AUDIT_SLURM_SHA256 = (
-    "03d31ac88cfe6254a2a8872d53cd9cc504486fe501e7ef676c6c6e8473427eab"
+    "65634fd4392642081d4c7658f9aaea2fee02f424fd1b1034545d9eabea2ba0c5"
 )
 SOURCE_AUDIT_CODE_MANIFEST_SHA256 = (
-    "77325d690ed7b3ed04c53b4f62214976d3073581a0259a6d398e3e642ce14e37"
+    "43ca650973b9016ec00fc90fa0400e8a3e1fb8b4d4df1975c3dc1b10a22dd4d4"
 )
 SOURCE_AUDIT_OUTPUT_TREE_SHA256 = (
-    "36e2dcc52f17ae7748cd4ed0d7b7d0123eb1cfa8217cf70986db291bad45656a"
+    "4dacbe76720053dc7da52d9a4ef7af47ce0b78f90794073e77e803a9607e6a67"
 )
 SOURCE_AUDIT_LAUNCHER_SHA256 = (
-    "c08f6fcab8379ebfc658ad508e240af35f39bde1f25ae6829beaa351aa5b29b8"
+    "9d30222e93cc565f31368520216f3775b73987f9463112b8bf747f79939680a6"
 )
-SOURCE_AUDIT_JOB_ID = "1853346"
+SOURCE_AUDIT_REPOSITORY_COMMIT_ID = (
+    "a18dc9221149611b8683eb05f07ad8089c671cd7"
+)
+SOURCE_AUDIT_JOB_ID = "1856581"
 
 PROTOCOL = "pdb-terminal-incidence-shadow-measurement-v1"
 ANALYSIS_PROTOCOL = "pdb-terminal-incidence-shadow-analysis-v1"
@@ -581,6 +585,12 @@ def validate_source_audit_receipts() -> None:
     receipts = []
     for path, expected_hash in paths_and_hashes:
         try:
+            info = path.lstat()
+        except OSError as err:
+            raise ProtocolError("cannot inspect source-audit receipt") from err
+        if path.is_symlink() or not stat.S_ISREG(info.st_mode):
+            raise ProtocolError("source-audit receipt is not a regular file")
+        try:
             actual_hash = sha256_file(path)
         except OSError as err:
             raise ProtocolError("cannot hash source-audit receipt") from err
@@ -614,21 +624,50 @@ def validate_source_audit_receipts() -> None:
         "six": "1.17.0",
         "txt2tags": "3.9",
     }
-    output_dir = str(
-        SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v2"
+    output_path = (
+        SCRIPT_DIR / "data" / "pdb_terminal_incidence_source_audit_v3"
     )
-    candidate = str(
+    output_dir = str(output_path)
+    candidate_path = (
         SCRIPT_DIR
         / "data"
-        / "pdb_terminal_incidence_source_audit_v2_candidate.json"
+        / "pdb_terminal_incidence_source_audit_v3_candidate.json"
     )
+    candidate = str(candidate_path)
     slurm_script = str(
         SCRIPT_DIR / "pdb_terminal_incidence_source_scan.slurm"
     )
+    execution_environment = {
+        "submission_export": "NONE",
+        "slurm_export": "NONE",
+        "unset_variables": ["PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"],
+        "python_no_user_site": "1",
+        "python_no_user_site_flag": 1,
+        "path": "/usr/bin:/bin",
+        "python_command": str(
+            SCRIPT_DIR
+            / "data"
+            / "pdb-terminal-incidence-shadow-venv"
+            / "bin"
+            / "python"
+        ),
+        "python_executable": (
+            "/home/jendrik/.local/share/uv/python/"
+            "cpython-3.12.13-linux-x86_64-gnu/bin/python3.12"
+        ),
+        "python_executable_sha256": (
+            "021044895e95be79dc2f110367607e684119afbc8ce75f6f0eec94844e0acec7"
+        ),
+        "sha256sum_command": "/usr/bin/sha256sum",
+        "sha256sum_executable": "/usr/bin/sha256sum",
+        "sha256sum_executable_sha256": (
+            "1950eda10a1bb0c6c2a086ba009b847edec6f30d25eb311b9154ae08819041a9"
+        ),
+    }
     launch_fixed = {
         "schema": (
             "symbolic-search-heuristics/"
-            "pdb-terminal-incidence-source-audit-launch/v2"
+            "pdb-terminal-incidence-source-audit-launch/v3"
         ),
         "job_id": SOURCE_AUDIT_JOB_ID,
         "partition": "fat",
@@ -646,6 +685,7 @@ def validate_source_audit_receipts() -> None:
         "slurm_script_sha256": SOURCE_AUDIT_SLURM_SHA256,
         "code_manifest_sha256": SOURCE_AUDIT_CODE_MANIFEST_SHA256,
         "launcher_sha256": SOURCE_AUDIT_LAUNCHER_SHA256,
+        "repository_commit_id": SOURCE_AUDIT_REPOSITORY_COMMIT_ID,
         "launch_intent_sha256": SOURCE_AUDIT_INTENT_SHA256,
         "output_dir": output_dir,
         "candidate_attestation": candidate,
@@ -664,12 +704,15 @@ def validate_source_audit_receipts() -> None:
         "python_requirements_sha256": (
             "9176e14c79ca81d624fd5eca3c6eb79b799ecb8f08b39301c7c250b97d526422"
         ),
-        "submit_command": ["sbatch", "--parsable", slurm_script],
+        "execution_environment": execution_environment,
+        "submit_command": [
+            "sbatch", "--parsable", "--export=NONE", slurm_script
+        ],
     }
     execution_fixed = {
         "schema": (
             "symbolic-search-heuristics/"
-            "pdb-terminal-incidence-source-audit-execution/v2"
+            "pdb-terminal-incidence-source-audit-execution/v3"
         ),
         "launch_receipt_sha256": SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256,
         "job_id": SOURCE_AUDIT_JOB_ID,
@@ -680,6 +723,7 @@ def validate_source_audit_receipts() -> None:
         "output_tree_sha256": SOURCE_AUDIT_OUTPUT_TREE_SHA256,
         "output_tree_files": 92,
         "code_manifest_sha256": SOURCE_AUDIT_CODE_MANIFEST_SHA256,
+        "execution_environment": execution_environment,
         "source_audit_passed": True,
         "attestation_sha256": COST_ATTESTATION_SHA256,
         "attestation_records_sha256": COST_ATTESTATION_RECORDS_SHA256,
@@ -691,7 +735,7 @@ def validate_source_audit_receipts() -> None:
             "with_normalized_axioms": 0,
         },
     }
-    if any(launch.get(key) != value for key, value in launch_fixed.items()):
+    if launch != launch_fixed:
         raise ProtocolError("source-audit launch receipt semantics changed")
     expected_intent = {
         key: value for key, value in launch.items()
@@ -700,9 +744,12 @@ def validate_source_audit_receipts() -> None:
     expected_intent["schema"] = launch_fixed["schema"] + "/intent"
     if intent != expected_intent:
         raise ProtocolError("source-audit launch intent semantics changed")
-    if any(
-        execution.get(key) != value
-        for key, value in execution_fixed.items()
+    if (
+        set(execution) != set(execution_fixed) | {"scheduler_rows"}
+        or any(
+            execution.get(key) != value
+            for key, value in execution_fixed.items()
+        )
     ):
         raise ProtocolError("source-audit execution receipt semantics changed")
     rows = execution.get("scheduler_rows")
@@ -723,6 +770,57 @@ def validate_source_audit_receipts() -> None:
         )
     ):
         raise ProtocolError("source-audit scheduler evidence changed")
+    if output_path.is_symlink() or not output_path.is_dir():
+        raise ProtocolError("source-audit output directory is invalid")
+    expected_outputs = {
+        output_path / "shard-{:03d}-of-046.json".format(index)
+        for index in range(46)
+    } | {
+        output_path / "slurm-{}_{}.out".format(SOURCE_AUDIT_JOB_ID, index)
+        for index in range(46)
+    }
+    try:
+        actual_outputs = set(output_path.iterdir())
+    except OSError as err:
+        raise ProtocolError("cannot inspect source-audit outputs") from err
+    if actual_outputs != expected_outputs:
+        raise ProtocolError("source-audit output tree paths changed")
+    output_digest = hashlib.sha256()
+    for path in sorted(expected_outputs):
+        try:
+            info = path.lstat()
+        except OSError as err:
+            raise ProtocolError("cannot inspect source-audit output") from err
+        if path.is_symlink() or not stat.S_ISREG(info.st_mode):
+            raise ProtocolError("source-audit output is not a regular file")
+        relative = path.relative_to(output_path).as_posix().encode("ascii")
+        output_digest.update(
+            relative + b"\0" + bytes.fromhex(sha256_file(path))
+        )
+    if output_digest.hexdigest() != SOURCE_AUDIT_OUTPUT_TREE_SHA256:
+        raise ProtocolError("source-audit output tree bytes changed")
+    try:
+        candidate_info = candidate_path.lstat()
+    except OSError as err:
+        raise ProtocolError("source-audit candidate is absent") from err
+    if (
+        candidate_path.is_symlink()
+        or not stat.S_ISREG(candidate_info.st_mode)
+        or sha256_file(candidate_path) != COST_ATTESTATION_SHA256
+        or candidate_path.read_bytes() != COST_ATTESTATION_PATH.read_bytes()
+    ):
+        raise ProtocolError("source-audit candidate bytes changed")
+    for source_path in (
+        SOURCE_AUDIT_CODE_MANIFEST_PATH,
+        SCRIPT_DIR / "pdb_terminal_incidence_source_scan.slurm",
+        SCRIPT_DIR / "launch_pdb_terminal_incidence_source_audit.py",
+    ):
+        try:
+            source_info = source_path.lstat()
+        except OSError as err:
+            raise ProtocolError("source-audit source is absent") from err
+        if source_path.is_symlink() or not stat.S_ISREG(source_info.st_mode):
+            raise ProtocolError("source-audit source is not a regular file")
     if sha256_file(SOURCE_AUDIT_CODE_MANIFEST_PATH) != (
         SOURCE_AUDIT_CODE_MANIFEST_SHA256
     ):
