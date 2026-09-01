@@ -1144,6 +1144,8 @@ PdbLevelSets::PdbLevelSets(
                     out, variant, /*terminate_line=*/false);
                 out << "|heuristic_cofactor_counts=";
                 append_canonical_values(out, variant.heuristic_state_profile);
+                out << "|dead_end_value="
+                    << variant.candidate->dead_end_value;
                 out << "|masked_add_nodes=";
                 for (size_t layer = 0;
                      layer < variant.measurement.layers.size(); ++layer) {
@@ -1209,7 +1211,48 @@ PdbLevelSets::PdbLevelSets(
                     out << variant.measurement.layers[layer].masked_joint;
                 }
                 out << "|masked_joint_total="
-                    << variant.measurement.masked_joint_total << "\n";
+                    << variant.measurement.masked_joint_total;
+                out << "|incidence_node_kinds=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ";";
+                    }
+                    append_canonical_values(
+                        out, variant.measurement.layers[layer]
+                                 .incidence_node_kinds);
+                }
+                out << "|incidence_then_children=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ";";
+                    }
+                    append_canonical_values(
+                        out, variant.measurement.layers[layer]
+                                 .incidence_then_children);
+                }
+                out << "|incidence_else_children=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ";";
+                    }
+                    append_canonical_values(
+                        out, variant.measurement.layers[layer]
+                                 .incidence_else_children);
+                }
+                out << "|incidence_terminal_values=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ";";
+                    }
+                    append_canonical_values(
+                        out, variant.measurement.layers[layer]
+                                 .incidence_terminal_values);
+                }
+                out << "\n";
             };
 
             ostringstream incidence_projection_canonical;
@@ -1247,6 +1290,10 @@ PdbLevelSets::PdbLevelSets(
                 vector<vector<long>> joint_cofactor_counts;
                 vector<long> joint_cofactor_sum;
                 vector<long> masked_joint;
+                vector<vector<int>> incidence_node_kinds;
+                vector<vector<int>> incidence_then_children;
+                vector<vector<int>> incidence_else_children;
+                vector<vector<int>> incidence_terminal_values;
                 for (const WbhDualMetricLayerMeasurement &layer :
                      variant.measurement.layers) {
                     masked_add_nodes.push_back(layer.masked_add_nodes);
@@ -1258,6 +1305,14 @@ PdbLevelSets::PdbLevelSets(
                         layer.joint_cofactor_counts);
                     joint_cofactor_sum.push_back(layer.joint_cofactor_sum);
                     masked_joint.push_back(layer.masked_joint);
+                    incidence_node_kinds.push_back(
+                        layer.incidence_node_kinds);
+                    incidence_then_children.push_back(
+                        layer.incidence_then_children);
+                    incidence_else_children.push_back(
+                        layer.incidence_else_children);
+                    incidence_terminal_values.push_back(
+                        layer.incidence_terminal_values);
                 }
 
                 ostringstream out;
@@ -1301,6 +1356,8 @@ PdbLevelSets::PdbLevelSets(
                 }
                 out << ",\"heuristic_cofactor_counts\":";
                 append_long_array(out, variant.heuristic_state_profile);
+                out << ",\"dead_end_value\":"
+                    << candidate.dead_end_value;
                 out << ",\"terminal_incidence_by_layer\":";
                 append_long_array(out, variant.measurement.incidence.by_layer);
                 out << ",\"terminal_incidence\":"
@@ -1321,6 +1378,15 @@ PdbLevelSets::PdbLevelSets(
                 append_long_array(out, masked_joint);
                 out << ",\"masked_joint\":"
                     << variant.measurement.masked_joint_total
+                    << ",\"incidence_node_kinds_by_layer\":";
+                append_nested_int_array(out, incidence_node_kinds);
+                out << ",\"incidence_then_children_by_layer\":";
+                append_nested_int_array(out, incidence_then_children);
+                out << ",\"incidence_else_children_by_layer\":";
+                append_nested_int_array(out, incidence_else_children);
+                out << ",\"incidence_terminal_values_by_layer\":";
+                append_nested_int_array(out, incidence_terminal_values);
+                out
                     << ",\"reference_feasible\":"
                     << (variant.reference_feasible ? "true" : "false")
                     << ",\"incidence_feasible\":"

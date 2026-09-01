@@ -19,6 +19,10 @@ struct WbhDualMetricLayerMeasurement {
     std::vector<long> joint_cofactor_counts;
     long joint_cofactor_sum;
     long masked_joint;
+    std::vector<int> incidence_node_kinds;
+    std::vector<int> incidence_then_children;
+    std::vector<int> incidence_else_children;
+    std::vector<int> incidence_terminal_values;
 };
 
 struct WbhDualMetricMeasurement {

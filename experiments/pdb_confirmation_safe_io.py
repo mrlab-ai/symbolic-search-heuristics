@@ -81,30 +81,77 @@ def read_regular_file(
     expected_path: Path | None = None,
     root: Path | None = None,
 ) -> RegularFile:
-    """Read and hash one stable regular file through one no-follow descriptor."""
+    """Read and hash a regular file through one stable descriptor chain."""
     candidate = validate_lexical_path(
         path, label=label, expected_path=expected_path, root=root
     )
-    try:
-        before = os.lstat(candidate)
-    except OSError as err:
-        raise SafeReadError("cannot inspect {}".format(label)) from err
-    if not stat.S_ISREG(before.st_mode):
+
+    if root is not None:
+        anchor = Path(root)
+        try:
+            relative = candidate.relative_to(anchor)
+        except ValueError as err:  # Defensive: validate_lexical_path checked this.
+            raise SafeReadError("{} path escapes its root".format(label)) from err
+    elif candidate.is_absolute():
+        anchor = Path(candidate.anchor)
+        relative = candidate.relative_to(anchor)
+    else:
+        anchor = Path(".")
+        relative = candidate
+    parts = relative.parts
+    if not parts:
         raise SafeReadError("{} is not a regular file".format(label))
 
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    directory_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    directory_flags |= getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    file_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    file_flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptors: list[int] = []
+    # Each entry retains the parent descriptor so a renamed/replaced ancestor is
+    # detected against the directory in which it was originally found.
+    ancestors: list[tuple[int, str, tuple[int, ...], int]] = []
     try:
-        descriptor = os.open(candidate, flags)
-    except OSError as err:
-        raise SafeReadError("cannot open {} safely".format(label)) from err
-    try:
+        anchor_before = os.lstat(anchor)
+        if not stat.S_ISDIR(anchor_before.st_mode):
+            raise SafeReadError("{} root is not a directory".format(label))
+        anchor_fd = os.open(anchor, directory_flags)
+        descriptors.append(anchor_fd)
+        anchor_opened = os.fstat(anchor_fd)
+        if (
+            not stat.S_ISDIR(anchor_opened.st_mode)
+            or _fingerprint(anchor_opened) != _fingerprint(anchor_before)
+        ):
+            raise SafeReadError("{} root identity changed".format(label))
+
+        parent_fd = anchor_fd
+        for component in parts[:-1]:
+            before = os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
+            if not stat.S_ISDIR(before.st_mode):
+                raise SafeReadError("{} ancestor is not a directory".format(label))
+            child_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            descriptors.append(child_fd)
+            opened = os.fstat(child_fd)
+            if (
+                not stat.S_ISDIR(opened.st_mode)
+                or _fingerprint(opened) != _fingerprint(before)
+            ):
+                raise SafeReadError("{} ancestor identity changed".format(label))
+            ancestors.append((parent_fd, component, _fingerprint(opened), child_fd))
+            parent_fd = child_fd
+
+        leaf = parts[-1]
+        before = os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
+        if not stat.S_ISREG(before.st_mode):
+            raise SafeReadError("{} is not a regular file".format(label))
+        descriptor = os.open(leaf, file_flags, dir_fd=parent_fd)
+        descriptors.append(descriptor)
         opened = os.fstat(descriptor)
         if (
             not stat.S_ISREG(opened.st_mode)
             or _fingerprint(opened) != _fingerprint(before)
         ):
             raise SafeReadError("{} identity changed before reading".format(label))
+
         blocks = []
         digest = hashlib.sha256()
         while True:
@@ -113,21 +160,39 @@ def read_regular_file(
                 break
             blocks.append(block)
             digest.update(block)
+
         after_fd = os.fstat(descriptor)
-        try:
-            after_path = os.lstat(candidate)
-        except OSError as err:
-            raise SafeReadError("{} disappeared while reading".format(label)) from err
+        after_leaf = os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
         if (
-            not stat.S_ISREG(after_path.st_mode)
+            not stat.S_ISREG(after_leaf.st_mode)
             or _fingerprint(after_fd) != _fingerprint(opened)
-            or _fingerprint(after_path) != _fingerprint(opened)
+            or _fingerprint(after_leaf) != _fingerprint(opened)
         ):
             raise SafeReadError("{} identity changed while reading".format(label))
+
+        for entry_parent, component, fingerprint, child_fd in reversed(ancestors):
+            after_entry = os.stat(
+                component, dir_fd=entry_parent, follow_symlinks=False
+            )
+            after_child = os.fstat(child_fd)
+            if (
+                not stat.S_ISDIR(after_entry.st_mode)
+                or _fingerprint(after_entry) != fingerprint
+                or _fingerprint(after_child) != fingerprint
+            ):
+                raise SafeReadError("{} ancestor changed while reading".format(label))
+        anchor_after_fd = os.fstat(anchor_fd)
+        anchor_after_path = os.lstat(anchor)
+        if (
+            _fingerprint(anchor_after_fd) != _fingerprint(anchor_opened)
+            or _fingerprint(anchor_after_path) != _fingerprint(anchor_opened)
+        ):
+            raise SafeReadError("{} root changed while reading".format(label))
     except OSError as err:
         raise SafeReadError("cannot read {} safely".format(label)) from err
     finally:
-        os.close(descriptor)
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
     return RegularFile(b"".join(blocks), digest.hexdigest(), _identity(opened))
 
 

@@ -162,7 +162,34 @@ WbhIncidenceLayerMeasurement measure_layer(
             static_cast<int>(Cudd_V(nodes[terminal_id])));
     }
     sort(active_terminal_values.begin(), active_terminal_values.end());
-    return {incidence, add_nodes, move(active_terminal_values)};
+    if (nodes.size() > static_cast<size_t>(numeric_limits<int>::max())) {
+        ABORT("WBH incidence selector certificate is too large.");
+    }
+    vector<int> kinds(nodes.size());
+    vector<int> then_children(nodes.size(), -1);
+    vector<int> else_children(nodes.size(), -1);
+    vector<int> terminal_values(nodes.size(), -1);
+    for (size_t node_id = 0; node_id < nodes.size(); ++node_id) {
+        DdNode *node = nodes[node_id];
+        if (Cudd_IsConstant(node)) {
+            if (node == bottom_node) {
+                kinds[node_id] = 1;
+            } else {
+                kinds[node_id] = 2;
+                terminal_values[node_id] =
+                    static_cast<int>(Cudd_V(node));
+            }
+        } else {
+            kinds[node_id] = 0;
+            then_children[node_id] = static_cast<int>(
+                node_ids.at(Cudd_T(node)));
+            else_children[node_id] = static_cast<int>(
+                node_ids.at(Cudd_E(node)));
+        }
+    }
+    return {
+        incidence, add_nodes, move(active_terminal_values), move(kinds),
+        move(then_children), move(else_children), move(terminal_values)};
 }
 
 uint32_t rotate_right(uint32_t value, unsigned shift) {

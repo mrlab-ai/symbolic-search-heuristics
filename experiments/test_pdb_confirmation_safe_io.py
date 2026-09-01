@@ -40,14 +40,53 @@ class SafeReaderTest(unittest.TestCase):
             os.mkfifo(cases["fifo"])
             for name, path in cases.items():
                 with self.subTest(kind=name), mock.patch.object(
-                    SafeIO.os, "open", wraps=os.open
-                ) as opened, mock.patch.object(
                     SafeIO.os, "read", wraps=os.read
                 ) as read:
                     with self.assertRaises(SafeIO.SafeReadError):
                         SafeIO.read_regular_file(path, label=name)
-                    opened.assert_not_called()
                     read.assert_not_called()
+
+    def test_symlinked_ancestor_is_never_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            real = root / "real"
+            real.mkdir()
+            (real / "input").write_bytes(b"secret")
+            (root / "link").symlink_to(real, target_is_directory=True)
+            with mock.patch.object(SafeIO.os, "read", wraps=os.read) as read:
+                with self.assertRaises(SafeIO.SafeReadError):
+                    SafeIO.read_regular_file(
+                        root / "link" / "input", label="symlinked ancestor",
+                        root=root,
+                    )
+                read.assert_not_called()
+
+    def test_replaced_ancestor_is_detected_after_same_fd_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = root / "directory"
+            directory.mkdir()
+            (directory / "input").write_bytes(b"original")
+            real_read = os.read
+            replaced = False
+
+            def race(descriptor, size):
+                nonlocal replaced
+                block = real_read(descriptor, size)
+                if not replaced:
+                    replaced = True
+                    directory.rename(root / "old-directory")
+                    directory.mkdir()
+                    (directory / "input").write_bytes(b"replacement")
+                return block
+
+            with mock.patch.object(SafeIO.os, "read", side_effect=race):
+                with self.assertRaisesRegex(
+                    SafeIO.SafeReadError, "ancestor changed"
+                ):
+                    SafeIO.read_regular_file(
+                        directory / "input", label="raced ancestor", root=root
+                    )
 
     def test_lexical_rejection_precedes_all_filesystem_io(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
@@ -67,10 +106,15 @@ class SafeReaderTest(unittest.TestCase):
             path.write_bytes(b"before")
             real_open = os.open
 
-            def race(candidate, flags, *args):
-                Path(candidate).unlink()
-                os.mkfifo(candidate)
-                return real_open(candidate, flags, *args)
+            raced = False
+
+            def race(candidate, flags, *args, **kwargs):
+                nonlocal raced
+                if candidate == "input" and not raced:
+                    raced = True
+                    path.unlink()
+                    os.mkfifo(path)
+                return real_open(candidate, flags, *args, **kwargs)
 
             with mock.patch.object(
                 SafeIO.os, "open", side_effect=race
@@ -196,7 +240,10 @@ class RecoveryInventoryTest(unittest.TestCase):
                                 with self.assertRaises(recover.RecoveryError):
                                     recover._archive_plan([1])
                                 sbatch.assert_not_called()
-                                opened.assert_not_called()
+                                self.assertFalse(any(
+                                    call.args and call.args[0] == name
+                                    for call in opened.call_args_list
+                                ))
                             self.assertFalse(archive.exists())
                             if kind == "symlink":
                                 self.assertEqual(victim.read_bytes(), b"unchanged")
@@ -218,7 +265,10 @@ class RecoveryInventoryTest(unittest.TestCase):
                 ) as read:
                     with self.assertRaises(audit.ExecutionAuditError):
                         audit.cell_completeness()
-                    opened.assert_not_called()
+                    self.assertFalse(any(
+                        call.args and call.args[0] == "driver.log"
+                        for call in opened.call_args_list
+                    ))
                     read.assert_not_called()
 
     def test_source_swap_and_archive_target_symlink_fail_before_unlink(self):
@@ -309,7 +359,10 @@ class RecoveryInventoryTest(unittest.TestCase):
                         ) as opened:
                             with self.assertRaises(audit.ExecutionAuditError):
                                 audit._validate_archive(wave, [item], [1])
-                            opened.assert_not_called()
+                            self.assertFalse(any(
+                                call.args and call.args[0] == "driver.log"
+                                for call in opened.call_args_list
+                            ))
                         if kind == "symlink":
                             self.assertEqual(victim.read_bytes(), b"unchanged")
 

@@ -71,7 +71,7 @@ WbhDualMetricTrace::WbhDualMetricTrace(
     }
     write_event(
         "{\"event\":\"schema\",\"schema\":\"symbolic-search-heuristics/"
-        "terminal-dual-metric-selector-trace/v1\",\"version\":1,"
+        "terminal-dual-metric-selector-trace/v2\",\"version\":2,"
         "\"probe_layers\":16,\"reference_cofactor_width_budget\":32,"
         "\"candidate_sources\":[\"empty\",\"bdd_prefix\","
         "\"goal_prefix\",\"goal_fill\",\"cegar\"],"
@@ -89,9 +89,12 @@ WbhDualMetricTrace::WbhDualMetricTrace(
         "\"pool_hash_encoding\":\"sources-pattern-states-feasible-lines-v1\","
         "\"state_profile_hash_encoding\":\"layer-g-bdd-nodes-cofactor-"
         "counts-lines-v1\","
-        "\"preselection_hash_encoding\":\"dual-candidate-structural-lines-v1\","
+        "\"preselection_hash_encoding\":\"dual-candidate-structural-lines-v2\","
+        "\"incidence_raw_certificate\":\"breadth-first-regular-masked-add-"
+        "dag-node-kinds-children-terminal-values-v1\","
         "\"incidence_projection_hash_encoding\":\"candidate-structural-lines-v3\","
         "\"required_invariants\":[\"exactly-16-completed-probe-layers\","
+        "\"raw-terminal-ancestor-incidence-replay\","
         "\"joint-projection-and-product-bounds\","
         "\"terminal-cut-excluded-from-joint-cofactor-sums\","
         "\"semantic-dead-end-agrees-with-numeric-sentinel\","
@@ -246,7 +249,10 @@ WbhDualMetricMeasurement measure_wbh_dual_metrics(
         result.layers.push_back({
             incidence.masked_add_nodes, move(active_finite_values),
             dead_end_active, active_terminal_count, move(joint), joint_sum,
-            masked_joint});
+            masked_joint, move(incidence.certificate_node_kinds),
+            move(incidence.certificate_then_children),
+            move(incidence.certificate_else_children),
+            move(incidence.certificate_terminal_values)});
     }
     return result;
 }

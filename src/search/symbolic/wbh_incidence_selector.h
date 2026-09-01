@@ -20,6 +20,14 @@ struct WbhIncidenceLayerMeasurement {
     long terminal_incidence;
     long masked_add_nodes;
     std::vector<int> active_terminal_values;
+    // Canonical breadth-first masked-ADD certificate. Kinds are 0=inner,
+    // 1=fresh bottom, and 2=active semantic terminal. Inner nodes have two
+    // regular child IDs; terminals use -1 children and only active terminals
+    // carry a nonnegative value.
+    std::vector<int> certificate_node_kinds;
+    std::vector<int> certificate_then_children;
+    std::vector<int> certificate_else_children;
+    std::vector<int> certificate_terminal_values;
 };
 
 class WbhSelectorTrace {

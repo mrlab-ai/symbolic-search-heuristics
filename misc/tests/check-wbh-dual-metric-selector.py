@@ -17,7 +17,7 @@ SPEC = importlib.util.spec_from_file_location(
 IncidenceFixture = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(IncidenceFixture)
 
-SCHEMA = "symbolic-search-heuristics/terminal-dual-metric-selector-trace/v1"
+SCHEMA = "symbolic-search-heuristics/terminal-dual-metric-selector-trace/v2"
 MODES = {
     "incidence_guided": "terminal_dual_incidence_guided",
     "masked_joint_guided": "terminal_dual_mj_guided",
@@ -145,6 +145,7 @@ def dual_canonical_line(candidate):
     return (
         incidence_projection_line(candidate, terminate=False)
         + f"|heuristic_cofactor_counts={csv(candidate['heuristic_cofactor_counts'])}"
+        + f"|dead_end_value={candidate['dead_end_value']}"
         + f"|masked_add_nodes={csv(candidate['masked_add_nodes_by_layer'])}"
         + "|active_finite_values="
         + nested_csv(candidate["active_finite_values_by_layer"])
@@ -158,8 +159,58 @@ def dual_canonical_line(candidate):
         + csv(candidate["joint_cofactor_sum_by_layer"])
         + "|masked_joint="
         + csv(candidate["masked_joint_by_layer"])
-        + f"|masked_joint_total={candidate['masked_joint']}\n"
+        + f"|masked_joint_total={candidate['masked_joint']}"
+        + "|incidence_node_kinds="
+        + nested_csv(candidate["incidence_node_kinds_by_layer"])
+        + "|incidence_then_children="
+        + nested_csv(candidate["incidence_then_children_by_layer"])
+        + "|incidence_else_children="
+        + nested_csv(candidate["incidence_else_children_by_layer"])
+        + "|incidence_terminal_values="
+        + nested_csv(candidate["incidence_terminal_values_by_layer"])
+        + "\n"
     )
+
+
+def replay_incidence(candidate, layer):
+    kinds = candidate["incidence_node_kinds_by_layer"][layer]
+    then_ids = candidate["incidence_then_children_by_layer"][layer]
+    else_ids = candidate["incidence_else_children_by_layer"][layer]
+    values = candidate["incidence_terminal_values_by_layer"][layer]
+    assert len(kinds) == len(then_ids) == len(else_ids) == len(values)
+    parents = [[] for _ in kinds]
+    active = []
+    for node, kind in enumerate(kinds):
+        if kind == 0:
+            assert values[node] == -1
+            for child in (then_ids[node], else_ids[node]):
+                assert 0 <= child < len(kinds)
+                parents[child].append(node)
+        else:
+            assert then_ids[node] == else_ids[node] == -1
+            if kind == 2:
+                active.append((node, values[node]))
+            else:
+                assert kind == 1 and values[node] == -1
+    expected_values = list(candidate["active_finite_values_by_layer"][layer])
+    if candidate["dead_end_active_by_layer"][layer]:
+        expected_values.append(candidate["dead_end_value"])
+    assert sorted(value for _, value in active) == sorted(expected_values)
+    incidence = 0
+    for terminal, _ in active:
+        seen = set()
+        stack = [terminal]
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            incidence += kinds[node] == 0
+            stack.extend(parents[node])
+    assert incidence == candidate["terminal_incidence_by_layer"][layer]
+    assert sum(kind == 0 for kind in kinds) == candidate[
+        "masked_add_nodes_by_layer"
+    ][layer]
 
 
 def identity(candidate):
@@ -190,7 +241,7 @@ def validate_trace(path, mode):
     schema = events[0]
     assert schema["event"] == "schema"
     assert schema["schema"] == SCHEMA
-    assert schema["version"] == 1
+    assert schema["version"] == 2
     assert schema["probe_layers"] == 16
     assert schema["reference_cofactor_width_budget"] == 32
     assert "excluding_terminal_from_sums" in schema["cut_convention"]
@@ -310,6 +361,7 @@ def validate_trace(path, mode):
             assert masked_joint == k * joint_sum
             assert masked_nodes <= incidence <= k * masked_nodes
             assert incidence <= masked_joint
+            replay_incidence(candidate, layer)
             for state_count, heuristic_count, joint_count in zip(
                 profiles[layer],
                 candidate["heuristic_cofactor_counts"],
