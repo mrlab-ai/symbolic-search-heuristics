@@ -19,13 +19,43 @@ intent is written before `sbatch`; a unique Slurm comment permits recovery of a
 launch receipt if submission succeeded but the client failed before recording
 the returned job ID.  An unresolved intent never authorizes resubmission.
 
-The source chain must be the complete high-memory campaign-v2 rerun: exact v2
-launch and execution schemas, 256 GiB per source-audit array element, all 820
-shards rerun, and zero reused v1 shards.  The launch and execution receipts
-must carry the same attested v1 failure diagnostic, which records the v1 OOM
-as infrastructure-only evidence and forbids using any v1 shard contents or
-source-support outcomes for the v2 design.  A v1 receipt, a partial v2 rerun,
-or a mismatched failure diagnostic is rejected before freezing.
+The source chain must be the outcome-blind, complete campaign-v3 rerun: exact
+v3 launch and execution schemas, 512 GiB per source-audit array element, a
+7,200-second task timeout, a 04:10:00 Slurm limit, all 820 shards rerun, and
+exactly zero reused v1 or v2 shards. Campaign v1 failed because 26 GiB was
+insufficient. Campaign v2 failed for both translator timeouts and out-of-memory
+conditions at 256 GiB and 2,700 seconds. Only scheduler rows, failure logs, and
+task names were used to diagnose those infrastructure failures; no successful
+shard contents or source-support outcomes informed v3. The launch intent and
+both v3 receipts carry the same internally consistent v2 diagnostic, including
+its embedded v1 diagnostic and the outcome-blind 512 GiB/7,200-second/04:10:00
+resource amendment.
+
+Campaign v3 is accepted only in its actual unrecovered shape: all ordered array
+rows 0--819 are `COMPLETED` with exit `0:0`, all 820 resource-accounting rows
+attest the exact account, partition, QoS, CPU, memory, time limit, and unique
+submission identity, and `recovery` is null. The 820 ordered union records must
+all name original v3 shards, bind equal source and union hashes, and match the
+canonical original-output and union-tree manifests and digests.
+The launch and execution receipts must carry the same exact isolated
+execution-environment attestation (`--export=NONE`, controlled path, cleared
+Python inheritance, per-array bytecode cache, and pinned Python/tool hashes).
+The consumer loads the canonical launch intent, Slurm script, 14-entry code
+manifest, amendment protocol, frozen inventory, and every manifest-listed
+file. It verifies their live hashes, the exact submission command and fixed
+materials, and their bytes at the source repository commit. At the experiment
+freeze revision, `tracked_file_sha256` independently proves that the same 18
+bound files (the 14 manifest entries, Slurm script, manifest, intent, and
+inventory) are tracked with those exact hashes.
+The consumer also checks the exact attestation envelope and replays the
+manifest-verified producer's split over all 1,640 sealed source records; the
+replayed gate and both cohorts must be byte-identical to the attestation. Thus
+each selected task's support evidence, exact 17-field record, canonical alias
+group, unique typed candidate index, canonical path, and seed-derived rank are
+bound to the source record that produced them. The producer revision must be
+an ancestor of the planner revision. After planner caching and immediately
+before the exclusive freeze write, the consumer repeats the clean-parent,
+source-chain, live/tracked byte, and executed-source checks.
 
 The scheduler contract is the Arrhenius `fat` partition, normal QoS, account
 `naiss2025-5-561-cpu`, one CPU, 26 GiB per CPU, and 1:40:00 per array element.
@@ -57,8 +87,9 @@ diagnostics are exactly those in the prospective terminal-incidence shadow
 protocol.  In particular, the target is exact partition effort `E`; the primary
 predictor is terminal incidence `I`; and the controls are `kD`, `mQ`, `mJ`,
 Cartesian, width, and ADD.  Every layer must satisfy every schema, identity, and
-certificate check, including `E <= I <= kD <= mQ <= mJ` and the separately
-defined Cartesian, width, and ADD upper bounds.  A provenance, schema, frontier,
+certificate check, including `E <= I <= kD <= mQ <= mJ <= Cartesian <= width`
+and the independent registered-ADD branch `I <= ADD apply`.  A provenance,
+schema, frontier,
 or certificate inconsistency fails the campaign instead of excluding a task.
 
 ## Raw sealing and recovery

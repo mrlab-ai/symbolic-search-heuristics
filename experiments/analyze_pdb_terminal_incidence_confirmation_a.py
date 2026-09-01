@@ -293,19 +293,30 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
             "fetched properties provenance is invalid"
         ) from err
     try:
+        info = path.lstat()
         raw = path.read_bytes()
     except OSError as err:
         raise ConfirmationAnalysisError("cannot read sealed properties") from err
     properties_sha = hashlib.sha256(raw).hexdigest()
     if (
-        path.resolve() != Audit.EVAL_PROPERTIES.resolve()
+        Path(os.path.abspath(path))
+        != Path(os.path.abspath(Audit.EVAL_PROPERTIES))
+        or path.is_symlink()
+        or not stat.S_ISREG(info.st_mode)
         or properties_sha != fetch["properties_sha256"]
     ):
         raise ConfirmationAnalysisError("analysis input is not the sealed matrix")
     try:
-        records = Original.load_records(path)
-    except Original.TerminalIncidenceAnalysisError as err:
-        raise ConfirmationAnalysisError(str(err)) from err
+        root = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as err:
+        raise ConfirmationAnalysisError("cannot parse sealed properties") from err
+    records = list(root.values()) if isinstance(root, dict) else root
+    if not isinstance(records, list) or any(
+        not isinstance(record, dict) for record in records
+    ):
+        raise ConfirmationAnalysisError(
+            "sealed properties must contain a matrix of objects"
+        )
     if hashlib.sha256(path.read_bytes()).hexdigest() != properties_sha:
         raise ConfirmationAnalysisError("sealed properties changed while loading")
     return records, properties_sha, fetch_sha

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
+import audit_pdb_terminal_incidence_confirmation_sources as SourceAudit
 import pdb_terminal_incidence_confirmation_a_protocol as P
+import freeze_pdb_terminal_incidence_confirmation_a as Freeze
 
 
 def _write(path: Path, value: dict) -> bytes:
@@ -18,12 +23,63 @@ def _write(path: Path, value: dict) -> bytes:
     return raw
 
 
+def _tree(records: list[dict]) -> dict:
+    records = sorted(records, key=lambda record: record["path"])
+    digest = hashlib.sha256()
+    for record in records:
+        digest.update(
+            record["path"].encode("ascii") + b"\0"
+            + bytes.fromhex(record["sha256"])
+        )
+    return {
+        "sha256": digest.hexdigest(),
+        "files_count": len(records),
+        "files": records,
+    }
+
+
+def _source_execution_environment():
+    cache = (
+        "/tmp/symk-confirmation-source-audit-v3-"
+        "{array_job_id}-{array_task_id}"
+    )
+    controlled_path = "/usr/bin:/bin"
+    return {
+        "submission_export": "NONE",
+        "slurm_export": "NONE",
+        "unset_variables": ["PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"],
+        "python_no_user_site": "1",
+        "python_no_user_site_flag": 1,
+        "python_dont_write_bytecode": "1",
+        "python_dont_write_bytecode_flag": True,
+        "python_pycache_prefix_template": cache,
+        "outer_python_flag": "-B",
+        "path": controlled_path,
+        "translator_child_environment": {
+            "PATH": controlled_path,
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONPYCACHEPREFIX": cache,
+            "PYTHONPATH": str(P.REPO / "src"),
+        },
+        "python_command": str(
+            P.SCRIPT_DIR / "data" / "pdb-terminal-incidence-shadow-venv" /
+            "bin" / "python"
+        ),
+        "python_executable": "/pinned/python3.12",
+        "python_executable_sha256": "a" * 64,
+        "sha256sum_command": "/usr/bin/sha256sum",
+        "sha256sum_executable": "/usr/bin/sha256sum",
+        "sha256sum_executable_sha256": "b" * 64,
+    }
+
+
 def _task(index: int) -> dict:
     family = "family-{:02d}".format(index % 30)
     directory = "directory-{:02d}".format(index % 60)
     digest = hashlib.sha256("problem-{}".format(index).encode()).hexdigest()
     domain_digest = hashlib.sha256(directory.encode()).hexdigest()
-    return {
+    value = {
         "candidate_index": index,
         "directory": directory,
         "family": family,
@@ -39,69 +95,485 @@ def _task(index: int) -> dict:
         "is_all_prior_unrepresented": index % 3 == 0,
         "aliases": [],
         "selection_role": "confirmation-a",
-        "selection_rank_sha256": hashlib.sha256(
-            "rank-{}".format(index).encode()
-        ).hexdigest(),
+        "selection_rank_sha256": "",
         "source_audit_evidence_sha256": hashlib.sha256(
             "evidence-{}".format(index).encode()
         ).hexdigest(),
+    }
+    alias_keys = (
+        "directory", "family", "problem", "domain_file", "problem_file",
+        "domain_sha256", "problem_sha256",
+    )
+    value["aliases"] = [{key: value[key] for key in alias_keys}]
+    value["selection_rank_sha256"] = hashlib.sha256(b"\0".join(
+        item.encode("utf-8") for item in (
+            P.COHORT_SEED, value["selection_role"], family, digest,
+            value["canonical_path"],
+        )
+    )).hexdigest()
+    return value
+
+
+def _guided_task(index: int) -> dict:
+    value = _task(650 + index)
+    value["selection_role"] = "guided-b"
+    value["selection_stage"] = "base"
+    value["selection_rank_sha256"] = hashlib.sha256(b"\0".join(
+        item.encode("utf-8") for item in (
+            P.COHORT_SEED, value["selection_role"], value["family"],
+            value["problem_sha256"], value["canonical_path"],
+        )
+    )).hexdigest()
+    return value
+
+
+def _inventory_record(task: dict) -> dict:
+    return {key: task[key] for key in P._INVENTORY_TASK_KEYS}
+
+
+def _prelaunch_gate(a_tasks, b_tasks, shadow, all_prior):
+    def support(tasks):
+        families = {task["family"] for task in tasks}
+        shadow_families = families & set(shadow)
+        prior_tasks = [
+            task for task in tasks if task["family"] in set(all_prior)
+        ]
+        return families, shadow_families, prior_tasks, {
+            task["family"] for task in prior_tasks
+        }
+
+    af, ashadow, aprior, apriorf = support(a_tasks)
+    bf, bshadow, bprior, bpriorf = support(b_tasks)
+    clauses = {
+        "confirmation_tasks": {
+            "actual": len(a_tasks), "required": 650,
+            "passed": len(a_tasks) == 650,
+        },
+        "confirmation_families": {
+            "actual": len(af), "required_minimum": 28,
+            "passed": len(af) >= 28,
+        },
+        "confirmation_shadow_unrepresented_families": {
+            "actual": len(ashadow), "required_minimum": 12,
+            "passed": len(ashadow) >= 12,
+        },
+        "confirmation_all_prior_unrepresented_tasks": {
+            "actual": len(aprior), "required_minimum": 100,
+            "passed": len(aprior) >= 100,
+        },
+        "confirmation_all_prior_unrepresented_families": {
+            "actual": len(apriorf), "required_minimum": 10,
+            "passed": len(apriorf) >= 10,
+        },
+        "guided_tasks": {
+            "actual": len(b_tasks), "required_minimum": 200,
+            "passed": len(b_tasks) >= 200,
+        },
+        "guided_families": {
+            "actual": len(bf), "required_minimum": 30,
+            "passed": len(bf) >= 30,
+        },
+        "guided_shadow_unrepresented_families": {
+            "actual": len(bshadow), "required_minimum": 12,
+            "passed": len(bshadow) >= 12,
+        },
+        "guided_all_prior_unrepresented_tasks": {
+            "actual": len(bprior), "required_minimum": 50,
+            "passed": len(bprior) >= 50,
+        },
+        "guided_all_prior_unrepresented_families": {
+            "actual": len(bpriorf), "required_minimum": 10,
+            "passed": len(bpriorf) >= 10,
+        },
+    }
+    a_ids = {(task["directory"], task["problem"]) for task in a_tasks}
+    b_ids = {(task["directory"], task["problem"]) for task in b_tasks}
+    a_hashes = {task["problem_sha256"] for task in a_tasks}
+    b_hashes = {task["problem_sha256"] for task in b_tasks}
+    return {
+        "outcome_blind": True,
+        "availability": {
+            "supported_tasks": len(a_tasks) + len(b_tasks),
+            "supported_families": len(af | bf),
+            "supported_tasks_sha256": "1" * 64,
+            "shadow_unrepresented": {
+                "tasks": 1, "families": 1,
+                "tasks_sha256": "2" * 64, "families_sha256": "3" * 64,
+            },
+            "all_prior_unrepresented": {
+                "tasks": 1, "families": 1,
+                "tasks_sha256": "4" * 64, "families_sha256": "5" * 64,
+            },
+            "post_confirmation_remaining_tasks": len(b_tasks),
+            "guided_b_maximum_under_family_cap": len(b_tasks),
+            "guided_b_target_tasks": 300,
+            "guided_b_max_tasks_per_family": 12,
+        },
+        "passed": all(clause["passed"] for clause in clauses.values()),
+        "clauses": clauses,
+        "cohort_disjointness": {
+            "source_identity_overlap": len(a_ids & b_ids),
+            "problem_sha256_overlap": len(a_hashes & b_hashes),
+            "passed": not (a_ids & b_ids or a_hashes & b_hashes),
+        },
     }
 
 
 class SourceFixture:
     def __init__(self, root: Path, **overrides):
-        tasks = [_task(index) for index in range(P.COHORT_TASKS)]
+        self.repo = root.resolve()
+        script_dir = self.repo / "experiments"
+        self.artifact_dir = (
+            script_dir / "artifacts" /
+            "pdb-terminal-incidence-confirmation-v3"
+        )
+        self.intent = self.artifact_dir / "source-audit-launch-intent-v3.json"
+        self.launch = self.artifact_dir / "source-audit-launch-receipt-v3.json"
+        self.execution = (
+            self.artifact_dir / "source-audit-execution-receipt-v3.json"
+        )
+        self.attestation = (
+            script_dir / "pdb_terminal_incidence_confirmation_source_audit_v3.json"
+        )
+        self.slurm = (
+            script_dir / "pdb_terminal_incidence_confirmation_source_scan_v3.slurm"
+        )
+        self.manifest = (
+            script_dir /
+            "pdb_terminal_incidence_confirmation_source_audit_v3_code.sha256"
+        )
+        self.amendment = (
+            script_dir /
+            "pdb_terminal_incidence_confirmation_source_audit_v3_protocol.md"
+        )
+        self.output_dir = (
+            script_dir / "data" /
+            "pdb_terminal_incidence_confirmation_source_audit_v3"
+        )
+        self.inventory = self.output_dir / "source-inventory-v3.json"
+        self.candidate = (
+            script_dir / "data" /
+            "pdb_terminal_incidence_confirmation_source_audit_v3_candidate.json"
+        )
+        for path in (
+            self.intent, self.launch, self.execution, self.attestation,
+            self.slurm, self.manifest, self.amendment, self.inventory,
+        ):
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+        manifest_hashes = {}
+        producer_relative = (
+            "experiments/audit_pdb_terminal_incidence_confirmation_sources.py"
+        )
+        inventory_producer_relative = (
+            "experiments/pdb_terminal_incidence_confirmation_inventory.py"
+        )
+        for relative in P.SOURCE_V3_MANIFEST_FILES:
+            path = self.repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if relative in P.SOURCE_V3_MANIFEST_FILES[:2]:
+                raw = P.canonical_json_line({})
+            elif relative == producer_relative:
+                raw = Path(SourceAudit.__file__).read_bytes()
+            elif relative == inventory_producer_relative:
+                raw = Path(SourceAudit.Inventory.__file__).read_bytes()
+            else:
+                raw = ("fixture:{}\n".format(relative)).encode("ascii")
+            path.write_bytes(raw)
+            manifest_hashes[relative] = hashlib.sha256(raw).hexdigest()
+        self.amendment_sha = manifest_hashes[
+            "experiments/"
+            "pdb_terminal_incidence_confirmation_source_audit_v3_protocol.md"
+        ]
+        manifest_raw = "".join(
+            "{}  {}\n".format(manifest_hashes[relative], relative)
+            for relative in P.SOURCE_V3_MANIFEST_FILES
+        ).encode("ascii")
+        self.manifest.write_bytes(manifest_raw)
+        self.manifest_sha = hashlib.sha256(manifest_raw).hexdigest()
+        slurm_raw = b"#!/bin/bash\n# synthetic source-audit v3 producer\n"
+        self.slurm.write_bytes(slurm_raw)
+        self.slurm_sha = hashlib.sha256(slurm_raw).hexdigest()
+        inventory_tasks = [_task(index) for index in range(1640)]
+        inventory_value = {
+            "schema": P.SOURCE_AUDIT_SCHEMA + "/inventory",
+            "benchmark_revision": P.BENCHMARK_REVISION,
+            "records": [_inventory_record(task) for task in inventory_tasks],
+        }
+        inventory_raw = _write(self.inventory, inventory_value)
+        self.inventory_sha = hashlib.sha256(inventory_raw).hexdigest()
+        empty_stream = {
+            "bytes": 0,
+            "sha256": hashlib.sha256(b"").hexdigest(),
+            "tail": "",
+            "tail_bytes": 0,
+        }
+        sas = {
+            "sas_version": 3,
+            "metric": 1,
+            "num_variables": 1,
+            "num_mutex_groups": 0,
+            "num_operators": 1,
+            "num_effects": 1,
+            "num_conditional_effects": 0,
+            "num_zero_cost_operators": 0,
+            "num_serialized_axioms": 0,
+            "min_operator_cost": 1,
+            "max_operator_cost": 1,
+        }
+        source_records = [{
+            **_inventory_record(task),
+            "translation_attempted": True,
+            "translator_command": [
+                "PINNED_PYTHON", "-B", "-m", "translate",
+                task["domain_file"], task["problem_file"],
+            ],
+            "translation": {
+                "status": "success",
+                "timeout_seconds": 7200,
+                "returncode": 0,
+                "stdout": empty_stream,
+                "stderr": empty_stream,
+                "sas": sas,
+                "sas_sha256": "6" * 64,
+                "error": None,
+            },
+            "normalization": {
+                "status": "success",
+                "strategy": "axiom_based",
+                "num_normalized_axioms": 0,
+                "error": None,
+            },
+            "supported": True,
+            "support_exclusion_reasons": [],
+        } for task in inventory_tasks]
+        inventory_records_sha = hashlib.sha256(
+            P.canonical_json_line(inventory_value["records"])
+        ).hexdigest()
+        records_sha = hashlib.sha256(
+            P.canonical_json_line(source_records)
+        ).hexdigest()
+
         shadow = sorted({
-            task["family"] for task in tasks
+            task["family"] for task in inventory_tasks
             if task["is_shadow_unrepresented"]
         })
         all_prior = sorted({
-            task["family"] for task in tasks
+            task["family"] for task in inventory_tasks
             if task["is_all_prior_unrepresented"]
         })
+        self.shadow_represented = {
+            task["family"] for task in inventory_tasks
+            if task["is_shadow_family"]
+        }
+        self.all_prior_unrepresented = set(all_prior)
+        with mock.patch.object(
+            SourceAudit.Inventory, "SHADOW_FAMILIES",
+            self.shadow_represented,
+        ), mock.patch.object(
+            SourceAudit, "ALL_PRIOR_UNREPRESENTED_FAMILIES",
+            self.all_prior_unrepresented,
+        ), mock.patch.object(
+            SourceAudit, "__file__",
+            str(
+                self.repo /
+                "experiments/"
+                "audit_pdb_terminal_incidence_confirmation_sources.py"
+            ),
+        ), mock.patch.object(
+            SourceAudit.Inventory, "__file__",
+            str(
+                self.repo / "experiments" /
+                "pdb_terminal_incidence_confirmation_inventory.py"
+            ),
+        ):
+            gate, cohorts = SourceAudit.split_supported(source_records)
+        tasks = cohorts["confirmation_a"]["tasks"]
+        guided_tasks = cohorts["guided_b"]["tasks"]
         cohort_sha = hashlib.sha256(P.canonical_json_line(tasks)).hexdigest()
-        gate = {"passed": True, "clauses": {}}
+        guided_sha = hashlib.sha256(
+            P.canonical_json_line(guided_tasks)
+        ).hexdigest()
+        self.fixed_hashes = {
+            **P.SOURCE_V3_FIXED_HASHES,
+            "shadow_unrepresented_family_sequence_sha256": hashlib.sha256(
+                P.canonical_json(shadow)
+            ).hexdigest(),
+            "all_prior_unrepresented_family_sequence_sha256": hashlib.sha256(
+                P.canonical_json(all_prior)
+            ).hexdigest(),
+        }
         schema = P.SOURCE_AUDIT_SCHEMA
-        source_inventory_sha = "8" * 64
-        code_manifest_sha = "3" * 64
-        diagnostic = {
+        v1_rows = [{
+            "array_task": index,
+            "state": "OUT_OF_MEMORY" if index == 0 else "COMPLETED",
+            "exit_code": "0:125" if index == 0 else "0:0",
+            "elapsed": "00:01:00",
+            "partition": "fat",
+        } for index in range(820)]
+        v1_diagnostic = {
             "schema": schema + "/campaign-v2/v1-infrastructure-diagnostic",
+            "v1_launch_receipt_path": str(
+                (self.repo / P.SOURCE_V3_MANIFEST_FILES[0]).resolve()
+            ),
+            "v1_launch_receipt_sha256": manifest_hashes[
+                P.SOURCE_V3_MANIFEST_FILES[0]
+            ],
+            "v1_job_id": "1860905",
+            "v1_memory_per_cpu": "26G",
+            "v1_scheduler_rows": v1_rows,
+            "v1_scheduler_rows_sha256": hashlib.sha256(
+                P.canonical_json_line(v1_rows)
+            ).hexdigest(),
+            "v1_scheduler_state_counts": {
+                "COMPLETED": 819, "OUT_OF_MEMORY": 1,
+            },
+            "v1_source_attestation_absent": True,
             "rerun_scope": "all-820-shards",
             "reused_v1_shards": 0,
             "successful_shard_contents_used_for_v2_design": False,
             "source_support_outcomes_used_for_v2_design": False,
+            "inspection_scope": (
+                "scheduler states plus OOM log/task diagnostics only"
+            ),
+            "failure_class": "scheduler-out-of-memory",
         }
-        self.attestation = root / "attestation.json"
-        self.launch = root / "launch.json"
-        self.execution = root / "execution.json"
+        v2_rows = [{
+            "array_task": index,
+            "state": (
+                "FAILED" if index == 0
+                else "OUT_OF_MEMORY" if index == 1
+                else "COMPLETED"
+            ),
+            "exit_code": (
+                "75:0" if index == 0 else "0:125" if index == 1 else "0:0"
+            ),
+            "elapsed": "00:01:00",
+            "partition": "fat",
+        } for index in range(820)]
+        failure_logs = [
+            {"array_task": 0, "state": "FAILED", "sha256": "e" * 64},
+            {
+                "array_task": 1, "state": "OUT_OF_MEMORY",
+                "sha256": "f" * 64,
+            },
+        ]
+        diagnostic = {
+            "schema": schema + "/campaign-v3/v2-infrastructure-diagnostic",
+            "v2_launch_receipt_path": str(
+                (self.repo / P.SOURCE_V3_MANIFEST_FILES[1]).resolve()
+            ),
+            "v2_launch_receipt_sha256": manifest_hashes[
+                P.SOURCE_V3_MANIFEST_FILES[1]
+            ],
+            "v2_job_id": "1861842",
+            "v2_memory_per_cpu": "256G",
+            "v2_task_timeout_seconds": 2700,
+            "v2_time_limit": "01:40:00",
+            "v2_scheduler_rows": v2_rows,
+            "v2_scheduler_rows_sha256": hashlib.sha256(
+                P.canonical_json_line(v2_rows)
+            ).hexdigest(),
+            "v2_scheduler_state_counts": {
+                "COMPLETED": 818, "FAILED": 1, "OUT_OF_MEMORY": 1,
+            },
+            "v2_failure_logs": failure_logs,
+            "v2_failure_logs_sha256": hashlib.sha256(
+                P.canonical_json_line(failure_logs)
+            ).hexdigest(),
+            "v2_source_attestation_absent": True,
+            "successful_v1_v2_shard_contents_used_for_v3_design": False,
+            "source_support_outcomes_used_for_v3_design": False,
+            "inspection_scope": (
+                "scheduler rows plus timeout/OOM logs and task names only"
+            ),
+            "failure_class": "translator-timeout-and-out-of-memory",
+            "resource_amendment": {
+                "memory_per_cpu": "512G",
+                "task_timeout_seconds": 7200,
+                "time_limit": "04:10:00",
+            },
+            "rerun_scope": "all-820-shards",
+            "reused_v1_shards": 0,
+            "reused_v2_shards": 0,
+            "v1_failure_diagnostic": v1_diagnostic,
+        }
+        self.v1_diagnostic_sha = hashlib.sha256(
+            P.canonical_json_line(v1_diagnostic)
+        ).hexdigest()
+        self.v2_diagnostic_sha = hashlib.sha256(
+            P.canonical_json_line(diagnostic)
+        ).hexdigest()
+        self.v2_state_counts = diagnostic["v2_scheduler_state_counts"]
+        self.v2_rows_sha = diagnostic["v2_scheduler_rows_sha256"]
+        self.v2_logs_sha = diagnostic["v2_failure_logs_sha256"]
         attestation = {
             "schema": schema,
             "benchmark_revision": P.BENCHMARK_REVISION,
-            "translator_source_sha256": "1" * 64,
-            "records_sha256": "2" * 64,
-            "source_inventory_sha256": source_inventory_sha,
-            "code_manifest_sha256": code_manifest_sha,
+            "translator_source_sha256": P.SOURCE_V3_FIXED_HASHES[
+                "translator_source_sha256"
+            ],
+            "source_inventory_sha256": self.inventory_sha,
+            "source_inventory_records_sha256": inventory_records_sha,
+            "code_manifest_sha256": self.manifest_sha,
+            "split_seed": P.COHORT_SEED,
+            "split_rank_encoding": P._SPLIT_RANK_ENCODING,
+            "split_role_labels": P._SPLIT_ROLE_LABELS,
+            "records_sha256": records_sha,
             "confirmation_prelaunch_authorized": True,
             "prelaunch_gate": gate,
-            "split_strata": {
-                "shadow_unrepresented": {"families": shadow},
-                "all_prior_unrepresented": {"families": all_prior},
+            "counts": {
+                "candidates": 1640,
+                "translation_attempts": 1640,
+                "translated_successfully": 1640,
+                "supported": 1640,
+                "unsupported": 0,
+                "families": 30,
             },
-            "cohorts": {
-                "confirmation_a": {
-                    "role": "confirmation-a",
-                    "tasks": tasks,
-                    "tasks_sha256": cohort_sha,
+            "translation_status_counts": {"success": 1640},
+            "support_exclusion_counts": {},
+            "split_strata": {
+                "shadow_unrepresented": {
+                    "definition": (
+                        "families absent from the frozen shadow suites"
+                    ),
+                    "families": shadow,
+                    "families_sha256": hashlib.sha256(
+                        P.canonical_json_line(shadow)
+                    ).hexdigest(),
+                    "inventory_family_sequence_sha256": self.fixed_hashes[
+                        "shadow_unrepresented_family_sequence_sha256"
+                    ],
+                },
+                "all_prior_unrepresented": {
+                    "definition": (
+                        "families absent from both frozen prior experiment "
+                        "artifacts"
+                    ),
+                    "families": all_prior,
+                    "families_sha256": hashlib.sha256(
+                        P.canonical_json_line(all_prior)
+                    ).hexdigest(),
+                    "inventory_family_sequence_sha256": self.fixed_hashes[
+                        "all_prior_unrepresented_family_sequence_sha256"
+                    ],
+                    "prior_directory_family_map_sha256": self.fixed_hashes[
+                        "prior_directory_family_map_sha256"
+                    ],
+                    "prior_family_ledger_sha256": self.fixed_hashes[
+                        "prior_family_ledger_sha256"
+                    ],
                 },
             },
+            "cohorts": cohorts,
+            "records": source_records,
         }
         attestation_raw = _write(self.attestation, attestation)
-        launch = {
-            "schema": schema + "/campaign-v2/launch",
-            "campaign": "v2",
+        fixed = {
+            "campaign": "v3",
             "whole_campaign_rerun": True,
             "reused_v1_shards": 0,
-            "memory_per_cpu": "256G",
+            "reused_v2_shards": 0,
             "partition": "fat",
             "qos": "normal",
             "account": P.ACCOUNT,
@@ -111,20 +583,124 @@ class SourceFixture:
             "tasks_per_array_task": 2,
             "candidates": 1640,
             "cpus_per_task": 1,
-            "time_limit": "01:40:00",
-            "task_timeout_seconds": 2700,
+            "time_limit": "04:10:00",
+            "memory_per_cpu": "512G",
+            "task_timeout_seconds": 7200,
             "benchmark_revision": P.BENCHMARK_REVISION,
-            "job_id": "123456",
-            "code_manifest_sha256": code_manifest_sha,
-            "source_inventory_sha256": source_inventory_sha,
-            "translator_source_sha256": "1" * 64,
+            **self.fixed_hashes,
+            "source_inventory_sha256": self.inventory_sha,
+            "source_inventory_path": str(self.inventory),
+            "slurm_script_sha256": self.slurm_sha,
+            "code_manifest_sha256": self.manifest_sha,
+            "launcher_sha256": manifest_hashes[
+                "experiments/"
+                "launch_pdb_terminal_incidence_confirmation_source_audit_v3.py"
+            ],
             "repository_commit_id": "4" * 40,
-            "slurm_script_sha256": "5" * 64,
-            "launch_intent_sha256": "6" * 64,
-            "v1_failure_diagnostic": diagnostic,
+            "scoped_repository_files": sorted({
+                *P.SOURCE_V3_MANIFEST_FILES,
+                P.SOURCE_V3_SLURM_RELATIVE,
+                P.SOURCE_V3_MANIFEST_RELATIVE,
+            }),
+            "jj_executable": "/home/jendrik/bin/jj",
+            "jj_executable_sha256": (
+                "d1d69a0f87df266eebf0d2592dd019eb288c300b15fd019afe26cb1ed11ba152"
+            ),
+            "sbatch_executable": "/usr/bin/sbatch",
+            "sbatch_executable_sha256": (
+                "efbb8e172acc7ed768430740d04e19cc07a3ac4701b005d1a997c08424bde741"
+            ),
+            "sacct_executable": "/usr/bin/sacct",
+            "sacct_executable_sha256": (
+                "58f3976b19baa2bc26772a92ab224dd0c1bf0ab3d9b675d85aa3e4636c836315"
+            ),
+            "submission_environment": {
+                "LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin",
+            },
+            "output_dir": str(self.output_dir),
+            "candidate_attestation": str(self.candidate),
+            "frozen_attestation": str(self.attestation),
+            "execution_environment": _source_execution_environment(),
+            "python_version": P.REQUIRED_PYTHON_VERSION,
+            "python_executable": "/pinned/python3.12",
+            "python_executable_sha256": "a" * 64,
+            "python_environment_sha256": "c" * 64,
+            "python_distributions": {},
+            "python_requirements_sha256": "d" * 64,
         }
-        launch.update(overrides.get("launch", {}))
+        launch_overrides = dict(overrides.get("launch", {}))
+        launch_special = {
+            key: launch_overrides.pop(key)
+            for key in tuple(launch_overrides)
+            if key in {"schema", "launch_intent_sha256", "job_id"}
+        }
+        fixed.update(launch_overrides)
+        token = "a" * 24
+        submit_command = [
+            "/usr/bin/sbatch", "--parsable", "--export=NONE",
+            "--job-name=confirmation-source-audit-v3-{}".format(token),
+            "--comment=confirmation-source-audit-v3/{}".format(token),
+            "--account={}".format(P.ACCOUNT), "--partition=fat",
+            "--qos=normal", "--array=0-819", "--nodes=1", "--ntasks=1",
+            "--cpus-per-task=1", "--mem-per-cpu=512G", "--time=04:10:00",
+            "--nice=0", "--no-requeue", "--chdir={}".format(self.repo),
+            "--output={}".format(
+                (self.output_dir / "slurm-%A_%a.out").resolve()
+            ),
+            str(self.slurm), self.inventory_sha, str(self.output_dir.resolve()),
+        ]
+        intent_value = {
+            "schema": schema + "/campaign-v3/launch/intent",
+            **fixed,
+            "v2_failure_diagnostic": diagnostic,
+            "recorded_utc": "2026-09-01T12:00:00+00:00",
+            "submission_token": token,
+            "submit_command": submit_command,
+        }
+        intent_raw = _write(self.intent, intent_value)
+        launch = {
+            "schema": schema + "/campaign-v3/launch",
+            **{key: value for key, value in intent_value.items() if key != "schema"},
+            "launch_intent_sha256": hashlib.sha256(intent_raw).hexdigest(),
+            "job_id": "123456",
+        }
+        launch.update(launch_special)
         launch_raw = _write(self.launch, launch)
+        self.launch_sha = hashlib.sha256(launch_raw).hexdigest()
+        shard_names = [
+            "shard-{:04d}-of-0820.json".format(index)
+            for index in range(820)
+        ]
+        shard_hashes = {
+            name: hashlib.sha256(name.encode("ascii")).hexdigest()
+            for name in shard_names
+        }
+        source_root = self.output_dir
+        union_sources = [{
+            "shard_index": index,
+            "origin": "original",
+            "source": str(source_root / name),
+            "source_sha256": shard_hashes[name],
+            "union": name,
+            "union_sha256": shard_hashes[name],
+        } for index, name in enumerate(shard_names)]
+        original_records = [{
+            "path": "source-inventory-v3.json", "size": 1,
+            "sha256": self.inventory_sha,
+        }]
+        original_records.extend({
+            "path": name, "size": 1, "sha256": shard_hashes[name],
+        } for name in shard_names)
+        original_records.extend({
+            "path": "slurm-123456_{}.out".format(index),
+            "size": 1,
+            "sha256": hashlib.sha256(
+                "log-{}".format(index).encode("ascii")
+            ).hexdigest(),
+        } for index in range(820))
+        union_tree = _tree([{
+            "path": name, "size": 1, "sha256": shard_hashes[name],
+        } for name in shard_names])
         scheduler_rows = [{
             "array_task": index,
             "state": "COMPLETED",
@@ -132,38 +708,152 @@ class SourceFixture:
             "elapsed": "00:01:00",
             "partition": "fat",
         } for index in range(820)]
+        scheduler_contract_rows = [{
+            "array_task": index,
+            "account": P.ACCOUNT,
+            "partition": "fat",
+            "qos": "normal",
+            "req_cpus": 1,
+            "req_mem": "512G",
+            "time_limit": "04:10:00",
+            "state": "COMPLETED",
+            "exit_code": "0:0",
+            "job_name": "confirmation-source-audit-v3-{}".format(token),
+        } for index in range(820)]
         execution = {
-            "schema": schema + "/campaign-v2/execution",
-            "campaign": "v2",
+            "schema": schema + "/campaign-v3/execution",
+            "campaign": "v3",
             "whole_campaign_rerun": True,
             "reused_v1_shards": 0,
-            "memory_per_cpu": "256G",
+            "reused_v2_shards": 0,
+            "v2_failure_diagnostic": diagnostic,
+            "launch_receipt_sha256": hashlib.sha256(launch_raw).hexdigest(),
+            "job_id": "123456",
             "partition": "fat",
+            "qos": "normal",
+            "account": P.ACCOUNT,
+            "array": "0-819",
+            "array_tasks": 820,
+            "tasks_per_array_task": 2,
+            "cpus_per_task": 1,
+            "memory_per_cpu": "512G",
+            "time_limit": "04:10:00",
+            "task_timeout_seconds": 7200,
             "array_throttle": 0,
             "shards": 820,
             "candidates": 1640,
             "scheduler_rows": scheduler_rows,
             "scheduler_state_counts": {"COMPLETED": 820},
-            "launch_receipt_sha256": hashlib.sha256(launch_raw).hexdigest(),
-            "job_id": "123456",
+            "scheduler_contract_rows": scheduler_contract_rows,
+            "sacct_executable": "/usr/bin/sacct",
+            "sacct_executable_sha256": (
+                "58f3976b19baa2bc26772a92ab224dd0c1bf0ab3d9b675d85aa3e4636c836315"
+            ),
+            "original_output_tree": _tree(original_records),
+            "recovery": None,
+            "union_sources": union_sources,
+            "union_tree": union_tree,
+            "code_manifest_sha256": self.manifest_sha,
+            "source_inventory_sha256": self.inventory_sha,
+            "execution_environment": launch["execution_environment"],
             "source_audit_complete": True,
             "confirmation_prelaunch_authorized": True,
             "prelaunch_gate": gate,
             "attestation_sha256": hashlib.sha256(attestation_raw).hexdigest(),
-            "attestation_records_sha256": "2" * 64,
-            "cohort_manifest_sha256": {"confirmation_a": cohort_sha},
-            "code_manifest_sha256": code_manifest_sha,
-            "source_inventory_sha256": source_inventory_sha,
-            "union_tree": {"sha256": "7" * 64},
-            "v1_failure_diagnostic": diagnostic,
+            "attestation_records_sha256": records_sha,
+            "cohort_manifest_sha256": {
+                "confirmation_a": cohort_sha,
+                "guided_b": guided_sha,
+            },
+            "counts": attestation["counts"],
+            "translation_status_counts": attestation[
+                "translation_status_counts"
+            ],
+            "support_exclusion_counts": {},
         }
         execution.update(overrides.get("execution", {}))
         _write(self.execution, execution)
 
     def load(self):
-        return P.load_source_materials(
-            self.attestation, self.execution, self.launch
-        )
+        with self.patch():
+            return P.load_source_materials(
+                self.attestation, self.execution, self.launch
+            )
+
+    @contextlib.contextmanager
+    def patch(self):
+        with mock.patch.multiple(
+                P,
+                SOURCE_V3_REPO=self.repo,
+                SOURCE_V3_ATTESTATION_PATH=self.attestation,
+                SOURCE_V3_ARTIFACT_DIR=self.artifact_dir,
+                SOURCE_V3_INTENT_PATH=self.intent,
+                SOURCE_V3_LAUNCH_RECEIPT_PATH=self.launch,
+                SOURCE_V3_LAUNCH_RECEIPT_SHA256=self.launch_sha,
+                SOURCE_V3_EXECUTION_RECEIPT_PATH=self.execution,
+                SOURCE_V3_SLURM_PATH=self.slurm,
+                SOURCE_V3_CODE_MANIFEST_PATH=self.manifest,
+                SOURCE_V3_AMENDMENT_PATH=self.amendment,
+                SOURCE_V3_INVENTORY_PATH=self.inventory,
+                SOURCE_V3_OUTPUT_DIR=self.output_dir,
+                SOURCE_V3_CANDIDATE_PATH=self.candidate,
+                SOURCE_V3_SLURM_SHA256=self.slurm_sha,
+                SOURCE_V3_CODE_MANIFEST_SHA256=self.manifest_sha,
+                SOURCE_V3_AMENDMENT_SHA256=self.amendment_sha,
+                SOURCE_V3_INVENTORY_SHA256=self.inventory_sha,
+                SOURCE_V3_FIXED_HASHES=self.fixed_hashes,
+                SOURCE_V3_V2_DIAGNOSTIC_SHA256=self.v2_diagnostic_sha,
+                SOURCE_V3_V2_SCHEDULER_STATE_COUNTS=self.v2_state_counts,
+                SOURCE_V3_V2_SCHEDULER_ROWS_SHA256=self.v2_rows_sha,
+                SOURCE_V3_V2_FAILURE_LOGS_SHA256=self.v2_logs_sha,
+                SOURCE_V3_V1_DIAGNOSTIC_SHA256=self.v1_diagnostic_sha,
+                _repository_snapshot_files=lambda commit, relatives: {
+                    relative: (self.repo / relative).read_bytes()
+                    for relative in relatives
+                },
+        ), mock.patch.object(
+            SourceAudit.Inventory, "SHADOW_FAMILIES",
+            self.shadow_represented,
+        ), mock.patch.object(
+            SourceAudit, "ALL_PRIOR_UNREPRESENTED_FAMILIES",
+            self.all_prior_unrepresented,
+        ), mock.patch.object(
+            SourceAudit, "__file__",
+            str(
+                self.repo / "experiments" /
+                "audit_pdb_terminal_incidence_confirmation_sources.py"
+            ),
+        ), mock.patch.object(
+            SourceAudit.Inventory, "__file__",
+            str(
+                self.repo / "experiments" /
+                "pdb_terminal_incidence_confirmation_inventory.py"
+            ),
+        ):
+            yield
+
+    def mutate_intent(self, mutate) -> None:
+        intent = json.loads(self.intent.read_text())
+        mutate(intent)
+        intent_raw = _write(self.intent, intent)
+        launch = json.loads(self.launch.read_text())
+        job_id = launch["job_id"]
+        launch = {
+            "schema": P.SOURCE_AUDIT_SCHEMA + "/campaign-v3/launch",
+            **{key: value for key, value in intent.items() if key != "schema"},
+            "launch_intent_sha256": hashlib.sha256(intent_raw).hexdigest(),
+            "job_id": job_id,
+        }
+        launch_raw = _write(self.launch, launch)
+        self.launch_sha = hashlib.sha256(launch_raw).hexdigest()
+        execution = json.loads(self.execution.read_text())
+        execution["launch_receipt_sha256"] = hashlib.sha256(
+            launch_raw
+        ).hexdigest()
+        execution["v2_failure_diagnostic"] = launch[
+            "v2_failure_diagnostic"
+        ]
+        _write(self.execution, execution)
 
     def freeze(self, path: Path) -> dict:
         materials = self.load()
@@ -189,6 +879,23 @@ class SourceFixture:
                 "translator_source_sha256": (
                     materials.translator_source_sha256
                 ),
+                "job_id": materials.launch_receipt["job_id"],
+                "code_manifest_sha256": materials.execution_receipt[
+                    "code_manifest_sha256"
+                ],
+                "repository_commit_id": materials.launch_receipt[
+                    "repository_commit_id"
+                ],
+                "union_tree_sha256": materials.execution_receipt[
+                    "union_tree"
+                ]["sha256"],
+                "slurm_script_sha256": materials.launch_receipt[
+                    "slurm_script_sha256"
+                ],
+                "launch_intent_sha256": materials.launch_receipt[
+                    "launch_intent_sha256"
+                ],
+                "tracked_file_sha256": materials.tracked_file_sha256,
             },
             "planner": {
                 "revision": "a" * 40,
@@ -218,6 +925,29 @@ class SourceFixture:
 
 
 class ConfirmationAProtocolTest(unittest.TestCase):
+    def test_v3_manifest_contract_has_exact_order_and_cardinality(self):
+        self.assertEqual(len(P.SOURCE_V3_MANIFEST_FILES), 14)
+        self.assertEqual(len(set(P.SOURCE_V3_MANIFEST_FILES)), 14)
+        self.assertEqual(
+            P.SOURCE_V3_MANIFEST_FILES[-1],
+            "experiments/"
+            "test_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+        )
+
+    def test_committed_v3_launch_byte_chain_is_accepted(self):
+        raw, launch = P._load_canonical(
+            P.SOURCE_V3_LAUNCH_RECEIPT_PATH, "v3 launch receipt"
+        )
+        self.assertEqual(
+            hashlib.sha256(raw).hexdigest(),
+            P.SOURCE_V3_LAUNCH_RECEIPT_SHA256,
+        )
+        _, _, manifest = P._load_source_v3_byte_chain(launch)
+        self.assertEqual(len(manifest), 14)
+        self.assertEqual(
+            len(P._source_v3_tracked_file_sha256(launch, manifest)), 18
+        )
+
     def test_design_and_cegar_bound(self):
         P.validate_protocol_design()
         cegar = P.SEARCHES["pdb_cegar_shadow"]
@@ -226,11 +956,413 @@ class ConfirmationAProtocolTest(unittest.TestCase):
         prose = " ".join(P.PROTOCOL_PATH.read_text().split())
         self.assertIn("at most 128 refinement calls", prose)
 
-    def test_exact_v2_campaign_is_accepted(self):
+    def test_exact_v3_campaign_is_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:
             materials = SourceFixture(Path(tmp)).load()
         self.assertEqual(len(materials.tasks), 650)
-        self.assertEqual(materials.launch_receipt["memory_per_cpu"], "256G")
+        self.assertEqual(materials.launch_receipt["memory_per_cpu"], "512G")
+
+    def test_attestation_envelope_and_split_replay_are_exact(self):
+        mutations = (
+            lambda value: value.update(unexpected=True),
+            lambda value: value.update(split_seed="wrong"),
+            lambda value: value.update(
+                source_inventory_records_sha256="9" * 64
+            ),
+            lambda value: value["records"][0].update(
+                supported=False,
+                support_exclusion_reasons=["translation-input-rejected"],
+            ),
+            lambda value: value["cohorts"]["confirmation_a"]["tasks"][0].update(
+                source_audit_evidence_sha256="8" * 64
+            ),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate), tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                attestation = json.loads(fixture.attestation.read_text())
+                mutate(attestation)
+                attestation["records_sha256"] = hashlib.sha256(
+                    P.canonical_json_line(attestation["records"])
+                ).hexdigest()
+                cohort = attestation["cohorts"]["confirmation_a"]
+                cohort["tasks_sha256"] = hashlib.sha256(
+                    P.canonical_json_line(cohort["tasks"])
+                ).hexdigest()
+                attestation_raw = _write(fixture.attestation, attestation)
+                execution = json.loads(fixture.execution.read_text())
+                execution["attestation_sha256"] = hashlib.sha256(
+                    attestation_raw
+                ).hexdigest()
+                execution["attestation_records_sha256"] = attestation[
+                    "records_sha256"
+                ]
+                execution["cohort_manifest_sha256"]["confirmation_a"] = (
+                    cohort["tasks_sha256"]
+                )
+                _write(fixture.execution, execution)
+                with self.assertRaises(P.ProtocolError):
+                    fixture.load()
+
+    def test_global_prelaunch_gate_requires_feasible_disjoint_b(self):
+        def missing_guided(value):
+            value["cohorts"].pop("guided_b")
+
+        def under_floor_guided(value):
+            guided = value["cohorts"]["guided_b"]
+            guided["tasks"] = guided["tasks"][:199]
+            guided["tasks_sha256"] = hashlib.sha256(
+                P.canonical_json_line(guided["tasks"])
+            ).hexdigest()
+
+        def overlapping_guided(value):
+            guided = value["cohorts"]["guided_b"]
+            guided["tasks"][0] = json.loads(json.dumps(
+                value["cohorts"]["confirmation_a"]["tasks"][0]
+            ))
+            guided["tasks_sha256"] = hashlib.sha256(
+                P.canonical_json_line(guided["tasks"])
+            ).hexdigest()
+
+        for mutate in (missing_guided, under_floor_guided, overlapping_guided):
+            with self.subTest(mutate=mutate.__name__), \
+                    tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                attestation = json.loads(fixture.attestation.read_text())
+                mutate(attestation)
+                attestation_raw = _write(fixture.attestation, attestation)
+                execution = json.loads(fixture.execution.read_text())
+                execution["attestation_sha256"] = hashlib.sha256(
+                    attestation_raw
+                ).hexdigest()
+                execution["cohort_manifest_sha256"] = {
+                    name: cohort["tasks_sha256"]
+                    for name, cohort in attestation["cohorts"].items()
+                }
+                _write(fixture.execution, execution)
+                with self.assertRaises(P.ProtocolError):
+                    fixture.load()
+
+    def test_unverified_split_producer_is_not_imported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            producer = (
+                fixture.repo / "experiments" /
+                "audit_pdb_terminal_incidence_confirmation_sources.py"
+            )
+            producer.write_bytes(producer.read_bytes() + b"# tamper\n")
+            with fixture.patch(), mock.patch.object(
+                    P.importlib, "import_module",
+                    side_effect=AssertionError("unverified producer executed"),
+            ) as imported:
+                with self.assertRaises(P.ProtocolError):
+                    P.load_source_materials(
+                        fixture.attestation, fixture.execution, fixture.launch
+                    )
+                imported.assert_not_called()
+
+    def test_unverified_inventory_dependency_is_not_imported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            dependency = (
+                fixture.repo / "experiments" /
+                "pdb_terminal_incidence_confirmation_inventory.py"
+            )
+            dependency.write_bytes(
+                dependency.read_bytes()
+                + b"\nraise RuntimeError('unverified dependency executed')\n"
+            )
+            manifest_hashes = {
+                line.split("  ", 1)[1]: line.split("  ", 1)[0]
+                for line in fixture.manifest.read_text().splitlines()
+            }
+            attestation = json.loads(fixture.attestation.read_text())
+            names = (
+                "audit_pdb_terminal_incidence_confirmation_sources",
+                "pdb_terminal_incidence_confirmation_inventory",
+            )
+            saved = {name: sys.modules.pop(name, None) for name in names}
+            try:
+                with fixture.patch(), mock.patch.object(
+                        P.importlib, "import_module",
+                        side_effect=AssertionError(
+                            "unverified dependency imported"
+                        ),
+                ) as imported, self.assertRaises(P.ProtocolError):
+                    P._validate_attestation_split(
+                        attestation, manifest_hashes
+                    )
+                imported.assert_not_called()
+            finally:
+                for name, module in saved.items():
+                    if module is not None:
+                        sys.modules[name] = module
+
+    def test_nested_source_evidence_schema_is_replayed_exactly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            attestation = json.loads(fixture.attestation.read_text())
+            attestation["records"][0]["translation"][
+                "arbitrary_unexpected_nested_field"
+            ] = True
+            with fixture.patch():
+                gate, cohorts = SourceAudit.split_supported(
+                    attestation["records"]
+                )
+            attestation["records_sha256"] = hashlib.sha256(
+                P.canonical_json_line(attestation["records"])
+            ).hexdigest()
+            attestation["prelaunch_gate"] = gate
+            attestation["cohorts"] = cohorts
+            attestation["confirmation_prelaunch_authorized"] = gate["passed"]
+            attestation_raw = _write(fixture.attestation, attestation)
+            execution = json.loads(fixture.execution.read_text())
+            execution["attestation_sha256"] = hashlib.sha256(
+                attestation_raw
+            ).hexdigest()
+            execution["attestation_records_sha256"] = attestation[
+                "records_sha256"
+            ]
+            execution["prelaunch_gate"] = gate
+            execution["confirmation_prelaunch_authorized"] = gate["passed"]
+            execution["cohort_manifest_sha256"] = {
+                name: cohort["tasks_sha256"]
+                for name, cohort in cohorts.items()
+            }
+            _write(fixture.execution, execution)
+            with self.assertRaises(P.ProtocolError):
+                fixture.load()
+
+    def test_v3_local_byte_chain_tampering_is_rejected(self):
+        def corrupt(path):
+            path.write_bytes(path.read_bytes() + b"tamper\n")
+
+        targets = (
+            lambda fixture: fixture.intent,
+            lambda fixture: fixture.slurm,
+            lambda fixture: fixture.manifest,
+            lambda fixture: fixture.amendment,
+            lambda fixture: fixture.inventory,
+            lambda fixture: fixture.repo / P.SOURCE_V3_MANIFEST_FILES[3],
+        )
+        for target in targets:
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                corrupt(target(fixture))
+                with self.assertRaises(P.ProtocolError):
+                    fixture.load()
+
+    def test_symlinked_sealed_source_artifacts_are_rejected(self):
+        for attribute in ("attestation", "execution", "launch"):
+            with self.subTest(attribute=attribute), \
+                    tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                path = getattr(fixture, attribute)
+                target = path.with_name(path.name + ".target")
+                path.rename(target)
+                path.symlink_to(target.name)
+                with self.assertRaisesRegex(
+                    P.ProtocolError, "canonical regular JSON"
+                ):
+                    fixture.load()
+
+    def test_v3_intent_fixed_materials_and_repository_snapshot_are_bound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            fixture.mutate_intent(lambda intent: intent.update(
+                candidate_records_sha256="9" * 64
+            ))
+            with self.assertRaisesRegex(P.ProtocolError, "local byte chain"):
+                fixture.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            with fixture.patch():
+                snapshot = {
+                    relative: (fixture.repo / relative).read_bytes()
+                    for relative in sorted({
+                        *P.SOURCE_V3_MANIFEST_FILES,
+                        P.SOURCE_V3_SLURM_RELATIVE,
+                        P.SOURCE_V3_MANIFEST_RELATIVE,
+                    })
+                }
+                snapshot[P.SOURCE_V3_SLURM_RELATIVE] += b"tamper\n"
+                with mock.patch.object(
+                    P, "_repository_snapshot_files", return_value=snapshot
+                ), self.assertRaisesRegex(P.ProtocolError, "snapshot"):
+                    P.load_source_materials(
+                        fixture.attestation, fixture.execution, fixture.launch
+                    )
+
+    def test_freeze_revision_tracks_all_v3_bound_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            materials = fixture.load()
+            with mock.patch.object(Freeze, "REPO", fixture.repo), \
+                    mock.patch.object(
+                        Freeze.JJ,
+                        "tracked_file_sha256",
+                        side_effect=lambda repo, revision, relative: (
+                            materials.tracked_file_sha256[relative]
+                        ),
+                    ):
+                self.assertEqual(
+                    Freeze._tracked_source_v3_hashes(materials, "4" * 40),
+                    materials.tracked_file_sha256,
+                )
+            first = next(iter(materials.tracked_file_sha256))
+            with mock.patch.object(Freeze, "REPO", fixture.repo), \
+                    mock.patch.object(
+                        Freeze.JJ,
+                        "tracked_file_sha256",
+                        side_effect=lambda repo, revision, relative: (
+                            "9" * 64 if relative == first
+                            else materials.tracked_file_sha256[relative]
+                        ),
+                    ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
+                Freeze._tracked_source_v3_hashes(materials, "4" * 40)
+
+    def test_freeze_requires_source_revision_ancestor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            materials = SourceFixture(Path(tmp)).load()
+        with mock.patch.object(
+                Freeze.JJ, "require_ancestor",
+                side_effect=Freeze.JJ.JjCacheError("divergent"),
+        ), self.assertRaisesRegex(Freeze.FreezeError, "not an ancestor"):
+            Freeze._require_source_ancestor(materials, "4" * 40)
+
+    def test_jj_queries_reject_wrong_identity_and_ignore_path_shadow(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp) / "jj"
+            fake.write_bytes(b"#!/bin/sh\nexit 0\n")
+            with mock.patch.object(Freeze.JJ, "JJ_EXECUTABLE", fake), \
+                    self.assertRaises(Freeze.JJ.JjCacheError):
+                Freeze.JJ._verify_jj_identity()
+        completed = mock.Mock(stdout=b"ok\n")
+        with mock.patch.dict(os.environ, {"PATH": "/hostile/path"}), \
+                mock.patch.object(
+                    Freeze.JJ, "_verify_jj_identity", return_value=None
+                ), mock.patch.object(
+                    Freeze.JJ.subprocess, "run", return_value=completed
+                ) as run:
+            self.assertEqual(
+                Freeze.JJ._run_jj(P.REPO, ["version"]), b"ok\n"
+            )
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], str(Freeze.JJ.JJ_EXECUTABLE))
+        self.assertIn("--ignore-working-copy", command)
+
+    def test_source_snapshot_rechecks_jj_after_each_subprocess(self):
+        with mock.patch.object(
+                P, "sha256_file",
+                side_effect=[P.SOURCE_V3_JJ_EXECUTABLE_SHA256, "9" * 64],
+        ), mock.patch.object(
+                P.subprocess, "check_output", return_value="file\n"
+        ) as query, self.assertRaisesRegex(
+                P.ProtocolError, "Jujutsu executable identity"
+        ):
+            P._repository_snapshot_files("4" * 40, ["file"])
+        query.assert_called_once()
+
+    def test_freeze_rechecks_live_bytes_around_revision_lookup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            materials = fixture.load()
+            first = next(iter(materials.tracked_file_sha256))
+            target = fixture.repo / first
+            changed = []
+
+            def mutate_during_lookup(repo, revision, relative):
+                if relative == first and not changed:
+                    target.write_bytes(target.read_bytes() + b"swap\n")
+                    changed.append(True)
+                return materials.tracked_file_sha256[relative]
+
+            with mock.patch.object(Freeze, "REPO", fixture.repo), \
+                    mock.patch.object(
+                        Freeze.JJ, "tracked_file_sha256",
+                        side_effect=mutate_during_lookup,
+                    ), self.assertRaisesRegex(
+                        Freeze.FreezeError, "changed during revision check"
+                    ):
+                Freeze._tracked_source_v3_hashes(materials, "4" * 40)
+
+    def test_freeze_reloads_source_after_mocked_planner_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+
+            def mocked_cache():
+                fixture.attestation.write_bytes(
+                    fixture.attestation.read_bytes() + b"changed-in-cache\n"
+                )
+
+            with fixture.patch(), mock.patch.object(
+                    Freeze, "REPO", fixture.repo
+            ), mock.patch.object(
+                    Freeze, "_require_clean_parent", return_value="4" * 40
+            ), mock.patch.object(
+                    Freeze, "_require_source_ancestor", return_value=None
+            ):
+                mocked_cache()
+                with self.assertRaises(P.ProtocolError):
+                    Freeze._revalidate_before_write(
+                        {},
+                        attestation=fixture.attestation,
+                        execution_receipt=fixture.execution,
+                        launch_receipt=fixture.launch,
+                        revision="4" * 40,
+                    )
+
+    def test_freeze_rejects_live_tamper_and_symlink_for_sealed_artifact(self):
+        for mutation in ("tamper", "symlink"):
+            with self.subTest(mutation=mutation), \
+                    tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                materials = fixture.load()
+                path = materials.attestation_path
+                if mutation == "tamper":
+                    path.write_bytes(path.read_bytes() + b"tamper\n")
+                else:
+                    target = path.with_name(path.name + ".target")
+                    path.rename(target)
+                    path.symlink_to(target.name)
+                with mock.patch.object(Freeze, "REPO", fixture.repo), \
+                        self.assertRaises(Freeze.FreezeError):
+                    Freeze._attest_tracked_file(
+                        path, materials.attestation_sha256, "4" * 40,
+                        "sealed source artifact",
+                    )
+
+    def test_v2_failure_diagnostic_rejects_self_rehashed_substitution(self):
+        def add_failure(intent):
+            diagnostic = intent["v2_failure_diagnostic"]
+            row = diagnostic["v2_scheduler_rows"][2]
+            row["state"] = "FAILED"
+            row["exit_code"] = "75:0"
+            diagnostic["v2_scheduler_rows_sha256"] = hashlib.sha256(
+                P.canonical_json_line(diagnostic["v2_scheduler_rows"])
+            ).hexdigest()
+            diagnostic["v2_scheduler_state_counts"] = {
+                "COMPLETED": 817, "FAILED": 2, "OUT_OF_MEMORY": 1,
+            }
+            diagnostic["v2_failure_logs"].append({
+                "array_task": 2, "state": "FAILED", "sha256": "9" * 64,
+            })
+            diagnostic["v2_failure_logs_sha256"] = hashlib.sha256(
+                P.canonical_json_line(diagnostic["v2_failure_logs"])
+            ).hexdigest()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            fixture.mutate_intent(add_failure)
+            with self.assertRaisesRegex(P.ProtocolError, "diagnostic"):
+                fixture.load()
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            fixture.mutate_intent(lambda intent: intent[
+                "v2_failure_diagnostic"
+            ].update(v2_scheduler_state_counts={"COMPLETED": 820}))
+            with self.assertRaisesRegex(P.ProtocolError, "diagnostic"):
+                fixture.load()
 
     def test_cohort_hash_matches_source_audit_canonical_line_convention(self):
         tasks = [_task(index) for index in range(P.COHORT_TASKS)]
@@ -249,12 +1381,12 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             fixture = SourceFixture(root)
             launch = json.loads(fixture.launch.read_text())
             launch["schema"] = launch["schema"].replace(
-                "/campaign-v2/launch", "/launch"
+                "/campaign-v3/launch", "/launch"
             )
             launch_raw = _write(fixture.launch, launch)
             execution = json.loads(fixture.execution.read_text())
             execution["schema"] = execution["schema"].replace(
-                "/campaign-v2/execution", "/execution"
+                "/campaign-v3/execution", "/execution"
             )
             execution["launch_receipt_sha256"] = hashlib.sha256(
                 launch_raw
@@ -275,47 +1407,41 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             with self.assertRaisesRegex(P.ProtocolError, "schema chain"):
                 fixture.load()
 
-    def test_mismatched_v1_failure_diagnostic_is_rejected(self):
+    def test_mismatched_v2_failure_diagnostic_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             execution = json.loads(fixture.execution.read_text())
-            execution["v1_failure_diagnostic"] = {
-                **execution["v1_failure_diagnostic"],
+            execution["v2_failure_diagnostic"] = {
+                **execution["v2_failure_diagnostic"],
                 "rerun_scope": "selected-shards",
             }
             _write(fixture.execution, execution)
             with self.assertRaisesRegex(P.ProtocolError, "diagnostic chain"):
                 fixture.load()
 
-    def test_non_full_v2_rerun_diagnostic_is_rejected_even_when_matched(self):
+    def test_non_full_v3_rerun_diagnostic_is_rejected_even_when_matched(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
-            launch = json.loads(fixture.launch.read_text())
-            diagnostic = {
-                **launch["v1_failure_diagnostic"],
-                "rerun_scope": "selected-shards",
-            }
-            launch["v1_failure_diagnostic"] = diagnostic
-            launch_raw = _write(fixture.launch, launch)
-            execution = json.loads(fixture.execution.read_text())
-            execution["v1_failure_diagnostic"] = diagnostic
-            execution["launch_receipt_sha256"] = hashlib.sha256(
-                launch_raw
-            ).hexdigest()
-            _write(fixture.execution, execution)
+            fixture.mutate_intent(lambda intent: intent[
+                "v2_failure_diagnostic"
+            ].update(rerun_scope="selected-shards"))
             with self.assertRaisesRegex(P.ProtocolError, "diagnostic chain"):
                 fixture.load()
 
-    def test_v1_reuse_and_low_memory_are_rejected(self):
+    def test_prior_reuse_and_wrong_v3_resources_are_rejected(self):
         cases = (
-            {"launch": {"campaign": "v1"}},
-            {"execution": {"campaign": "v1"}},
+            {"launch": {"campaign": "v2"}},
+            {"execution": {"campaign": "v2"}},
             {"launch": {"reused_v1_shards": 1}},
             {"execution": {"reused_v1_shards": 1}},
+            {"launch": {"reused_v2_shards": 1}},
+            {"execution": {"reused_v2_shards": 1}},
+            {"launch": {"reused_v2_shards": False}},
+            {"execution": {"reused_v2_shards": False}},
             {"launch": {"whole_campaign_rerun": False}},
             {"execution": {"whole_campaign_rerun": False}},
-            {"launch": {"memory_per_cpu": "26G"}},
-            {"execution": {"memory_per_cpu": "26G"}},
+            {"launch": {"memory_per_cpu": "256G"}},
+            {"execution": {"memory_per_cpu": "256G"}},
         )
         for overrides in cases:
             with self.subTest(overrides=overrides):
@@ -326,30 +1452,24 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     ):
                         fixture.load()
 
-    def test_v1_diagnostic_must_attest_a_full_outcome_blind_rerun(self):
+    def test_v2_diagnostic_must_attest_a_full_outcome_blind_rerun(self):
         cases = (
             ("schema", P.SOURCE_AUDIT_SCHEMA + "/wrong-diagnostic"),
             ("rerun_scope", "selected-shards"),
             ("reused_v1_shards", 1),
-            ("successful_shard_contents_used_for_v2_design", True),
-            ("source_support_outcomes_used_for_v2_design", True),
+            ("reused_v2_shards", 1),
+            ("successful_v1_v2_shard_contents_used_for_v3_design", True),
+            ("source_support_outcomes_used_for_v3_design", True),
         )
         for field, value in cases:
             with self.subTest(field=field, value=value):
                 with tempfile.TemporaryDirectory() as tmp:
                     fixture = SourceFixture(Path(tmp))
-                    launch = json.loads(fixture.launch.read_text())
-                    diagnostic = {
-                        **launch["v1_failure_diagnostic"], field: value,
-                    }
-                    launch["v1_failure_diagnostic"] = diagnostic
-                    launch_raw = _write(fixture.launch, launch)
-                    execution = json.loads(fixture.execution.read_text())
-                    execution["v1_failure_diagnostic"] = diagnostic
-                    execution["launch_receipt_sha256"] = hashlib.sha256(
-                        launch_raw
-                    ).hexdigest()
-                    _write(fixture.execution, execution)
+                    fixture.mutate_intent(
+                        lambda intent: intent["v2_failure_diagnostic"].update(
+                            {field: value}
+                        )
+                    )
                     with self.assertRaisesRegex(
                         P.ProtocolError, "diagnostic chain"
                     ):
@@ -367,25 +1487,26 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             with self.subTest(overrides=overrides):
                 with tempfile.TemporaryDirectory() as tmp:
                     fixture = SourceFixture(Path(tmp), **overrides)
-                    with self.assertRaisesRegex(
-                        P.ProtocolError, "provenance chain"
-                    ):
+                    with self.assertRaises(P.ProtocolError):
                         fixture.load()
 
-    def test_source_v2_scheduler_contract_is_exact(self):
+    def test_source_v3_scheduler_contract_is_exact(self):
         cases = (
             {"launch": {"partition": "thin"}},
             {"launch": {"qos": "low"}},
             {"launch": {"array": "0-818"}},
             {"launch": {"array_throttle": 10}},
+            {"launch": {"array_throttle": False}},
             {"launch": {"array_tasks": 819}},
             {"launch": {"tasks_per_array_task": 1}},
             {"launch": {"candidates": 1639}},
             {"launch": {"cpus_per_task": 2}},
-            {"launch": {"time_limit": "01:00:00"}},
-            {"launch": {"task_timeout_seconds": 2600}},
+            {"launch": {"cpus_per_task": True}},
+            {"launch": {"time_limit": "01:40:00"}},
+            {"launch": {"task_timeout_seconds": 2700}},
             {"execution": {"partition": "thin"}},
             {"execution": {"array_throttle": 10}},
+            {"execution": {"array_throttle": False}},
             {"execution": {"shards": 819}},
             {"execution": {"candidates": 1639}},
         )
@@ -398,7 +1519,14 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     ):
                         fixture.load()
 
-    def test_source_v2_scheduler_row_identity_is_exact(self):
+    def test_source_v3_scheduler_row_identity_is_exact(self):
+        completed_rows = [{
+            "array_task": index,
+            "state": "COMPLETED",
+            "exit_code": "0:0",
+            "elapsed": "00:01:00",
+            "partition": "fat",
+        } for index in range(820)]
         cases = (
             {"scheduler_rows": []},
             {"scheduler_rows": [{
@@ -415,6 +1543,24 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                 "elapsed": "00:01:00",
                 "partition": "fat",
             } for index in range(820)]},
+            {"scheduler_rows": [{
+                "array_task": False if index == 0 else index,
+                "state": "COMPLETED",
+                "exit_code": "0:0",
+                "elapsed": "00:01:00",
+                "partition": "fat",
+            } for index in range(820)]},
+            {
+                "scheduler_rows": [
+                    {
+                        **row,
+                        "state": "FAILED" if index == 17 else "COMPLETED",
+                        "exit_code": "1:0" if index == 17 else "0:0",
+                    }
+                    for index, row in enumerate(completed_rows)
+                ],
+                "scheduler_state_counts": {"COMPLETED": 819, "FAILED": 1},
+            },
         )
         for execution in cases:
             with self.subTest(first=str(execution)[:80]):
@@ -425,6 +1571,127 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     with self.assertRaisesRegex(
                         P.ProtocolError, "scheduler rows"
                     ):
+                        fixture.load()
+
+    def test_source_v3_scheduler_resource_rows_are_exact(self):
+        mutations = (
+            ("array_task", False),
+            ("account", "other"),
+            ("partition", "thin"),
+            ("qos", "short"),
+            ("req_cpus", True),
+            ("req_mem", "511G"),
+            ("time_limit", "04:09:59"),
+            ("state", "FAILED"),
+            ("exit_code", "1:0"),
+            ("job_name", "wrong"),
+        )
+        for field, value in mutations:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                execution = json.loads(fixture.execution.read_text())
+                execution["scheduler_contract_rows"][0][field] = value
+                _write(fixture.execution, execution)
+                with self.assertRaisesRegex(P.ProtocolError, "resource accounting"):
+                    fixture.load()
+
+    def test_source_execution_environment_is_bound(self):
+        changed_export = _source_execution_environment()
+        changed_export["submission_export"] = "ALL"
+        boolean_flag = _source_execution_environment()
+        boolean_flag["python_no_user_site_flag"] = True
+        cases = (
+            {"launch": {"execution_environment": None}},
+            {"launch": {"execution_environment": changed_export}},
+            {"launch": {"execution_environment": boolean_flag}},
+            {"launch": {"python_environment_sha256": "invalid"}},
+            {"execution": {"execution_environment": {"unexpected": True}}},
+        )
+        for overrides in cases:
+            with self.subTest(overrides=overrides):
+                with tempfile.TemporaryDirectory() as tmp:
+                    fixture = SourceFixture(Path(tmp), **overrides)
+                    with self.assertRaisesRegex(
+                        P.ProtocolError, "execution environment"
+                    ):
+                        fixture.load()
+
+    def test_confirmation_task_schema_rank_aliases_and_candidate_ids_are_exact(self):
+        def missing_fields(tasks):
+            for field in ("candidate_index", "canonical_path", "aliases"):
+                tasks[0].pop(field)
+
+        def boolean_index(tasks):
+            tasks[0]["candidate_index"] = False
+
+        def duplicate_index(tasks):
+            tasks[1]["candidate_index"] = tasks[0]["candidate_index"]
+
+        def out_of_range_index(tasks):
+            tasks[0]["candidate_index"] = 1640
+
+        def inconsistent_shadow_flags(tasks):
+            tasks[0]["is_shadow_family"] = tasks[0][
+                "is_shadow_unrepresented"
+            ]
+
+        def wrong_rank(tasks):
+            tasks[0]["selection_rank_sha256"] = "9" * 64
+
+        def empty_aliases(tasks):
+            tasks[0]["aliases"] = []
+
+        for mutation in (
+            missing_fields, boolean_index, duplicate_index,
+            out_of_range_index, inconsistent_shadow_flags, wrong_rank,
+            empty_aliases,
+        ):
+            with self.subTest(mutation=mutation.__name__), \
+                    tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                attestation = json.loads(fixture.attestation.read_text())
+                cohort = attestation["cohorts"]["confirmation_a"]
+                mutation(cohort["tasks"])
+                cohort_sha = hashlib.sha256(
+                    P.canonical_json_line(cohort["tasks"])
+                ).hexdigest()
+                cohort["tasks_sha256"] = cohort_sha
+                attestation_raw = _write(fixture.attestation, attestation)
+                execution = json.loads(fixture.execution.read_text())
+                execution["attestation_sha256"] = hashlib.sha256(
+                    attestation_raw
+                ).hexdigest()
+                execution["cohort_manifest_sha256"]["confirmation_a"] = (
+                    cohort_sha
+                )
+                _write(fixture.execution, execution)
+                with self.assertRaises(P.ProtocolError):
+                    fixture.load()
+
+    def test_unrecovered_source_union_and_tree_are_exact(self):
+        def recovery(execution):
+            execution["recovery"] = {"unexpected": True}
+
+        def recovered_origin(execution):
+            execution["union_sources"][17]["origin"] = "recovery"
+
+        def wrong_tree_digest(execution):
+            execution["union_tree"]["sha256"] = "9" * 64
+
+        def boolean_shard_index(execution):
+            execution["union_sources"][0]["shard_index"] = False
+
+        for mutation in (
+            recovery, recovered_origin, boolean_shard_index,
+            wrong_tree_digest,
+        ):
+            with self.subTest(mutation=mutation.__name__):
+                with tempfile.TemporaryDirectory() as tmp:
+                    fixture = SourceFixture(Path(tmp))
+                    execution = json.loads(fixture.execution.read_text())
+                    mutation(execution)
+                    _write(fixture.execution, execution)
+                    with self.assertRaises(P.ProtocolError):
                         fixture.load()
 
     def test_executed_source_manifest_covers_reused_runtime_modules(self):
@@ -450,10 +1717,13 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             fixture = SourceFixture(root)
             freeze_path = root / "freeze.json"
             value = fixture.freeze(freeze_path)
-            freeze, materials = P._load_freeze(freeze_path)
+            with fixture.patch():
+                freeze, materials = P._load_freeze(freeze_path)
             self.assertEqual(freeze, value)
             self.assertEqual(len(materials.tasks), P.COHORT_TASKS)
-            with mock.patch.object(P, "FREEZE_PATH", freeze_path):
+            with fixture.patch(), mock.patch.object(
+                P, "FREEZE_PATH", freeze_path
+            ):
                 installed = P._installed_values()
             self.assertEqual(
                 installed["DIRECTORY_FAMILY_JSON_SHA256"],
@@ -461,10 +1731,19 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     materials.directory_to_family
                 )).hexdigest(),
             )
+            value["source_audit"]["unexpected"] = True
+            _write(freeze_path, value)
+            with fixture.patch(), self.assertRaisesRegex(
+                P.ProtocolError, "source hashes changed"
+            ):
+                P._load_freeze(freeze_path)
+            del value["source_audit"]["unexpected"]
             relative = P.EXPERIMENT_SOURCE_FILES[0]
             value["experiment_source_sha256"][relative] = "9" * 64
             _write(freeze_path, value)
-            with self.assertRaisesRegex(P.ProtocolError, "source changed"):
+            with fixture.patch(), self.assertRaisesRegex(
+                P.ProtocolError, "source changed"
+            ):
                 P._load_freeze(freeze_path)
 
     def test_stratum_flag_mismatch_is_rejected(self):

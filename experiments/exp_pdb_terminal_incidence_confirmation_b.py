@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and launch the frozen 650 x 4 Confirmation A study."""
+"""Build and launch the frozen N x 9 guided Confirmation B study."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import exp_pdb_profile_certificate_holdout as Base
 import jj_cached_revision as JJ
-import pdb_terminal_incidence_confirmation_a_protocol as P
+import pdb_terminal_incidence_confirmation_b_protocol as P
 
 
 class ConfirmationLaunchError(RuntimeError):
@@ -26,7 +26,7 @@ class ConfirmationLaunchError(RuntimeError):
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO = SCRIPT_DIR.parent
-EXPERIMENT_PATH = SCRIPT_DIR / "data" / "exp_pdb_terminal_incidence_confirmation_a"
+EXPERIMENT_PATH = SCRIPT_DIR / "data" / "exp_pdb_terminal_incidence_confirmation_b"
 GRID_DIR = Path(str(EXPERIMENT_PATH) + "-grid-steps")
 REVISION_CACHE = SCRIPT_DIR / "data" / "revision-cache"
 BENCHMARKS = Path(
@@ -34,7 +34,7 @@ BENCHMARKS = Path(
 ).resolve()
 ARTIFACT_DIR = (
     SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation" /
-    "confirmation-a"
+    "confirmation-b"
 )
 BUILD_RECEIPT = ARTIFACT_DIR / "build-receipt-v1.json"
 LAUNCH_INTENT = ARTIFACT_DIR / "launch-intent-v1.json"
@@ -42,9 +42,9 @@ LAUNCH_RECEIPT = ARTIFACT_DIR / "launch-receipt-v1.json"
 LAUNCH_RECEIPT_PIN = ARTIFACT_DIR / "launch-receipt-v1.sha256"
 LAUNCH_SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-a-launch/v1"
+    "pdb-terminal-incidence-confirmation-b-launch/v1"
 )
-EXPECTED_JOB_NAME = "exp_pdb_terminal_incidence_confirmation_a-02-start"
+EXPECTED_JOB_NAME = "exp_pdb_terminal_incidence_confirmation_b-02-start"
 JOB_FILE = GRID_DIR / EXPECTED_JOB_NAME
 SUBMISSION_TOKEN_RE = re.compile(r"^[0-9a-f]{24}$")
 JOURNAL_FIELDS = "JobID%64,JobName%128,Comment%128"
@@ -129,8 +129,8 @@ def configure() -> None:
     Base.LAUNCH_RECEIPT = LAUNCH_RECEIPT
     Base.LAUNCH_RECEIPT_SCHEMA = LAUNCH_SCHEMA
     Base.EXPECTED_JOB_NAME = EXPECTED_JOB_NAME
-    Base.PARTITION_REQUIREMENT_LABEL = "terminal-incidence Confirmation A"
-    Base.EXTRA_PARSER_MODULES = ("pdb_fixed_pattern_parser",)
+    Base.PARTITION_REQUIREMENT_LABEL = "terminal-incidence Confirmation B"
+    Base.EXTRA_PARSER_MODULES = ("pdb_terminal_incidence_selector_parser",)
     Base.SOURCE_PROTOCOL = P.PROTOCOL
     Base.RUNNER_SOURCE_FILES = _source_names()
     Base.VALIDATE_MATCHED_BUDGET_PROVENANCE = False
@@ -163,12 +163,20 @@ def configure() -> None:
         "cohort_directory_family_sha256": hashlib.sha256(
             P.canonical_json(P.DIRECTORY_TO_FAMILY)
         ).hexdigest(),
-        "analysis_horizon": P.HORIZON,
+        "incidence_probe_layers": P.PROBE_LAYERS,
+        "par2_seconds": P.PAR2_SECONDS,
         "primary_labels": list(P.PRIMARY_LABELS),
+        "non_gating_reference_labels": list(P.NON_GATING_REFERENCE_LABELS),
         "intervention_label": P.INTERVENTION_LABEL,
         "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
         "bootstrap_seed": P.BOOTSTRAP_SEED,
-        "confirmation_a_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
+        "confirmation_b_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
+        "confirmation_a_authorization_receipt_sha256": (
+            P.CONFIRMATION_A_AUTHORIZATION_RECEIPT_SHA256
+        ),
+        "confirmation_a_cohort_manifest_sha256": (
+            P.CONFIRMATION_A_COHORT_MANIFEST_SHA256
+        ),
         "all_prior_unrepresented_families": list(
             P.ALL_PRIOR_UNREPRESENTED_FAMILIES
         ),
@@ -202,19 +210,27 @@ def configure() -> None:
         ),
         "source_audit_slurm_sha256": P.SOURCE_AUDIT_SLURM_SHA256,
         "source_audit_intent_sha256": P.SOURCE_AUDIT_INTENT_SHA256,
-        "confirmation_a_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
+        "confirmation_b_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
         "source_attestation_path": str(materials.attestation_path),
         "source_execution_receipt_path": str(materials.execution_receipt_path),
         "source_launch_receipt_path": str(materials.launch_receipt_path),
         "cohort_seed": P.COHORT_SEED,
         "cohort_task_name_sha256": P.TASK_NAME_SHA256,
         "cohort_family_count": P.COHORT_FAMILIES,
-        "analysis_horizon": P.HORIZON,
+        "incidence_probe_layers": P.PROBE_LAYERS,
+        "par2_seconds": P.PAR2_SECONDS,
+        "non_gating_reference_labels": list(P.NON_GATING_REFERENCE_LABELS),
+        "confirmation_a_authorization_receipt_sha256": (
+            P.CONFIRMATION_A_AUTHORIZATION_RECEIPT_SHA256
+        ),
+        "confirmation_a_cohort_manifest_sha256": (
+            P.CONFIRMATION_A_COHORT_MANIFEST_SHA256
+        ),
         "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
         "bootstrap_seed": P.BOOTSTRAP_SEED,
         "frozen_source_design": freeze["design"],
     }
-    import audit_pdb_terminal_incidence_confirmation_a as Audit
+    import audit_pdb_terminal_incidence_confirmation_b as Audit
 
     Base.PRE_PARSE_VALIDATOR = Audit.validate_before_parse
     Base.POST_PARSE_SEALER = Audit.seal_parse
@@ -224,7 +240,7 @@ def configure() -> None:
 
 def _sanitize_job_file() -> None:
     if JOB_FILE.is_symlink() or not JOB_FILE.is_file():
-        raise ConfirmationLaunchError("generated Confirmation A job file is absent")
+        raise ConfirmationLaunchError("generated Confirmation B job file is absent")
     try:
         raw = JOB_FILE.read_bytes()
         text = raw.decode("utf-8")
@@ -256,11 +272,11 @@ def _sanitize_job_file() -> None:
 
 def _validate_job_file() -> str:
     if JOB_FILE.is_symlink() or not JOB_FILE.is_file():
-        raise ConfirmationLaunchError("Confirmation A job file is not regular")
+        raise ConfirmationLaunchError("Confirmation B job file is not regular")
     try:
         text = JOB_FILE.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as err:
-        raise ConfirmationLaunchError("cannot inspect Confirmation A job") from err
+        raise ConfirmationLaunchError("cannot inspect Confirmation B job") from err
     lines = text.splitlines()
     if not lines or lines[0] != "#! /bin/bash -l":
         raise ConfirmationLaunchError("generated job interpreter changed")
@@ -271,17 +287,19 @@ def _validate_job_file() -> str:
         "#SBATCH --open-mode=append",
         "#SBATCH --partition=fat",
         "#SBATCH --qos=normal",
-        "#SBATCH --time=01:40:00",
-        "#SBATCH --mem-per-cpu=26G",
+        "#SBATCH --time={}".format(P.SCHEDULER_TIME_LIMIT),
+        "#SBATCH --mem-per-cpu={}".format(P.SCHEDULER_MEMORY),
         "#SBATCH --cpus-per-task=1",
-        "#SBATCH --array=1-867",
+        "#SBATCH --array=1-{}".format(P.EXPECTED_ARRAY_TASKS),
         "#SBATCH --mail-type=NONE",
         "#SBATCH --mail-user=",
         "#SBATCH --account={}".format(P.ACCOUNT),
     )
     assignments = {
-        "NUM_RUNS=": "NUM_RUNS=2600",
-        "RUNS_PER_TASK=": "RUNS_PER_TASK=3",
+        "NUM_RUNS=": "NUM_RUNS={}".format(P.CELL_COUNT),
+        "RUNS_PER_TASK=": "RUNS_PER_TASK={}".format(
+            P.RUNS_PER_ARRAY_TASK
+        ),
     }
     actual_directives = [
         line for line in lines if line.startswith("#SBATCH")
@@ -296,7 +314,6 @@ def _validate_job_file() -> str:
     )
     if conflicting_directive or conflicting_assignment:
         raise ConfirmationLaunchError("generated job contract changed")
-
     print_block = "\n".join((
         "function print {",
         "    local msg=${1}",
@@ -364,8 +381,8 @@ def _validate_job_file() -> str:
     mapping_block = "\n".join((
         "# Shuffle runs to avoid systematic bias.",
         declarations[0],
-        "NUM_RUNS=2600",
-        "RUNS_PER_TASK=3",
+        "NUM_RUNS={}".format(P.CELL_COUNT),
+        "RUNS_PER_TASK={}".format(P.RUNS_PER_ARRAY_TASK),
         "",
         "# Compute which indices belong to the Slurm task.",
         'let "START_INDEX=($SLURM_ARRAY_TASK_ID - 1) * RUNS_PER_TASK"',
@@ -421,7 +438,7 @@ def _submission_identity(token: str) -> tuple[str, str]:
         raise ConfirmationLaunchError("submission token is invalid")
     return (
         EXPECTED_JOB_NAME,
-        "pdb-terminal-incidence-confirmation-a/{}".format(token),
+        "pdb-terminal-incidence-confirmation-b/{}".format(token),
     )
 
 
@@ -463,7 +480,7 @@ def _build_launch_materials(
     cached = Base.cached_revision(require_hashes=True)
     build_sha, build_inputs = Base._validate_build_receipt(cached)
     job_sha = _validate_job_file()
-    _, build = _load_json(BUILD_RECEIPT, "Confirmation A build receipt")
+    _, build = _load_json(BUILD_RECEIPT, "Confirmation B build receipt")
     if P.sha256_file(BUILD_RECEIPT) != build_sha:
         raise ConfirmationLaunchError("build receipt changed during launch")
     command = _submit_command(token)
@@ -477,13 +494,13 @@ def _build_launch_materials(
         "partition": "fat",
         "qos": "normal",
         "account": P.ACCOUNT,
-        "slurm_array": "1-867",
+        "slurm_array": "1-{}".format(P.EXPECTED_ARRAY_TASKS),
         "array_throttle": 0,
-        "array_tasks": 867,
-        "runs_per_array_task": 3,
-        "cells": 2600,
-        "time_limit": "01:40:00",
-        "memory_per_cpu": "26G",
+        "array_tasks": P.EXPECTED_ARRAY_TASKS,
+        "runs_per_array_task": P.RUNS_PER_ARRAY_TASK,
+        "cells": P.CELL_COUNT,
+        "time_limit": P.SCHEDULER_TIME_LIMIT,
+        "memory_per_cpu": P.SCHEDULER_MEMORY,
         "cpus_per_task": 1,
         "nice_adjustment": None,
         "submission_export": "NONE",
@@ -512,7 +529,7 @@ def _build_launch_materials(
 
 
 def _load_intent_only() -> tuple[bytes, dict, dict]:
-    raw, intent = _load_json(LAUNCH_INTENT, "Confirmation A launch intent")
+    raw, intent = _load_json(LAUNCH_INTENT, "Confirmation B launch intent")
     prepared = intent.get("prepared_receipt_without_job_id")
     if not isinstance(prepared, dict):
         raise ConfirmationLaunchError("launch intent is incomplete")
@@ -550,7 +567,7 @@ def launch() -> None:
     if any(path.exists() or path.is_symlink() for path in (
         LAUNCH_INTENT, LAUNCH_RECEIPT, LAUNCH_RECEIPT_PIN,
     )):
-        raise ConfirmationLaunchError("Confirmation A launch artifacts exist")
+        raise ConfirmationLaunchError("Confirmation B launch artifacts exist")
     token = secrets.token_hex(12)
     recorded = datetime.datetime.now(datetime.timezone.utc).isoformat(
         timespec="seconds"
@@ -653,7 +670,7 @@ def recover_launch() -> None:
 
 def load_launch_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
     intent_raw, _, materials = _load_intent_only()
-    raw, receipt = _load_json(LAUNCH_RECEIPT, "Confirmation A launch receipt")
+    raw, receipt = _load_json(LAUNCH_RECEIPT, "Confirmation B launch receipt")
     try:
         pin_raw = LAUNCH_RECEIPT_PIN.read_bytes()
     except OSError as err:
@@ -691,8 +708,8 @@ def parse_args(argv=None):
 def main(argv=None) -> int:
     args = parse_args(argv)
     if args.command == "design-check":
-        P.validate_protocol_design()
-        print("Confirmation A outcome-independent design OK")
+        P.validate_static_design()
+        print("Confirmation B outcome-independent design OK")
         return 0
     configure()
     if args.command == "launch":

@@ -216,6 +216,25 @@ class JobHeaderTest(unittest.TestCase):
                         with self.assertRaises(Runner.ConfirmationLaunchError):
                             Runner._validate_job_file()
 
+    def test_scheduler_directives_must_be_the_leading_ordered_header(self):
+        lines = self.header().splitlines()
+        partition = "#SBATCH --partition=fat"
+        late_one = [line for line in lines if line != partition] + [partition]
+        directives = [line for line in lines if line.startswith("#SBATCH")]
+        all_late = [
+            lines[0],
+            *[line for line in lines[1:] if not line.startswith("#SBATCH")],
+            *directives,
+        ]
+        for mutated in (late_one, all_late):
+            with self.subTest(last=mutated[-1]):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / Runner.EXPECTED_JOB_NAME
+                    path.write_text("\n".join(mutated) + "\n")
+                    with mock.patch.object(Runner, "JOB_FILE", path):
+                        with self.assertRaises(Runner.ConfirmationLaunchError):
+                            Runner._validate_job_file()
+
     def test_duplicate_or_conflicting_scheduler_contract_is_rejected(self):
         conflicts = (
             "#SBATCH --job-name=other",

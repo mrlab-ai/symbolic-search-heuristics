@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the one prospective source/planner freeze for Confirmation A."""
+"""Create the one prospective source/planner freeze for Confirmation B."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 import jj_cached_revision as JJ
-import pdb_terminal_incidence_confirmation_a_protocol as P
+import pdb_terminal_incidence_confirmation_b_protocol as P
 
 
 class FreezeError(RuntimeError):
@@ -113,13 +113,24 @@ def build_freeze(
     attestation: Path,
     execution_receipt: Path,
     launch_receipt: Path,
+    confirmation_a_receipt: Path,
+    confirmation_a_receipt_pin: Path,
+    confirmation_a_first_output: Path,
+    confirmation_a_second_output: Path,
     revision: str,
 ) -> dict:
-    P.validate_protocol_design()
+    P.validate_static_design()
     materials = P.load_source_materials(
         attestation, execution_receipt, launch_receipt
     )
     _require_source_ancestor(materials, revision)
+    authorization = P.load_confirmation_a_authorization(
+        confirmation_a_receipt,
+        confirmation_a_receipt_pin,
+        confirmation_a_first_output,
+        confirmation_a_second_output,
+    )
+    P._validate_confirmation_a_source_link(authorization, materials)
     for path, expected in (
         (materials.attestation_path, materials.attestation_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
@@ -127,6 +138,22 @@ def build_freeze(
     ):
         _attest_tracked_file(path, expected, revision, "sealed source artifact")
     tracked_file_sha256 = _tracked_source_v3_hashes(materials, revision)
+    authorization_hashes = {
+        authorization["receipt_path"]: authorization["receipt_sha256"],
+        authorization["first_output_path"]: authorization[
+            "first_output_sha256"
+        ],
+        authorization["second_output_path"]: authorization[
+            "second_output_sha256"
+        ],
+        authorization["receipt_pin_path"]: hashlib.sha256(
+            (authorization["receipt_sha256"] + "\n").encode("ascii")
+        ).hexdigest(),
+    }
+    for path, expected in authorization_hashes.items():
+        _attest_tracked_file(
+            path, expected, revision, "Confirmation A authorization"
+        )
     cached = JJ.JjCachedFastDownwardRevision(
         REVISION_CACHE, REPO, revision, list(P.BUILD_OPTIONS)
     )
@@ -156,6 +183,9 @@ def build_freeze(
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
         "cohort_manifest_sha256": materials.cohort_manifest_sha256,
+        "confirmation_a_cohort_manifest_sha256": (
+            materials.confirmation_a_cohort_manifest_sha256
+        ),
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": source_launch["job_id"],
@@ -166,9 +196,25 @@ def build_freeze(
         "launch_intent_sha256": source_launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked_file_sha256,
     }
+    authorization_provenance = {
+        **{
+            key: _relative(value)
+            for key, value in authorization.items()
+            if key.endswith("_path")
+        },
+        **{
+            key: value
+            for key, value in authorization.items()
+            if not key.endswith("_path")
+        },
+    }
+    cohort_tasks = len(materials.tasks)
+    cells = cohort_tasks * P.CONFIG_COUNT
+    array_tasks = (cells + P.RUNS_PER_ARRAY_TASK - 1) // P.RUNS_PER_ARRAY_TASK
     return {
         "schema": P.FREEZE_SCHEMA,
         "source_audit": source_provenance,
+        "confirmation_a_authorization": authorization_provenance,
         "planner": {
             "revision": revision,
             "cache_name": cached.name,
@@ -178,12 +224,21 @@ def build_freeze(
         "design": {
             "protocol_sha256": P.sha256_file(P.PROTOCOL_PATH),
             "option_matrix_sha256": P.option_matrix_digest(),
-            "cohort_tasks": P.COHORT_TASKS,
+            "cohort_tasks": cohort_tasks,
+            "target_cohort_tasks": P.TARGET_COHORT_TASKS,
+            "minimum_cohort_tasks": P.MIN_COHORT_TASKS,
+            "maximum_cohort_tasks": P.MAX_COHORT_TASKS,
             "configs": P.CONFIG_COUNT,
-            "cells": P.CELL_COUNT,
-            "horizon": P.HORIZON,
+            "cells": cells,
+            "expected_array_tasks": array_tasks,
+            "runs_per_array_task": P.RUNS_PER_ARRAY_TASK,
+            "probe_layers": P.PROBE_LAYERS,
+            "par2_seconds": P.PAR2_SECONDS,
             "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
             "bootstrap_seed": P.BOOTSTRAP_SEED,
+            "non_gating_reference_labels": list(
+                P.NON_GATING_REFERENCE_LABELS
+            ),
         },
         "experiment_source_sha256": _source_hashes(revision),
     }
@@ -195,6 +250,10 @@ def _revalidate_before_write(
     attestation: Path,
     execution_receipt: Path,
     launch_receipt: Path,
+    confirmation_a_receipt: Path,
+    confirmation_a_receipt_pin: Path,
+    confirmation_a_first_output: Path,
+    confirmation_a_second_output: Path,
     revision: str,
 ) -> None:
     if _require_clean_parent(revision) != revision:
@@ -203,6 +262,13 @@ def _revalidate_before_write(
         attestation, execution_receipt, launch_receipt
     )
     _require_source_ancestor(materials, revision)
+    authorization = P.load_confirmation_a_authorization(
+        confirmation_a_receipt,
+        confirmation_a_receipt_pin,
+        confirmation_a_first_output,
+        confirmation_a_second_output,
+    )
+    P._validate_confirmation_a_source_link(authorization, materials)
     for path, expected in (
         (materials.attestation_path, materials.attestation_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
@@ -210,6 +276,22 @@ def _revalidate_before_write(
     ):
         _attest_tracked_file(path, expected, revision, "sealed source artifact")
     tracked = _tracked_source_v3_hashes(materials, revision)
+    authorization_hashes = {
+        authorization["receipt_path"]: authorization["receipt_sha256"],
+        authorization["first_output_path"]: authorization[
+            "first_output_sha256"
+        ],
+        authorization["second_output_path"]: authorization[
+            "second_output_sha256"
+        ],
+        authorization["receipt_pin_path"]: hashlib.sha256(
+            (authorization["receipt_sha256"] + "\n").encode("ascii")
+        ).hexdigest(),
+    }
+    for path, expected in authorization_hashes.items():
+        _attest_tracked_file(
+            path, expected, revision, "Confirmation A authorization"
+        )
     launch = materials.launch_receipt
     execution = materials.execution_receipt
     expected_sources = {
@@ -220,6 +302,9 @@ def _revalidate_before_write(
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
         "cohort_manifest_sha256": materials.cohort_manifest_sha256,
+        "confirmation_a_cohort_manifest_sha256": (
+            materials.confirmation_a_cohort_manifest_sha256
+        ),
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": launch["job_id"],
@@ -230,8 +315,22 @@ def _revalidate_before_write(
         "launch_intent_sha256": launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked,
     }
+    expected_authorization = {
+        **{
+            key: _relative(item)
+            for key, item in authorization.items()
+            if key.endswith("_path")
+        },
+        **{
+            key: item
+            for key, item in authorization.items()
+            if not key.endswith("_path")
+        },
+    }
     if value.get("source_audit") != expected_sources:
         raise FreezeError("source provenance changed during planner caching")
+    if value.get("confirmation_a_authorization") != expected_authorization:
+        raise FreezeError("Confirmation A authorization changed during caching")
     if value.get("experiment_source_sha256") != _source_hashes(revision):
         raise FreezeError("experiment sources changed during planner caching")
 
@@ -245,7 +344,7 @@ def _write_exclusive(path: Path, value: dict) -> str:
             stream.flush()
             os.fsync(stream.fileno())
     except FileExistsError as err:
-        raise FreezeError("Confirmation A freeze already exists") from err
+        raise FreezeError("Confirmation B freeze already exists") from err
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -254,6 +353,22 @@ def parse_args(argv=None):
     parser.add_argument("--attestation", type=Path, required=True)
     parser.add_argument("--execution-receipt", type=Path, required=True)
     parser.add_argument("--launch-receipt", type=Path, required=True)
+    parser.add_argument(
+        "--confirmation-a-receipt", type=Path,
+        default=P.CONFIRMATION_A_RECEIPT_PATH,
+    )
+    parser.add_argument(
+        "--confirmation-a-receipt-pin", type=Path,
+        default=P.CONFIRMATION_A_RECEIPT_PIN_PATH,
+    )
+    parser.add_argument(
+        "--confirmation-a-first-output", type=Path,
+        default=P.CONFIRMATION_A_FIRST_OUTPUT_PATH,
+    )
+    parser.add_argument(
+        "--confirmation-a-second-output", type=Path,
+        default=P.CONFIRMATION_A_SECOND_OUTPUT_PATH,
+    )
     parser.add_argument("--planner-revision")
     parser.add_argument("--output", type=Path, default=P.FREEZE_PATH)
     return parser.parse_args(argv)
@@ -266,6 +381,10 @@ def main(argv=None) -> int:
         attestation=args.attestation,
         execution_receipt=args.execution_receipt,
         launch_receipt=args.launch_receipt,
+        confirmation_a_receipt=args.confirmation_a_receipt,
+        confirmation_a_receipt_pin=args.confirmation_a_receipt_pin,
+        confirmation_a_first_output=args.confirmation_a_first_output,
+        confirmation_a_second_output=args.confirmation_a_second_output,
         revision=revision,
     )
     _revalidate_before_write(
@@ -273,6 +392,10 @@ def main(argv=None) -> int:
         attestation=args.attestation,
         execution_receipt=args.execution_receipt,
         launch_receipt=args.launch_receipt,
+        confirmation_a_receipt=args.confirmation_a_receipt,
+        confirmation_a_receipt_pin=args.confirmation_a_receipt_pin,
+        confirmation_a_first_output=args.confirmation_a_first_output,
+        confirmation_a_second_output=args.confirmation_a_second_output,
         revision=revision,
     )
     digest = _write_exclusive(args.output, value)

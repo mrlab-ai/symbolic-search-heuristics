@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Frozen protocol and source loader for terminal-incidence Confirmation A."""
+"""Frozen protocol and source loader for terminal-incidence Confirmation B."""
 
 from __future__ import annotations
 
 import hashlib
-import importlib
 import json
 import os
 import re
@@ -15,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pdb_profile_comparison_protocol as Source
+import pdb_terminal_incidence_confirmation_a_protocol as SourceValidation
 
 
 class ProtocolError(RuntimeError):
@@ -23,22 +23,38 @@ class ProtocolError(RuntimeError):
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO = SCRIPT_DIR.parent
-PROTOCOL_PATH = SCRIPT_DIR / "pdb_terminal_incidence_confirmation_a_protocol.md"
+PROTOCOL_PATH = SCRIPT_DIR / "pdb_terminal_incidence_confirmation_b_protocol.md"
 FREEZE_PATH = (
     SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation" /
-    "confirmation-a-freeze-v1.json"
+    "confirmation-b-freeze-v1.json"
 )
 FREEZE_SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-a-freeze/v1"
+    "pdb-terminal-incidence-confirmation-b-freeze/v1"
+)
+CONFIRMATION_A_ARTIFACT_DIR = (
+    SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation" /
+    "confirmation-a"
+)
+CONFIRMATION_A_RECEIPT_PATH = (
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v1.json"
+)
+CONFIRMATION_A_RECEIPT_PIN_PATH = (
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v1.sha256"
+)
+CONFIRMATION_A_FIRST_OUTPUT_PATH = (
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v1.json"
+)
+CONFIRMATION_A_SECOND_OUTPUT_PATH = (
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v1-repeat.json"
 )
 SOURCE_AUDIT_SCHEMA = (
     "symbolic-search-heuristics/"
     "universal-unseen-confirmation-source-audit/v1"
 )
-PROTOCOL = "pdb-terminal-incidence-confirmation-a-measurement-v1"
-ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-a-analysis-v1"
-COHORT_ROLE = "source-disjoint-universal-confirmation-a"
+PROTOCOL = "pdb-terminal-incidence-confirmation-b-measurement-v1"
+ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-b-analysis-v1"
+COHORT_ROLE = "source-disjoint-universal-confirmation-b"
 COHORT_SEED = (
     "symbolic-search-heuristics/universal-unseen-confirmation-guided-split/v1"
 )
@@ -49,47 +65,60 @@ REQUIRED_LAB_VERSION = "8.10"
 REQUIRED_PYTHON_VERSION = "3.12.13"
 BUILD_OPTIONS = ("release_no_lp",)
 
-COHORT_TASKS = 650
-MIN_SOURCE_COHORT_FAMILIES = 28
-MIN_SOURCE_SHADOW_UNREPRESENTED_FAMILIES = 12
-MIN_SOURCE_ALL_PRIOR_UNREPRESENTED_TASKS = 100
-MIN_SOURCE_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
-CONFIG_COUNT = 4
-CELL_COUNT = 2600
-HORIZON = 16
+MIN_COHORT_TASKS = 200
+TARGET_COHORT_TASKS = 300
+MAX_COHORT_TASKS = 300
+MIN_COHORT_FAMILIES = 30
+MIN_SHADOW_UNREPRESENTED_FAMILIES = 12
+MIN_ALL_PRIOR_UNREPRESENTED_TASKS = 50
+MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
+
+# Installed from the one immutable freeze.  Before freezing, cardinalities are
+# deliberately unusable so a campaign cannot accidentally launch a guessed
+# cohort size.
+COHORT_TASKS = 0
+CONFIG_COUNT = 9
+CELL_COUNT = 0
+PROBE_LAYERS = 16
 TIME_LIMIT_SECONDS = 1800
 MEMORY_LIMIT_MIB = 24576
 RUNS_PER_ARRAY_TASK = 3
-EXPECTED_ARRAY_TASKS = 867
+EXPECTED_ARRAY_TASKS = 0
 SCHEDULER_TIME_LIMIT = "01:40:00"
 SCHEDULER_MEMORY = "26G"
 
 PRIMARY_LABELS = (
-    "pdb_bdd_prefix_shadow",
-    "pdb_goal_prefix_shadow",
-    "pdb_goal_fill_shadow",
-    "pdb_cegar_shadow",
+    "blind_fw",
+    "pdb_bdd_prefix",
+    "pdb_goal_prefix",
+    "pdb_goal_fill",
+    "pdb_cegar_deterministic",
+    "pdb_exact_width_k32",
+    "pdb_cap_aware_k32",
+    "pdb_terminal_incidence_guided",
+    "pdb_terminal_incidence_matched",
 )
-# The legacy analyzer checks this name while validating labels.  Confirmation A
-# has no intervention cell, so this value is deliberately outside LABELS.
-INTERVENTION_LABEL = "__no_confirmation_a_intervention__"
-
-MIN_ELIGIBLE_TASKS = 300
-MIN_ELIGIBLE_FAMILIES = 25
-MIN_COMPARISON_TASKS = 300
-MIN_COMPARISON_FAMILIES = 25
-MIN_SHARED_STRICT_PAIRS = 600
-MIN_PRIMARY_CONCORDANCE_NUMERATOR = 13
-MIN_PRIMARY_CONCORDANCE_DENOMINATOR = 20
-MIN_ADVANTAGE_NUMERATOR = 1
-MIN_ADVANTAGE_DENOMINATOR = 50
+INTERVENTION_LABEL = "__no_confirmation_b_intervention__"
+PLAIN_REFERENCE_LABEL = "pdb_cap_aware_k32"
+GUIDED_LABEL = "pdb_terminal_incidence_guided"
+MATCHED_LABEL = "pdb_terminal_incidence_matched"
+NON_GATING_REFERENCE_LABELS = (
+    "blind_fw",
+    "pdb_bdd_prefix",
+    "pdb_goal_prefix",
+    "pdb_goal_fill",
+    "pdb_cegar_deterministic",
+    "pdb_exact_width_k32",
+)
+SELECTOR_TRACE = "incidence-selector.jsonl"
+SELECTOR_TRACE_SCHEMA = (
+    "symbolic-search-heuristics/terminal-incidence-selector-trace/v3"
+)
+PAR2_SECONDS = 3600
+MIN_NORMALIZED_PAR2_IMPROVEMENT_NUMERATOR = 1
+MIN_NORMALIZED_PAR2_IMPROVEMENT_DENOMINATOR = 50
 BOOTSTRAP_REPLICATES = 100000
-BOOTSTRAP_SEED = 20260901
-
-MIN_NEW_STRATUM_COMPARISON_FAMILIES = 10
-MIN_NEW_STRATUM_SHARED_STRICT_PAIRS = 100
-MIN_NEW_STRATUM_CONCORDANCE_NUMERATOR = 13
-MIN_NEW_STRATUM_CONCORDANCE_DENOMINATOR = 20
+BOOTSTRAP_SEED = 20260902
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -254,421 +283,6 @@ def sha256_file(path: Path) -> str:
 def _same_exact(actual, expected) -> bool:
     """Compare JSON scalar values without accepting bool as an integer."""
     return type(actual) is type(expected) and actual == expected
-
-
-def _validate_split_strata(
-    attestation: dict, fixed_hashes: dict | None = None
-) -> tuple[list[str], list[str]]:
-    if fixed_hashes is None:
-        fixed_hashes = SOURCE_V3_FIXED_HASHES
-    split = attestation.get("split_strata")
-    if not isinstance(split, dict) or set(split) != {
-        "shadow_unrepresented", "all_prior_unrepresented",
-    }:
-        raise ProtocolError("source audit lacks frozen strata")
-    shadow_record = split.get("shadow_unrepresented")
-    prior_record = split.get("all_prior_unrepresented")
-    if (
-        not isinstance(shadow_record, dict)
-        or set(shadow_record) != {
-            "definition", "families", "families_sha256",
-            "inventory_family_sequence_sha256",
-        }
-        or not isinstance(prior_record, dict)
-        or set(prior_record) != {
-            "definition", "families", "families_sha256",
-            "inventory_family_sequence_sha256",
-            "prior_directory_family_map_sha256",
-            "prior_family_ledger_sha256",
-        }
-    ):
-        raise ProtocolError("source-audit stratum schema changed")
-    shadow = shadow_record.get("families")
-    all_prior = prior_record.get("families")
-    for values in (shadow, all_prior):
-        if (
-            not isinstance(values, list)
-            or values != sorted(set(values))
-            or any(not isinstance(value, str) or not value for value in values)
-        ):
-            raise ProtocolError("source-audit stratum family set changed")
-    shadow_sha = hashlib.sha256(canonical_json_line(shadow)).hexdigest()
-    shadow_sequence_sha = hashlib.sha256(canonical_json(shadow)).hexdigest()
-    prior_sha = hashlib.sha256(canonical_json_line(all_prior)).hexdigest()
-    prior_sequence_sha = hashlib.sha256(canonical_json(all_prior)).hexdigest()
-    if any((
-        shadow_record.get("definition")
-        != "families absent from the frozen shadow suites",
-        shadow_record.get("families_sha256") != shadow_sha,
-        shadow_sequence_sha != fixed_hashes[
-            "shadow_unrepresented_family_sequence_sha256"
-        ],
-        shadow_record.get("inventory_family_sequence_sha256")
-        != shadow_sequence_sha,
-        prior_record.get("definition")
-        != "families absent from both frozen prior experiment artifacts",
-        prior_record.get("families_sha256") != prior_sha,
-        prior_sequence_sha != fixed_hashes[
-            "all_prior_unrepresented_family_sequence_sha256"
-        ],
-        prior_record.get("inventory_family_sequence_sha256")
-        != prior_sequence_sha,
-        prior_record.get("prior_directory_family_map_sha256")
-        != fixed_hashes["prior_directory_family_map_sha256"],
-        prior_record.get("prior_family_ledger_sha256")
-        != fixed_hashes["prior_family_ledger_sha256"],
-    )):
-        raise ProtocolError("source-audit stratum digest chain changed")
-    return shadow, all_prior
-
-
-def _validate_prelaunch_gate(
-    attestation: dict, shadow: list[str], all_prior: list[str]
-) -> None:
-    cohorts = attestation.get("cohorts")
-    if not isinstance(cohorts, dict):
-        raise ProtocolError("source audit lacks frozen cohorts")
-    confirmation = cohorts.get("confirmation_a")
-    guided = cohorts.get("guided_b")
-    a_tasks = confirmation.get("tasks") if isinstance(confirmation, dict) else None
-    b_tasks = guided.get("tasks") if isinstance(guided, dict) else None
-    if any(
-        not isinstance(tasks, list)
-        or any(
-            not isinstance(task, dict)
-            or not isinstance(task.get("family"), str)
-            or not task["family"]
-            for task in tasks
-        )
-        for tasks in (a_tasks, b_tasks)
-    ):
-        raise ProtocolError("source audit global prelaunch cohorts changed")
-    a_sha = hashlib.sha256(canonical_json_line(a_tasks)).hexdigest()
-    b_sha = hashlib.sha256(canonical_json_line(b_tasks)).hexdigest()
-    if any((
-        confirmation.get("role") != "confirmation-a",
-        confirmation.get("tasks_sha256") != a_sha,
-        guided.get("role") != "guided-b",
-        guided.get("top_up_role") != "guided-b-topup",
-        not _same_exact(guided.get("target_tasks"), 300),
-        not _same_exact(guided.get("max_tasks_per_family"), 12),
-        guided.get("tasks_sha256") != b_sha,
-        not 200 <= len(b_tasks) <= 300,
-        bool(b_tasks) and max(Counter(
-            task["family"] for task in b_tasks
-        ).values()) > 12,
-    )):
-        raise ProtocolError("source audit global prelaunch cohorts changed")
-    shadow_set = set(shadow)
-    prior_set = set(all_prior)
-
-    def support(tasks):
-        families = {task["family"] for task in tasks}
-        shadow_families = families & shadow_set
-        prior_tasks = [task for task in tasks if task["family"] in prior_set]
-        prior_families = {task["family"] for task in prior_tasks}
-        return families, shadow_families, prior_tasks, prior_families
-
-    a_families, a_shadow, a_prior_tasks, a_prior_families = support(a_tasks)
-    b_families, b_shadow, b_prior_tasks, b_prior_families = support(b_tasks)
-    clauses = {
-        "confirmation_tasks": {
-            "actual": len(a_tasks), "required": 650,
-            "passed": len(a_tasks) == 650,
-        },
-        "confirmation_families": {
-            "actual": len(a_families), "required_minimum": 28,
-            "passed": len(a_families) >= 28,
-        },
-        "confirmation_shadow_unrepresented_families": {
-            "actual": len(a_shadow), "required_minimum": 12,
-            "passed": len(a_shadow) >= 12,
-        },
-        "confirmation_all_prior_unrepresented_tasks": {
-            "actual": len(a_prior_tasks), "required_minimum": 100,
-            "passed": len(a_prior_tasks) >= 100,
-        },
-        "confirmation_all_prior_unrepresented_families": {
-            "actual": len(a_prior_families), "required_minimum": 10,
-            "passed": len(a_prior_families) >= 10,
-        },
-        "guided_tasks": {
-            "actual": len(b_tasks), "required_minimum": 200,
-            "passed": len(b_tasks) >= 200,
-        },
-        "guided_families": {
-            "actual": len(b_families), "required_minimum": 30,
-            "passed": len(b_families) >= 30,
-        },
-        "guided_shadow_unrepresented_families": {
-            "actual": len(b_shadow), "required_minimum": 12,
-            "passed": len(b_shadow) >= 12,
-        },
-        "guided_all_prior_unrepresented_tasks": {
-            "actual": len(b_prior_tasks), "required_minimum": 50,
-            "passed": len(b_prior_tasks) >= 50,
-        },
-        "guided_all_prior_unrepresented_families": {
-            "actual": len(b_prior_families), "required_minimum": 10,
-            "passed": len(b_prior_families) >= 10,
-        },
-    }
-    a_ids = {(task.get("directory"), task.get("problem")) for task in a_tasks}
-    b_ids = {(task.get("directory"), task.get("problem")) for task in b_tasks}
-    a_hashes = {task.get("problem_sha256") for task in a_tasks}
-    b_hashes = {task.get("problem_sha256") for task in b_tasks}
-    disjointness = {
-        "source_identity_overlap": len(a_ids & b_ids),
-        "problem_sha256_overlap": len(a_hashes & b_hashes),
-        "passed": not (a_ids & b_ids or a_hashes & b_hashes),
-    }
-    gate = attestation.get("prelaunch_gate")
-    if not isinstance(gate, dict) or set(gate) != {
-        "outcome_blind", "availability", "passed", "clauses",
-        "cohort_disjointness",
-    }:
-        raise ProtocolError("source audit global prelaunch gate changed")
-    availability = gate.get("availability")
-    availability_keys = {
-        "supported_tasks", "supported_families", "supported_tasks_sha256",
-        "shadow_unrepresented", "all_prior_unrepresented",
-        "post_confirmation_remaining_tasks",
-        "guided_b_maximum_under_family_cap", "guided_b_target_tasks",
-        "guided_b_max_tasks_per_family",
-    }
-    if (
-        not isinstance(availability, dict)
-        or set(availability) != availability_keys
-        or any(
-            type(availability.get(field)) is not int
-            or availability[field] < 0
-            for field in (
-                "supported_tasks", "supported_families",
-                "post_confirmation_remaining_tasks",
-                "guided_b_maximum_under_family_cap",
-            )
-        )
-        or availability["supported_tasks"] < len(a_tasks) + len(b_tasks)
-        or availability["supported_families"] < len(a_families | b_families)
-        or availability["guided_b_maximum_under_family_cap"] < len(b_tasks)
-        or not _same_exact(availability.get("guided_b_target_tasks"), 300)
-        or not _same_exact(availability.get("guided_b_max_tasks_per_family"), 12)
-        or SHA256_RE.fullmatch(availability.get("supported_tasks_sha256", ""))
-        is None
-    ):
-        raise ProtocolError("source audit prelaunch availability changed")
-    for name in ("shadow_unrepresented", "all_prior_unrepresented"):
-        summary = availability.get(name)
-        if (
-            not isinstance(summary, dict)
-            or set(summary) != {
-                "tasks", "families", "tasks_sha256", "families_sha256",
-            }
-            or any(type(summary.get(field)) is not int or summary[field] < 0
-                   for field in ("tasks", "families"))
-            or any(SHA256_RE.fullmatch(summary.get(field, "")) is None
-                   for field in ("tasks_sha256", "families_sha256"))
-        ):
-            raise ProtocolError("source audit prelaunch availability changed")
-    if any((
-        gate.get("outcome_blind") is not True,
-        canonical_json(gate.get("clauses")) != canonical_json(clauses),
-        canonical_json(gate.get("cohort_disjointness"))
-        != canonical_json(disjointness),
-        not all(clause["passed"] for clause in clauses.values()),
-        disjointness["passed"] is not True,
-        gate.get("passed") is not True,
-    )):
-        raise ProtocolError("source audit global prelaunch gate changed")
-
-
-_INVENTORY_TASK_KEYS = {
-    "aliases", "candidate_index", "canonical_path", "directory",
-    "domain_file", "domain_sha256", "family", "is_all_prior_represented",
-    "is_all_prior_unrepresented", "is_shadow_family",
-    "is_shadow_unrepresented", "problem", "problem_file", "problem_sha256",
-}
-
-
-def _validate_task_inventory_binding(task: dict, inventory: dict) -> None:
-    records = inventory.get("records") if isinstance(inventory, dict) else None
-    index = task.get("candidate_index")
-    if (
-        not isinstance(records, list)
-        or len(records) != 1640
-        or type(index) is not int
-        or not 0 <= index < len(records)
-        or not isinstance(records[index], dict)
-        or set(records[index]) != _INVENTORY_TASK_KEYS
-        or canonical_json(records[index])
-        != canonical_json({key: task.get(key) for key in _INVENTORY_TASK_KEYS})
-    ):
-        raise ProtocolError("confirmation task is not bound to source inventory")
-
-
-_ATTESTATION_KEYS = {
-    "schema", "benchmark_revision", "translator_source_sha256",
-    "source_inventory_sha256", "source_inventory_records_sha256",
-    "code_manifest_sha256", "split_seed", "split_rank_encoding",
-    "split_role_labels", "split_strata", "counts",
-    "translation_status_counts", "support_exclusion_counts",
-    "records_sha256", "prelaunch_gate",
-    "confirmation_prelaunch_authorized", "cohorts", "records",
-}
-_SPLIT_RANK_ENCODING = (
-    "SHA256(seed || NUL || role || NUL || family || NUL || "
-    "problem_sha256 || NUL || canonical_path)"
-)
-_SPLIT_ROLE_LABELS = {
-    "confirmation_a": "confirmation-a",
-    "guided_b_base": "guided-b",
-    "guided_b_top_up": "guided-b-topup",
-}
-
-
-def _validate_attestation_envelope(attestation: dict, inventory: dict) -> None:
-    inventory_records = inventory.get("records") \
-        if isinstance(inventory, dict) else None
-    records = attestation.get("records") if isinstance(attestation, dict) else None
-    record_keys = _INVENTORY_TASK_KEYS | {
-        "translation_attempted", "translator_command", "translation",
-        "normalization", "supported", "support_exclusion_reasons",
-    }
-    if (
-        not isinstance(attestation, dict)
-        or set(attestation) != _ATTESTATION_KEYS
-        or not isinstance(inventory_records, list)
-        or len(inventory_records) != 1640
-        or not isinstance(records, list)
-        or len(records) != 1640
-        or attestation.get("split_seed") != COHORT_SEED
-        or attestation.get("split_rank_encoding") != _SPLIT_RANK_ENCODING
-        or attestation.get("split_role_labels") != _SPLIT_ROLE_LABELS
-        or attestation.get("source_inventory_records_sha256")
-        != hashlib.sha256(canonical_json_line(inventory_records)).hexdigest()
-        or attestation.get("records_sha256")
-        != hashlib.sha256(canonical_json_line(records)).hexdigest()
-    ):
-        raise ProtocolError("source attestation envelope changed")
-    for index, (record, inventory_record) in enumerate(zip(
-            records, inventory_records
-    )):
-        reasons = record.get("support_exclusion_reasons") \
-            if isinstance(record, dict) else None
-        translation = record.get("translation") \
-            if isinstance(record, dict) else None
-        if (
-            not isinstance(record, dict)
-            or set(record) != record_keys
-            or type(record.get("candidate_index")) is not int
-            or record["candidate_index"] != index
-            or canonical_json({
-                key: record.get(key) for key in _INVENTORY_TASK_KEYS
-            }) != canonical_json(inventory_record)
-            or record.get("translation_attempted") is not True
-            or type(record.get("supported")) is not bool
-            or not isinstance(reasons, list)
-            or any(not isinstance(reason, str) or not reason for reason in reasons)
-            or record["supported"] is not (len(reasons) == 0)
-            or not isinstance(translation, dict)
-            or not isinstance(translation.get("status"), str)
-            or not translation["status"]
-            or not isinstance(record.get("normalization"), dict)
-            or not isinstance(record.get("translator_command"), list)
-        ):
-            raise ProtocolError("source attestation record chain changed")
-    translation_statuses = dict(sorted(Counter(
-        record["translation"]["status"] for record in records
-    ).items()))
-    exclusions = dict(sorted(Counter(
-        reason for record in records
-        for reason in record["support_exclusion_reasons"]
-    ).items()))
-    counts = {
-        "candidates": len(records),
-        "translation_attempts": sum(
-            record["translation_attempted"] for record in records
-        ),
-        "translated_successfully": translation_statuses.get("success", 0),
-        "supported": sum(record["supported"] for record in records),
-        "unsupported": sum(not record["supported"] for record in records),
-        "families": len({record["family"] for record in records}),
-    }
-    if (
-        attestation.get("counts") != counts
-        or attestation.get("translation_status_counts") != translation_statuses
-        or attestation.get("support_exclusion_counts") != exclusions
-    ):
-        raise ProtocolError("source attestation aggregate accounting changed")
-
-
-def _validate_attestation_split(
-    attestation: dict, manifest_hashes: dict[str, str]
-) -> None:
-    producer_relative = (
-        "experiments/audit_pdb_terminal_incidence_confirmation_sources.py"
-    )
-    inventory_relative = (
-        "experiments/pdb_terminal_incidence_confirmation_inventory.py"
-    )
-    expected_path = Path(os.path.abspath(SOURCE_V3_REPO / producer_relative))
-    expected_inventory_path = Path(os.path.abspath(
-        SOURCE_V3_REPO / inventory_relative
-    ))
-    expected_sha = manifest_hashes.get(producer_relative)
-    # Hash the producer and every local module it imports before importing:
-    # unverified producer bytes must never execute in the consumer process.
-    if (
-        sha256_file(expected_path) != expected_sha
-        or sha256_file(expected_inventory_path)
-        != manifest_hashes.get(inventory_relative)
-    ):
-        raise ProtocolError("source-split producer identity changed")
-    try:
-        producer = importlib.import_module(
-            "audit_pdb_terminal_incidence_confirmation_sources"
-        )
-        producer_path = Path(os.path.abspath(producer.__file__))
-        inventory_path = Path(os.path.abspath(producer.Inventory.__file__))
-        if (
-            producer_path != expected_path
-            or inventory_path != expected_inventory_path
-            or sha256_file(inventory_path)
-            != manifest_hashes.get(inventory_relative)
-        ):
-            raise ProtocolError("source-split producer identity changed")
-        previous_timeout = producer.TASK_TIMEOUT_SECONDS
-        try:
-            # Campaign v3 runs the hash-verified base implementation through
-            # its wrapper with this amended translator timeout.
-            producer.TASK_TIMEOUT_SECONDS = 7200
-            for record in attestation["records"]:
-                producer._validate_scan_evidence(record)
-                if record["support_exclusion_reasons"] != producer._support_reasons(
-                        record["translation"], record["normalization"]
-                ):
-                    raise ProtocolError(
-                        "source attestation support classification changed"
-                    )
-        finally:
-            producer.TASK_TIMEOUT_SECONDS = previous_timeout
-        gate, cohorts = producer.split_supported(attestation["records"])
-    except ProtocolError:
-        raise
-    except (Exception, SystemExit) as err:
-        raise ProtocolError("source attestation split cannot be replayed") from err
-    if (
-        sha256_file(expected_path) != expected_sha
-        or sha256_file(expected_inventory_path)
-        != manifest_hashes.get(inventory_relative)
-    ):
-        raise ProtocolError("source-split producer changed during replay")
-    if (
-        canonical_json(gate) != canonical_json(attestation.get("prelaunch_gate"))
-        or canonical_json(cohorts) != canonical_json(attestation.get("cohorts"))
-        or gate.get("passed") is not True
-    ):
-        raise ProtocolError("source attestation split replay changed")
 
 
 def _validate_source_execution_environment(launch: dict, execution: dict) -> None:
@@ -1195,33 +809,56 @@ def _safe_repo_path(value: str, label: str) -> Path:
     return path
 
 
-def _pdb(mode: str) -> str:
+def _pdb(mode: str, *, select_value_cap: bool = False) -> str:
     options = [
         "budget=100000",
         "pattern_selection={}".format(mode),
     ]
-    if mode == "cegar":
+    if mode in (
+        "cegar", "exact_width_filter", "terminal_incidence_guided",
+        "terminal_incidence_matched_control",
+    ):
         options.extend((
             "cegar_max_time=infinity",
             "cegar_max_refinements=128",
             "cegar_seed=2011",
         ))
     options.extend((
+        "cofactor_width_budget={}".format(
+            32 if mode == "exact_width_filter" else "infinity"
+        ),
+        "total_add_node_budget=infinity",
         "value_cap=-1",
+        "select_value_cap={}".format(
+            "true" if select_value_cap else "false"
+        ),
         "gamer_ordering=false",
         "dynamic_reordering=false",
-        "shadow_partition=true",
-        'wbh_log="{}"'.format(Source.LEGACY_LOG),
-        'wbh_profile_log="{}"'.format(Source.PROFILE_LOG),
+        "shadow_partition=false",
+        "prune_only=false",
+        "batch_f_window=0",
     ))
+    if mode in (
+        "terminal_incidence_guided",
+        "terminal_incidence_matched_control",
+    ):
+        options.append('incidence_selector_log="{}"'.format(SELECTOR_TRACE))
     return "sym_fw_pdb({})".format(",".join(options))
 
 
 CONFIGS = (
-    ("pdb_bdd_prefix_shadow", _pdb("bdd_prefix")),
-    ("pdb_goal_prefix_shadow", _pdb("goal_prefix")),
-    ("pdb_goal_fill_shadow", _pdb("goal_fill")),
-    ("pdb_cegar_shadow", _pdb("cegar")),
+    ("blind_fw", "sym_fw()"),
+    ("pdb_bdd_prefix", _pdb("bdd_prefix")),
+    ("pdb_goal_prefix", _pdb("goal_prefix")),
+    ("pdb_goal_fill", _pdb("goal_fill")),
+    ("pdb_cegar_deterministic", _pdb("cegar")),
+    ("pdb_exact_width_k32", _pdb("exact_width_filter")),
+    ("pdb_cap_aware_k32", _pdb("exact_width_filter", select_value_cap=True)),
+    ("pdb_terminal_incidence_guided", _pdb("terminal_incidence_guided")),
+    (
+        "pdb_terminal_incidence_matched",
+        _pdb("terminal_incidence_matched_control"),
+    ),
 )
 LABELS = tuple(label for label, _ in CONFIGS)
 SEARCHES = dict(CONFIGS)
@@ -1235,12 +872,15 @@ def option_matrix_digest(configs=CONFIGS) -> str:
 
 EXPERIMENT_SOURCE_FILES = (
     "experiments/analyze_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/analyze_pdb_terminal_incidence_confirmation_b.py",
     "experiments/analyze_pdb_terminal_incidence_shadow.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_b.py",
     "experiments/audit_pdb_terminal_incidence_shadow.py",
     "experiments/exp_pdb_profile_certificate_holdout.py",
     "experiments/exp_pdb_terminal_incidence_confirmation_a.py",
-    "experiments/freeze_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/exp_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/freeze_pdb_terminal_incidence_confirmation_b.py",
     "experiments/jj_cached_revision.py",
     "experiments/pdb_fixed_pattern_parser.py",
     "experiments/pdb_profile_certificate_holdout_protocol.md",
@@ -1251,8 +891,11 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_profile_semantic_union_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
+    "experiments/pdb_terminal_incidence_confirmation_b_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
+    "experiments/pdb_terminal_incidence_selector_parser.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
-    "experiments/recover_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
     "experiments/requirements-pdb-terminal-incidence-shadow.txt",
     "experiments/validate_wbh_log.py",
     "experiments/wbh_parser.py",
@@ -1281,6 +924,7 @@ class SourceMaterials:
     execution_receipt_sha256: str
     launch_receipt_sha256: str
     cohort_manifest_sha256: str
+    confirmation_a_cohort_manifest_sha256: str
     records_sha256: str
     translator_source_sha256: str
     tracked_file_sha256: dict[str, str]
@@ -1293,6 +937,106 @@ class SourceMaterials:
     launch_receipt: dict
 
 
+def load_confirmation_a_authorization(
+    receipt_path: Path,
+    receipt_pin_path: Path,
+    first_output_path: Path,
+    second_output_path: Path,
+) -> dict:
+    """Load the sealed complete A gate through A's canonical verifier."""
+    paths = tuple(Path(os.path.abspath(path)) for path in (
+        receipt_path, receipt_pin_path, first_output_path, second_output_path,
+    ))
+    expected_paths = tuple(Path(os.path.abspath(path)) for path in (
+        CONFIRMATION_A_RECEIPT_PATH,
+        CONFIRMATION_A_RECEIPT_PIN_PATH,
+        CONFIRMATION_A_FIRST_OUTPUT_PATH,
+        CONFIRMATION_A_SECOND_OUTPUT_PATH,
+    ))
+    if paths != expected_paths:
+        raise ProtocolError(
+            "Confirmation A authorization artifact paths changed"
+        )
+    receipt_path, receipt_pin_path, first_output_path, second_output_path = paths
+    try:
+        import analyze_pdb_terminal_incidence_confirmation_a as ConfirmationA
+
+        receipt_sha, receipt, output = ConfirmationA.load_analysis_receipt(
+            receipt_path=Path(receipt_path),
+            receipt_pin=Path(receipt_pin_path),
+            output=Path(first_output_path),
+            repeat_output=Path(second_output_path),
+            verify_live=True,
+        )
+        records, properties_sha, fetch_sha = ConfirmationA._load_sealed_input(
+            ConfirmationA.Audit.EVAL_PROPERTIES
+        )
+        recomputed = ConfirmationA.analyze_records(records)
+        recomputed["input"] = {
+            "path": str(ConfirmationA.Audit.EVAL_PROPERTIES.resolve()),
+            "sha256": properties_sha,
+            "fetch_receipt_sha256": fetch_sha,
+        }
+        if ConfirmationA.P.canonical_json_line(recomputed) != (
+            ConfirmationA.P.canonical_json_line(output)
+        ):
+            raise ProtocolError(
+                "Confirmation A authorization output does not recompute"
+            )
+    except Exception as err:
+        # The concrete A exceptions are deliberately translated at this
+        # protocol boundary.  B never authorizes itself from a partial A
+        # result or from a lookalike receipt.
+        raise ProtocolError(
+            "sealed Confirmation A complete gate does not authorize B"
+        ) from err
+    return {
+        "receipt_path": receipt_path,
+        "receipt_pin_path": receipt_pin_path,
+        "first_output_path": first_output_path,
+        "second_output_path": second_output_path,
+        "receipt_sha256": receipt_sha,
+        "first_output_sha256": receipt["first_output_sha256"],
+        "second_output_sha256": receipt["second_output_sha256"],
+        "input_properties_sha256": receipt["input_properties_sha256"],
+        "fetch_receipt_sha256": receipt["fetch_receipt_sha256"],
+        "receipt_schema": receipt["schema"],
+        "analysis_protocol": receipt["analysis_protocol"],
+        "guided_study_authorized": output["guided_study_authorized"],
+        "benchmark_revision": ConfirmationA.P.BENCHMARK_REVISION,
+        "cost_attestation_sha256": ConfirmationA.P.COST_ATTESTATION_SHA256,
+        "source_audit_launch_receipt_sha256": (
+            ConfirmationA.P.SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256
+        ),
+        "source_audit_execution_receipt_sha256": (
+            ConfirmationA.P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
+        ),
+        "confirmation_a_cohort_manifest_sha256": (
+            ConfirmationA.P.COHORT_MANIFEST_SHA256
+        ),
+    }
+
+
+def _validate_confirmation_a_source_link(
+    authorization: dict, materials: SourceMaterials
+) -> None:
+    expected = {
+        "benchmark_revision": BENCHMARK_REVISION,
+        "cost_attestation_sha256": materials.attestation_sha256,
+        "source_audit_launch_receipt_sha256": materials.launch_receipt_sha256,
+        "source_audit_execution_receipt_sha256": (
+            materials.execution_receipt_sha256
+        ),
+        "confirmation_a_cohort_manifest_sha256": (
+            materials.confirmation_a_cohort_manifest_sha256
+        ),
+    }
+    if any(authorization.get(key) != value for key, value in expected.items()):
+        raise ProtocolError(
+            "Confirmation A authorization is not linked to B source audit"
+        )
+
+
 def _validate_task(task: dict) -> None:
     expected_keys = {
         "candidate_index", "directory", "family", "problem",
@@ -1300,7 +1044,7 @@ def _validate_task(task: dict) -> None:
         "canonical_path", "is_shadow_family", "is_shadow_unrepresented",
         "is_all_prior_represented", "is_all_prior_unrepresented", "aliases",
         "selection_role", "selection_rank_sha256",
-        "source_audit_evidence_sha256",
+        "source_audit_evidence_sha256", "selection_stage",
     }
     required_strings = (
         "directory", "family", "problem", "domain_file", "problem_file",
@@ -1336,8 +1080,10 @@ def _validate_task(task: dict) -> None:
         or Path(task["domain_file"]).parent != Path(task["directory"])
     ):
         raise ProtocolError("confirmation task canonical path is inconsistent")
-    if task["selection_role"] != "confirmation-a":
-        raise ProtocolError("confirmation task has the wrong split role")
+    stage = task.get("selection_stage")
+    expected_roles = {"base": "guided-b", "top-up": "guided-b-topup"}
+    if stage not in expected_roles or task["selection_role"] != expected_roles[stage]:
+        raise ProtocolError("guided task has the wrong split role or stage")
     if any(
         type(task.get(field)) is not bool
         for field in (
@@ -1580,7 +1326,7 @@ def load_source_materials(
         execution.get("support_exclusion_counts")
         != attestation.get("support_exclusion_counts"),
     )):
-        raise ProtocolError("source audit did not authorize Confirmation A")
+        raise ProtocolError("source audit did not authorize Confirmation B")
     expected_launch_scheduler = {
         "partition": "fat",
         "qos": "normal",
@@ -1648,8 +1394,13 @@ def load_source_materials(
     _validate_source_execution_environment(launch, execution)
 
     inventory_raw, inventory, manifest_hashes = _load_source_v3_byte_chain(launch)
-    _validate_attestation_envelope(attestation, inventory)
-    _validate_attestation_split(attestation, manifest_hashes)
+    try:
+        SourceValidation._validate_attestation_envelope(attestation, inventory)
+        SourceValidation._validate_attestation_split(
+            attestation, manifest_hashes
+        )
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
     tracked_file_sha256 = _source_v3_tracked_file_sha256(
         launch, manifest_hashes
     )
@@ -1703,24 +1454,32 @@ def load_source_materials(
         is not False
     ):
         raise ProtocolError("source-audit v2 failure diagnostic chain changed")
-    cohort = attestation.get("cohorts", {}).get("confirmation_a")
+    cohort = attestation.get("cohorts", {}).get("guided_b")
     tasks = cohort.get("tasks") if isinstance(cohort, dict) else None
     if (
         not isinstance(tasks, list)
-        or len(tasks) != COHORT_TASKS
-        or cohort.get("role") != "confirmation-a"
+        or not MIN_COHORT_TASKS <= len(tasks) <= MAX_COHORT_TASKS
+        or cohort.get("role") != "guided-b"
+        or cohort.get("top_up_role") != "guided-b-topup"
+        or cohort.get("target_tasks") != TARGET_COHORT_TASKS
+        or cohort.get("max_tasks_per_family") != 12
     ):
-        raise ProtocolError("source audit has the wrong Confirmation A cohort")
+        raise ProtocolError("source audit has the wrong Confirmation B cohort")
     for task in tasks:
         _validate_task(task)
-        _validate_task_inventory_binding(task, inventory)
+        try:
+            SourceValidation._validate_task_inventory_binding(task, inventory)
+        except SourceValidation.ProtocolError as err:
+            raise ProtocolError(str(err)) from err
     candidate_indexes = [task["candidate_index"] for task in tasks]
     if len(set(candidate_indexes)) != len(candidate_indexes):
-        raise ProtocolError("Confirmation A contains duplicate candidate indices")
+        raise ProtocolError("Confirmation B contains duplicate candidate indices")
+    if max(Counter(task["family"] for task in tasks).values()) > 12:
+        raise ProtocolError("source audit has the wrong Confirmation B cohort")
     cohort_sha = hashlib.sha256(canonical_json_line(tasks)).hexdigest()
     if any((
         cohort.get("tasks_sha256") != cohort_sha,
-        execution.get("cohort_manifest_sha256", {}).get("confirmation_a")
+        execution.get("cohort_manifest_sha256", {}).get("guided_b")
         != cohort_sha,
         execution.get("attestation_records_sha256")
         != attestation.get("records_sha256"),
@@ -1728,14 +1487,64 @@ def load_source_materials(
         raise ProtocolError("source-audit cohort hash chain changed")
     identities = [(task["directory"], task["problem"]) for task in tasks]
     problem_hashes = [task["problem_sha256"] for task in tasks]
-    if len(set(identities)) != COHORT_TASKS or len(set(problem_hashes)) != COHORT_TASKS:
-        raise ProtocolError("Confirmation A contains duplicate sources")
+    if len(set(identities)) != len(tasks) or len(set(problem_hashes)) != len(tasks):
+        raise ProtocolError("Confirmation B contains duplicate sources")
+    confirmation = attestation.get("cohorts", {}).get("confirmation_a", {})
+    confirmation_tasks = confirmation.get("tasks")
+    if not isinstance(confirmation_tasks, list):
+        raise ProtocolError("source audit lacks the disjoint A cohort")
+    try:
+        for other in confirmation_tasks:
+            SourceValidation._validate_task(other)
+            SourceValidation._validate_task_inventory_binding(other, inventory)
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
+    confirmation_candidate_indexes = [
+        other["candidate_index"] for other in confirmation_tasks
+    ]
+    if (
+        len(set(confirmation_candidate_indexes)) != len(confirmation_tasks)
+        or set(confirmation_candidate_indexes) & set(candidate_indexes)
+    ):
+        raise ProtocolError("source audit A/B candidate identities changed")
+    confirmation_sha = hashlib.sha256(
+        canonical_json_line(confirmation_tasks)
+    ).hexdigest()
+    if any((
+        confirmation.get("role") != "confirmation-a",
+        confirmation.get("tasks_sha256") != confirmation_sha,
+        execution.get("cohort_manifest_sha256", {}).get("confirmation_a")
+        != confirmation_sha,
+    )):
+        raise ProtocolError("source-audit Confirmation A cohort hash changed")
+    confirmation_identities = {
+        (other.get("directory"), other.get("problem"))
+        for other in confirmation_tasks if isinstance(other, dict)
+    }
+    confirmation_hashes = {
+        other.get("problem_sha256")
+        for other in confirmation_tasks if isinstance(other, dict)
+    }
+    if any(
+        (task["directory"], task["problem"]) in confirmation_identities
+        or task["problem_sha256"] in confirmation_hashes
+        for task in tasks
+    ):
+        raise ProtocolError("Confirmation B is not source-disjoint from A")
     directory_to_family = {}
     for task in tasks:
         previous = directory_to_family.setdefault(task["directory"], task["family"])
         if previous != task["family"]:
             raise ProtocolError("source audit maps one directory to two families")
-    shadow, all_prior = _validate_split_strata(attestation)
+    try:
+        shadow, all_prior = SourceValidation._validate_split_strata(
+            attestation, SOURCE_V3_FIXED_HASHES
+        )
+        SourceValidation._validate_prelaunch_gate(
+            attestation, shadow, all_prior
+        )
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
     shadow_set = set(shadow)
     all_prior_set = set(all_prior)
     for task in tasks:
@@ -1753,30 +1562,17 @@ def load_source_materials(
                        if task["is_all_prior_unrepresented"]]
     all_prior_families = {task["family"] for task in all_prior_tasks}
     if any((
-        len(families) < MIN_SOURCE_COHORT_FAMILIES,
-        len(shadow_families) < MIN_SOURCE_SHADOW_UNREPRESENTED_FAMILIES,
-        len(all_prior_tasks) < MIN_SOURCE_ALL_PRIOR_UNREPRESENTED_TASKS,
-        len(all_prior_families) < MIN_SOURCE_ALL_PRIOR_UNREPRESENTED_FAMILIES,
+        len(families) < MIN_COHORT_FAMILIES,
+        len(shadow_families) < MIN_SHADOW_UNREPRESENTED_FAMILIES,
+        len(all_prior_tasks) < MIN_ALL_PRIOR_UNREPRESENTED_TASKS,
+        len(all_prior_families) < MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES,
     )):
-        raise ProtocolError("Confirmation A source-support floor changed")
-    _validate_prelaunch_gate(attestation, shadow, all_prior)
-    guided = attestation["cohorts"]["guided_b"]
-    guided_indexes = []
-    for guided_task in guided["tasks"]:
-        _validate_task_inventory_binding(guided_task, inventory)
-        guided_indexes.append(guided_task["candidate_index"])
-    if (
-        len(set(guided_indexes)) != len(guided_indexes)
-        or set(guided_indexes) & set(candidate_indexes)
-    ):
-        raise ProtocolError("source-audit global cohorts reuse candidates")
-    guided_sha = hashlib.sha256(
-        canonical_json_line(guided["tasks"])
-    ).hexdigest()
-    if execution.get("cohort_manifest_sha256") != {
-        "confirmation_a": cohort_sha,
-        "guided_b": guided_sha,
-    }:
+        raise ProtocolError("Confirmation B source-support floor changed")
+    expected_cohort_hashes = {
+        "confirmation_a": confirmation_sha,
+        "guided_b": cohort_sha,
+    }
+    if execution.get("cohort_manifest_sha256") != expected_cohort_hashes:
         raise ProtocolError("source-audit global cohort hash chain changed")
     translator_sha = attestation.get("translator_source_sha256")
     if SHA256_RE.fullmatch(translator_sha or "") is None:
@@ -1791,6 +1587,7 @@ def load_source_materials(
         execution_receipt_sha256=execution_sha,
         launch_receipt_sha256=launch_sha,
         cohort_manifest_sha256=cohort_sha,
+        confirmation_a_cohort_manifest_sha256=confirmation_sha,
         records_sha256=records_sha,
         translator_source_sha256=translator_sha,
         tracked_file_sha256=tracked_file_sha256,
@@ -1805,23 +1602,24 @@ def load_source_materials(
 
 
 def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
-    raw, freeze = _load_canonical(path, "Confirmation A freeze")
+    raw, freeze = _load_canonical(path, "Confirmation B freeze")
     if (
         set(freeze) != {
-            "schema", "source_audit", "planner", "design",
-            "experiment_source_sha256",
+            "schema", "source_audit", "confirmation_a_authorization",
+            "planner", "design", "experiment_source_sha256",
         }
         or freeze.get("schema") != FREEZE_SCHEMA
     ):
-        raise ProtocolError("Confirmation A freeze schema changed")
+        raise ProtocolError("Confirmation B freeze schema changed")
     sources = freeze.get("source_audit")
+    authorization = freeze.get("confirmation_a_authorization")
     planner = freeze.get("planner")
     design = freeze.get("design")
     source_hashes = freeze.get("experiment_source_sha256")
     if not all(isinstance(value, dict) for value in (
-        sources, planner, design, source_hashes
+        sources, authorization, planner, design, source_hashes
     )):
-        raise ProtocolError("Confirmation A freeze is incomplete")
+        raise ProtocolError("Confirmation B freeze is incomplete")
     attestation_path = _safe_repo_path(sources.get("attestation_path"), "attestation")
     execution_path = _safe_repo_path(
         sources.get("execution_receipt_path"), "source execution receipt"
@@ -1844,6 +1642,9 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
         "cohort_manifest_sha256": materials.cohort_manifest_sha256,
+        "confirmation_a_cohort_manifest_sha256": (
+            materials.confirmation_a_cohort_manifest_sha256
+        ),
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": materials.launch_receipt["job_id"],
@@ -1865,19 +1666,51 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "tracked_file_sha256": materials.tracked_file_sha256,
     }
     if sources != expected_sources:
-        raise ProtocolError("Confirmation A freeze source hashes changed")
+        raise ProtocolError("Confirmation B freeze source hashes changed")
+    authorization_paths = {
+        key: _safe_repo_path(authorization.get(key), key)
+        for key in (
+            "receipt_path", "receipt_pin_path", "first_output_path",
+            "second_output_path",
+        )
+    }
+    live_authorization = load_confirmation_a_authorization(
+        authorization_paths["receipt_path"],
+        authorization_paths["receipt_pin_path"],
+        authorization_paths["first_output_path"],
+        authorization_paths["second_output_path"],
+    )
+    _validate_confirmation_a_source_link(live_authorization, materials)
+    expected_authorization = {
+        **{key: path.relative_to(REPO).as_posix()
+           for key, path in authorization_paths.items()},
+        **{key: value for key, value in live_authorization.items()
+           if not key.endswith("_path")},
+    }
+    if authorization != expected_authorization:
+        raise ProtocolError("Confirmation A authorization freeze changed")
+    cohort_tasks = len(materials.tasks)
+    cells = cohort_tasks * CONFIG_COUNT
+    array_tasks = (cells + RUNS_PER_ARRAY_TASK - 1) // RUNS_PER_ARRAY_TASK
     expected_design = {
         "protocol_sha256": sha256_file(PROTOCOL_PATH),
         "option_matrix_sha256": option_matrix_digest(),
-        "cohort_tasks": COHORT_TASKS,
+        "cohort_tasks": cohort_tasks,
+        "target_cohort_tasks": TARGET_COHORT_TASKS,
+        "minimum_cohort_tasks": MIN_COHORT_TASKS,
+        "maximum_cohort_tasks": MAX_COHORT_TASKS,
         "configs": CONFIG_COUNT,
-        "cells": CELL_COUNT,
-        "horizon": HORIZON,
+        "cells": cells,
+        "expected_array_tasks": array_tasks,
+        "runs_per_array_task": RUNS_PER_ARRAY_TASK,
+        "probe_layers": PROBE_LAYERS,
+        "par2_seconds": PAR2_SECONDS,
         "bootstrap_replicates": BOOTSTRAP_REPLICATES,
         "bootstrap_seed": BOOTSTRAP_SEED,
+        "non_gating_reference_labels": list(NON_GATING_REFERENCE_LABELS),
     }
     if design != expected_design:
-        raise ProtocolError("Confirmation A frozen design changed")
+        raise ProtocolError("Confirmation B frozen design changed")
     required_planner = (
         "revision", "cache_name", "downward_sha256", "preprocess_sha256",
         "tree_manifest_sha256",
@@ -1892,15 +1725,15 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         or not planner["cache_name"]
         or planner.get("build_options") != list(BUILD_OPTIONS)
     ):
-        raise ProtocolError("Confirmation A planner pins are invalid")
+        raise ProtocolError("Confirmation B planner pins are invalid")
     if set(source_hashes) != set(EXPERIMENT_SOURCE_FILES):
-        raise ProtocolError("Confirmation A executed-source set changed")
+        raise ProtocolError("Confirmation B executed-source set changed")
     for relative, expected in source_hashes.items():
         if SHA256_RE.fullmatch(expected or "") is None:
-            raise ProtocolError("Confirmation A source hash is invalid")
+            raise ProtocolError("Confirmation B source hash is invalid")
         path = _safe_repo_path(relative, "experiment source")
         if sha256_file(path) != expected:
-            raise ProtocolError("Confirmation A experiment source changed")
+            raise ProtocolError("Confirmation B experiment source changed")
     return freeze, materials
 
 
@@ -1915,7 +1748,6 @@ def _unfrozen_defaults() -> dict:
         "PLANNER_TREE_MANIFEST_SHA256": "TO_FREEZE",
         "COHORT_MANIFEST_SHA256": "TO_FREEZE",
         "TASK_NAME_SHA256": "TO_FREEZE",
-        "DIRECTORY_FAMILY_JSON_SHA256": "TO_FREEZE",
         "COST_ATTESTATION_SHA256": "TO_FREEZE",
         "COST_ATTESTATION_RECORDS_SHA256": "TO_FREEZE",
         "TRANSLATOR_SOURCE_SHA256": "TO_FREEZE",
@@ -1927,6 +1759,11 @@ def _unfrozen_defaults() -> dict:
         "SOURCE_AUDIT_OUTPUT_TREE_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_SLURM_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_INTENT_SHA256": "TO_FREEZE",
+        "CONFIRMATION_A_AUTHORIZATION_RECEIPT_SHA256": "TO_FREEZE",
+        "CONFIRMATION_A_COHORT_MANIFEST_SHA256": "TO_FREEZE",
+        "COHORT_TASKS": 0,
+        "CELL_COUNT": 0,
+        "EXPECTED_ARRAY_TASKS": 0,
         "COST_ATTESTATION_PATH": FREEZE_PATH.with_name("missing-attestation"),
         "DIRECTORIES": (),
         "DIRECTORY_TO_FAMILY": {},
@@ -1947,6 +1784,8 @@ def _installed_values() -> dict:
     source = freeze["source_audit"]
     launch = materials.launch_receipt
     execution = materials.execution_receipt
+    cohort_tasks = len(materials.tasks)
+    cell_count = cohort_tasks * CONFIG_COUNT
     task_payload = "".join(
         "{}:{}\n".format(task["directory"], task["problem"])
         for task in sorted(
@@ -1963,9 +1802,6 @@ def _installed_values() -> dict:
         "PLANNER_TREE_MANIFEST_SHA256": planner["tree_manifest_sha256"],
         "COHORT_MANIFEST_SHA256": materials.cohort_manifest_sha256,
         "TASK_NAME_SHA256": hashlib.sha256(task_payload).hexdigest(),
-        "DIRECTORY_FAMILY_JSON_SHA256": hashlib.sha256(
-            canonical_json(materials.directory_to_family)
-        ).hexdigest(),
         "COST_ATTESTATION_SHA256": materials.attestation_sha256,
         "COST_ATTESTATION_RECORDS_SHA256": materials.records_sha256,
         "TRANSLATOR_SOURCE_SHA256": materials.translator_source_sha256,
@@ -1977,6 +1813,17 @@ def _installed_values() -> dict:
         "SOURCE_AUDIT_OUTPUT_TREE_SHA256": execution["union_tree"]["sha256"],
         "SOURCE_AUDIT_SLURM_SHA256": launch["slurm_script_sha256"],
         "SOURCE_AUDIT_INTENT_SHA256": launch["launch_intent_sha256"],
+        "CONFIRMATION_A_AUTHORIZATION_RECEIPT_SHA256": freeze[
+            "confirmation_a_authorization"
+        ]["receipt_sha256"],
+        "CONFIRMATION_A_COHORT_MANIFEST_SHA256": (
+            materials.confirmation_a_cohort_manifest_sha256
+        ),
+        "COHORT_TASKS": cohort_tasks,
+        "CELL_COUNT": cell_count,
+        "EXPECTED_ARRAY_TASKS": (
+            cell_count + RUNS_PER_ARRAY_TASK - 1
+        ) // RUNS_PER_ARRAY_TASK,
         "COST_ATTESTATION_PATH": materials.attestation_path,
         "DIRECTORIES": materials.directories,
         "DIRECTORY_TO_FAMILY": materials.directory_to_family,
@@ -2050,53 +1897,119 @@ def validate_benchmark_sources(cohort, benchmarks) -> None:
         raise ProtocolError("cohort cardinality changed")
 
 
-def validate_protocol_design() -> None:
+def validate_static_design() -> None:
     if any((
         LABELS != PRIMARY_LABELS,
         len(set(LABELS)) != CONFIG_COUNT,
-        COHORT_TASKS != 650,
-        CELL_COUNT != 2600,
+        CONFIG_COUNT != 9,
         RUNS_PER_ARRAY_TASK != 3,
-        EXPECTED_ARRAY_TASKS != 867,
-        (EXPECTED_ARRAY_TASKS - 1) * RUNS_PER_ARRAY_TASK >= CELL_COUNT,
-        EXPECTED_ARRAY_TASKS * RUNS_PER_ARRAY_TASK < CELL_COUNT,
         TIME_LIMIT_SECONDS != 1800,
         MEMORY_LIMIT_MIB != 24576,
         SCHEDULER_TIME_LIMIT != "01:40:00",
         SCHEDULER_MEMORY != "26G",
-        HORIZON != 16,
+        PROBE_LAYERS != 16,
+        PAR2_SECONDS != 3600,
         BOOTSTRAP_REPLICATES != 100000,
-        BOOTSTRAP_SEED != 20260901,
+        BOOTSTRAP_SEED != 20260902,
         ACCOUNT != "naiss2025-5-561-cpu",
+        PLAIN_REFERENCE_LABEL != "pdb_cap_aware_k32",
+        GUIDED_LABEL != "pdb_terminal_incidence_guided",
+        MATCHED_LABEL != "pdb_terminal_incidence_matched",
+        SELECTOR_TRACE_SCHEMA
+        != "symbolic-search-heuristics/terminal-incidence-selector-trace/v3",
+        NON_GATING_REFERENCE_LABELS != (
+            "blind_fw", "pdb_bdd_prefix", "pdb_goal_prefix",
+            "pdb_goal_fill", "pdb_cegar_deterministic",
+            "pdb_exact_width_k32",
+        ),
+        set(NON_GATING_REFERENCE_LABELS)
+        != set(PRIMARY_LABELS) - {
+            PLAIN_REFERENCE_LABEL, GUIDED_LABEL, MATCHED_LABEL,
+        },
+        SEARCHES.get("blind_fw") != "sym_fw()",
     )):
-        raise ProtocolError("Confirmation A design constants changed")
-    modes = dict(zip(LABELS, ("bdd_prefix", "goal_prefix", "goal_fill", "cegar")))
+        raise ProtocolError("Confirmation B static design constants changed")
+    modes = {
+        "pdb_bdd_prefix": "bdd_prefix",
+        "pdb_goal_prefix": "goal_prefix",
+        "pdb_goal_fill": "goal_fill",
+        "pdb_cegar_deterministic": "cegar",
+        "pdb_exact_width_k32": "exact_width_filter",
+        "pdb_cap_aware_k32": "exact_width_filter",
+        "pdb_terminal_incidence_guided": "terminal_incidence_guided",
+        "pdb_terminal_incidence_matched": (
+            "terminal_incidence_matched_control"
+        ),
+    }
     for label, search in CONFIGS:
+        if "shadow_partition=true" in search:
+            raise ProtocolError("B configuration accidentally enables shadow mode")
+        if label == "blind_fw":
+            continue
         required = (
             "budget=100000",
             "pattern_selection={}".format(modes[label]),
             "value_cap=-1",
+            "total_add_node_budget=infinity",
             "gamer_ordering=false",
             "dynamic_reordering=false",
-            "shadow_partition=true",
+            "shadow_partition=false",
+            "prune_only=false",
+            "batch_f_window=0",
         )
         if any(search.count(item) != 1 for item in required):
             raise ProtocolError("configuration contract changed for {}".format(label))
-        cegar_only = (
+        pool_options = (
             "cegar_max_time=infinity",
             "cegar_max_refinements=128",
             "cegar_seed=2011",
         )
-        if label == "pdb_cegar_shadow":
-            if any(search.count(item) != 1 for item in cegar_only):
-                raise ProtocolError("CEGAR stopping contract changed")
-        elif any(item in search for item in cegar_only):
-            raise ProtocolError("non-CEGAR configuration gained CEGAR options")
+        pool_labels = {
+            "pdb_cegar_deterministic", "pdb_exact_width_k32",
+            "pdb_cap_aware_k32", GUIDED_LABEL, MATCHED_LABEL,
+        }
+        if label in pool_labels and any(search.count(item) != 1
+                                        for item in pool_options):
+            raise ProtocolError("deterministic pool contract changed")
+        if label not in pool_labels and any(item in search for item in pool_options):
+            raise ProtocolError("direct prefix gained pool-generation options")
+        exact_k32 = label in {"pdb_exact_width_k32", "pdb_cap_aware_k32"}
+        expected_width = (
+            "cofactor_width_budget=32" if exact_k32
+            else "cofactor_width_budget=infinity"
+        )
+        if search.count(expected_width) != 1:
+            raise ProtocolError("cofactor-width contract changed")
+        expected_cap_selection = (
+            label == "pdb_cap_aware_k32"
+        )
+        if search.count("select_value_cap={}".format(
+            "true" if expected_cap_selection else "false"
+        )) != 1:
+            raise ProtocolError("cap-selection contract changed")
+        selector = label in {GUIDED_LABEL, MATCHED_LABEL}
+        if selector != (search.count(
+            'incidence_selector_log="{}"'.format(SELECTOR_TRACE)
+        ) == 1):
+            raise ProtocolError("selector trace contract changed")
+
+
+def validate_protocol_design() -> None:
+    validate_static_design()
+    if any((
+        not MIN_COHORT_TASKS <= COHORT_TASKS <= MAX_COHORT_TASKS,
+        CELL_COUNT != CONFIG_COUNT * COHORT_TASKS,
+        EXPECTED_ARRAY_TASKS
+        != (CELL_COUNT + RUNS_PER_ARRAY_TASK - 1) // RUNS_PER_ARRAY_TASK,
+        (EXPECTED_ARRAY_TASKS - 1) * RUNS_PER_ARRAY_TASK >= CELL_COUNT,
+        EXPECTED_ARRAY_TASKS * RUNS_PER_ARRAY_TASK < CELL_COUNT,
+    )):
+        raise ProtocolError("Confirmation B frozen cardinalities changed")
 
 
 def validate_protocol_without_sources() -> None:
-    validate_protocol_design()
     _load_freeze(FREEZE_PATH)
+    validate_protocol_design()
 
 
 validate_protocol_without_archive = validate_protocol_without_sources

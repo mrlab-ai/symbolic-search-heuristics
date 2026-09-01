@@ -36,11 +36,30 @@ ENTRY_TEMPLATE = (
 )
 COMMIT_TEMPLATE = 'commit_id ++ "\\t" ++ if(conflict, "1", "0") ++ "\\n"'
 PATH_TEMPLATE = 'path ++ "\\n"'
+JJ_EXECUTABLE = Path("/home/jendrik/bin/jj")
+JJ_EXECUTABLE_SHA256 = (
+    "d1d69a0f87df266eebf0d2592dd019eb288c300b15fd019afe26cb1ed11ba152"
+)
+
+
+def _verify_jj_identity() -> None:
+    try:
+        info = JJ_EXECUTABLE.lstat()
+        raw = JJ_EXECUTABLE.read_bytes()
+    except OSError as err:
+        raise JjCacheError("cannot verify pinned Jujutsu executable") from err
+    if (
+        JJ_EXECUTABLE.is_symlink()
+        or not stat.S_ISREG(info.st_mode)
+        or hashlib.sha256(raw).hexdigest() != JJ_EXECUTABLE_SHA256
+    ):
+        raise JjCacheError("pinned Jujutsu executable identity changed")
 
 
 def _run_jj(repo: Path, args: list[str]) -> bytes:
+    _verify_jj_identity()
     command = [
-        "jj",
+        str(JJ_EXECUTABLE),
         "--ignore-working-copy",
         "--no-pager",
         "-R",
@@ -60,6 +79,7 @@ def _run_jj(repo: Path, args: list[str]) -> bytes:
         if isinstance(detail, bytes):
             detail = detail.decode("utf-8", "replace").strip()
         raise JjCacheError("Jujutsu query failed: {}".format(detail or err)) from err
+    _verify_jj_identity()
     return completed.stdout
 
 
