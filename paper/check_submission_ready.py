@@ -163,6 +163,11 @@ REVIEW_DOCUMENT_MARKERS = {
     },
 }
 
+REVIEW_DOCUMENT_AUTHOR_MARKERS = {
+    "paper.pdf": "Anonymous submission",
+    "supplement.pdf": "Anonymous for review",
+}
+
 # Self-citations and the public system name can legitimately appear in paper
 # text. These patterns instead cover direct execution, path, repository, and
 # provenance identities that must not occur anywhere in a review PDF.
@@ -910,13 +915,16 @@ def _normalize_rendered_title_text(value: str) -> str:
 
 def _extract_rendered_title(pdf_name: str, first_page_text: str) -> str:
     normalized = _normalize_rendered_title_text(first_page_text).casefold()
+    author_marker = REVIEW_DOCUMENT_AUTHOR_MARKERS[pdf_name]
     matches = []
     for title in OUTCOME_CONTINGENT_TITLES:
         rendered = title
         if pdf_name == "supplement.pdf":
             rendered = f"{title}: {SUPPLEMENT_TITLE_SUFFIX}"
-        needle = _normalize_rendered_title_text(rendered).casefold()
-        if re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", normalized):
+        prefix = _normalize_rendered_title_text(
+            f"{rendered} {author_marker}"
+        ).casefold()
+        if normalized == prefix or normalized.startswith(prefix + " "):
             matches.append(title)
     if len(matches) != 1:
         raise SubmissionReadinessError(
@@ -1465,6 +1473,30 @@ def _review_bundle_self_test():
             rejected += 1
         else:
             raise AssertionError("unreviewed outcome title was accepted")
+    misplaced_titles = (
+        (
+            "paper.pdf",
+            (
+                "Wrong Visible Heading\nAnonymous submission\nAbstract\n"
+                f"This paragraph mentions {safe_title}.\n"
+            ),
+        ),
+        (
+            "supplement.pdf",
+            (
+                "Wrong Visible Heading\nAnonymous for review\nGuide.\n"
+                f"This paragraph mentions {safe_title}: "
+                f"{SUPPLEMENT_TITLE_SUFFIX}.\n"
+            ),
+        ),
+    )
+    for pdf_name, bad_first_page in misplaced_titles:
+        try:
+            _validate_review_document_identity(pdf_name, bad_first_page)
+        except SubmissionReadinessError:
+            rejected += 1
+        else:
+            raise AssertionError("misplaced outcome title was accepted")
     try:
         _validate_review_title_pair(
             {
