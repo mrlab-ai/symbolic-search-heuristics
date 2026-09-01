@@ -228,13 +228,19 @@ class ConfirmationSourceAuditV2Test(unittest.TestCase):
     def test_scoped_commit_attestation_ignores_unrelated_work(self):
         tracked = "\n".join(Launch.SCOPED_COMMIT_FILES) + "\n"
         commit = "a" * 40 + "\n"
-        with mock.patch.object(
-            Launch.subprocess,
-            "check_output",
-            side_effect=("", tracked, commit),
-        ) as command:
+        with (
+            mock.patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}),
+            mock.patch.object(
+                Launch.subprocess,
+                "check_output",
+                side_effect=("", tracked, commit),
+            ) as command,
+        ):
             self.assertEqual(Launch._scoped_repository_commit(), "a" * 40)
         calls = [call.args[0] for call in command.call_args_list]
+        self.assertTrue(all(
+            call[0] == str(Launch.JJ_COMMAND) for call in calls
+        ))
         self.assertIn("--", calls[0])
         self.assertEqual(
             set(calls[0][calls[0].index("--") + 1:]),
@@ -251,6 +257,41 @@ class ConfirmationSourceAuditV2Test(unittest.TestCase):
             ),
         ):
             Launch._scoped_repository_commit()
+
+    def test_fixed_materials_exposes_pinned_jj_identity(self):
+        code = {
+            "python_version": "test",
+            "python_executable": "/test/python",
+            "python_executable_sha256": "1" * 64,
+            "python_environment_sha256": "2" * 64,
+            "python_distributions": {},
+            "python_requirements_sha256": "3" * 64,
+        }
+        with (
+            mock.patch.object(
+                Launch, "_slurm_preflight",
+                return_value=("4" * 64, "5" * 64, code),
+            ),
+            mock.patch.object(
+                Launch.Base, "_execution_environment", return_value={}
+            ),
+            mock.patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}),
+        ):
+            materials = Launch._fixed_materials(
+                "6" * 64, repository_commit_id="7" * 40
+            )
+        self.assertEqual(materials["jj_executable"], str(Launch.JJ_COMMAND))
+        self.assertEqual(
+            materials["jj_executable_sha256"],
+            Launch.JJ_EXECUTABLE_SHA256,
+        )
+        with (
+            mock.patch.object(Launch.Base, "_sha256", return_value="0" * 64),
+            self.assertRaisesRegex(
+                Launch.LaunchAuditError, "jj executable bytes changed"
+            ),
+        ):
+            Launch._jj_executable_identity()
 
     def test_recovery_uses_only_v2_outputs_and_identical_resources(self):
         plan = {

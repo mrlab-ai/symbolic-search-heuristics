@@ -8,8 +8,10 @@ import datetime
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import secrets
+import stat
 import subprocess
 import sys
 from collections import Counter
@@ -64,6 +66,10 @@ PYTHON_COMMAND = (
     "bin" / "python"
 )
 SHA256SUM_COMMAND = Path("/usr/bin/sha256sum")
+JJ_COMMAND = Path("/home/jendrik/bin/jj")
+JJ_EXECUTABLE_SHA256 = (
+    "d1d69a0f87df266eebf0d2592dd019eb288c300b15fd019afe26cb1ed11ba152"
+)
 MEMORY_PER_CPU = "256G"
 TIME_LIMIT = "01:40:00"
 JOB_NAME_PREFIX = "confirmation-source-audit-v2"
@@ -212,16 +218,17 @@ def _slurm_preflight() -> tuple[str, str, dict]:
 
 
 def _scoped_repository_commit() -> str:
+    jj_identity = _jj_executable_identity()
     diff_command = [
-        "jj", "--no-pager", "diff", "--summary", "-r", "@", "--",
+        str(JJ_COMMAND), "--no-pager", "diff", "--summary", "-r", "@", "--",
         *SCOPED_COMMIT_FILES,
     ]
     list_command = [
-        "jj", "--no-pager", "file", "list", "-r", "@-", "--",
+        str(JJ_COMMAND), "--no-pager", "file", "list", "-r", "@-", "--",
         *SCOPED_COMMIT_FILES,
     ]
     commit_command = [
-        "jj", "--no-pager", "log", "-r", "@-", "--no-graph",
+        str(JJ_COMMAND), "--no-pager", "log", "-r", "@-", "--no-graph",
         "-T", 'commit_id ++ "\\n"',
     ]
     try:
@@ -237,7 +244,8 @@ def _scoped_repository_commit() -> str:
     except (OSError, subprocess.CalledProcessError) as err:
         raise LaunchAuditError("cannot attest scoped v2 commit") from err
     if (
-        changed
+        _jj_executable_identity() != jj_identity
+        or changed
         or set(tracked) != set(SCOPED_COMMIT_FILES)
         or len(tracked) != len(SCOPED_COMMIT_FILES)
         or Base.JJ_COMMIT_RE.fullmatch(commit_id) is None
@@ -246,6 +254,31 @@ def _scoped_repository_commit() -> str:
             "source-audit v2 requires every bound file committed at @-"
         )
     return commit_id
+
+
+def _jj_executable_identity() -> dict:
+    try:
+        info = JJ_COMMAND.lstat()
+    except OSError as err:
+        raise LaunchAuditError("cannot inspect pinned jj executable") from err
+    if (
+        not JJ_COMMAND.is_absolute()
+        or not stat.S_ISREG(info.st_mode)
+        or not os.access(JJ_COMMAND, os.X_OK)
+    ):
+        raise LaunchAuditError(
+            "pinned jj executable is not regular and executable"
+        )
+    try:
+        actual_sha256 = Base._sha256(JJ_COMMAND)
+    except Source.SourceAuditError as err:
+        raise LaunchAuditError("cannot hash pinned jj executable") from err
+    if actual_sha256 != JJ_EXECUTABLE_SHA256:
+        raise LaunchAuditError("pinned jj executable bytes changed")
+    return {
+        "path": str(JJ_COMMAND),
+        "sha256": actual_sha256,
+    }
 
 
 def _fixed_materials(
@@ -260,6 +293,7 @@ def _fixed_materials(
         repository_commit_id = _scoped_repository_commit()
     if Base.JJ_COMMIT_RE.fullmatch(repository_commit_id) is None:
         raise LaunchAuditError("source-audit v2 repository commit is invalid")
+    jj_identity = _jj_executable_identity()
     return {
         "campaign": "v2",
         "whole_campaign_rerun": True,
@@ -303,6 +337,8 @@ def _fixed_materials(
         "launcher_sha256": Base._sha256(Path(__file__)),
         "repository_commit_id": repository_commit_id,
         "scoped_repository_files": list(SCOPED_COMMIT_FILES),
+        "jj_executable": jj_identity["path"],
+        "jj_executable_sha256": jj_identity["sha256"],
         "output_dir": str(OUTPUT_DIR),
         "candidate_attestation": str(CANDIDATE),
         "frozen_attestation": str(ATTESTATION),
