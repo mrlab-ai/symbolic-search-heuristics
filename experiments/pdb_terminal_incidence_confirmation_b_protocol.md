@@ -5,26 +5,20 @@ outcome is observed. The study may be frozen and launched only after the
 canonical double-execution receipt for Confirmation A passes its complete gate
 and explicitly authorizes the guided study. The B freeze binds that receipt,
 its pin, both byte-identical A outputs, the sealed source-audit artifacts, the
-planner revision, every executed Python source, and the option matrix.
-The shared source chain is the outcome-blind, full campaign-v4 rerun. Its
-launch is pinned to producer commit
-`9fa1387455f947772b8b37e3b103f1ca84efb27b`, job `1865695`, launch-receipt
-SHA-256 `90ec55eb1d603cb7434885eeb99ceb2a0123ac02f4f9c02c885cab2635442921`,
-24-entry code-manifest SHA-256
-`d3b571aaffce9f58f09d15f118df57997773c522e3da74bcdcbfbc00299f0518`,
-Slurm-script SHA-256
-`8504f5b778d74a5120605947e710713532018e2007d276df8c580167b9ce1a8f`,
-and source-inventory SHA-256
-`bb9be49a4652ff7bedcadb04b4db35cad701a5b2a2a6d6347c15e0ad670e056e`.
-The pinned outcome-blind v3 infrastructure diagnostic
-`a340d2de01304702f6c101d2bb1592536ebc6dfedc1638c5ce1c0559e5ddcf57`
-authorizes a complete rerun without inspecting successful v3 shard or log
-contents or source-support outcomes.
+planner identity, every executed Python source, and the option matrix. The A
+authorization exports `{revision, cache_name, build_options, downward_sha256,
+preprocess_sha256, tree_manifest_sha256}` and B requires exact equality.
+The shared source chain is the outcome-blind, full campaign-V5 rerun. Unknown
+prospective job and artifact hashes are derived dynamically from the canonical
+sealed chain. The same shared A/B consumer validates exact paths and key sets,
+the code-manifest and normalized Slurm bytes, scheduler journal/resource rows,
+task environments, live output tree, diagnostic no-outcome flags, and every
+scoped byte at the producer revision.
 
-Campaign v4 uses exactly 1,024 GiB per CPU, a 14,400-second source timeout, an
-08:20:00 Slurm limit, the `fat` partition, normal QoS, and all 820 unthrottled
+Campaign V5 uses exactly 2 TiB per CPU, a 28,800-second source timeout, a
+16:40:00 Slurm limit, the `fat` partition, normal QoS, and all 820 unthrottled
 array elements. It is original-only: all 820 shards and all 1,640 candidates
-are rerun, `recovery` is null, and reuse counts for v1, v2, and v3 are zero.
+are rerun, `recovery` is null, and reuse counts for V1 through V4 are zero.
 Each candidate is consumed from a read-only domain/problem snapshot inside the
 exact per-task temporary root and revalidated around both consumers. The
 execution receipt must preserve the launch identities of the regular,
@@ -38,18 +32,21 @@ The source launch passes the exact in-memory Slurm bytes on standard input to
 hash-pinned `/usr/bin/sbatch` under a controlled `C` environment. Its command
 contains options only and no script path; hash-pinned `/usr/bin/sacct` must
 reproduce the exact `SubmitLine`, unique job, and complete array. The consumer
-verifies the canonical launch intent, Slurm script, exact 24-entry manifest,
+verifies the canonical launch intent, Slurm script, exact manifest,
 amendment protocol, inventory, every listed live file, and all bytes at the
-source repository commit. The B freeze records and checks the corresponding
-26-entry `tracked_file_sha256` proof (24 manifest entries, Slurm script, and
-manifest) at its planner revision. Neither B freezing nor launching is
-possible until both the canonical v4 attestation and execution receipt exist
+source repository commit. The B freeze records and checks the complete
+`tracked_file_sha256` proof at its freeze repository revision. Neither B
+freezing nor launching is possible until the canonical V5 intent, attestation,
+launch receipt, and execution receipt exist
 and validate completely.
 The exact attestation envelope is required, and the manifest-verified producer
 is replayed over all 1,640 source records; its gate and complete A/B split must
-be byte-identical to the sealed values. The producer revision must be an
-ancestor of the planner revision. After planner caching and immediately before
-the exclusive freeze write, B repeats the clean-parent, source-chain,
+be byte-identical to the sealed values. The planner revision is exactly
+`8148f798f13059ee881ad2471bd20cdd61d2ec18`. The later clean
+`freeze_repository_revision` independently binds Python/protocol/V5 artifacts
+and must descend from both 8148 and the V5 producer; launch must descend from
+both frozen revisions. After cache validation and immediately before the
+exclusive freeze write, B repeats the clean-parent, source-chain,
 live/tracked byte, executed-source, and canonical Confirmation A authorization
 checks.
 All canonical protocol, authorization, launch, audit, and analysis inputs are

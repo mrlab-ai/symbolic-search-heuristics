@@ -20,7 +20,7 @@ import pdb_terminal_metric_choice_runner as Runner
 import pdb_terminal_metric_choice_transport as Transport
 from test_pdb_terminal_metric_choice_protocol import fake_freeze, fake_standalone
 from test_pdb_terminal_metric_choice_parser import (
-    differing_events, same_pool_events, encode,
+    differing_events, same_pool_events, short_probe_events, encode,
 )
 import pdb_terminal_metric_choice_parser as Trace
 
@@ -48,7 +48,7 @@ def _identity(pattern_index, incidence, mj):
     }
 
 
-def fake_records(*, differing_tasks=100):
+def fake_records(*, differing_tasks=100, short_probe_tasks=0):
     freeze = fake_freeze()
     properties = Runner.build_manifest_properties(freeze, FREEZE_SHA)
     mapping = Runner.build_manifest(freeze, FREEZE_SHA)["cells"]
@@ -58,18 +58,59 @@ def fake_records(*, differing_tasks=100):
         )
         for differs in (False, True) for mode in P.MODES
     }
+    short_certificates = {
+        mode: Trace.certify_trace(encode(short_probe_events()), mode)
+        for mode in P.MODES
+    }
     records = []
     for cell in mapping:
         task_index = int(cell["problem"][1:4])
         differs = task_index < differing_tasks
-        certificate = certificates[(differs, cell["algorithm"])]
+        short = task_index >= P.COHORT_TASKS - short_probe_tasks
+        certificate = (
+            short_certificates[cell["algorithm"]]
+            if short else certificates[(differs, cell["algorithm"])]
+        )
         total_time = {
             P.INCIDENCE_MODE: 100.0,
             P.MJ_MODE: 300.0,
             P.MATCHED_MODE: 400.0,
         }[cell["algorithm"]]
+        result_fields = (
+            (
+                "structural_trace", "structural_trace_sha256",
+                "probe_completed_layers",
+            ) if short else (
+                "structural_trace", "structural_trace_sha256", "pool_sha256",
+                "normalized_pool", "normalized_pool_sha256",
+                "state_profiles_sha256", "incidence_projection_sha256",
+                "incidence_v3_projection_sha256", "preselection_sha256",
+                "reference_identity", "incidence_winner_identity",
+                "masked_joint_winner_identity", "selected_identity",
+                "selected_differs_from_reference",
+                "incidence_and_mj_winners_differ", "work_signature",
+                "probe_completed_layers",
+            )
+        )
+        overhead_fields = (
+            "probe_cpu_seconds", "probe_wall_seconds",
+            "probe_peak_memory_before_kb", "probe_peak_memory_after_kb",
+            "probe_peak_memory_delta_kb",
+        ) + (() if short else (
+            "selection_cpu_seconds", "selection_wall_seconds",
+            "selection_peak_memory_before_kb",
+            "selection_peak_memory_after_kb",
+            "selection_peak_memory_delta_kb",
+        ))
+        outcome = (
+            {"coverage": 0, "planner_exit_code": 34}
+            if short else {
+                "coverage": 1, "planner_exit_code": 0,
+                "total_time": total_time,
+            }
+        )
         record = {
-            **cell, **properties, "coverage": 1, "total_time": total_time,
+            **cell, **properties, **outcome,
             "id": [cell["algorithm"], cell["domain"], cell["problem"]],
             "component_options": ["--search", P.SEARCHES[cell["algorithm"]]],
             "driver_options": [
@@ -82,22 +123,40 @@ def fake_records(*, differing_tasks=100):
             "global_revision": P.REQUIRED_PLANNER_REVISION,
             "dual_selector_trace_schema": P.DUAL_TRACE_SCHEMA,
             "dual_selector_trace_certified": True,
-            "dual_selector_trace_status": "complete",
+            "dual_selector_trace_validation_error": None,
+            "dual_selector_trace_status": certificate["status"],
             **{
-                "dual_selector_" + key: certificate[key] for key in (
-                    "structural_trace", "structural_trace_sha256", "pool_sha256",
-                    "normalized_pool", "normalized_pool_sha256",
-                    "state_profiles_sha256", "incidence_projection_sha256",
-                    "incidence_v3_projection_sha256", "preselection_sha256",
-                    "reference_identity", "incidence_winner_identity",
-                    "masked_joint_winner_identity", "selected_identity",
-                    "incidence_and_mj_winners_differ", "work_signature",
-                    "probe_completed_layers",
-                )
+                "dual_selector_" + key: certificate[key]
+                for key in (*result_fields, *overhead_fields)
             },
         }
         records.append(record)
     return records
+
+
+def as_short_record(record, *, completed_layers=8):
+    row = copy.deepcopy(record)
+    certificate = Trace.certify_trace(
+        encode(short_probe_events(completed_layers)), row["algorithm"]
+    )
+    for field in Audit.COMPLETE_ONLY_RESULT_FIELDS:
+        row.pop(field, None)
+    for field in list(row):
+        if field.startswith("dual_selector_selection_"):
+            row.pop(field)
+    row.update({
+        "coverage": 0,
+        "planner_exit_code": 34,
+        "dual_selector_trace_status": "short_probe",
+        "dual_selector_structural_trace": certificate["structural_trace"],
+        "dual_selector_structural_trace_sha256": certificate[
+            "structural_trace_sha256"
+        ],
+        "dual_selector_probe_completed_layers": certificate[
+            "probe_completed_layers"
+        ],
+    })
+    return row
 
 
 def fake_journal(freeze, *, task=None, state=Recovery.INTERRUPTED):
@@ -420,6 +479,116 @@ class ExecutionTest(unittest.TestCase):
         ][0] = [2]
         with self.assertRaisesRegex(Audit.AuditError, "structural replay"):
             Audit.audit_records(broken, freeze, FREEZE_SHA, standalone)
+        broken = copy.deepcopy(records)
+        broken[0]["dual_selector_selected_differs_from_reference"] = not broken[
+            0
+        ]["dual_selector_selected_differs_from_reference"]
+        with self.assertRaisesRegex(Audit.AuditError, "parsed fields"):
+            Audit.audit_records(broken, freeze, FREEZE_SHA, standalone)
+        broken = copy.deepcopy(records)
+        broken[0]["dual_selector_trace_validation_error"] = "contradiction"
+        with self.assertRaisesRegex(Audit.AuditError, "certified campaign outcome"):
+            Audit.audit_records(broken, freeze, FREEZE_SHA, standalone)
+
+    def test_audit_accepts_only_symmetric_certified_short_triads(self):
+        freeze = fake_freeze()
+        standalone = fake_standalone(freeze["base_confirmation_b"])
+        records = fake_records(short_probe_tasks=1)
+        result = Audit.audit_records(records, freeze, FREEZE_SHA, standalone)
+        self.assertEqual(result["status_counts"], {
+            "complete": 299, "short_probe": 1,
+        })
+        self.assertEqual(result["status_family_counts"], {
+            "complete": 30, "short_probe": 1,
+        })
+        self.assertEqual(result["full_preselection_triads"], 299)
+        self.assertEqual(result["certified_short_probe_triads"], 1)
+        self.assertEqual(result["differing_winner_tasks"], 100)
+
+        mixed = fake_records()
+        mixed[-3] = as_short_record(mixed[-3])
+        with self.assertRaisesRegex(Audit.AuditError, "status differs"):
+            Audit.audit_records(mixed, freeze, FREEZE_SHA, standalone)
+
+        mismatched = fake_records(short_probe_tasks=1)
+        mismatched[-1] = as_short_record(
+            mismatched[-1], completed_layers=7
+        )
+        with self.assertRaisesRegex(Audit.AuditError, "structure differs"):
+            Audit.audit_records(mismatched, freeze, FREEZE_SHA, standalone)
+
+    def test_short_audit_rejects_outcome_and_selection_field_drift(self):
+        freeze = fake_freeze()
+        standalone = fake_standalone(freeze["base_confirmation_b"])
+        mutations = {
+            "exit": lambda row: row.__setitem__("planner_exit_code", 0),
+            "coverage": lambda row: row.__setitem__("coverage", 1),
+            "complete field": lambda row: row.__setitem__(
+                "dual_selector_reference_identity", {}
+            ),
+            "selection field": lambda row: row.__setitem__(
+                "dual_selector_selection_wall_seconds", 0.0
+            ),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                records = fake_records(short_probe_tasks=1)
+                mutate(records[-1])
+                with self.assertRaisesRegex(
+                    Audit.AuditError, "short probe outcome contract"
+                ):
+                    Audit.audit_records(
+                        records, freeze, FREEZE_SHA, standalone
+                    )
+
+    def test_complete_audit_rejects_outcome_metadata_drift(self):
+        freeze = fake_freeze()
+        standalone = fake_standalone(freeze["base_confirmation_b"])
+        mutations = {
+            "unsupported exit": lambda row: row.__setitem__(
+                "planner_exit_code", 34
+            ),
+            "boolean exit": lambda row: row.__setitem__(
+                "planner_exit_code", True
+            ),
+            "nonbinary coverage": lambda row: row.__setitem__("coverage", 2),
+            "boolean coverage": lambda row: row.__setitem__("coverage", True),
+            "solved failure": lambda row: row.__setitem__(
+                "planner_exit_code", 23
+            ),
+            "unsolved success": lambda row: row.update({
+                "coverage": 0, "planner_exit_code": 0,
+            }),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                records = fake_records()
+                mutate(records[0])
+                with self.assertRaisesRegex(
+                    Audit.AuditError, "complete trace outcome contract"
+                ):
+                    Audit.audit_records(
+                        records, freeze, FREEZE_SHA, standalone
+                    )
+
+    def test_audit_rechecks_probe_and_selection_overhead(self):
+        freeze = fake_freeze()
+        standalone = fake_standalone(freeze["base_confirmation_b"])
+        broken_probe = fake_records()
+        broken_probe[0].pop("dual_selector_probe_wall_seconds")
+        with self.assertRaisesRegex(Audit.AuditError, "probe.*overhead"):
+            Audit.audit_records(
+                broken_probe, freeze, FREEZE_SHA, standalone
+            )
+
+        broken_selection = fake_records()
+        broken_selection[0][
+            "dual_selector_selection_peak_memory_delta_kb"
+        ] += 1
+        with self.assertRaisesRegex(Audit.AuditError, "selection.*overhead"):
+            Audit.audit_records(
+                broken_selection, freeze, FREEZE_SHA, standalone
+            )
 
     def test_recovery_expands_partial_cell_to_whole_triad(self):
         freeze = fake_freeze()

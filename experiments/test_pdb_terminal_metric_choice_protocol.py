@@ -58,8 +58,8 @@ def fake_snapshot():
             "second_output_sha256": "5" * 64,
             "input_properties_sha256": "6" * 64,
             "fetch_receipt_sha256": "7" * 64,
-            "receipt_schema": "synthetic-confirmation-a-receipt/v1",
-            "analysis_protocol": "synthetic-confirmation-a-analysis/v1",
+            "receipt_schema": P.BASE_A_RECEIPT_SCHEMA,
+            "analysis_protocol": P.BASE_A_ANALYSIS_PROTOCOL,
             "benchmark_revision": "2" * 40,
             "cost_attestation_sha256": "8" * 64,
             "source_audit_launch_receipt_sha256": "9" * 64,
@@ -267,6 +267,17 @@ def fake_freeze():
 
 
 class ProtocolTest(unittest.TestCase):
+    def test_confirmation_a_authorization_uses_v3_analysis_namespace(self):
+        self.assertEqual(
+            P.BASE_A_RECEIPT_PATH.name, "analysis-execution-receipt-v3.json"
+        )
+        self.assertEqual(
+            P.BASE_A_RECEIPT_PIN_PATH.name,
+            "analysis-execution-receipt-v3.sha256",
+        )
+        self.assertEqual(P.BASE_A_FIRST_OUTPUT_PATH.name, "analysis-v3.json")
+        self.assertEqual(P.BASE_A_SECOND_OUTPUT_PATH.name, "analysis-v3-repeat.json")
+
     def test_exact_task_major_cyclic_triads(self):
         tasks = fake_tasks()
         rows = P.task_major_cell_mapping(tasks)
@@ -297,6 +308,19 @@ class ProtocolTest(unittest.TestCase):
         snapshot["confirmation_a_authorization"]["guided_study_authorized"] = False
         with self.assertRaisesRegex(P.ProtocolError, "does not authorize"):
             P.validate_base_snapshot(snapshot)
+
+    def test_requires_exact_a_v3_authorization_metadata(self):
+        mutations = {
+            "receipt_schema": P.BASE_A_RECEIPT_SCHEMA.replace("/v3/", "/v2/"),
+            "analysis_protocol": P.BASE_A_ANALYSIS_PROTOCOL.replace("v3", "v2"),
+        }
+        for field, value in mutations.items():
+            snapshot = fake_snapshot()
+            snapshot["confirmation_a_authorization"][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                P.ProtocolError, "authorization metadata"
+            ):
+                P.validate_base_snapshot(snapshot)
 
     def test_snapshot_requires_exact_confirmation_b_source_closure(self):
         snapshot = fake_snapshot()

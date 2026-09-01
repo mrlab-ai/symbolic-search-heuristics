@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import audit_pdb_terminal_incidence_confirmation_sources as SourceAudit
@@ -793,6 +794,37 @@ class SourceFixture:
                 self.attestation, self.execution, self.launch
             )
 
+    def v5_chain(self):
+        # Retain the legacy fixture's exhaustive synthetic mutations while the
+        # dedicated V5-consumer tests cover the new sealed provenance layer.
+        P._load_source_materials_v4_obsolete(
+            self.attestation, self.execution, self.launch
+        )
+        tracked = {}
+        for relative in P.SourceV5.SCOPED_FILES:
+            path = self.repo / relative
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(("v5-fixture:{}\n".format(relative)).encode())
+            tracked[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return SimpleNamespace(
+            attestation_path=self.attestation,
+            intent_path=self.intent,
+            execution_receipt_path=self.execution,
+            launch_receipt_path=self.launch,
+            attestation_raw=self.attestation.read_bytes(),
+            intent_raw=self.intent.read_bytes(),
+            execution_raw=self.execution.read_bytes(),
+            launch_raw=self.launch.read_bytes(),
+            inventory_raw=self.inventory.read_bytes(),
+            attestation=json.loads(self.attestation.read_text()),
+            intent=json.loads(self.intent.read_text()),
+            execution=json.loads(self.execution.read_text()),
+            launch=json.loads(self.launch.read_text()),
+            inventory=json.loads(self.inventory.read_text()),
+            tracked_file_sha256=dict(sorted(tracked.items())),
+        )
+
     @contextlib.contextmanager
     def patch(self):
         with mock.patch.multiple(
@@ -823,6 +855,9 @@ class SourceFixture:
                     relative: (self.repo / relative).read_bytes()
                     for relative in relatives
                 },
+                SOURCE_AUDIT_TASK_TIMEOUT_SECONDS=14400,
+        ), mock.patch.object(
+            P, "_load_v5_source_chain", side_effect=lambda *args: self.v5_chain()
         ), mock.patch.object(
             SourceAudit.Inventory, "SHADOW_FAMILIES",
             self.shadow_represented,
@@ -871,6 +906,7 @@ class SourceFixture:
         materials = self.load()
         value = {
             "schema": P.FREEZE_SCHEMA,
+            "freeze_repository_revision": "e" * 40,
             "source_audit": {
                 "attestation_path": self.attestation.relative_to(
                     P.REPO
@@ -881,11 +917,13 @@ class SourceFixture:
                 "launch_receipt_path": self.launch.relative_to(
                     P.REPO
                 ).as_posix(),
+                "launch_intent_path": self.intent.relative_to(P.REPO).as_posix(),
                 "attestation_sha256": materials.attestation_sha256,
                 "execution_receipt_sha256": (
                     materials.execution_receipt_sha256
                 ),
                 "launch_receipt_sha256": materials.launch_receipt_sha256,
+                "launch_intent_sha256": materials.intent_sha256,
                 "cohort_manifest_sha256": materials.cohort_manifest_sha256,
                 "attestation_records_sha256": materials.records_sha256,
                 "translator_source_sha256": (
@@ -904,13 +942,10 @@ class SourceFixture:
                 "slurm_script_sha256": materials.launch_receipt[
                     "slurm_script_sha256"
                 ],
-                "launch_intent_sha256": materials.launch_receipt[
-                    "launch_intent_sha256"
-                ],
                 "tracked_file_sha256": materials.tracked_file_sha256,
             },
             "planner": {
-                "revision": "a" * 40,
+                "revision": P.PLANNER_REVISION_REQUIRED,
                 "cache_name": "synthetic-confirmation-a-cache",
                 "build_options": list(P.BUILD_OPTIONS),
                 "downward_sha256": "b" * 64,
@@ -937,27 +972,32 @@ class SourceFixture:
 
 
 class ConfirmationAProtocolTest(unittest.TestCase):
-    def test_v4_manifest_contract_has_exact_order_and_cardinality(self):
-        self.assertEqual(len(P.SOURCE_V4_MANIFEST_FILES), 24)
-        self.assertEqual(len(set(P.SOURCE_V4_MANIFEST_FILES)), 24)
+    def test_analysis_v3_preregisters_d_as_a_noncertificate_baseline(self):
         self.assertEqual(
-            P.SOURCE_V4_MANIFEST_FILES[-1],
-            "experiments/"
-            "test_pdb_terminal_incidence_confirmation_source_audit_v4.py",
+            P.ANALYSIS_PROTOCOL,
+            "pdb-terminal-incidence-confirmation-a-analysis-v3",
+        )
+        self.assertEqual(P.PREDICTORS[0:2], ("I", "D"))
+        self.assertEqual(P.PREDICTOR_BASELINES[0], "D")
+        self.assertNotIn("D", P.CERTIFICATE_BASELINES)
+        self.assertEqual(len(P.PREDICTORS), 8)
+
+    def test_v5_manifest_contract_has_exact_order_and_cardinality(self):
+        self.assertEqual(len(P.SourceV5.CODE_MANIFEST_FILES), 38)
+        self.assertEqual(len(P.SourceV5.SCOPED_FILES), 40)
+        self.assertEqual(
+            tuple(sorted(P.SourceV5.CODE_MANIFEST_FILES)),
+            P.SourceV5.CODE_MANIFEST_FILES,
         )
 
-    def test_committed_v4_launch_byte_chain_is_accepted(self):
-        raw, launch = P._load_canonical(
-            P.SOURCE_V4_LAUNCH_RECEIPT_PATH, "v4 launch receipt"
+    def test_v5_source_consumer_and_8148_planner_are_bound(self):
+        self.assertIn(
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
+            P.EXPERIMENT_SOURCE_FILES,
         )
         self.assertEqual(
-            hashlib.sha256(raw).hexdigest(),
-            P.SOURCE_V4_LAUNCH_RECEIPT_SHA256,
-        )
-        _, _, manifest = P._load_source_v4_byte_chain(launch)
-        self.assertEqual(len(manifest), 24)
-        self.assertEqual(
-            len(P._source_v4_tracked_file_sha256(launch, manifest)), 26
+            P.PLANNER_REVISION_REQUIRED,
+            "8148f798f13059ee881ad2471bd20cdd61d2ec18",
         )
 
     def test_design_and_cegar_bound(self):
@@ -1226,7 +1266,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                         ),
                     ):
                 self.assertEqual(
-                    Freeze._tracked_source_v4_hashes(materials, "4" * 40),
+                    Freeze._tracked_source_v5_hashes(materials, "4" * 40),
                     materials.tracked_file_sha256,
                 )
             first = next(iter(materials.tracked_file_sha256))
@@ -1239,7 +1279,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                             else materials.tracked_file_sha256[relative]
                         ),
                     ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
-                Freeze._tracked_source_v4_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v5_hashes(materials, "4" * 40)
 
     def test_freeze_requires_source_revision_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1249,6 +1289,24 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                 side_effect=Freeze.JJ.JjCacheError("divergent"),
         ), self.assertRaisesRegex(Freeze.FreezeError, "not an ancestor"):
             Freeze._require_source_ancestor(materials, "4" * 40)
+
+    def test_freeze_clean_parent_uses_live_working_copy_snapshot(self):
+        revision = "4" * 40
+        with mock.patch.object(
+            Freeze.JJ, "live_working_copy_diff_summary", return_value="",
+        ) as live, mock.patch.object(
+            Freeze.JJ, "parent_commit", return_value=revision,
+        ) as parent:
+            self.assertEqual(Freeze._require_clean_parent(None), revision)
+        live.assert_called_once_with(Freeze.REPO)
+        parent.assert_called_once_with(Freeze.REPO)
+        with mock.patch.object(
+            Freeze.JJ, "live_working_copy_diff_summary", return_value="M source",
+        ), mock.patch.object(
+            Freeze.JJ, "parent_commit",
+        ) as parent, self.assertRaisesRegex(Freeze.FreezeError, "clean empty"):
+            Freeze._require_clean_parent(None)
+        parent.assert_not_called()
 
     def test_jj_queries_reject_wrong_identity_and_ignore_path_shadow(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1304,7 +1362,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     ), self.assertRaisesRegex(
                         Freeze.FreezeError, "changed during revision check"
                     ):
-                Freeze._tracked_source_v4_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v5_hashes(materials, "4" * 40)
 
     def test_freeze_reloads_source_after_mocked_planner_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1329,7 +1387,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                         attestation=fixture.attestation,
                         execution_receipt=fixture.execution,
                         launch_receipt=fixture.launch,
-                        revision="4" * 40,
+                        freeze_repository_revision="4" * 40,
                     )
 
     def test_freeze_rejects_live_tamper_and_symlink_for_sealed_artifact(self):

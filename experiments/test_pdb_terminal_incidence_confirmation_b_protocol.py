@@ -173,27 +173,33 @@ class SourceFixture(AFixtures.SourceFixture):
 
 
 class ConfirmationBProtocolTest(unittest.TestCase):
-    def test_v4_manifest_contract_has_exact_order_and_cardinality(self):
-        self.assertEqual(len(P.SOURCE_V4_MANIFEST_FILES), 24)
-        self.assertEqual(len(set(P.SOURCE_V4_MANIFEST_FILES)), 24)
+    def test_confirmation_a_authorization_uses_v3_analysis_namespace(self):
         self.assertEqual(
-            P.SOURCE_V4_MANIFEST_FILES[-1],
-            "experiments/"
-            "test_pdb_terminal_incidence_confirmation_source_audit_v4.py",
+            P.CONFIRMATION_A_RECEIPT_PATH.name,
+            "analysis-execution-receipt-v3.json",
+        )
+        self.assertEqual(
+            P.CONFIRMATION_A_RECEIPT_PIN_PATH.name,
+            "analysis-execution-receipt-v3.sha256",
+        )
+        self.assertEqual(P.CONFIRMATION_A_FIRST_OUTPUT_PATH.name, "analysis-v3.json")
+        self.assertEqual(
+            P.CONFIRMATION_A_SECOND_OUTPUT_PATH.name,
+            "analysis-v3-repeat.json",
         )
 
-    def test_committed_v4_launch_byte_chain_is_accepted(self):
-        raw, launch = P._load_canonical(
-            P.SOURCE_V4_LAUNCH_RECEIPT_PATH, "v4 launch receipt"
+    def test_v5_manifest_contract_has_exact_order_and_cardinality(self):
+        self.assertEqual(len(P.SourceValidation.SourceV5.CODE_MANIFEST_FILES), 38)
+        self.assertEqual(len(P.SourceValidation.SourceV5.SCOPED_FILES), 40)
+
+    def test_b_uses_a_shared_v5_consumer_and_8148_planner(self):
+        self.assertIn(
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
+            P.EXPERIMENT_SOURCE_FILES,
         )
         self.assertEqual(
-            hashlib.sha256(raw).hexdigest(),
-            P.SOURCE_V4_LAUNCH_RECEIPT_SHA256,
-        )
-        _, _, manifest = P._load_source_v4_byte_chain(launch)
-        self.assertEqual(len(manifest), 24)
-        self.assertEqual(
-            len(P._source_v4_tracked_file_sha256(launch, manifest)), 26
+            P.PLANNER_REVISION_REQUIRED,
+            "8148f798f13059ee881ad2471bd20cdd61d2ec18",
         )
 
     def test_v4_local_byte_chain_tampering_is_rejected(self):
@@ -283,7 +289,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                         ),
                     ):
                 self.assertEqual(
-                    Freeze._tracked_source_v4_hashes(materials, "4" * 40),
+                    Freeze._tracked_source_v5_hashes(materials, "4" * 40),
                     materials.tracked_file_sha256,
                 )
             first = next(iter(materials.tracked_file_sha256))
@@ -296,7 +302,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                             else materials.tracked_file_sha256[relative]
                         ),
                     ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
-                Freeze._tracked_source_v4_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v5_hashes(materials, "4" * 40)
 
     def test_freeze_requires_source_revision_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -306,6 +312,24 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                 side_effect=Freeze.JJ.JjCacheError("divergent"),
         ), self.assertRaisesRegex(Freeze.FreezeError, "not an ancestor"):
             Freeze._require_source_ancestor(materials, "4" * 40)
+
+    def test_freeze_clean_parent_uses_live_working_copy_snapshot(self):
+        revision = "4" * 40
+        with mock.patch.object(
+            Freeze.JJ, "live_working_copy_diff_summary", return_value="",
+        ) as live, mock.patch.object(
+            Freeze.JJ, "parent_commit", return_value=revision,
+        ) as parent:
+            self.assertEqual(Freeze._require_clean_parent(None), revision)
+        live.assert_called_once_with(Freeze.REPO)
+        parent.assert_called_once_with(Freeze.REPO)
+        with mock.patch.object(
+            Freeze.JJ, "live_working_copy_diff_summary", return_value="M source",
+        ), mock.patch.object(
+            Freeze.JJ, "parent_commit",
+        ) as parent, self.assertRaisesRegex(Freeze.FreezeError, "clean empty"):
+            Freeze._require_clean_parent(None)
+        parent.assert_not_called()
 
     def test_source_snapshot_rechecks_jj_after_each_subprocess(self):
         shared = P.SourceValidation
@@ -341,7 +365,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                     ), self.assertRaisesRegex(
                         Freeze.FreezeError, "changed during revision check"
                     ):
-                Freeze._tracked_source_v4_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v5_hashes(materials, "4" * 40)
 
     def test_freeze_reloads_source_after_mocked_planner_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -376,7 +400,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                         confirmation_a_second_output=(
                             P.CONFIRMATION_A_SECOND_OUTPUT_PATH
                         ),
-                        revision="4" * 40,
+                        freeze_repository_revision="4" * 40,
                     )
 
     def test_freeze_rejects_live_tamper_and_symlink_for_sealed_artifact(self):

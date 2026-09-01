@@ -9,12 +9,13 @@ import json
 import math
 import os
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from fractions import Fraction
 from pathlib import Path
 
 import pdb_terminal_metric_choice_audit as Audit
 import pdb_terminal_metric_choice_io as CampaignIO
+import pdb_terminal_metric_choice_parser as Trace
 import pdb_terminal_metric_choice_protocol as P
 import pdb_terminal_metric_choice_runner as Runner
 
@@ -23,12 +24,12 @@ class AnalysisError(RuntimeError):
     pass
 
 
-ANALYSIS_SCHEMA = P.FREEZE_SCHEMA + "/analysis"
+ANALYSIS_SCHEMA = P.FREEZE_SCHEMA + "/analysis/v3"
 RECEIPT_SCHEMA = ANALYSIS_SCHEMA + "/double-execution"
-DEFAULT_OUTPUT = P.ARTIFACT_DIR / "analysis-v1.json"
-DEFAULT_REPEAT_OUTPUT = P.ARTIFACT_DIR / "analysis-v1-repeat.json"
-DEFAULT_RECEIPT = P.ARTIFACT_DIR / "analysis-execution-receipt-v1.json"
-DEFAULT_RECEIPT_PIN = P.ARTIFACT_DIR / "analysis-execution-receipt-v1.sha256"
+DEFAULT_OUTPUT = P.ARTIFACT_DIR / "analysis-v3.json"
+DEFAULT_REPEAT_OUTPUT = P.ARTIFACT_DIR / "analysis-v3-repeat.json"
+DEFAULT_RECEIPT = P.ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
+DEFAULT_RECEIPT_PIN = P.ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
 
 
 def _fraction(value: Fraction | None):
@@ -50,8 +51,15 @@ def _par2(record: dict) -> Fraction:
     coverage = record.get("coverage")
     if type(coverage) is not int or coverage not in (0, 1):
         raise AnalysisError("coverage is not binary")
+    code = record.get("planner_exit_code")
+    if type(code) is not int:
+        raise AnalysisError("planner exit code is not an integer")
     if coverage == 0:
+        if code == 0:
+            raise AnalysisError("unsolved cell has the success planner exit code")
         return Fraction(P.PAR2_SECONDS)
+    if code != 0:
+        raise AnalysisError("solved cell has a non-success planner exit code")
     value = record.get("total_time")
     if type(value) not in (int, float) or not math.isfinite(value) or not (
         0 <= value <= P.TIME_LIMIT_SECONDS
@@ -156,6 +164,576 @@ def contrast(
     }
 
 
+def _ratio(numerator: int, denominator: int):
+    if denominator == 0:
+        return None
+    return Fraction(numerator, denominator)
+
+
+def _descriptive_summary(
+    rows: list[tuple[str, Fraction]], *, include_sum: bool = True,
+) -> dict:
+    if not rows:
+        summary = {
+            "tasks": 0, "families": 0, "task_mean": None,
+            "equal_family_mean": None, "median_nearest_rank": None,
+            "minimum": None, "maximum": None,
+        }
+        if include_sum:
+            summary["sum"] = None
+        return summary
+    by_family = defaultdict(list)
+    values = []
+    for family, value in rows:
+        if not isinstance(family, str) or not isinstance(value, Fraction):
+            raise AnalysisError("mechanism summary input is malformed")
+        by_family[family].append(value)
+        values.append(value)
+    ordered = sorted(values)
+    family_values = {
+        family: _mean(items) for family, items in sorted(by_family.items())
+    }
+    summary = {
+        "tasks": len(values),
+        "families": len(family_values),
+        "task_mean": _fraction(_mean(values)),
+        "equal_family_mean": _fraction(_mean(family_values.values())),
+        "median_nearest_rank": _fraction(ordered[math.ceil(len(ordered) / 2) - 1]),
+        "minimum": _fraction(ordered[0]),
+        "maximum": _fraction(ordered[-1]),
+    }
+    if include_sum:
+        summary["sum"] = _fraction(sum(values, Fraction()))
+    return summary
+
+
+def _identity_key(identity: dict) -> tuple:
+    return (
+        identity["pattern_index"], tuple(identity["sources"]),
+        tuple(identity["pattern"]), identity["value_cap"],
+    )
+
+
+def _pattern_key(identity: dict) -> tuple:
+    return _identity_key(identity)[:-1]
+
+
+def _change_class(left: dict, right: dict) -> str:
+    if _identity_key(left) == _identity_key(right):
+        return "same_candidate"
+    if _pattern_key(left) == _pattern_key(right):
+        return "same_pattern_different_cap"
+    return "different_pattern"
+
+
+def _cap_direction(left: dict, right: dict) -> str | None:
+    if _pattern_key(left) != _pattern_key(right):
+        return None
+    ranks = {value: rank for rank, value in enumerate(P.VALUE_CAP_GRID)}
+    left_rank = ranks[left["value_cap"]]
+    right_rank = ranks[right["value_cap"]]
+    return "lower" if left_rank < right_rank else (
+        "higher" if left_rank > right_rank else "equal"
+    )
+
+
+def _candidate(record: dict, identity: dict) -> dict:
+    matches = [
+        event for event in record["dual_selector_structural_trace"]
+        if event.get("event") == "candidate"
+        and Trace._candidate_identity(event) == identity
+    ]
+    if len(matches) != 1:
+        raise AnalysisError("certified identity does not name one candidate")
+    return matches[0]
+
+
+def _score_relation(left: dict, right: dict) -> tuple[str, str]:
+    left_better = Trace._better(left, right)
+    right_better = Trace._better(right, left)
+    if left_better and right_better:
+        raise AnalysisError("frozen score comparator is inconsistent")
+    relation = "higher" if left_better else "lower" if right_better else "tied"
+    if left["initial_dead_end"] != right["initial_dead_end"]:
+        criterion = "initial_dead_end"
+    elif not left["initial_dead_end"] and left["initial_h"] != right["initial_h"]:
+        criterion = "initial_h"
+    elif Trace._compare_ratio(
+        left["finite_sum"], left["finite_count"],
+        right["finite_sum"], right["finite_count"], zero_infinity=True,
+    ):
+        criterion = "mean_finite"
+    elif Trace._compare_ratio(
+        left["dead_count"], left["abstract_states"],
+        right["dead_count"], right["abstract_states"], zero_infinity=False,
+    ):
+        criterion = "dead_fraction"
+    elif left["cofactor_width"] != right["cofactor_width"]:
+        criterion = "cofactor_width"
+    elif left["abstract_states"] != right["abstract_states"]:
+        criterion = "abstract_states"
+    elif left["pattern"] != right["pattern"]:
+        criterion = "pattern_tiebreak"
+    else:
+        criterion = "tied"
+    if (relation == "tied") != (criterion == "tied"):
+        raise AnalysisError("frozen score decomposition is inconsistent")
+    return relation, criterion
+
+
+def _identity_summary(identities: list[dict]) -> dict:
+    cap_counts = Counter()
+    pattern_sizes = Counter()
+    source_sets = Counter()
+    source_membership = Counter()
+    for identity in identities:
+        cap = identity["value_cap"]
+        cap_counts["exact" if cap is None else str(cap)] += 1
+        pattern_sizes[str(len(identity["pattern"]))] += 1
+        source_sets["+".join(identity["sources"])] += 1
+        source_membership.update(identity["sources"])
+    return {
+        "tasks": len(identities),
+        "cap_histogram": dict(sorted(cap_counts.items())),
+        "pattern_cardinality_histogram": dict(sorted(
+            pattern_sizes.items(), key=lambda item: int(item[0])
+        )),
+        "source_set_histogram": dict(sorted(source_sets.items())),
+        "source_membership_counts": dict(sorted(source_membership.items())),
+    }
+
+
+def _count_fraction(count: int, denominator: int):
+    return _fraction(Fraction(count, denominator)) if denominator else None
+
+
+CHANGE_CLASSES = (
+    "same_candidate", "same_pattern_different_cap", "different_pattern",
+)
+CAP_DIRECTIONS = ("lower", "higher")
+SCORE_RELATIONS = ("higher", "tied", "lower")
+SCORE_CRITERIA = (
+    "initial_dead_end", "initial_h", "mean_finite", "dead_fraction",
+    "cofactor_width", "abstract_states", "pattern_tiebreak", "tied",
+)
+BUDGET_MODES = ("incidence", "mj")
+CROSS_GEOMETRY_OUTCOMES = (
+    "incidence_mj_feasible", "incidence_mj_infeasible",
+    "mj_incidence_feasible", "mj_incidence_infeasible",
+    "incidence_mj_retained", "incidence_mj_not_retained",
+    "mj_incidence_retained", "mj_incidence_not_retained",
+)
+WORK_FIELDS = (
+    "candidate_count", "probe_state_profile_count",
+    "probe_state_profile_cut_entries",
+    "terminal_incidence_layer_measurements",
+    "joint_profile_layer_measurements", "joint_profile_cut_entries",
+    "joint_summed_cut_entries",
+)
+
+
+def _dense_counts(counter: Counter, categories: tuple[str, ...]) -> dict:
+    unexpected = set(counter) - set(categories)
+    if unexpected:
+        raise AnalysisError("mechanism counter contains an unknown category")
+    return {category: counter[category] for category in categories}
+
+
+def _mechanism_diagnostics(
+    matrix: dict, tasks: list[tuple[str, str]], task_families: dict,
+) -> dict:
+    complete_rows = []
+    short_rows = []
+    uptake = Counter()
+    uptake_families = defaultdict(set)
+    taxonomies = {
+        name: Counter() for name in ("incidence_vs_mj", "incidence_vs_reference",
+                                     "mj_vs_reference")
+    }
+    cap_directions = {name: Counter() for name in taxonomies}
+    score_relations = {name: Counter() for name in taxonomies}
+    score_criteria = {name: Counter() for name in taxonomies}
+    score_differing = Counter()
+    score_differing_criteria = Counter()
+    identities = {"incidence": [], "mj": [], "reference": []}
+    budget_values = {
+        "incidence_slack": [], "incidence_utilization": [],
+        "mj_slack": [], "mj_utilization": [],
+    }
+    zero_budgets = Counter()
+    binding = Counter()
+    cross_feasibility = Counter()
+    work_rows = {field: [] for field in WORK_FIELDS}
+
+    for task in tasks:
+        family = task_families[task]
+        record = matrix[(P.INCIDENCE_MODE, task)]
+        status = record["dual_selector_trace_status"]
+        if status == "short_probe":
+            short_rows.append({
+                "task": list(task), "family": family,
+                "status": status,
+                "completed_layers": record[
+                    "dual_selector_probe_completed_layers"
+                ],
+                "probe_overhead_by_mode": {
+                    mode: {
+                        field: matrix[(mode, task)][
+                            "dual_selector_probe_" + field
+                        ]
+                        for field in (
+                            "cpu_seconds", "wall_seconds",
+                            "peak_memory_after_kb", "peak_memory_delta_kb",
+                        )
+                    }
+                    for mode in P.MODES
+                },
+            })
+            continue
+        if status != "complete":
+            raise AnalysisError("audited trace status is unrecognized")
+        reference = record["dual_selector_reference_identity"]
+        incidence = record["dual_selector_incidence_winner_identity"]
+        mj = record["dual_selector_masked_joint_winner_identity"]
+        identities["reference"].append(reference)
+        identities["incidence"].append(incidence)
+        identities["mj"].append(mj)
+        candidates = {
+            "reference": _candidate(record, reference),
+            "incidence": _candidate(record, incidence),
+            "mj": _candidate(record, mj),
+        }
+        flags = {
+            "incidence_differs_from_mj": _identity_key(incidence) != _identity_key(mj),
+            "incidence_differs_from_reference": (
+                _identity_key(incidence) != _identity_key(reference)
+            ),
+            "mj_differs_from_reference": _identity_key(mj) != _identity_key(reference),
+        }
+        flags["both_differ_from_reference"] = (
+            flags["incidence_differs_from_reference"]
+            and flags["mj_differs_from_reference"]
+        )
+        flags["all_same"] = not any(flags.values())
+        for name, value in flags.items():
+            if value:
+                uptake[name] += 1
+                uptake_families[name].add(family)
+
+        pair_values = {
+            "incidence_vs_mj": (incidence, mj, candidates["incidence"],
+                                candidates["mj"]),
+            "incidence_vs_reference": (
+                incidence, reference, candidates["incidence"],
+                candidates["reference"],
+            ),
+            "mj_vs_reference": (
+                mj, reference, candidates["mj"], candidates["reference"],
+            ),
+        }
+        task_taxonomy = {}
+        task_scores = {}
+        for name, (left, right, left_candidate, right_candidate) in pair_values.items():
+            change = _change_class(left, right)
+            direction = (
+                _cap_direction(left, right)
+                if change == "same_pattern_different_cap" else None
+            )
+            relation, criterion = _score_relation(left_candidate, right_candidate)
+            taxonomies[name][change] += 1
+            if direction is not None:
+                cap_directions[name][direction] += 1
+            score_relations[name][relation] += 1
+            score_criteria[name][criterion] += 1
+            task_taxonomy[name] = change
+            task_scores[name] = {
+                "relation": relation, "decisive_criterion": criterion,
+            }
+        if flags["incidence_differs_from_mj"]:
+            differing_score = task_scores["incidence_vs_mj"]
+            score_differing[differing_score["relation"]] += 1
+            score_differing_criteria[
+                differing_score["decisive_criterion"]
+            ] += 1
+
+        incidence_budget = reference["terminal_incidence"]
+        mj_budget = reference["masked_joint"]
+        incidence_slack = incidence_budget - incidence["terminal_incidence"]
+        mj_slack = mj_budget - mj["masked_joint"]
+        if incidence_slack < 0 or mj_slack < 0:
+            raise AnalysisError("certified winner exceeds its own budget")
+        incidence_utilization = _ratio(
+            incidence["terminal_incidence"], incidence_budget
+        )
+        mj_utilization = _ratio(mj["masked_joint"], mj_budget)
+        budget_values["incidence_slack"].append((family, Fraction(incidence_slack)))
+        budget_values["mj_slack"].append((family, Fraction(mj_slack)))
+        if incidence_utilization is None:
+            zero_budgets["incidence"] += 1
+        else:
+            budget_values["incidence_utilization"].append(
+                (family, incidence_utilization)
+            )
+        if mj_utilization is None:
+            zero_budgets["mj"] += 1
+        else:
+            budget_values["mj_utilization"].append((family, mj_utilization))
+        binding["incidence"] += incidence_slack == 0
+        binding["mj"] += mj_slack == 0
+        i_cross = incidence["masked_joint"] <= mj_budget
+        m_cross = mj["terminal_incidence"] <= incidence_budget
+        i_cross_retained = candidates["incidence"][
+            "masked_joint_retained_for_pattern"
+        ]
+        m_cross_retained = candidates["mj"][
+            "incidence_retained_for_pattern"
+        ]
+        if candidates["incidence"]["masked_joint_feasible"] != i_cross or (
+            candidates["mj"]["incidence_feasible"] != m_cross
+        ):
+            raise AnalysisError("cross-feasibility identity changed")
+        cross_feasibility[
+            "incidence_mj_feasible" if i_cross else "incidence_mj_infeasible"
+        ] += 1
+        cross_feasibility[
+            "mj_incidence_feasible" if m_cross else "mj_incidence_infeasible"
+        ] += 1
+        cross_feasibility[
+            "incidence_mj_retained" if i_cross_retained
+            else "incidence_mj_not_retained"
+        ] += 1
+        cross_feasibility[
+            "mj_incidence_retained" if m_cross_retained
+            else "mj_incidence_not_retained"
+        ] += 1
+        work = record["dual_selector_work_signature"]
+        if set(work) != set(WORK_FIELDS):
+            raise AnalysisError("certified work signature changed")
+        for field in WORK_FIELDS:
+            work_rows[field].append((family, Fraction(work[field])))
+        complete_rows.append({
+            "task": list(task), "family": family, "status": status,
+            "reference": reference, "incidence_winner": incidence,
+            "mj_winner": mj, "uptake": flags, "change_taxonomy": task_taxonomy,
+            "score_relations": task_scores,
+            "budgets": {"incidence": incidence_budget, "mj": mj_budget},
+            "slack": {"incidence": incidence_slack, "mj": mj_slack},
+            "own_utilization": {
+                "incidence": _fraction(incidence_utilization),
+                "mj": _fraction(mj_utilization),
+            },
+            "cross_feasible": {
+                "incidence_under_mj_budget": i_cross,
+                "mj_under_incidence_budget": m_cross,
+            },
+            "cross_retained_for_pattern": {
+                "incidence_by_mj": i_cross_retained,
+                "mj_by_incidence": m_cross_retained,
+            },
+        })
+
+    complete_count = len(complete_rows)
+    all_count = len(tasks)
+    uptake_summary = {
+        name: {
+            "tasks": count,
+            "families_with_at_least_one_task": len(uptake_families[name]),
+            "fraction_of_complete_tasks": _count_fraction(count, complete_count),
+        }
+        for name, count in sorted(uptake.items())
+    }
+    for name in (
+        "incidence_differs_from_mj", "incidence_differs_from_reference",
+        "mj_differs_from_reference", "both_differ_from_reference", "all_same",
+    ):
+        uptake_summary.setdefault(name, {
+            "tasks": 0, "families_with_at_least_one_task": 0,
+            "fraction_of_complete_tasks": _count_fraction(0, complete_count),
+        })
+
+    overhead = {}
+    for mode in P.MODES:
+        probe = {field: [] for field in (
+            "cpu_seconds", "wall_seconds", "peak_memory_after_kb",
+            "peak_memory_delta_kb",
+        )}
+        selection = {field: [] for field in (
+            "cpu_seconds", "wall_seconds", "peak_memory_after_kb",
+            "peak_memory_delta_kb",
+        )}
+        total = {field: [] for field in ("cpu_seconds", "wall_seconds",
+                                         "peak_memory_after_kb")}
+        short_probe = {field: [] for field in probe}
+        for task in tasks:
+            row = matrix[(mode, task)]
+            family = task_families[task]
+            for field in probe:
+                value = Fraction(str(row["dual_selector_probe_" + field]))
+                probe[field].append((family, value))
+                if row["dual_selector_trace_status"] == "short_probe":
+                    short_probe[field].append((family, value))
+            if row["dual_selector_trace_status"] != "complete":
+                continue
+            for field in selection:
+                selection[field].append((
+                    family,
+                    Fraction(str(row["dual_selector_selection_" + field])),
+                ))
+            for field in ("cpu_seconds", "wall_seconds"):
+                total[field].append((
+                    family,
+                    Fraction(str(row["dual_selector_probe_" + field]))
+                    + Fraction(str(row["dual_selector_selection_" + field])),
+                ))
+            total["peak_memory_after_kb"].append((
+                family,
+                Fraction(max(
+                    row["dual_selector_probe_peak_memory_after_kb"],
+                    row["dual_selector_selection_peak_memory_after_kb"],
+                )),
+            ))
+        overhead[mode] = {
+            "probe": {
+                field: _descriptive_summary(
+                    values, include_sum="memory" not in field
+                )
+                for field, values in probe.items()
+            },
+            "selection_complete_tasks": {
+                field: _descriptive_summary(
+                    values, include_sum="memory" not in field
+                )
+                for field, values in selection.items()
+            },
+            "total_complete_tasks": {
+                field: _descriptive_summary(
+                    values, include_sum="memory" not in field
+                )
+                for field, values in total.items()
+            },
+            "short_probe_only": {
+                field: _descriptive_summary(
+                    values, include_sum="memory" not in field
+                )
+                for field, values in short_probe.items()
+            },
+        }
+
+    paired_overhead = {}
+    for reference_mode in (P.MJ_MODE, P.MATCHED_MODE):
+        mode_rows = {field: [] for field in ("cpu_seconds", "wall_seconds")}
+        for task in tasks:
+            left = matrix[(P.INCIDENCE_MODE, task)]
+            right = matrix[(reference_mode, task)]
+            if left["dual_selector_trace_status"] != "complete":
+                continue
+            family = task_families[task]
+            for field in mode_rows:
+                left_total = Fraction(str(left["dual_selector_probe_" + field])) + (
+                    Fraction(str(left["dual_selector_selection_" + field]))
+                )
+                right_total = Fraction(str(right["dual_selector_probe_" + field])) + (
+                    Fraction(str(right["dual_selector_selection_" + field]))
+                )
+                mode_rows[field].append((family, left_total - right_total))
+        paired_overhead["incidence_minus_" + reference_mode] = {
+            field: _descriptive_summary(values)
+            for field, values in mode_rows.items()
+        }
+
+    return {
+        "gating": False,
+        "definitions": {
+            "unit": "one certified task triad",
+            "frozen_selection_score_relation": (
+                "higher/tied/lower under the complete parser comparator, with "
+                "the first decisive registered criterion reported separately"
+            ),
+            "own_budget_utilization": (
+                "winner metric divided by same-unit reference budget; zero "
+                "budget is null"
+            ),
+            "short_probe_policy": (
+                "support and probe overhead only; no imputed winner, budget, "
+                "or selection overhead"
+            ),
+            "mediation_boundary": (
+                "the trace contains no exact partition effort E or "
+                "final-search bucket trajectory"
+            ),
+            "paired_recorded_probe_selection_time": (
+                "incidence arm minus comparator arm for the sum of the two "
+                "recorded phase timers; excludes uninstrumented gaps and "
+                "trace writes"
+            ),
+        },
+        "support": {
+            "all_tasks": all_count,
+            "complete_tasks": complete_count,
+            "short_probe_tasks": len(short_rows),
+            "complete_families": len({row["family"] for row in complete_rows}),
+            "short_probe_families": len({row["family"] for row in short_rows}),
+        },
+        "treatment_uptake": uptake_summary,
+        "change_taxonomy": {
+            name: {
+                "classes": _dense_counts(taxonomies[name], CHANGE_CLASSES),
+                "cap_direction_within_same_pattern": _dense_counts(
+                    cap_directions[name], CAP_DIRECTIONS
+                ),
+            }
+            for name in taxonomies
+        },
+        "selected_candidate_distributions": {
+            name: _identity_summary(values) for name, values in identities.items()
+        },
+        "budget_geometry": {
+            "incidence_slack": _descriptive_summary(
+                budget_values["incidence_slack"]
+            ),
+            "incidence_own_utilization": _descriptive_summary(
+                budget_values["incidence_utilization"]
+            ),
+            "mj_slack": _descriptive_summary(budget_values["mj_slack"]),
+            "mj_own_utilization": _descriptive_summary(
+                budget_values["mj_utilization"]
+            ),
+            "zero_budget_tasks": _dense_counts(zero_budgets, BUDGET_MODES),
+            "binding_tasks": _dense_counts(binding, BUDGET_MODES),
+            "cross_feasibility_counts": _dense_counts(
+                cross_feasibility, CROSS_GEOMETRY_OUTCOMES
+            ),
+        },
+        "frozen_selection_score_relation": {
+            "all_complete_tasks": {
+                name: {
+                    "relation": _dense_counts(
+                        score_relations[name], SCORE_RELATIONS
+                    ),
+                    "decisive_criterion": _dense_counts(
+                        score_criteria[name], SCORE_CRITERIA
+                    ),
+                }
+                for name in score_relations
+            },
+            "differing_incidence_mj_winners": {
+                "relation": _dense_counts(score_differing, SCORE_RELATIONS),
+                "decisive_criterion": _dense_counts(
+                    score_differing_criteria, SCORE_CRITERIA
+                ),
+            },
+        },
+        "candidate_work": {
+            field: _descriptive_summary(work_rows[field])
+            for field in WORK_FIELDS
+        },
+        "overhead_by_mode": overhead,
+        "paired_recorded_probe_selection_time": paired_overhead,
+        "complete_task_rows": complete_rows,
+        "short_probe_rows": short_rows,
+    }
+
+
 def analyze(
     records: list[dict], freeze: dict, freeze_sha256: str,
     standalone: dict, *, bootstrap_replicates: int | None = None,
@@ -185,8 +763,14 @@ def analyze(
         matrix, tasks, P.INCIDENCE_MODE, P.MJ_MODE,
         replicates=replicates, seed=P.BOOTSTRAP_SEED,
     )
-    different = [
+    complete_tasks = [
         task for task in tasks
+        if matrix[(P.INCIDENCE_MODE, task)][
+            "dual_selector_trace_status"
+        ] == "complete"
+    ]
+    different = [
+        task for task in complete_tasks
         if matrix[(P.INCIDENCE_MODE, task)][
             "dual_selector_incidence_winner_identity"
         ] != matrix[(P.INCIDENCE_MODE, task)][
@@ -213,14 +797,23 @@ def analyze(
         replicates=replicates, seed=P.BOOTSTRAP_SEED + 2,
     )
     secondary["affects_primary_gate"] = False
+    mechanism = _mechanism_diagnostics(matrix, tasks, task_families)
     passed = audit["certified"] and primary["pass"] and subset["pass"]
+    probe_support = {
+        "complete_tasks": audit["status_counts"]["complete"],
+        "short_probe_tasks": audit["status_counts"]["short_probe"],
+        "complete_families": audit["status_family_counts"]["complete"],
+        "short_probe_families": audit["status_family_counts"]["short_probe"],
+    }
     return {
         "schema": ANALYSIS_SCHEMA,
         "analysis_protocol": P.ANALYSIS_PROTOCOL,
         "audit": audit,
+        "probe_support": probe_support,
         "primary_i_vs_mj": primary,
         "differing_winner_subset_i_vs_mj": subset,
         "secondary_i_vs_matched": secondary,
+        "mechanism_diagnostics": mechanism,
         "pass": passed,
     }
 

@@ -39,10 +39,15 @@ BASE_CONFIRMATION_ARTIFACT_DIR = (
     SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation"
 )
 BASE_A_ARTIFACT_DIR = BASE_CONFIRMATION_ARTIFACT_DIR / "confirmation-a"
-BASE_A_RECEIPT_PATH = BASE_A_ARTIFACT_DIR / "analysis-execution-receipt-v2.json"
-BASE_A_RECEIPT_PIN_PATH = BASE_A_ARTIFACT_DIR / "analysis-execution-receipt-v2.sha256"
-BASE_A_FIRST_OUTPUT_PATH = BASE_A_ARTIFACT_DIR / "analysis-v2.json"
-BASE_A_SECOND_OUTPUT_PATH = BASE_A_ARTIFACT_DIR / "analysis-v2-repeat.json"
+BASE_A_RECEIPT_PATH = BASE_A_ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
+BASE_A_RECEIPT_PIN_PATH = BASE_A_ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
+BASE_A_FIRST_OUTPUT_PATH = BASE_A_ARTIFACT_DIR / "analysis-v3.json"
+BASE_A_SECOND_OUTPUT_PATH = BASE_A_ARTIFACT_DIR / "analysis-v3-repeat.json"
+BASE_A_RECEIPT_SCHEMA = (
+    "symbolic-search-heuristics/"
+    "pdb-terminal-incidence-confirmation-a-analysis/v3/double-execution"
+)
+BASE_A_ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-a-analysis-v3"
 BASE_B_FREEZE_PATH = BASE_CONFIRMATION_ARTIFACT_DIR / "confirmation-b-freeze-v1.json"
 BASE_B_ARTIFACT_DIR = BASE_CONFIRMATION_ARTIFACT_DIR / "confirmation-b"
 BASE_B_PARSE_RECEIPT_PATH = BASE_B_ARTIFACT_DIR / "parse-receipt-v1.json"
@@ -83,7 +88,7 @@ STANDALONE_SCHEMA = (
 )
 PLANNER_MANIFEST_SCHEMA = FREEZE_SCHEMA + "/planner-manifest"
 PROTOCOL = "pdb-terminal-metric-choice-measurement-v1"
-ANALYSIS_PROTOCOL = "pdb-terminal-metric-choice-analysis-v1"
+ANALYSIS_PROTOCOL = "pdb-terminal-metric-choice-analysis-v3"
 REQUIRED_PLANNER_REVISION = "8148f798f13059ee881ad2471bd20cdd61d2ec18"
 REQUIRED_SELECTOR_COMMIT = "ccc93bed78d4aa864c2e27d68d80461c1c20807c"
 DUAL_TRACE_SCHEMA = (
@@ -656,10 +661,8 @@ def validate_base_snapshot(snapshot: dict) -> None:
         _require_sha(authorization.get(field), "A authorization {}".format(field))
     if (
         authorization.get("benchmark_revision") != snapshot["benchmark_revision"]
-        or not isinstance(authorization.get("receipt_schema"), str)
-        or not authorization["receipt_schema"]
-        or not isinstance(authorization.get("analysis_protocol"), str)
-        or not authorization["analysis_protocol"]
+        or authorization.get("receipt_schema") != BASE_A_RECEIPT_SCHEMA
+        or authorization.get("analysis_protocol") != BASE_A_ANALYSIS_PROTOCOL
     ):
         raise ProtocolError("Confirmation A authorization metadata changed")
     validate_planner_identity(authorization.get("planner_identity"))

@@ -1,9 +1,9 @@
 # Terminal metric choice campaign protocol (v1)
 
-This campaign tests whether terminal incidence `I` or masked joint residual
-complexity `mJ` is the better predictor while holding every upstream choice
-fixed. It is a new layer and does not modify the Confirmation A/B protocol or
-launcher.
+This campaign tests whether using terminal incidence `I` rather than masked
+joint residual complexity `mJ` in an otherwise identical budget and selection
+rule improves end-to-end search while holding every upstream choice fixed. It
+is a new layer and does not modify the Confirmation A/B protocol or launcher.
 
 ## Authorization and sealing order
 
@@ -145,11 +145,18 @@ experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pd
 experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_analyzer.py
 ```
 
-All arms use the same 16 completed blind probe layers; fixed candidate pool;
-cap grid; materialization; terminal-incidence measurements; joint-residual
-measurements; and separate budgets `B_I` and `B_M` derived from the same
-standalone K=32 reference. Only the final chosen pointer changes. A short probe
-has no fallback and is not a complete campaign certificate.
+On tasks whose blind state space reaches 16 layers, all arms use the same
+completed blind probe layers; fixed candidate pool; cap grid; materialization;
+terminal-incidence measurements; joint-residual measurements; and separate
+budgets `B_I` and `B_M` derived from the same standalone K=32 reference. Only
+the final chosen pointer changes. If the blind state space yields fewer than
+16 layers, all three arms must expose the same certified three-event
+short-probe trace, exit `SEARCH_UNSUPPORTED` (34), record coverage 0, and
+perform no candidate selection or fallback. Such a symmetric short triad is a
+valid terminal campaign outcome: it is retained in both full-cohort contrasts
+as PAR2=3600 in every arm, supplies no metric winner, and is excluded only from
+the differing-winner subset. Any asymmetric status or short-trace mismatch
+fails the audit.
 
 ## Trace certification
 
@@ -178,12 +185,16 @@ events after a short probe, or any mismatch in:
   flag sets, both winners, and the mode-selected pointer;
 - complete identical incidence/joint work accounting and all bound hashes.
 
-The audit reruns the full parser from every stored outcome-free structural
-trace before comparing arms. It requires byte-equivalent normalized structural
-certificates across the three arms (timing/memory and the selected event are
-excluded), mandatory run/array/family/triad mapping fields, validated scheduler
-contract, exact standalone K=32 agreement, exact frozen mapping/provenance, and
-complete reconstructed hashes, work, references, winners, and pointers.
+The audit reruns the applicable complete or short parser from every stored
+outcome-free structural trace before comparing arms. It requires
+byte-equivalent normalized structural certificates across the three arms
+(timing/memory and, for complete traces, the selected event are excluded),
+mandatory run/array/family/triad mapping fields, validated scheduler contract,
+and exact frozen mapping/provenance. Complete triads additionally require exact
+standalone K=32 agreement and reconstructed hashes, work, references, winners,
+and pointers. Short triads require exact unsupported outcome metadata, forbid
+all candidate-selection fields, and retain only their common schema, variable
+order, and incomplete probe certificate.
 
 ## Registered analysis
 
@@ -199,7 +210,32 @@ four clauses hold:
 The same four clauses must hold on tasks where the reconstructed I and mJ
 winners differ, and that subset must contain at least 50 tasks from at least 10
 families. Incidence-guided versus matched K=32 is reported as secondary and
-cannot change the primary decision.
+cannot change the primary decision. Symmetric short-probe triads remain in
+both full-cohort contrasts as three equal PAR2 failures and are excluded from
+the differing-winner subset because they expose no winners.
+
+Before launch we fix a non-gating mechanism panel over the certified selector
+trace: treatment uptake and cap-versus-pattern changes; own-budget utilization,
+binding and cross-feasibility/retention; the frozen selection-score relation
+and first decisive score criterion among the two winners and reference;
+candidate-work counts; and phase
+overhead. Complete triads contribute these selector diagnostics once per task,
+not once per arm. Symmetric short probes contribute only support, completed
+layers and probe-overhead summaries. The trace contains neither exact
+partition effort `E` nor a final-search bucket trajectory, so this panel tests
+the selection mechanism and cannot establish fragmentation mediation. It is
+descriptive and cannot change the primary decision.
+
+The main paper will always report complete/short support, the I-versus-mJ
+winner-change rate among complete probes and cap-only-versus-pattern split, the
+higher/tied/lower
+frozen selection-score relation and decisive criterion on differing winners,
+own-budget utilization
+and binding, and paired differences in the sum of recorded probe and selection
+wall/CPU times. The supplement or artifact
+will always publish the complete selected-candidate source-set, cap and
+pattern-size histograms,
+irrespective of their direction.
 
 The parser, audit, and analyzer are deterministic except for the fixed-seed
 bootstrap. Synthetic unit tests are the only tests permitted before launch;

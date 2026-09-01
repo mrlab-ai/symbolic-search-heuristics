@@ -72,7 +72,7 @@ def _source_hashes(revision: str) -> dict[str, str]:
 
 def _require_clean_parent(revision: str | None) -> str:
     try:
-        if JJ.working_copy_diff_summary(REPO):
+        if JJ.live_working_copy_diff_summary(REPO):
             raise FreezeError("freeze requires a clean empty working-copy commit")
         parent = JJ.parent_commit(REPO)
     except JJ.JjCacheError as err:
@@ -80,31 +80,34 @@ def _require_clean_parent(revision: str | None) -> str:
     if revision is None:
         revision = parent
     if revision != parent or P.COMMIT_RE.fullmatch(revision) is None:
-        raise FreezeError("planner revision must be the clean working-copy parent")
+        raise FreezeError(
+            "freeze repository revision must be the clean working-copy parent"
+        )
     return revision
 
 
-def _tracked_source_v4_hashes(materials, revision: str) -> dict[str, str]:
+def _tracked_source_v5_hashes(materials, revision: str) -> dict[str, str]:
     hashes = dict(materials.tracked_file_sha256)
-    if len(hashes) != 26:
-        raise FreezeError("source-audit v4 bound file set changed")
+    if set(hashes) != set(P.SourceV5.SCOPED_FILES):
+        raise FreezeError("source-audit V5 bound file set changed")
     for relative, expected in hashes.items():
         path = REPO / relative
         _attest_tracked_file(
             path, expected, revision,
-            "source-audit v4 bound file {}".format(relative),
+            "source-audit V5 bound file {}".format(relative),
         )
     return hashes
 
 
 def _require_source_ancestor(materials, revision: str) -> None:
     try:
+        JJ.require_ancestor(REPO, P.PLANNER_REVISION_REQUIRED, revision)
         JJ.require_ancestor(
             REPO, materials.launch_receipt["repository_commit_id"], revision
         )
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "source-audit producer revision is not an ancestor of the freeze"
+            "planner 8148 or V5 producer is not an ancestor of the freeze"
         ) from err
 
 
@@ -113,27 +116,33 @@ def build_freeze(
     attestation: Path,
     execution_receipt: Path,
     launch_receipt: Path,
-    revision: str,
+    freeze_repository_revision: str,
 ) -> dict:
     P.validate_protocol_design()
     materials = P.load_source_materials(
         attestation, execution_receipt, launch_receipt
     )
-    _require_source_ancestor(materials, revision)
+    _require_source_ancestor(materials, freeze_repository_revision)
     for path, expected in (
         (materials.attestation_path, materials.attestation_sha256),
+        (materials.intent_path, materials.intent_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
     ):
-        _attest_tracked_file(path, expected, revision, "sealed source artifact")
-    tracked_file_sha256 = _tracked_source_v4_hashes(materials, revision)
+        _attest_tracked_file(
+            path, expected, freeze_repository_revision, "sealed V5 source artifact"
+        )
+    tracked_file_sha256 = _tracked_source_v5_hashes(
+        materials, freeze_repository_revision
+    )
     cached = JJ.JjCachedFastDownwardRevision(
-        REVISION_CACHE, REPO, revision, list(P.BUILD_OPTIONS)
+        REVISION_CACHE, REPO, P.PLANNER_REVISION_REQUIRED,
+        list(P.BUILD_OPTIONS)
     )
     cached.cache()
     planner = cached.attest()
     expected_planner = {
-        "revision": revision,
+        "revision": P.PLANNER_REVISION_REQUIRED,
         "build_options": list(P.BUILD_OPTIONS),
     }
     if any(planner.get(key) != value for key, value in expected_planner.items()):
@@ -152,9 +161,11 @@ def build_freeze(
         "attestation_path": _relative(materials.attestation_path),
         "execution_receipt_path": _relative(materials.execution_receipt_path),
         "launch_receipt_path": _relative(materials.launch_receipt_path),
+        "launch_intent_path": _relative(materials.intent_path),
         "attestation_sha256": materials.attestation_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
+        "launch_intent_sha256": materials.intent_sha256,
         "cohort_manifest_sha256": materials.cohort_manifest_sha256,
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
@@ -165,14 +176,14 @@ def build_freeze(
             "original_output_tree"
         ]["sha256"],
         "slurm_script_sha256": source_launch["slurm_script_sha256"],
-        "launch_intent_sha256": source_launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked_file_sha256,
     }
     return {
         "schema": P.FREEZE_SCHEMA,
+        "freeze_repository_revision": freeze_repository_revision,
         "source_audit": source_provenance,
         "planner": {
-            "revision": revision,
+            "revision": P.PLANNER_REVISION_REQUIRED,
             "cache_name": cached.name,
             "build_options": list(P.BUILD_OPTIONS),
             **{field: planner[field] for field in required_hashes},
@@ -187,7 +198,7 @@ def build_freeze(
             "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
             "bootstrap_seed": P.BOOTSTRAP_SEED,
         },
-        "experiment_source_sha256": _source_hashes(revision),
+        "experiment_source_sha256": _source_hashes(freeze_repository_revision),
     }
 
 
@@ -197,30 +208,35 @@ def _revalidate_before_write(
     attestation: Path,
     execution_receipt: Path,
     launch_receipt: Path,
-    revision: str,
+    freeze_repository_revision: str,
 ) -> None:
-    if _require_clean_parent(revision) != revision:
+    if _require_clean_parent(freeze_repository_revision) != freeze_repository_revision:
         raise FreezeError("freeze revision changed during planner caching")
     materials = P.load_source_materials(
         attestation, execution_receipt, launch_receipt
     )
-    _require_source_ancestor(materials, revision)
+    _require_source_ancestor(materials, freeze_repository_revision)
     for path, expected in (
         (materials.attestation_path, materials.attestation_sha256),
+        (materials.intent_path, materials.intent_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
     ):
-        _attest_tracked_file(path, expected, revision, "sealed source artifact")
-    tracked = _tracked_source_v4_hashes(materials, revision)
+        _attest_tracked_file(
+            path, expected, freeze_repository_revision, "sealed V5 source artifact"
+        )
+    tracked = _tracked_source_v5_hashes(materials, freeze_repository_revision)
     launch = materials.launch_receipt
     execution = materials.execution_receipt
     expected_sources = {
         "attestation_path": _relative(materials.attestation_path),
         "execution_receipt_path": _relative(materials.execution_receipt_path),
         "launch_receipt_path": _relative(materials.launch_receipt_path),
+        "launch_intent_path": _relative(materials.intent_path),
         "attestation_sha256": materials.attestation_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
+        "launch_intent_sha256": materials.intent_sha256,
         "cohort_manifest_sha256": materials.cohort_manifest_sha256,
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
@@ -231,12 +247,14 @@ def _revalidate_before_write(
             "original_output_tree"
         ]["sha256"],
         "slurm_script_sha256": launch["slurm_script_sha256"],
-        "launch_intent_sha256": launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked,
     }
     if value.get("source_audit") != expected_sources:
         raise FreezeError("source provenance changed during planner caching")
-    if value.get("experiment_source_sha256") != _source_hashes(revision):
+    if value.get("freeze_repository_revision") != freeze_repository_revision:
+        raise FreezeError("freeze repository revision changed during caching")
+    if value.get("experiment_source_sha256") != _source_hashes(
+            freeze_repository_revision):
         raise FreezeError("experiment sources changed during planner caching")
 
 
@@ -258,26 +276,26 @@ def parse_args(argv=None):
     parser.add_argument("--attestation", type=Path, required=True)
     parser.add_argument("--execution-receipt", type=Path, required=True)
     parser.add_argument("--launch-receipt", type=Path, required=True)
-    parser.add_argument("--planner-revision")
+    parser.add_argument("--freeze-repository-revision")
     parser.add_argument("--output", type=Path, default=P.FREEZE_PATH)
     return parser.parse_args(argv)
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
-    revision = _require_clean_parent(args.planner_revision)
+    revision = _require_clean_parent(args.freeze_repository_revision)
     value = build_freeze(
         attestation=args.attestation,
         execution_receipt=args.execution_receipt,
         launch_receipt=args.launch_receipt,
-        revision=revision,
+        freeze_repository_revision=revision,
     )
     _revalidate_before_write(
         value,
         attestation=args.attestation,
         execution_receipt=args.execution_receipt,
         launch_receipt=args.launch_receipt,
-        revision=revision,
+        freeze_repository_revision=revision,
     )
     digest = _write_exclusive(args.output, value)
     # Re-open through the exact runtime path when the default location is used.
@@ -286,7 +304,8 @@ def main(argv=None) -> int:
     print(json.dumps({
         "freeze": str(args.output),
         "freeze_sha256": digest,
-        "planner_revision": revision,
+        "planner_revision": P.PLANNER_REVISION_REQUIRED,
+        "freeze_repository_revision": revision,
         "cohort_manifest_sha256": value["source_audit"][
             "cohort_manifest_sha256"
         ],

@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from fractions import Fraction
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import analyze_pdb_terminal_incidence_confirmation_a as Analyze
@@ -21,7 +22,129 @@ import pdb_terminal_incidence_confirmation_a_protocol as P
 import recover_pdb_terminal_incidence_confirmation_a as Recover
 
 
+class PrepareJobTest(unittest.TestCase):
+    def test_base_renderer_writes_one_job_without_submission(self):
+        class FakeEnvironment:
+            def __init__(self):
+                self.job_dir = None
+                self.rendered = 0
+
+            def _get_job_name(self, step):
+                self.asserted_step = step
+                return Runner.EXPECTED_JOB_NAME
+
+            def _get_job(self, step, is_last):
+                self.rendered += 1
+                self.asserted_step = step
+                self.asserted_last = is_last
+                return "#! /bin/bash -l\nexit 0\n"
+
+            def _submit_job(self, *args, **kwargs):
+                raise AssertionError("prepare-job must not submit")
+
+        class FakeExperiment:
+            def __init__(self):
+                self.steps = [
+                    SimpleNamespace(name="build"),
+                    SimpleNamespace(name="start"),
+                ]
+                self.environment = FakeEnvironment()
+                self.build_calls = []
+
+            def build(self, *, write_to_disk):
+                self.build_calls.append(write_to_disk)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            experiment_path = root / "experiment"
+            experiment_path.mkdir()
+            receipt = root / "artifacts" / "launch-receipt.json"
+            fake = FakeExperiment()
+            cache = object()
+            with mock.patch.multiple(
+                Runner.Base,
+                P=P,
+                EXPERIMENT_PATH=experiment_path,
+                COHORT_ARCHIVE=root / "cohort",
+                VALIDATE_MATCHED_BUDGET_PROVENANCE=False,
+                BENCHMARK_SOURCE_VALIDATOR=lambda cohort: None,
+                LAUNCH_RECEIPT=receipt,
+                EXPECTED_JOB_NAME=Runner.EXPECTED_JOB_NAME,
+            ), mock.patch.object(
+                P, "validate_protocol_without_archive"
+            ), mock.patch.object(
+                P, "load_cohort", return_value=[]
+            ), mock.patch.object(
+                Runner.Base, "require_lab_8"
+            ), mock.patch.object(
+                Runner.Base, "require_pins"
+            ), mock.patch.object(
+                Runner.Base, "cached_revision", return_value=cache
+            ), mock.patch.object(
+                Runner.Base, "_validate_build_receipt"
+            ) as validate_build, mock.patch.object(
+                Runner.Base, "make_experiment", return_value=fake
+            ):
+                rendered = Runner.Base.prepare_start_job()
+                self.assertEqual(
+                    rendered,
+                    Path(str(experiment_path) + "-grid-steps")
+                    / Runner.EXPECTED_JOB_NAME,
+                )
+                self.assertEqual(
+                    rendered.read_text(), "#! /bin/bash -l\nexit 0\n"
+                )
+                self.assertEqual(fake.build_calls, [False])
+                self.assertEqual(fake.environment.rendered, 1)
+                self.assertTrue(fake.environment.asserted_last)
+                validate_build.assert_called_once_with(cache)
+
+    def test_wrapper_separates_build_and_job_rendering(self):
+        with mock.patch.object(Runner, "configure"), mock.patch.object(
+            Runner.Base, "main", return_value=0
+        ) as base_main, mock.patch.object(
+            Runner, "_sanitize_job_file"
+        ) as sanitize:
+            self.assertEqual(Runner.main(["build"]), 0)
+        base_main.assert_called_once_with(["build"])
+        sanitize.assert_not_called()
+
+        with mock.patch.object(Runner, "configure"), mock.patch.object(
+            Runner.Base, "prepare_start_job", return_value=Runner.JOB_FILE
+        ) as prepare, mock.patch.object(
+            Runner, "_sanitize_job_file"
+        ) as sanitize, mock.patch.object(
+            Runner, "_validate_job_file", return_value="a" * 64
+        ):
+            self.assertEqual(Runner.main(["prepare-job"]), 0)
+        prepare.assert_called_once_with()
+        sanitize.assert_called_once_with()
+
+
 class SchedulerContractTest(unittest.TestCase):
+    def test_launch_clean_commit_uses_live_working_copy_snapshot(self):
+        revision = "4" * 40
+        with mock.patch.object(
+            Runner.JJ, "live_working_copy_diff_summary", return_value="",
+        ) as live, mock.patch.object(
+            Runner.JJ, "parent_commit", return_value=revision,
+        ) as parent, mock.patch.object(
+            Runner, "_require_repository_ancestry",
+        ) as ancestry:
+            self.assertEqual(Runner._clean_repository_commit(), revision)
+        live.assert_called_once_with(Runner.REPO)
+        parent.assert_called_once_with(Runner.REPO)
+        ancestry.assert_called_once_with(revision)
+        with mock.patch.object(
+            Runner.JJ, "live_working_copy_diff_summary", return_value="M source",
+        ), mock.patch.object(
+            Runner.JJ, "parent_commit",
+        ) as parent, self.assertRaisesRegex(
+            Runner.ConfirmationLaunchError, "clean working copy"
+        ):
+            Runner._clean_repository_commit()
+        parent.assert_not_called()
+
     def row(self, state, exit_code="0:0", task=1):
         return {"array_task": task, "state": state, "exit_code": exit_code}
 
@@ -563,15 +686,17 @@ class JobHeaderTest(unittest.TestCase):
 
 
 def _comparison(
-    i_value=0.70, control_value=0.60, families=10, pairs=100, tasks=50
+    i_value=0.70, control_value=0.60, d_value=None,
+    families=10, pairs=100, tasks=50,
 ):
     i_value = Fraction(str(i_value))
     control_value = Fraction(str(control_value))
+    d_value = control_value if d_value is None else Fraction(str(d_value))
     family_names = ["family-{:02d}".format(i) for i in range(families)]
 
     predictors = {}
-    for key in Analyze.Original.PREDICTORS:
-        value = i_value if key == "I" else control_value
+    for key in P.PREDICTORS:
+        value = i_value if key == "I" else d_value if key == "D" else control_value
         predictors[key] = {
             "equal_family": {
                 "macro": Analyze.Original._fraction_record(value)
@@ -623,8 +748,12 @@ class AnalysisGateTest(unittest.TestCase):
         )
         with mock.patch.object(
             Analyze.Original, "P", P
-        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
-            gate = Analyze.Original.primary_gates(comparison, 300, 25)
+        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100), (
+            Analyze._ordering_predictors(True)
+        ):
+            gate = Analyze.Original.primary_gates(
+                comparison, 300, 25
+            )
         self.assertTrue(gate["pass"])
         self.assertEqual(
             gate["support"]["comparison_pair_definition"], "target_strict"
@@ -632,9 +761,30 @@ class AnalysisGateTest(unittest.TestCase):
         comparison["support"]["target_strict"] = 599
         with mock.patch.object(
             Analyze.Original, "P", P
-        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100), (
+            Analyze._ordering_predictors(True)
+        ):
             gate = Analyze.Original.primary_gates(comparison, 300, 25)
         self.assertFalse(gate["support"]["pass"])
+
+    def test_masked_add_size_independently_gates_both_confirmations(self):
+        comparison = _comparison(
+            d_value=0.70, families=25, pairs=600, tasks=300
+        )
+        with mock.patch.object(
+            Analyze.Original, "P", P
+        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100), (
+            Analyze._ordering_predictors(True)
+        ):
+            primary = Analyze.Original.primary_gates(comparison, 300, 25)
+        self.assertFalse(primary["pass"])
+        self.assertFalse(primary["controls"]["D"]["pass"])
+
+        comparison = _comparison(d_value=0.70)
+        with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            stratum = Analyze._stratum_gate(comparison)
+        self.assertFalse(stratum["pass"])
+        self.assertFalse(stratum["controls"]["D"]["pass"])
 
     def test_new_family_gate_passes_only_strict_control_advantages(self):
         with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
@@ -667,7 +817,7 @@ class AnalysisGateTest(unittest.TestCase):
                 "lower_95": {"numerator": 0, "denominator": 1},
                 "upper_95": {"numerator": 1, "denominator": 10},
             }
-            for control in Analyze.Original.CONTROLS
+            for control in P.PREDICTOR_BASELINES
         }
         with mock.patch.object(
             Analyze.Original, "_bootstrap_differences",
@@ -688,29 +838,32 @@ class AnalysisGateTest(unittest.TestCase):
         )
 
     def test_target_strict_comparison_scores_predictor_ties_half(self):
-        predictors = Analyze.Original.PREDICTORS
+        predictors = P.PREDICTORS
 
-        def observation(semantic_id, target, primary, kd, other):
+        def observation(semantic_id, target, primary, d_value, kd, other):
             row = {
                 "semantic_id": semantic_id,
                 "U": 10,
                 "E": target,
                 "I": primary,
+                "D": d_value,
                 "kD": kd,
             }
-            row.update({key: other for key in predictors[2:]})
+            row.update({key: other for key in P.CERTIFICATE_BASELINES[1:]})
             return row
 
         grouped = {("directory", "p01.pddl"): {
-            "a": observation("a", 1, 1, 1, 1),
-            "b": observation("b", 2, 2, 1, 2),
-            "c": observation("c", 2, 3, 1, 3),
+            "a": observation("a", 1, 1, 1, 1, 1),
+            "b": observation("b", 2, 2, 1, 1, 2),
+            "c": observation("c", 2, 3, 1, 1, 3),
         }}
         with mock.patch.object(Analyze.Original, "P", P), mock.patch.object(
             P, "DIRECTORY_TO_FAMILY", {"directory": "family"}
-        ), mock.patch.object(P, "DIRECTORIES", ("directory",)):
-            tie_aware = Analyze.Original.target_strict_tie_aware_comparison(
-                grouped
+        ), mock.patch.object(P, "DIRECTORIES", ("directory",)), (
+            Analyze._ordering_predictors(True)
+        ):
+            tie_aware = (
+                Analyze.Original.target_strict_tie_aware_comparison(grouped)
             )
             strict = Analyze.Original.grand_shared_comparison(grouped)
         self.assertEqual(tie_aware["support"]["semantic_pairs"], 3)
@@ -718,6 +871,7 @@ class AnalysisGateTest(unittest.TestCase):
         self.assertEqual(tie_aware["support"]["target_strict"], 2)
         self.assertEqual(tie_aware["predictors"]["I"]["comparable"], 2)
         self.assertEqual(tie_aware["predictors"]["kD"]["tied"], 2)
+        self.assertEqual(tie_aware["predictors"]["D"]["tied"], 2)
         self.assertEqual(
             tie_aware["predictors"]["kD"]["micro_concordance"],
             {"numerator": 1, "denominator": 2, "value": 0.5},
@@ -729,14 +883,14 @@ class AnalysisGateTest(unittest.TestCase):
         self.assertEqual(strict["support"].get("grand_shared_strict", 0), 0)
 
     def test_top_choice_regret_averages_predictor_ties(self):
-        predictors = Analyze.Original.PREDICTORS
+        predictors = P.PREDICTORS
         left = {
-            "semantic_id": "a", "E": 1, "I": 1, "kD": 1,
-            **{key: 2 for key in predictors[2:]},
+            "semantic_id": "a", "E": 1, "I": 1, "D": 2, "kD": 1,
+            **{key: 2 for key in P.CERTIFICATE_BASELINES[1:]},
         }
         right = {
-            "semantic_id": "b", "E": 3, "I": 2, "kD": 1,
-            **{key: 1 for key in predictors[2:]},
+            "semantic_id": "b", "E": 3, "I": 2, "D": 1, "kD": 1,
+            **{key: 1 for key in P.CERTIFICATE_BASELINES[1:]},
         }
         grouped = {("directory", "p01.pddl"): {"a": left, "b": right}}
         with mock.patch.object(
@@ -756,6 +910,37 @@ class AnalysisGateTest(unittest.TestCase):
             result["predictors"]["kD"]["top_choice_tie_rate"],
             {"numerator": 1, "denominator": 1, "value": 1.0},
         )
+        self.assertEqual(
+            result["predictors"]["D"]["equal_family_normalized_regret"],
+            {"numerator": 1, "denominator": 1, "value": 1.0},
+        )
+
+    def test_masked_add_size_is_reconstructed_from_certified_layers(self):
+        observation = {
+            "E": 10,
+            "I": 12,
+            "masked_add_node_sum": 7,
+            "layers": [
+                {"masked_add_nodes": 3},
+                {"masked_add_nodes": 4},
+            ],
+        }
+        primary = {"observations": [observation]}
+        Analyze._add_masked_add_size(primary)
+        self.assertGreater(observation["E"], observation["D"])
+        self.assertEqual(observation["D"], 7)
+        self.assertEqual([row["D"] for row in observation["layers"]], [3, 4])
+
+        malformed = {
+            "observations": [{
+                "masked_add_node_sum": 8,
+                "layers": [{"masked_add_nodes": 7}],
+            }]
+        }
+        with self.assertRaisesRegex(
+            Analyze.ConfirmationAnalysisError, "differs"
+        ):
+            Analyze._add_masked_add_size(malformed)
 
     def test_double_analysis_publishes_only_identical_bytes(self):
         result = {

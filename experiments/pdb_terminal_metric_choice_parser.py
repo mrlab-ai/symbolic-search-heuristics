@@ -1184,6 +1184,34 @@ def certify_trace(content: str, mode: str) -> dict:
         raise TraceError("dual selector trace contains a malformed value") from err
 
 
+def certify_short_structural_trace(
+    structural_trace: list[dict], mode: str,
+) -> dict:
+    """Re-run the short-probe parser from its stored outcome-free structure."""
+    if not isinstance(structural_trace, list) or len(structural_trace) != 3:
+        raise TraceError("dual selector short structural trace is incomplete")
+    structural = copy.deepcopy(structural_trace)
+    if any(not isinstance(event, dict) for event in structural):
+        raise TraceError(
+            "dual selector short structural trace contains a non-object"
+        )
+    structural[2].update({
+        "cpu_seconds": 0.0, "wall_seconds": 0.0,
+        "peak_memory_before_kb": 0, "peak_memory_after_kb": 0,
+        "peak_memory_delta_kb": 0,
+    })
+    content = "".join(
+        json.dumps(event, separators=(",", ":"), ensure_ascii=True) + "\n"
+        for event in structural
+    )
+    result = certify_trace(content, mode)
+    if result["status"] != "short_probe" or not _same_json(
+        result["structural_trace"], structural_trace
+    ):
+        raise TraceError("dual selector short structural replay changed")
+    return result
+
+
 def certify_structural_trace(
     structural_trace: list[dict], mode: str, selected_identity: dict,
 ) -> dict:
@@ -1288,6 +1316,10 @@ def parse_selector_trace(content, props) -> None:
             type(props.get("coverage")) is not int,
             props.get("coverage") not in (0, 1),
             props.get("planner_exit_code") == 34,
+            props.get("coverage") == 1
+            and props.get("planner_exit_code") != 0,
+            props.get("coverage") == 0
+            and props.get("planner_exit_code") == 0,
         )):
             raise TraceError("complete trace has malformed outcome metadata")
         _set_result(props, result, certified=True)

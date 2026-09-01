@@ -72,7 +72,7 @@ def _source_hashes(revision: str) -> dict[str, str]:
 
 def _require_clean_parent(revision: str | None) -> str:
     try:
-        if JJ.working_copy_diff_summary(REPO):
+        if JJ.live_working_copy_diff_summary(REPO):
             raise FreezeError("freeze requires a clean empty working-copy commit")
         parent = JJ.parent_commit(REPO)
     except JJ.JjCacheError as err:
@@ -80,31 +80,34 @@ def _require_clean_parent(revision: str | None) -> str:
     if revision is None:
         revision = parent
     if revision != parent or P.COMMIT_RE.fullmatch(revision) is None:
-        raise FreezeError("planner revision must be the clean working-copy parent")
+        raise FreezeError(
+            "freeze repository revision must be the clean working-copy parent"
+        )
     return revision
 
 
-def _tracked_source_v4_hashes(materials, revision: str) -> dict[str, str]:
+def _tracked_source_v5_hashes(materials, revision: str) -> dict[str, str]:
     hashes = dict(materials.tracked_file_sha256)
-    if len(hashes) != 26:
-        raise FreezeError("source-audit v4 bound file set changed")
+    if set(hashes) != set(P.SourceValidation.SourceV5.SCOPED_FILES):
+        raise FreezeError("source-audit V5 bound file set changed")
     for relative, expected in hashes.items():
         path = REPO / relative
         _attest_tracked_file(
             path, expected, revision,
-            "source-audit v4 bound file {}".format(relative),
+            "source-audit V5 bound file {}".format(relative),
         )
     return hashes
 
 
 def _require_source_ancestor(materials, revision: str) -> None:
     try:
+        JJ.require_ancestor(REPO, P.PLANNER_REVISION_REQUIRED, revision)
         JJ.require_ancestor(
             REPO, materials.launch_receipt["repository_commit_id"], revision
         )
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "source-audit producer revision is not an ancestor of the freeze"
+            "planner 8148 or V5 producer is not an ancestor of the freeze"
         ) from err
 
 
@@ -117,13 +120,13 @@ def build_freeze(
     confirmation_a_receipt_pin: Path,
     confirmation_a_first_output: Path,
     confirmation_a_second_output: Path,
-    revision: str,
+    freeze_repository_revision: str,
 ) -> dict:
     P.validate_static_design()
     materials = P.load_source_materials(
         attestation, execution_receipt, launch_receipt
     )
-    _require_source_ancestor(materials, revision)
+    _require_source_ancestor(materials, freeze_repository_revision)
     authorization = P.load_confirmation_a_authorization(
         confirmation_a_receipt,
         confirmation_a_receipt_pin,
@@ -133,11 +136,16 @@ def build_freeze(
     P._validate_confirmation_a_source_link(authorization, materials)
     for path, expected in (
         (materials.attestation_path, materials.attestation_sha256),
+        (materials.intent_path, materials.intent_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
     ):
-        _attest_tracked_file(path, expected, revision, "sealed source artifact")
-    tracked_file_sha256 = _tracked_source_v4_hashes(materials, revision)
+        _attest_tracked_file(
+            path, expected, freeze_repository_revision, "sealed V5 source artifact"
+        )
+    tracked_file_sha256 = _tracked_source_v5_hashes(
+        materials, freeze_repository_revision
+    )
     authorization_hashes = {
         authorization["receipt_path"]: authorization["receipt_sha256"],
         authorization["first_output_path"]: authorization[
@@ -152,15 +160,17 @@ def build_freeze(
     }
     for path, expected in authorization_hashes.items():
         _attest_tracked_file(
-            path, expected, revision, "Confirmation A authorization"
+            path, expected, freeze_repository_revision,
+            "Confirmation A authorization"
         )
     cached = JJ.JjCachedFastDownwardRevision(
-        REVISION_CACHE, REPO, revision, list(P.BUILD_OPTIONS)
+        REVISION_CACHE, REPO, P.PLANNER_REVISION_REQUIRED,
+        list(P.BUILD_OPTIONS)
     )
     cached.cache()
     planner = cached.attest()
     expected_planner = {
-        "revision": revision,
+        "revision": P.PLANNER_REVISION_REQUIRED,
         "build_options": list(P.BUILD_OPTIONS),
     }
     if any(planner.get(key) != value for key, value in expected_planner.items()):
@@ -173,15 +183,27 @@ def build_freeze(
         for field in required_hashes
     ):
         raise FreezeError("planner cache attestation is incomplete")
+    planner_identity = {
+        "revision": P.PLANNER_REVISION_REQUIRED,
+        "cache_name": cached.name,
+        "build_options": list(P.BUILD_OPTIONS),
+        **{field: planner[field] for field in required_hashes},
+    }
+    if authorization.get("planner_identity") != planner_identity:
+        raise FreezeError(
+            "Confirmation A and B do not use the exact same planner"
+        )
     source_launch = materials.launch_receipt
     source_execution = materials.execution_receipt
     source_provenance = {
         "attestation_path": _relative(materials.attestation_path),
         "execution_receipt_path": _relative(materials.execution_receipt_path),
         "launch_receipt_path": _relative(materials.launch_receipt_path),
+        "launch_intent_path": _relative(materials.intent_path),
         "attestation_sha256": materials.attestation_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
+        "launch_intent_sha256": materials.intent_sha256,
         "cohort_manifest_sha256": materials.cohort_manifest_sha256,
         "confirmation_a_cohort_manifest_sha256": (
             materials.confirmation_a_cohort_manifest_sha256
@@ -195,7 +217,6 @@ def build_freeze(
             "original_output_tree"
         ]["sha256"],
         "slurm_script_sha256": source_launch["slurm_script_sha256"],
-        "launch_intent_sha256": source_launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked_file_sha256,
     }
     authorization_provenance = {
@@ -215,14 +236,10 @@ def build_freeze(
     array_tasks = (cells + P.RUNS_PER_ARRAY_TASK - 1) // P.RUNS_PER_ARRAY_TASK
     return {
         "schema": P.FREEZE_SCHEMA,
+        "freeze_repository_revision": freeze_repository_revision,
         "source_audit": source_provenance,
         "confirmation_a_authorization": authorization_provenance,
-        "planner": {
-            "revision": revision,
-            "cache_name": cached.name,
-            "build_options": list(P.BUILD_OPTIONS),
-            **{field: planner[field] for field in required_hashes},
-        },
+        "planner": planner_identity,
         "design": {
             "protocol_sha256": P.sha256_file(P.PROTOCOL_PATH),
             "option_matrix_sha256": P.option_matrix_digest(),
@@ -248,7 +265,7 @@ def build_freeze(
                 P.NON_GATING_REFERENCE_LABELS
             ),
         },
-        "experiment_source_sha256": _source_hashes(revision),
+        "experiment_source_sha256": _source_hashes(freeze_repository_revision),
     }
 
 
@@ -262,14 +279,14 @@ def _revalidate_before_write(
     confirmation_a_receipt_pin: Path,
     confirmation_a_first_output: Path,
     confirmation_a_second_output: Path,
-    revision: str,
+    freeze_repository_revision: str,
 ) -> None:
-    if _require_clean_parent(revision) != revision:
+    if _require_clean_parent(freeze_repository_revision) != freeze_repository_revision:
         raise FreezeError("freeze revision changed during planner caching")
     materials = P.load_source_materials(
         attestation, execution_receipt, launch_receipt
     )
-    _require_source_ancestor(materials, revision)
+    _require_source_ancestor(materials, freeze_repository_revision)
     authorization = P.load_confirmation_a_authorization(
         confirmation_a_receipt,
         confirmation_a_receipt_pin,
@@ -279,11 +296,14 @@ def _revalidate_before_write(
     P._validate_confirmation_a_source_link(authorization, materials)
     for path, expected in (
         (materials.attestation_path, materials.attestation_sha256),
+        (materials.intent_path, materials.intent_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
     ):
-        _attest_tracked_file(path, expected, revision, "sealed source artifact")
-    tracked = _tracked_source_v4_hashes(materials, revision)
+        _attest_tracked_file(
+            path, expected, freeze_repository_revision, "sealed V5 source artifact"
+        )
+    tracked = _tracked_source_v5_hashes(materials, freeze_repository_revision)
     authorization_hashes = {
         authorization["receipt_path"]: authorization["receipt_sha256"],
         authorization["first_output_path"]: authorization[
@@ -298,7 +318,8 @@ def _revalidate_before_write(
     }
     for path, expected in authorization_hashes.items():
         _attest_tracked_file(
-            path, expected, revision, "Confirmation A authorization"
+            path, expected, freeze_repository_revision,
+            "Confirmation A authorization"
         )
     launch = materials.launch_receipt
     execution = materials.execution_receipt
@@ -306,9 +327,11 @@ def _revalidate_before_write(
         "attestation_path": _relative(materials.attestation_path),
         "execution_receipt_path": _relative(materials.execution_receipt_path),
         "launch_receipt_path": _relative(materials.launch_receipt_path),
+        "launch_intent_path": _relative(materials.intent_path),
         "attestation_sha256": materials.attestation_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
+        "launch_intent_sha256": materials.intent_sha256,
         "cohort_manifest_sha256": materials.cohort_manifest_sha256,
         "confirmation_a_cohort_manifest_sha256": (
             materials.confirmation_a_cohort_manifest_sha256
@@ -322,7 +345,6 @@ def _revalidate_before_write(
             "original_output_tree"
         ]["sha256"],
         "slurm_script_sha256": launch["slurm_script_sha256"],
-        "launch_intent_sha256": launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked,
     }
     expected_authorization = {
@@ -341,7 +363,12 @@ def _revalidate_before_write(
         raise FreezeError("source provenance changed during planner caching")
     if value.get("confirmation_a_authorization") != expected_authorization:
         raise FreezeError("Confirmation A authorization changed during caching")
-    if value.get("experiment_source_sha256") != _source_hashes(revision):
+    if authorization.get("planner_identity") != value.get("planner"):
+        raise FreezeError("Confirmation A/B planner identity changed during caching")
+    if value.get("freeze_repository_revision") != freeze_repository_revision:
+        raise FreezeError("freeze repository revision changed during caching")
+    if value.get("experiment_source_sha256") != _source_hashes(
+            freeze_repository_revision):
         raise FreezeError("experiment sources changed during planner caching")
 
 
@@ -379,14 +406,14 @@ def parse_args(argv=None):
         "--confirmation-a-second-output", type=Path,
         default=P.CONFIRMATION_A_SECOND_OUTPUT_PATH,
     )
-    parser.add_argument("--planner-revision")
+    parser.add_argument("--freeze-repository-revision")
     parser.add_argument("--output", type=Path, default=P.FREEZE_PATH)
     return parser.parse_args(argv)
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
-    revision = _require_clean_parent(args.planner_revision)
+    revision = _require_clean_parent(args.freeze_repository_revision)
     value = build_freeze(
         attestation=args.attestation,
         execution_receipt=args.execution_receipt,
@@ -395,7 +422,7 @@ def main(argv=None) -> int:
         confirmation_a_receipt_pin=args.confirmation_a_receipt_pin,
         confirmation_a_first_output=args.confirmation_a_first_output,
         confirmation_a_second_output=args.confirmation_a_second_output,
-        revision=revision,
+        freeze_repository_revision=revision,
     )
     _revalidate_before_write(
         value,
@@ -406,7 +433,7 @@ def main(argv=None) -> int:
         confirmation_a_receipt_pin=args.confirmation_a_receipt_pin,
         confirmation_a_first_output=args.confirmation_a_first_output,
         confirmation_a_second_output=args.confirmation_a_second_output,
-        revision=revision,
+        freeze_repository_revision=revision,
     )
     digest = _write_exclusive(args.output, value)
     # Re-open through the exact runtime path when the default location is used.
@@ -415,7 +442,8 @@ def main(argv=None) -> int:
     print(json.dumps({
         "freeze": str(args.output),
         "freeze_sha256": digest,
-        "planner_revision": revision,
+        "planner_revision": P.PLANNER_REVISION_REQUIRED,
+        "freeze_repository_revision": revision,
         "cohort_manifest_sha256": value["source_audit"][
             "cohort_manifest_sha256"
         ],

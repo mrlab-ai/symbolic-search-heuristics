@@ -26,6 +26,35 @@ CELLS = 9 * TASKS
 ARRAY_TASKS = CELLS // 3
 
 
+class PrepareJobCommandTest(unittest.TestCase):
+    def test_wrapper_separates_build_and_job_rendering(self):
+        with mock.patch.object(Runner, "configure"), mock.patch.object(
+            Runner.Base, "main", return_value=0
+        ) as base_main, mock.patch.object(
+            Runner, "_sanitize_job_file"
+        ) as sanitize, mock.patch.object(
+            Runner, "_validate_generated_run_mapping"
+        ) as mapping:
+            self.assertEqual(Runner.main(["build"]), 0)
+        base_main.assert_called_once_with(["build"])
+        sanitize.assert_not_called()
+        mapping.assert_not_called()
+
+        with mock.patch.object(Runner, "configure"), mock.patch.object(
+            Runner.Base, "prepare_start_job", return_value=Runner.JOB_FILE
+        ) as prepare, mock.patch.object(
+            Runner, "_sanitize_job_file"
+        ) as sanitize, mock.patch.object(
+            Runner, "_validate_job_file", return_value="a" * 64
+        ), mock.patch.object(
+            Runner, "_validate_generated_run_mapping", return_value="b" * 64
+        ) as mapping:
+            self.assertEqual(Runner.main(["prepare-job"]), 0)
+        prepare.assert_called_once_with()
+        sanitize.assert_called_once_with()
+        self.assertEqual(mapping.call_count, 2)
+
+
 class FrozenCardinality:
     def __enter__(self):
         self.stack = ExitStack()
@@ -49,6 +78,29 @@ class FrozenCardinality:
 
 
 class SchedulerContractTest(unittest.TestCase):
+    def test_launch_clean_commit_uses_live_working_copy_snapshot(self):
+        revision = "4" * 40
+        with mock.patch.object(
+            Runner.JJ, "live_working_copy_diff_summary", return_value="",
+        ) as live, mock.patch.object(
+            Runner.JJ, "parent_commit", return_value=revision,
+        ) as parent, mock.patch.object(
+            Runner, "_require_repository_ancestry",
+        ) as ancestry:
+            self.assertEqual(Runner._clean_repository_commit(), revision)
+        live.assert_called_once_with(Runner.REPO)
+        parent.assert_called_once_with(Runner.REPO)
+        ancestry.assert_called_once_with(revision)
+        with mock.patch.object(
+            Runner.JJ, "live_working_copy_diff_summary", return_value="M source",
+        ), mock.patch.object(
+            Runner.JJ, "parent_commit",
+        ) as parent, self.assertRaisesRegex(
+            Runner.ConfirmationLaunchError, "clean working copy"
+        ):
+            Runner._clean_repository_commit()
+        parent.assert_not_called()
+
     @staticmethod
     def row(state, exit_code="0:0", task=1):
         return {"array_task": task, "state": state, "exit_code": exit_code}

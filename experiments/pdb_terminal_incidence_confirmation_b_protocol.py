@@ -37,16 +37,16 @@ CONFIRMATION_A_ARTIFACT_DIR = (
     "confirmation-a"
 )
 CONFIRMATION_A_RECEIPT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v2.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
 )
 CONFIRMATION_A_RECEIPT_PIN_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v2.sha256"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
 )
 CONFIRMATION_A_FIRST_OUTPUT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v2.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v3.json"
 )
 CONFIRMATION_A_SECOND_OUTPUT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v2-repeat.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v3-repeat.json"
 )
 SOURCE_AUDIT_SCHEMA = (
     "symbolic-search-heuristics/"
@@ -64,6 +64,7 @@ ACCOUNT = "naiss2025-5-561-cpu"
 REQUIRED_LAB_VERSION = "8.10"
 REQUIRED_PYTHON_VERSION = "3.12.13"
 BUILD_OPTIONS = ("release_no_lp",)
+PLANNER_REVISION_REQUIRED = SourceValidation.PLANNER_REVISION_REQUIRED
 
 MIN_COHORT_TASKS = 300
 TARGET_COHORT_TASKS = 300
@@ -538,6 +539,8 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
+    "experiments/pdb_terminal_incidence_confirmation_safe_io_v5.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
     "experiments/pdb_terminal_incidence_selector_parser.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
@@ -563,9 +566,11 @@ class CohortTask:
 @dataclass(frozen=True)
 class SourceMaterials:
     attestation_path: Path
+    intent_path: Path
     execution_receipt_path: Path
     launch_receipt_path: Path
     attestation_sha256: str
+    intent_sha256: str
     execution_receipt_sha256: str
     launch_receipt_sha256: str
     cohort_manifest_sha256: str
@@ -659,6 +664,7 @@ def load_confirmation_a_authorization(
         "confirmation_a_cohort_manifest_sha256": (
             ConfirmationA.P.COHORT_MANIFEST_SHA256
         ),
+        "planner_identity": receipt["planner_identity"],
     }
 
 
@@ -680,6 +686,17 @@ def _validate_confirmation_a_source_link(
         raise ProtocolError(
             "Confirmation A authorization is not linked to B source audit"
         )
+
+
+def _planner_identity(planner: dict) -> dict:
+    return {
+        "revision": planner.get("revision"),
+        "cache_name": planner.get("cache_name"),
+        "build_options": planner.get("build_options"),
+        "downward_sha256": planner.get("downward_sha256"),
+        "preprocess_sha256": planner.get("preprocess_sha256"),
+        "tree_manifest_sha256": planner.get("tree_manifest_sha256"),
+    }
 
 
 def _validate_task(task: dict) -> None:
@@ -799,7 +816,7 @@ def _validate_v4_scheduler_contract_rows(
         raise ProtocolError(str(err)) from err
 
 
-def load_source_materials(
+def _load_source_materials_v4_obsolete(
     attestation_path: Path,
     execution_receipt_path: Path,
     launch_receipt_path: Path,
@@ -1137,9 +1154,11 @@ def load_source_materials(
         raise ProtocolError("source launch job ID is invalid")
     return SourceMaterials(
         attestation_path=attestation_path,
+        intent_path=SOURCE_V4_INTENT_PATH,
         execution_receipt_path=execution_receipt_path,
         launch_receipt_path=launch_receipt_path,
         attestation_sha256=attestation_sha,
+        intent_sha256=SOURCE_V4_LAUNCH_INTENT_SHA256,
         execution_receipt_sha256=execution_sha,
         launch_receipt_sha256=launch_sha,
         cohort_manifest_sha256=cohort_sha,
@@ -1157,24 +1176,154 @@ def load_source_materials(
     )
 
 
+def load_source_materials(
+    attestation_path: Path,
+    execution_receipt_path: Path,
+    launch_receipt_path: Path,
+) -> SourceMaterials:
+    """Use A's shared V5 validator, then project the sealed guided-B cohort."""
+    try:
+        source = SourceValidation.load_source_materials(
+            attestation_path, execution_receipt_path, launch_receipt_path
+        )
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
+    attestation = source.attestation
+    inventory = source.inventory
+    execution = source.execution_receipt
+    cohort = attestation.get("cohorts", {}).get("guided_b")
+    tasks = cohort.get("tasks") if isinstance(cohort, dict) else None
+    if (
+        not isinstance(tasks, list)
+        or len(tasks) != TARGET_COHORT_TASKS
+        or cohort.get("role") != "guided-b"
+        or cohort.get("top_up_role") != "guided-b-topup"
+        or not _same_exact(cohort.get("target_tasks"), TARGET_COHORT_TASKS)
+        or not _same_exact(cohort.get("max_tasks_per_family"), 12)
+    ):
+        raise ProtocolError("V5 source audit has the wrong Confirmation B cohort")
+    try:
+        for task in tasks:
+            _validate_task(task)
+            SourceValidation._validate_task_inventory_binding(task, inventory)
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
+    candidate_indexes = [task["candidate_index"] for task in tasks]
+    identities = [(task["directory"], task["problem"]) for task in tasks]
+    problem_hashes = [task["problem_sha256"] for task in tasks]
+    if (
+        len(set(candidate_indexes)) != len(tasks)
+        or len(set(identities)) != len(tasks)
+        or len(set(problem_hashes)) != len(tasks)
+        or max(Counter(task["family"] for task in tasks).values()) > 12
+    ):
+        raise ProtocolError("Confirmation B V5 source identities changed")
+    cohort_sha = hashlib.sha256(canonical_json_line(tasks)).hexdigest()
+    confirmation = attestation.get("cohorts", {}).get("confirmation_a")
+    confirmation_tasks = (
+        confirmation.get("tasks") if isinstance(confirmation, dict) else None
+    )
+    if not isinstance(confirmation_tasks, list):
+        raise ProtocolError("V5 source audit lacks the disjoint A cohort")
+    confirmation_sha = hashlib.sha256(
+        canonical_json_line(confirmation_tasks)
+    ).hexdigest()
+    confirmation_indexes = {
+        task["candidate_index"] for task in confirmation_tasks
+    }
+    confirmation_identities = {
+        (task["directory"], task["problem"]) for task in confirmation_tasks
+    }
+    confirmation_hashes = {
+        task["problem_sha256"] for task in confirmation_tasks
+    }
+    if (
+        confirmation_sha != source.cohort_manifest_sha256
+        or cohort.get("tasks_sha256") != cohort_sha
+        or execution.get("cohort_manifest_sha256") != {
+            "confirmation_a": confirmation_sha, "guided_b": cohort_sha,
+        }
+        or set(candidate_indexes) & confirmation_indexes
+        or set(identities) & confirmation_identities
+        or set(problem_hashes) & confirmation_hashes
+    ):
+        raise ProtocolError("V5 source audit A/B disjointness changed")
+    directory_to_family = {}
+    for task in tasks:
+        previous = directory_to_family.setdefault(task["directory"], task["family"])
+        if previous != task["family"]:
+            raise ProtocolError("V5 source audit maps one directory twice")
+    shadow = source.shadow_unrepresented_families
+    all_prior = source.all_prior_unrepresented_families
+    shadow_set = set(shadow)
+    all_prior_set = set(all_prior)
+    for task in tasks:
+        if (
+            task["is_shadow_unrepresented"] != (task["family"] in shadow_set)
+            or task["is_all_prior_unrepresented"]
+            != (task["family"] in all_prior_set)
+        ):
+            raise ProtocolError("V5 guided task stratum flag changed")
+    families = {task["family"] for task in tasks}
+    shadow_families = {
+        task["family"] for task in tasks if task["is_shadow_unrepresented"]
+    }
+    all_prior_tasks = [task for task in tasks if task["is_all_prior_unrepresented"]]
+    if (
+        len(families) < MIN_COHORT_FAMILIES
+        or len(shadow_families) < MIN_SHADOW_UNREPRESENTED_FAMILIES
+        or len(all_prior_tasks) < MIN_ALL_PRIOR_UNREPRESENTED_TASKS
+        or len({task["family"] for task in all_prior_tasks})
+        < MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES
+    ):
+        raise ProtocolError("Confirmation B V5 source-support floor changed")
+    return SourceMaterials(
+        attestation_path=source.attestation_path,
+        intent_path=source.intent_path,
+        execution_receipt_path=source.execution_receipt_path,
+        launch_receipt_path=source.launch_receipt_path,
+        attestation_sha256=source.attestation_sha256,
+        intent_sha256=source.intent_sha256,
+        execution_receipt_sha256=source.execution_receipt_sha256,
+        launch_receipt_sha256=source.launch_receipt_sha256,
+        cohort_manifest_sha256=cohort_sha,
+        confirmation_a_cohort_manifest_sha256=confirmation_sha,
+        records_sha256=source.records_sha256,
+        translator_source_sha256=source.translator_source_sha256,
+        tracked_file_sha256=source.tracked_file_sha256,
+        tasks=tuple(tasks),
+        directories=tuple(sorted(directory_to_family)),
+        directory_to_family=dict(sorted(directory_to_family.items())),
+        shadow_unrepresented_families=tuple(shadow),
+        all_prior_unrepresented_families=tuple(all_prior),
+        execution_receipt=source.execution_receipt,
+        launch_receipt=source.launch_receipt,
+    )
+
+
 def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
     raw, freeze = _load_canonical(path, "Confirmation B freeze")
     if (
         set(freeze) != {
-            "schema", "source_audit", "confirmation_a_authorization",
+            "schema", "freeze_repository_revision", "source_audit",
+            "confirmation_a_authorization",
             "planner", "design", "experiment_source_sha256",
         }
         or freeze.get("schema") != FREEZE_SCHEMA
     ):
         raise ProtocolError("Confirmation B freeze schema changed")
     sources = freeze.get("source_audit")
+    freeze_repository_revision = freeze.get("freeze_repository_revision")
     authorization = freeze.get("confirmation_a_authorization")
     planner = freeze.get("planner")
     design = freeze.get("design")
     source_hashes = freeze.get("experiment_source_sha256")
-    if not all(isinstance(value, dict) for value in (
+    if (
+        COMMIT_RE.fullmatch(freeze_repository_revision or "") is None
+        or not all(isinstance(value, dict) for value in (
         sources, authorization, planner, design, source_hashes
-    )):
+        ))
+    ):
         raise ProtocolError("Confirmation B freeze is incomplete")
     attestation_path = _safe_repo_path(sources.get("attestation_path"), "attestation")
     execution_path = _safe_repo_path(
@@ -1182,6 +1331,9 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
     )
     launch_path = _safe_repo_path(
         sources.get("launch_receipt_path"), "source launch receipt"
+    )
+    intent_path = _safe_repo_path(
+        sources.get("launch_intent_path"), "source launch intent"
     )
     materials = load_source_materials(attestation_path, execution_path, launch_path)
     expected_sources = {
@@ -1194,9 +1346,11 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "launch_receipt_path": materials.launch_receipt_path.relative_to(
             REPO
         ).as_posix(),
+        "launch_intent_path": materials.intent_path.relative_to(REPO).as_posix(),
         "attestation_sha256": materials.attestation_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
+        "launch_intent_sha256": materials.intent_sha256,
         "cohort_manifest_sha256": materials.cohort_manifest_sha256,
         "confirmation_a_cohort_manifest_sha256": (
             materials.confirmation_a_cohort_manifest_sha256
@@ -1218,12 +1372,9 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "slurm_script_sha256": materials.launch_receipt[
             "slurm_script_sha256"
         ],
-        "launch_intent_sha256": materials.launch_receipt[
-            "launch_intent_sha256"
-        ],
         "tracked_file_sha256": materials.tracked_file_sha256,
     }
-    if sources != expected_sources:
+    if intent_path != materials.intent_path or sources != expected_sources:
         raise ProtocolError("Confirmation B freeze source hashes changed")
     authorization_paths = {
         key: _safe_repo_path(authorization.get(key), key)
@@ -1281,6 +1432,7 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         set(planner) != set(required_planner) | {"build_options"}
         or
         COMMIT_RE.fullmatch(planner.get("revision", "")) is None
+        or planner.get("revision") != PLANNER_REVISION_REQUIRED
         or any(SHA256_RE.fullmatch(planner.get(field, "")) is None
                for field in required_planner[2:])
         or not isinstance(planner.get("cache_name"), str)
@@ -1288,6 +1440,8 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         or planner.get("build_options") != list(BUILD_OPTIONS)
     ):
         raise ProtocolError("Confirmation B planner pins are invalid")
+    if live_authorization.get("planner_identity") != _planner_identity(planner):
+        raise ProtocolError("Confirmation A/B planner identity differs")
     if set(source_hashes) != set(EXPERIMENT_SOURCE_FILES):
         raise ProtocolError("Confirmation B executed-source set changed")
     for relative, expected in source_hashes.items():
@@ -1304,6 +1458,7 @@ def _unfrozen_defaults() -> dict:
         "PROTOCOL_SHA256": "TO_FREEZE",
         "OPTION_MATRIX_SHA256": "TO_FREEZE",
         "PLANNER_REVISION": "TO_FREEZE",
+        "FREEZE_REPOSITORY_REVISION": "TO_FREEZE",
         "PLANNER_CACHE_NAME": "TO_FREEZE",
         "PLANNER_BINARY_SHA256": "TO_FREEZE",
         "PREPROCESS_BINARY_SHA256": "TO_FREEZE",
@@ -1359,6 +1514,7 @@ def _installed_values() -> dict:
         "PROTOCOL_SHA256": freeze["design"]["protocol_sha256"],
         "OPTION_MATRIX_SHA256": freeze["design"]["option_matrix_sha256"],
         "PLANNER_REVISION": planner["revision"],
+        "FREEZE_REPOSITORY_REVISION": freeze["freeze_repository_revision"],
         "PLANNER_CACHE_NAME": planner["cache_name"],
         "PLANNER_BINARY_SHA256": planner["downward_sha256"],
         "PREPROCESS_BINARY_SHA256": planner["preprocess_sha256"],
@@ -1488,6 +1644,8 @@ def validate_static_design() -> None:
         MIN_MECHANISM_FAMILIES != 10,
         RUN_ORDER_PROTOCOL != "task-major-family-balanced-triads/v1",
         ACCOUNT != "naiss2025-5-561-cpu",
+        PLANNER_REVISION_REQUIRED
+        != "8148f798f13059ee881ad2471bd20cdd61d2ec18",
         PLAIN_REFERENCE_LABEL != "pdb_cap_aware_k32",
         GUIDED_LABEL != "pdb_terminal_incidence_guided",
         MATCHED_LABEL != "pdb_terminal_incidence_matched",

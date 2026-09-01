@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -19,9 +20,13 @@ class AuditError(RuntimeError):
     pass
 
 
-STRUCTURAL_FIELDS = (
+COMMON_STRUCTURAL_FIELDS = (
     "dual_selector_structural_trace",
     "dual_selector_structural_trace_sha256",
+    "dual_selector_probe_completed_layers",
+)
+COMPLETE_STRUCTURAL_FIELDS = (
+    *COMMON_STRUCTURAL_FIELDS,
     "dual_selector_pool_sha256",
     "dual_selector_normalized_pool",
     "dual_selector_normalized_pool_sha256",
@@ -34,8 +39,63 @@ STRUCTURAL_FIELDS = (
     "dual_selector_masked_joint_winner_identity",
     "dual_selector_incidence_and_mj_winners_differ",
     "dual_selector_work_signature",
-    "dual_selector_probe_completed_layers",
 )
+COMPLETE_REQUIRED_FIELDS = (
+    *COMPLETE_STRUCTURAL_FIELDS,
+    "dual_selector_selected_identity",
+    "dual_selector_selected_differs_from_reference",
+)
+COMPLETE_ONLY_RESULT_FIELDS = (
+    "dual_selector_pool_sha256",
+    "dual_selector_normalized_pool",
+    "dual_selector_normalized_pool_sha256",
+    "dual_selector_state_profiles_sha256",
+    "dual_selector_incidence_projection_sha256",
+    "dual_selector_incidence_v3_projection_sha256",
+    "dual_selector_preselection_sha256",
+    "dual_selector_reference_identity",
+    "dual_selector_incidence_winner_identity",
+    "dual_selector_masked_joint_winner_identity",
+    "dual_selector_selected_identity",
+    "dual_selector_selected_differs_from_reference",
+    "dual_selector_incidence_and_mj_winners_differ",
+    "dual_selector_work_signature",
+)
+PROBE_OVERHEAD_FIELDS = tuple(
+    "dual_selector_probe_" + field for field in (
+        "cpu_seconds", "wall_seconds", "peak_memory_before_kb",
+        "peak_memory_after_kb", "peak_memory_delta_kb",
+    )
+)
+SELECTION_OVERHEAD_FIELDS = tuple(
+    "dual_selector_selection_" + field for field in (
+        "cpu_seconds", "wall_seconds", "peak_memory_before_kb",
+        "peak_memory_after_kb", "peak_memory_delta_kb",
+    )
+)
+
+
+def _validate_overhead(record: dict, prefix: str) -> None:
+    cpu = record.get(prefix + "cpu_seconds")
+    wall = record.get(prefix + "wall_seconds")
+    before = record.get(prefix + "peak_memory_before_kb")
+    after = record.get(prefix + "peak_memory_after_kb")
+    delta = record.get(prefix + "peak_memory_delta_kb")
+    if (
+        type(cpu) not in (int, float)
+        or not math.isfinite(cpu)
+        or cpu < 0
+        or type(wall) not in (int, float)
+        or not math.isfinite(wall)
+        or wall < 0
+        or type(before) is not int
+        or not 0 <= before <= Trace.INT_MAX
+        or type(after) is not int
+        or not 0 <= after <= Trace.INT_MAX
+        or type(delta) is not int
+        or delta != max(0, after - before)
+    ):
+        raise AuditError("{} overhead fields changed".format(prefix))
 
 
 def _standalone_identity(identity: dict) -> dict:
@@ -148,31 +208,80 @@ def audit_records(
             record.get("global_revision") != freeze["planner"]["revision"],
         )):
             raise AuditError("campaign command provenance changed")
+        status = record.get("dual_selector_trace_status")
         if any((
             record.get("dual_selector_trace_schema") != P.DUAL_TRACE_SCHEMA,
             record.get("dual_selector_trace_certified") is not True,
-            record.get("dual_selector_trace_status") != "complete",
-            record.get("dual_selector_probe_completed_layers") != P.PROBE_LAYERS,
-            any(field not in record for field in STRUCTURAL_FIELDS),
+            "dual_selector_trace_validation_error" not in record,
+            record.get("dual_selector_trace_validation_error") is not None,
+            status not in ("complete", "short_probe"),
+            any(field not in record for field in COMMON_STRUCTURAL_FIELDS),
         )):
-            raise AuditError("dual trace is not a complete certified certificate")
-        try:
-            replayed = Trace.certify_structural_trace(
-                record["dual_selector_structural_trace"], record["algorithm"],
-                record["dual_selector_selected_identity"],
-            )
-        except Trace.TraceError as err:
-            raise AuditError("dual trace structural replay failed") from err
-        replay_fields = {
-            "structural_trace", "structural_trace_sha256", "pool_sha256",
-            "normalized_pool", "normalized_pool_sha256",
-            "state_profiles_sha256", "incidence_projection_sha256",
-            "incidence_v3_projection_sha256", "preselection_sha256",
-            "reference_identity", "incidence_winner_identity",
-            "masked_joint_winner_identity", "selected_identity",
-            "incidence_and_mj_winners_differ", "work_signature",
-            "probe_completed_layers",
-        }
+            raise AuditError("dual trace is not a certified campaign outcome")
+        _validate_overhead(record, "dual_selector_probe_")
+        if status == "short_probe":
+            completed = record.get("dual_selector_probe_completed_layers")
+            if any((
+                type(completed) is not int,
+                not 0 <= completed < P.PROBE_LAYERS,
+                record.get("planner_exit_code") != 34,
+                type(record.get("planner_exit_code")) is not int,
+                record.get("coverage") != 0,
+                type(record.get("coverage")) is not int,
+                any(field in record for field in COMPLETE_ONLY_RESULT_FIELDS),
+                any(
+                    field.startswith("dual_selector_selection_")
+                    for field in record
+                ),
+            )):
+                raise AuditError("short probe outcome contract changed")
+            try:
+                replayed = Trace.certify_short_structural_trace(
+                    record["dual_selector_structural_trace"], record["algorithm"]
+                )
+            except Trace.TraceError as err:
+                raise AuditError("short probe structural replay failed") from err
+            replay_fields = {
+                "structural_trace", "structural_trace_sha256",
+                "probe_completed_layers",
+            }
+        else:
+            if any((
+                record.get("dual_selector_probe_completed_layers")
+                != P.PROBE_LAYERS,
+                any(field not in record for field in COMPLETE_REQUIRED_FIELDS),
+                type(record.get("planner_exit_code")) is not int,
+                record.get("planner_exit_code") == 34,
+                type(record.get("coverage")) is not int,
+                record.get("coverage") not in (0, 1),
+                record.get("coverage") == 1
+                and record.get("planner_exit_code") != 0,
+                record.get("coverage") == 0
+                and record.get("planner_exit_code") == 0,
+            )):
+                raise AuditError(
+                    "complete trace outcome contract changed"
+                )
+            _validate_overhead(record, "dual_selector_selection_")
+            try:
+                replayed = Trace.certify_structural_trace(
+                    record["dual_selector_structural_trace"],
+                    record["algorithm"],
+                    record["dual_selector_selected_identity"],
+                )
+            except Trace.TraceError as err:
+                raise AuditError("dual trace structural replay failed") from err
+            replay_fields = {
+                "structural_trace", "structural_trace_sha256", "pool_sha256",
+                "normalized_pool", "normalized_pool_sha256",
+                "state_profiles_sha256", "incidence_projection_sha256",
+                "incidence_v3_projection_sha256", "preselection_sha256",
+                "reference_identity", "incidence_winner_identity",
+                "masked_joint_winner_identity", "selected_identity",
+                "selected_differs_from_reference",
+                "incidence_and_mj_winners_differ", "work_signature",
+                "probe_completed_layers",
+            }
         if any(
             record.get("dual_selector_" + field) != replayed[field]
             for field in replay_fields
@@ -183,17 +292,35 @@ def audit_records(
         raise AuditError("campaign task coverage changed")
 
     differing = 0
+    status_counts = {"complete": 0, "short_probe": 0}
+    status_families = {"complete": set(), "short_probe": set()}
     for task, triad in groups.items():
         triad.sort(key=lambda row: P.MODES.index(row["algorithm"]))
         if [row["algorithm"] for row in triad] != list(P.MODES):
             raise AuditError("task does not contain one exact three-mode triad")
         baseline = triad[0]
+        status = baseline["dual_selector_trace_status"]
+        if any(
+            row["dual_selector_trace_status"] != status for row in triad[1:]
+        ):
+            raise AuditError("cross-arm trace status differs for {}".format(task))
+        fields = (
+            COMMON_STRUCTURAL_FIELDS
+            if status == "short_probe" else COMPLETE_STRUCTURAL_FIELDS
+        )
         for other in triad[1:]:
-            for field in STRUCTURAL_FIELDS:
+            for field in fields:
                 if other[field] != baseline[field]:
                     raise AuditError(
                         "cross-arm structure differs for {}: {}".format(task, field)
                     )
+        evidence = standalone_by_task.get(task)
+        if evidence is None or evidence["family"] != source_by_task[task]["family"]:
+            raise AuditError("standalone K32 task binding changed")
+        status_counts[status] += 1
+        status_families[status].add(source_by_task[task]["family"])
+        if status == "short_probe":
+            continue
         expected_selected = {
             P.INCIDENCE_MODE: baseline["dual_selector_incidence_winner_identity"],
             P.MJ_MODE: baseline["dual_selector_masked_joint_winner_identity"],
@@ -204,9 +331,6 @@ def audit_records(
                 record["algorithm"]
             ]:
                 raise AuditError("arm selected an unauthorized final pointer")
-        evidence = standalone_by_task.get(task)
-        if evidence is None or evidence["family"] != source_by_task[task]["family"]:
-            raise AuditError("standalone K32 task binding changed")
         if _standalone_identity(
             baseline["dual_selector_reference_identity"]
         ) != evidence["reference_identity"] or (
@@ -225,6 +349,13 @@ def audit_records(
         "cells": len(records),
         "triads": len(groups),
         "differing_winner_tasks": differing,
+        "status_counts": status_counts,
+        "status_family_counts": {
+            status: len(families)
+            for status, families in status_families.items()
+        },
+        "full_preselection_triads": status_counts["complete"],
+        "certified_short_probe_triads": status_counts["short_probe"],
         "run_cell_mapping_sha256": freeze["design"][
             "run_cell_mapping_sha256"
         ],

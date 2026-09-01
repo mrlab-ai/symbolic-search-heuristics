@@ -26,19 +26,26 @@ class ConfirmationAnalysisError(RuntimeError):
 
 SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-a-analysis/v2"
+    "pdb-terminal-incidence-confirmation-a-analysis/v3"
 )
 RECEIPT_SCHEMA = SCHEMA + "/double-execution"
 ARTIFACT_DIR = Audit.ARTIFACT_DIR
-DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v2.json"
-DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v2-repeat.json"
-DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v2.json"
-DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v2.sha256"
+DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v3.json"
+DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v3-repeat.json"
+DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
+DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
+CERTIFICATE_PREDICTORS = (
+    P.PRIMARY_PREDICTOR,
+    *P.CERTIFICATE_BASELINES,
+)
 
 
 def _configure_original() -> None:
     Original.P = P
     Original.SCHEMA = SCHEMA
+    Original.PREDICTORS = CERTIFICATE_PREDICTORS
+    Original.PRIMARY_PREDICTOR = P.PRIMARY_PREDICTOR
+    Original.CONTROLS = P.CERTIFICATE_BASELINES
     Original.REQUESTED_MODES = {
         "pdb_bdd_prefix_shadow": "bdd_prefix",
         "pdb_goal_prefix_shadow": "goal_prefix",
@@ -50,6 +57,63 @@ def _configure_original() -> None:
         for label, mode in Original.REQUESTED_MODES.items()
     }
     Original.GOAL_FILL_LABEL = "pdb_goal_fill_shadow"
+
+
+@contextlib.contextmanager
+def _ordering_predictors(include_masked_add_size: bool):
+    previous = (
+        Original.PREDICTORS,
+        Original.PRIMARY_PREDICTOR,
+        Original.CONTROLS,
+    )
+    Original.PREDICTORS = (
+        P.PREDICTORS if include_masked_add_size else CERTIFICATE_PREDICTORS
+    )
+    Original.PRIMARY_PREDICTOR = P.PRIMARY_PREDICTOR
+    Original.CONTROLS = (
+        P.PREDICTOR_BASELINES
+        if include_masked_add_size else P.CERTIFICATE_BASELINES
+    )
+    try:
+        yield
+    finally:
+        (
+            Original.PREDICTORS,
+            Original.PRIMARY_PREDICTOR,
+            Original.CONTROLS,
+        ) = previous
+
+
+def _add_masked_add_size(primary: dict) -> None:
+    """Expose the already-certified masked ADD node sum as predictor D."""
+    observations = primary.get("observations")
+    if not isinstance(observations, list):
+        raise ConfirmationAnalysisError("primary observations are malformed")
+    for observation in observations:
+        layers = observation.get("layers")
+        total = observation.get("masked_add_node_sum")
+        if (
+            not isinstance(layers, list)
+            or type(total) is not int
+            or total < 0
+            or any(
+                not isinstance(layer, dict)
+                or type(layer.get("masked_add_nodes")) is not int
+                or layer["masked_add_nodes"] < 0
+                for layer in layers
+            )
+            or sum(layer["masked_add_nodes"] for layer in layers) != total
+        ):
+            raise ConfirmationAnalysisError(
+                "masked ADD node sum differs from its certified layers"
+            )
+        if "D" in observation or any("D" in layer for layer in layers):
+            raise ConfirmationAnalysisError(
+                "masked ADD size predictor was already present"
+            )
+        observation["D"] = total
+        for layer in layers:
+            layer["D"] = layer["masked_add_nodes"]
 
 
 def _projected_attestation() -> bytes:
@@ -111,7 +175,8 @@ def _fraction(record, label: str) -> Fraction | None:
 
 
 def _stratum_gate(comparison: dict) -> dict:
-    bootstrap = Original._bootstrap_differences(comparison)
+    with _ordering_predictors(True):
+        bootstrap = Original._bootstrap_differences(comparison)
     support = comparison["support"]
     i_record = comparison["predictors"]["I"]["equal_family"]["macro"]
     i_macro = _fraction(i_record, "stratum I family macro")
@@ -124,7 +189,7 @@ def _stratum_gate(comparison: dict) -> dict:
         P.MIN_NEW_STRATUM_ADVANTAGE_DENOMINATOR,
     )
     controls = {}
-    for control in Original.CONTROLS:
+    for control in P.PREDICTOR_BASELINES:
         control_record = comparison["predictors"][control][
             "equal_family"
         ]["macro"]
@@ -261,7 +326,7 @@ def _stratum(
 
 def _top_choice_regret(grouped: dict) -> dict:
     """Report bounded regret when each predictor chooses its minimum."""
-    task_values = {key: {} for key in Original.PREDICTORS}
+    task_values = {key: {} for key in P.PREDICTORS}
     tie_counts = Counter()
     rows = []
     exclusions = Counter()
@@ -278,7 +343,7 @@ def _top_choice_regret(grouped: dict) -> dict:
             exclusions["target_tied_tasks"] += 1
             continue
         predictor_rows = {}
-        for key in Original.PREDICTORS:
+        for key in P.PREDICTORS:
             best_value = min(item[key] for item in observations)
             selected = [
                 item for item in observations if item[key] == best_value
@@ -312,7 +377,7 @@ def _top_choice_regret(grouped: dict) -> dict:
         })
 
     summaries = {}
-    for key in Original.PREDICTORS:
+    for key in P.PREDICTORS:
         by_family = {}
         for task, value in task_values[key].items():
             by_family.setdefault(P.DIRECTORY_TO_FAMILY[task[0]], []).append(
@@ -368,30 +433,47 @@ def analyze_records(records: list[dict]) -> dict:
             records, P.COHORT_TASKS
         )
     primary = Original.primary_observations(matrix, tasks)
-    comparison = Original.target_strict_tie_aware_comparison(
-        primary["grouped"]
-    )
-    strict_comparison = Original.grand_shared_comparison(primary["grouped"])
-    eligible_tasks = len(primary["frontiers"])
-    eligible_families = len({
-        P.DIRECTORY_TO_FAMILY[task[0]] for task in primary["frontiers"]
-    })
-    primary_gate = Original.primary_gates(
-        comparison, eligible_tasks, eligible_families
-    )
-    new_stratum = _stratum(
-        primary["grouped"], primary["frontiers"],
-        P.ALL_PRIOR_UNREPRESENTED_FAMILIES, gating=True,
-    )
-    shadow_stratum = _stratum(
-        primary["grouped"], primary["frontiers"],
-        P.SHADOW_UNREPRESENTED_FAMILIES, gating=False,
-    )
-    complete_pass = primary_gate["pass"] and new_stratum["gate"]["pass"]
-    support_pass = (
-        primary_gate["support"]["pass"]
-        and new_stratum["gate"]["support"]["pass"]
-    )
+    _add_masked_add_size(primary)
+    with _ordering_predictors(True):
+        comparison = Original.target_strict_tie_aware_comparison(
+            primary["grouped"]
+        )
+        strict_comparison = Original.grand_shared_comparison(
+            primary["grouped"]
+        )
+        eligible_tasks = len(primary["frontiers"])
+        eligible_families = len({
+            P.DIRECTORY_TO_FAMILY[task[0]] for task in primary["frontiers"]
+        })
+        primary_gate = Original.primary_gates(
+            comparison, eligible_tasks, eligible_families
+        )
+        new_stratum = _stratum(
+            primary["grouped"], primary["frontiers"],
+            P.ALL_PRIOR_UNREPRESENTED_FAMILIES, gating=True,
+        )
+        shadow_stratum = _stratum(
+            primary["grouped"], primary["frontiers"],
+            P.SHADOW_UNREPRESENTED_FAMILIES, gating=False,
+        )
+        complete_pass = (
+            primary_gate["pass"] and new_stratum["gate"]["pass"]
+        )
+        support_pass = (
+            primary_gate["support"]["pass"]
+            and new_stratum["gate"]["support"]["pass"]
+        )
+        top_choice_regret = _top_choice_regret(primary["grouped"])
+        equal_directory_results = {
+            key: summary["equal_directory"]
+            for key, summary in _public_comparison(comparison)[
+                "predictors"
+            ].items()
+        }
+        with _ordering_predictors(False):
+            secondary_diagnostics = Original.secondary_diagnostics(
+                primary["observations"]
+            )
     return {
         "schema": SCHEMA,
         "protocol": P.PROTOCOL,
@@ -433,18 +515,11 @@ def analyze_records(records: list[dict]) -> dict:
         "sensitivity": {
             "gating": False,
             "all_predictor_strict": _public_comparison(strict_comparison),
-            "top_choice_regret": _top_choice_regret(primary["grouped"]),
-            "equal_directory_results": {
-                key: summary["equal_directory"]
-                for key, summary in _public_comparison(comparison)[
-                    "predictors"
-                ].items()
-            },
+            "top_choice_regret": top_choice_regret,
+            "equal_directory_results": equal_directory_results,
             "shadow_unrepresented": shadow_stratum,
         },
-        "secondary_diagnostics": Original.secondary_diagnostics(
-            primary["observations"]
-        ),
+        "secondary_diagnostics": secondary_diagnostics,
         "guided_study_authorized": complete_pass,
     }
 
@@ -560,6 +635,14 @@ def run_twice(
         "outputs_byte_identical": True,
         "confirmation_a_complete_gate_passed": result_one["gates"]["pass"],
         "guided_study_authorized": result_one["guided_study_authorized"],
+        "planner_identity": {
+            "revision": P.PLANNER_REVISION,
+            "cache_name": P.PLANNER_CACHE_NAME,
+            "build_options": list(P.BUILD_OPTIONS),
+            "downward_sha256": P.PLANNER_BINARY_SHA256,
+            "preprocess_sha256": P.PREPROCESS_BINARY_SHA256,
+            "tree_manifest_sha256": P.PLANNER_TREE_MANIFEST_SHA256,
+        },
     }
     receipt_raw = P.canonical_json_line(receipt)
     receipt_sha = _exclusive(receipt_path, receipt_raw, "analysis receipt")
@@ -626,6 +709,7 @@ def load_analysis_receipt(
         "first_output", "second_output", "first_output_sha256",
         "second_output_sha256", "outputs_byte_identical",
         "confirmation_a_complete_gate_passed", "guided_study_authorized",
+        "planner_identity",
     }
     analysis_input = first.get("input")
     gates = first.get("gates")
@@ -642,6 +726,14 @@ def load_analysis_receipt(
         receipt.get("outputs_byte_identical") is not True,
         receipt.get("confirmation_a_complete_gate_passed") is not True,
         receipt.get("guided_study_authorized") is not True,
+        receipt.get("planner_identity") != {
+            "revision": P.PLANNER_REVISION,
+            "cache_name": P.PLANNER_CACHE_NAME,
+            "build_options": list(P.BUILD_OPTIONS),
+            "downward_sha256": P.PLANNER_BINARY_SHA256,
+            "preprocess_sha256": P.PREPROCESS_BINARY_SHA256,
+            "tree_manifest_sha256": P.PLANNER_TREE_MANIFEST_SHA256,
+        },
         first_raw != second_raw,
         first != second,
         first_sha != second_sha,

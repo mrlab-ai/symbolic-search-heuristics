@@ -151,6 +151,16 @@ def encode(events):
     return "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in events)
 
 
+def short_probe_events(completed_layers=8):
+    events = valid_events()[:3]
+    events[2].update({
+        "completed_layers": completed_layers, "attempts": completed_layers,
+        "complete": False, "g_values": list(range(completed_layers)),
+        "bdd_nodes": [1] * completed_layers,
+    })
+    return events
+
+
 def differing_events(mode=P.INCIDENCE_MODE):
     events = valid_events(mode)
     variable, probe, state, pool = events[1:5]
@@ -317,6 +327,23 @@ class ParserTest(unittest.TestCase):
             {certificates[0]["structural_trace_sha256"]},
         )
 
+    def test_complete_parser_rejects_coverage_exit_contradictions(self):
+        content = encode(valid_events())
+        for coverage, exit_code in ((1, 23), (0, 0)):
+            props = {
+                "algorithm": P.INCIDENCE_MODE,
+                "coverage": coverage,
+                "planner_exit_code": exit_code,
+            }
+            T.parse_selector_trace(content, props)
+            with self.subTest(coverage=coverage, exit_code=exit_code):
+                self.assertFalse(props["dual_selector_trace_certified"])
+                self.assertEqual(props["dual_selector_trace_status"], "invalid")
+                self.assertIn(
+                    "malformed outcome metadata",
+                    props["dual_selector_trace_validation_error"],
+                )
+
     def test_replays_terminal_cut_and_mj_formula(self):
         events = valid_events()
         events[5]["joint_cofactor_sum_by_layer"][0] = 2
@@ -361,16 +388,37 @@ class ParserTest(unittest.TestCase):
                     T.certify_trace(encode(events), P.INCIDENCE_MODE)
 
     def test_short_probe_has_no_trailing_fallback(self):
-        events = valid_events()[:3]
-        events[2].update({
-            "completed_layers": 8, "attempts": 8, "complete": False,
-            "g_values": list(range(8)), "bdd_nodes": [1] * 8,
-        })
+        events = short_probe_events()
         certificate = T.certify_trace(encode(events), P.INCIDENCE_MODE)
         self.assertEqual(certificate["status"], "short_probe")
         events.append({"event": "fallback"})
         with self.assertRaisesRegex(T.TraceError, "trailing"):
             T.certify_trace(encode(events), P.INCIDENCE_MODE)
+
+    def test_short_structural_trace_replay_is_exact_and_fail_closed(self):
+        certificate = T.certify_trace(
+            encode(short_probe_events()), P.INCIDENCE_MODE
+        )
+        structural = certificate["structural_trace"]
+        before = copy.deepcopy(structural)
+        replayed = T.certify_short_structural_trace(
+            structural, P.INCIDENCE_MODE
+        )
+        self.assertEqual(replayed["status"], "short_probe")
+        self.assertEqual(replayed["structural_trace"], structural)
+        self.assertEqual(replayed["structural_trace_sha256"], certificate[
+            "structural_trace_sha256"
+        ])
+        self.assertEqual(structural, before)
+
+        mutated = copy.deepcopy(structural)
+        mutated[2]["completed_layers"] = 7
+        with self.assertRaises(T.TraceError):
+            T.certify_short_structural_trace(mutated, P.INCIDENCE_MODE)
+        trailing = copy.deepcopy(structural)
+        trailing.append({"event": "fallback"})
+        with self.assertRaises(T.TraceError):
+            T.certify_short_structural_trace(trailing, P.INCIDENCE_MODE)
 
     def test_duplicate_keys_fail_closed(self):
         content = encode(valid_events()).replace(

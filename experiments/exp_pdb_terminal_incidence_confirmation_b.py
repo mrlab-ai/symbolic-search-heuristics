@@ -123,6 +123,7 @@ def _source_names() -> tuple[str, ...]:
     names.append(P.FREEZE_PATH.relative_to(SCRIPT_DIR).as_posix())
     for path in (
         materials.attestation_path,
+        materials.intent_path,
         materials.execution_receipt_path,
         materials.launch_receipt_path,
     ):
@@ -176,6 +177,7 @@ def configure() -> None:
     Base.EXTRA_RUN_PROPERTIES = {
         "benchmark_revision": P.BENCHMARK_REVISION,
         "planner_cache_name": P.PLANNER_CACHE_NAME,
+        "freeze_repository_revision": P.FREEZE_REPOSITORY_REVISION,
         "translator_source_sha256": P.TRANSLATOR_SOURCE_SHA256,
         "cost_attestation_sha256": P.COST_ATTESTATION_SHA256,
         "source_audit_launch_receipt_sha256": (
@@ -221,6 +223,7 @@ def configure() -> None:
     Base.EXTRA_RECEIPT_PROPERTIES = {
         "benchmark_revision": P.BENCHMARK_REVISION,
         "planner_cache_name": P.PLANNER_CACHE_NAME,
+        "freeze_repository_revision": P.FREEZE_REPOSITORY_REVISION,
         "translator_source_sha256": P.TRANSLATOR_SOURCE_SHA256,
         "cost_attestation_sha256": P.COST_ATTESTATION_SHA256,
         "cost_attestation_records_sha256": (
@@ -246,6 +249,7 @@ def configure() -> None:
         "source_audit_intent_sha256": P.SOURCE_AUDIT_INTENT_SHA256,
         "confirmation_b_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
         "source_attestation_path": str(materials.attestation_path),
+        "source_launch_intent_path": str(materials.intent_path),
         "source_execution_receipt_path": str(materials.execution_receipt_path),
         "source_launch_receipt_path": str(materials.launch_receipt_path),
         "cohort_seed": P.COHORT_SEED,
@@ -521,13 +525,21 @@ def _submission_job_bytes(expected_sha256: str) -> bytes:
 
 def _clean_repository_commit() -> str:
     try:
-        if JJ.working_copy_diff_summary(REPO):
+        if JJ.live_working_copy_diff_summary(REPO):
             raise ConfirmationLaunchError("launch requires a clean working copy")
         commit = JJ.parent_commit(REPO)
-        JJ.require_ancestor(REPO, P.PLANNER_REVISION, commit)
     except JJ.JjCacheError as err:
         raise ConfirmationLaunchError("cannot attest launch commit") from err
+    _require_repository_ancestry(commit)
     return commit
+
+
+def _require_repository_ancestry(commit: str) -> None:
+    try:
+        JJ.require_ancestor(REPO, P.PLANNER_REVISION, commit)
+        JJ.require_ancestor(REPO, P.FREEZE_REPOSITORY_REVISION, commit)
+    except JJ.JjCacheError as err:
+        raise ConfirmationLaunchError("cannot attest both launch ancestors") from err
 
 
 def _submission_identity(token: str) -> tuple[str, str]:
@@ -582,6 +594,8 @@ def _build_launch_materials(
         repository_commit_id = _clean_repository_commit()
     elif P.COMMIT_RE.fullmatch(repository_commit_id) is None:
         raise ConfirmationLaunchError("launch repository commit is invalid")
+    else:
+        _require_repository_ancestry(repository_commit_id)
     cached = Base.cached_revision(require_hashes=True)
     build_sha, build_inputs = Base._validate_build_receipt(cached)
     job_sha = _validate_job_file()
@@ -625,6 +639,7 @@ def _build_launch_materials(
         "submission_export": "NONE",
         "requeue": False,
         "repository_commit_id": repository_commit_id,
+        "freeze_repository_revision": P.FREEZE_REPOSITORY_REVISION,
         "job_file_sha256": job_sha,
         "run_cell_mapping_sha256": mapping_sha,
         "build_receipt_sha256": build_sha,
@@ -871,7 +886,8 @@ def parse_args(argv=None):
         "command",
         choices=(
             "design-check", "self-test", "check", "cache", "build",
-            "launch", "recover-launch", "parse", "fetch", "report",
+            "prepare-job", "launch", "recover-launch", "parse", "fetch",
+            "report",
         ),
     )
     return parser.parse_args(argv)
@@ -890,6 +906,19 @@ def main(argv=None) -> int:
     if args.command == "recover-launch":
         recover_launch()
         return 0
+    if args.command == "prepare-job":
+        rendered = Base.prepare_start_job()
+        if rendered != JOB_FILE:
+            raise ConfirmationLaunchError("rendered job path changed")
+        _validate_generated_run_mapping()
+        _sanitize_job_file()
+        print(json.dumps({
+            "job_file": str(JOB_FILE),
+            "job_file_sha256": _validate_job_file(),
+            "run_cell_mapping_sha256": _validate_generated_run_mapping(),
+            "submitted": False,
+        }, sort_keys=True, indent=2))
+        return 0
     mapping = {
         "self-test": ["--self-test"],
         "check": ["--check"],
@@ -900,9 +929,6 @@ def main(argv=None) -> int:
         "report": ["report"],
     }
     result = Base.main(mapping[args.command])
-    if args.command == "build":
-        _validate_generated_run_mapping()
-        _sanitize_job_file()
     return result
 
 

@@ -23,25 +23,20 @@ validated before filesystem I/O and are read and hashed from one `O_NOFOLLOW`
 descriptor, with regular-file and stable-identity checks before and after the
 read. Symlinks, directories, FIFOs, and identity-changing races fail closed.
 
-The source chain must be the outcome-blind, complete campaign-v4 rerun. Its
-launch is pinned to producer commit
-`9fa1387455f947772b8b37e3b103f1ca84efb27b`, job `1865695`, launch-receipt
-SHA-256 `90ec55eb1d603cb7434885eeb99ceb2a0123ac02f4f9c02c885cab2635442921`,
-24-entry code-manifest SHA-256
-`d3b571aaffce9f58f09d15f118df57997773c522e3da74bcdcbfbc00299f0518`,
-Slurm-script SHA-256
-`8504f5b778d74a5120605947e710713532018e2007d276df8c580167b9ce1a8f`,
-and source-inventory SHA-256
-`bb9be49a4652ff7bedcadb04b4db35cad701a5b2a2a6d6347c15e0ad670e056e`.
-The outcome-blind v3 infrastructure diagnostic is pinned at
-`a340d2de01304702f6c101d2bb1592536ebc6dfedc1638c5ce1c0559e5ddcf57`.
-It records the full-rerun decision without inspecting successful v3 shard or
-log contents or source-support outcomes.
+The source chain must be the outcome-blind, complete campaign-V5 rerun. Its
+unknown prospective job, receipt, manifest, inventory, and output hashes are
+derived from the canonical sealed intent/launch/execution chain rather than
+filled with placeholders. The shared A/B consumer requires the exact V5
+paths, exact receipt key sets, code-manifest closure, normalized Slurm bytes,
+scheduler journal and resource rows, task-environment manifest, live output
+tree, and every scoped byte at the producer revision. The V4 infrastructure
+diagnostic is manifest-bound and must state that successful/cancelled V4 logs
+and shards and source-support outcomes were not inspected for V5 design.
 
-Campaign v4 uses exactly 1,024 GiB per CPU, a 14,400-second source timeout, an
-08:20:00 Slurm limit, the `fat` partition, normal QoS, and all 820 unthrottled
+Campaign V5 uses exactly 2 TiB per CPU, a 28,800-second source timeout, a
+16:40:00 Slurm limit, the `fat` partition, normal QoS, and all 820 unthrottled
 array elements. It is original-only: all 820 shards and all 1,640 candidates
-are rerun, `recovery` is null, and reuse counts for v1, v2, and v3 are zero.
+are rerun, `recovery` is null, and reuse counts for V1 through V4 are zero.
 Each candidate is consumed from a read-only domain/problem snapshot inside the
 exact per-task temporary root; both consumers revalidate the snapshot and the
 task removes only its own pinned files and directories. The launch binds
@@ -58,21 +53,25 @@ the hash-pinned `/usr/bin/sbatch` under a controlled `C` environment; its
 command contains options only and no script path. The hash-pinned
 `/usr/bin/sacct` journal must reproduce the exact `SubmitLine`, unique job,
 and complete array. The consumer verifies the canonical launch intent, Slurm
-script, 24-entry manifest, amendment protocol, inventory, all manifest-listed
+script, exact manifest, protocol, inventory, all manifest-listed
 live files, and their bytes at the source repository commit. At the experiment
-freeze revision, `tracked_file_sha256` independently proves the same 26 bound
-files (the 24 manifest entries, Slurm script, and manifest) are tracked with
-those exact hashes. Neither Confirmation A building nor freezing is possible
-until both the canonical v4 attestation and execution receipt exist and pass
+freeze repository revision, `tracked_file_sha256` independently proves the
+complete manifest closure, Slurm script, and manifest are tracked with those
+exact hashes. Neither Confirmation A building nor freezing is possible until
+the canonical V5 intent, attestation, launch receipt, and execution receipt pass
 this complete validation.
 The consumer also checks the exact attestation envelope and replays the
 manifest-verified producer's split over all 1,640 sealed source records; the
 replayed gate and both cohorts must be byte-identical to the attestation. Thus
 each selected task's support evidence, exact 17-field record, canonical alias
 group, unique typed candidate index, canonical path, and seed-derived rank are
-bound to the source record that produced them. The producer revision must be
-an ancestor of the planner revision. After planner caching and immediately
-before the exclusive freeze write, the consumer repeats the clean-parent,
+bound to the source record that produced them. The planner revision is exactly
+`8148f798f13059ee881ad2471bd20cdd61d2ec18`; its cache and binaries are built
+only from that revision. A separate clean `freeze_repository_revision` binds
+the Python/protocol/V5 artifacts and must descend from both revision 8148 and
+the V5 producer revision. Launch must descend from both frozen revisions.
+After planner-cache validation and immediately before the exclusive freeze
+write, the consumer repeats the clean-parent,
 source-chain, live/tracked byte, and executed-source checks.
 
 The scheduler contract is the Arrhenius `fat` partition, normal QoS, account
@@ -111,8 +110,15 @@ The fixed horizon is the first 16 completed, non-goal blind layers in increasing
 deduplication, frontier identity, targets, predictors, certificates, and timing
 diagnostics are exactly those in the prospective terminal-incidence shadow
 protocol.  In particular, the target is exact partition effort `E`; the primary
-predictor is terminal incidence `I`; and the controls are `kD`, `mQ`, `mJ`,
-Cartesian, width, and ADD.  Every layer must satisfy every schema, identity, and
+predictor is terminal incidence `I`; the six certificate baselines are `kD`,
+`mQ`, `mJ`, Cartesian, width, and ADD; and the additional challenger
+`D = sum_g D_g` is the unmultiplied number of inner nodes in the masked ADDs.
+`D` is an ordering predictor only, not an upper-bound certificate for `E`.
+The amendment adding `D` is frozen before any Confirmation A outcome exists.
+It is motivated prospectively by the structural relation `D <= I`; no
+Confirmation A comparison between `D` and `E` was available or inspected.
+There is no general order between `D` and `E`.
+Every layer must satisfy every schema, identity, and
 certificate check, including `E <= I <= kD <= mQ <= mJ <= Cartesian <= width`
 and the independent registered-ADD branch `I <= ADD apply`.  A provenance,
 schema, frontier,
@@ -155,15 +161,15 @@ journal evidence.
 
 ## Primary comparison and gate
 
-Within each eligible task, all seven predictors are compared on one common set
+Within each eligible task, all eight predictors are compared on one common set
 of semantic PDB pairs for which the target `E` is strictly ordered.  A
 predictor receives score 1 for the correct order, 0.5 for a tie, and 0 for the
 wrong order.  We report each predictor's tie rate.  Concordance is computed
 task first, then family, then with equal family weight.  Absolute `E` and
 normalized `E/U` orientations must have identical pair orders and gate
-decisions; the inverse-`U` null must remain tied.  The former comparison that
-also requires every predictor to be strict is retained, unchanged, as a
-non-gating sensitivity analysis.
+decisions; the inverse-`U` null must remain tied. The same all-strict rule is
+extended to all eight predictors and retained as a non-gating sensitivity
+analysis.
 
 The primary gate passes only if every clause passes:
 
@@ -171,18 +177,20 @@ The primary gate passes only if every clause passes:
 - at least 300 comparison tasks, 25 comparison families, and 600 target-strict
   pairs;
 - equal-family concordance of `I` is at least 0.65;
-- `I` exceeds each control by at least 0.02;
-- for every control, the lower endpoint of a paired-family percentile
+- `I` exceeds `D` and each certificate baseline by at least 0.02;
+- for `D` and every certificate baseline, the lower endpoint of a paired-family
+  percentile
   bootstrap is strictly positive (100,000 replicates, seed 20260901); and
-- every leave-one-family-out difference between `I` and every control is
+- every leave-one-family-out difference between `I` and every baseline is
   strictly positive.
 
 The genuine all-prior-unrepresented stratum is fixed by the source audit, not
 by task outcomes.  It is an additional gate.  It must contribute at least 50
 comparison tasks, 10 comparison families, and 100 target-strict pairs.  Its
-equal-family concordance for `I` must be at least 0.65.  Relative to every
-control, the advantage of `I` must be at least 0.02, the lower endpoint of the
-same paired-family bootstrap must be strictly positive, and every
+equal-family concordance for `I` must be at least 0.65. Relative to `D` and
+every certificate baseline, the advantage of `I` must be at least 0.02, the
+lower endpoint of the same paired-family bootstrap must be strictly positive,
+and every
 leave-one-family-out difference must be strictly positive.  The analogously
 frozen shadow-unrepresented stratum is reported as a non-gating diagnostic.
 The non-gating top-choice-regret diagnostic also asks what happens if each
