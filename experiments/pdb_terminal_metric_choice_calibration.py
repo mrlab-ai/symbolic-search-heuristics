@@ -187,6 +187,15 @@ def _validate_live_planner(manifest: dict) -> Path:
     return driver
 
 
+def _planner_command(
+    driver: Path, domain: Path, problem: Path, mode: str
+) -> list[str]:
+    return [
+        str(driver), "--build", P.BUILD_OPTIONS[0], str(domain), str(problem),
+        "--search", P.SEARCHES[mode],
+    ]
+
+
 def run(planner_manifest: dict, output: Path = P.CALIBRATION_RECEIPT_PATH) -> dict:
     if Path(output) != P.CALIBRATION_RECEIPT_PATH:
         raise CalibrationError("calibration output path changed")
@@ -204,10 +213,7 @@ def run(planner_manifest: dict, output: Path = P.CALIBRATION_RECEIPT_PATH) -> di
             for mode in P.MODES:
                 run_dir = root_path / "run-{}-{}".format(task_number, mode)
                 run_dir.mkdir()
-                command = [
-                    str(driver), str(domain), str(problem), "--search",
-                    P.SEARCHES[mode], "--build", P.BUILD_OPTIONS[0],
-                ]
+                command = _planner_command(driver, domain, problem, mode)
                 result = subprocess.run(
                     command, cwd=run_dir, stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL, check=False, timeout=3600,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import pdb_terminal_metric_choice_calibration as C
@@ -54,6 +55,19 @@ class CalibrationTest(unittest.TestCase):
             call.kwargs["root"] == C.PlannerManifest.REVISION_CACHE
             for call in sha.call_args_list
         ))
+
+    def test_driver_options_precede_search_configuration(self):
+        driver = Path("/cache/fast-downward.py")
+        domain = Path("/tmp/domain.pddl")
+        problem = Path("/tmp/problem.pddl")
+        mode = P.INCIDENCE_MODE
+        self.assertEqual(
+            C._planner_command(driver, domain, problem, mode),
+            [
+                str(driver), "--build", P.BUILD_OPTIONS[0],
+                str(domain), str(problem), "--search", P.SEARCHES[mode],
+            ],
+        )
 
     def test_python_runtime_is_pinned(self):
         self.assertEqual(P.REQUIRED_PYTHON_VERSION, "3.12.13")
