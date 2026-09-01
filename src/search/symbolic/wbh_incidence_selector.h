@@ -16,20 +16,32 @@ struct WbhIncidenceMeasurement {
     long total;
 };
 
+struct WbhIncidenceLayerMeasurement {
+    long terminal_incidence;
+    long masked_add_nodes;
+    std::vector<int> active_terminal_values;
+};
+
+class WbhSelectorTrace {
+public:
+    virtual ~WbhSelectorTrace() = default;
+    virtual void write_event(const std::string &payload) = 0;
+};
+
 // Dedicated fail-closed JSON-lines stream for the prospective selector.  It is
 // intentionally separate from both frozen WBH instrumentation streams.
-class WbhIncidenceTrace {
+class WbhIncidenceTrace : public WbhSelectorTrace {
     std::ofstream out;
 
 public:
     explicit WbhIncidenceTrace(const std::string &path);
     ~WbhIncidenceTrace();
 
-    void write_event(const std::string &payload);
+    virtual void write_event(const std::string &payload) override;
 };
 
-// Retains semantic unions of the first target completed positive-cost blind
-// layers. UniformCostSearch drives this observer in detached mode.
+// Retains semantic unions of the first target completed blind layers on a
+// positive-cost task. UniformCostSearch drives this observer in detached mode.
 class WbhIncidenceProbe {
     SymVariables *vars;
     const int target_layers;
@@ -54,9 +66,12 @@ public:
     const std::vector<BDD> &get_layers() const;
 
     void log_probe(
-        WbhIncidenceTrace &trace, double cpu_seconds, double wall_seconds,
+        WbhSelectorTrace &trace, double cpu_seconds, double wall_seconds,
         int peak_memory_before_kb, int peak_memory_after_kb) const;
 };
+
+WbhIncidenceLayerMeasurement measure_terminal_incidence_layer(
+    SymVariables *vars, const BDD &layer, const ADD &heuristic);
 
 WbhIncidenceMeasurement measure_terminal_incidence(
     SymVariables *vars, const std::vector<BDD> &layers,

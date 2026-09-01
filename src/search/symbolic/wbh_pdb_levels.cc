@@ -1,6 +1,8 @@
 #include "wbh_pdb_levels.h"
 
 #include "wbh_add_stats.h"
+#include "wbh_cofactor_profiles.h"
+#include "wbh_dual_metric_selector.h"
 #include "wbh_incidence_selector.h"
 #include "wbh_stats.h"
 
@@ -45,6 +47,11 @@ const char *const INCIDENCE_SELECTOR_PROTOCOL =
 const char *const INCIDENCE_SELECTOR_SCORE =
     "strongest_incidence_feasible_cap_then_"
     "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1";
+const char *const DUAL_SELECTOR_PROTOCOL =
+    "terminal_dual_metric_fixed_pool_v1";
+const char *const DUAL_SELECTOR_SCORE =
+    "strongest_metric_feasible_cap_then_"
+    "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1";
 const int INCIDENCE_REFERENCE_WIDTH_BUDGET = 32;
 
 struct CandidateSpec {
@@ -69,6 +76,7 @@ struct MaterializedCandidate {
     int64_t finite_sum = 0;
     int finite_count = 0;
     int dead_count = 0;
+    int dead_end_value = -1;
     int value_cap = -1;
     map<int, int> finite_value_counts;
     string raw_value_histogram;
@@ -88,6 +96,19 @@ struct MaterializedCandidate {
     explicit MaterializedCandidate(SymVariables *vars)
         : dead_ends(vars->zeroBDD()), h_add(vars->constant(0)) {
     }
+};
+
+struct DualMetricVariant {
+    size_t pattern_index;
+    int value_cap;
+    unique_ptr<MaterializedCandidate> candidate;
+    vector<long> heuristic_state_profile;
+    WbhDualMetricMeasurement measurement;
+    bool reference_feasible;
+    bool incidence_feasible = false;
+    bool masked_joint_feasible = false;
+    bool incidence_retained_for_pattern = false;
+    bool masked_joint_retained_for_pattern = false;
 };
 
 string encode_raw_value_histogram(const map<int, int> &value_counts);
@@ -226,6 +247,10 @@ void compute_candidate_add_stats(
         vector<int> terminals = collect_integer_leaf_values(h_add);
         double infinity_marker =
             static_cast<double>(terminals.back()) + 1.0;
+        if (infinity_marker > numeric_limits<int>::max()) {
+            ABORT("PDB dead-end terminal value exceeds the integer range.");
+        }
+        candidate.dead_end_value = static_cast<int>(infinity_marker);
         h_add = candidate.dead_ends.Add().Ite(
             vars->constant(infinity_marker), h_add);
     }
@@ -545,6 +570,41 @@ void append_long_array(ostringstream &out, const vector<long> &values) {
     out << "]";
 }
 
+void append_bool_array(ostringstream &out, const vector<bool> &values) {
+    out << "[";
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            out << ",";
+        }
+        out << (values[i] ? "true" : "false");
+    }
+    out << "]";
+}
+
+void append_nested_long_array(
+    ostringstream &out, const vector<vector<long>> &values) {
+    out << "[";
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            out << ",";
+        }
+        append_long_array(out, values[i]);
+    }
+    out << "]";
+}
+
+void append_nested_int_array(
+    ostringstream &out, const vector<vector<int>> &values) {
+    out << "[";
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            out << ",";
+        }
+        append_int_array(out, values[i]);
+    }
+    out << "]";
+}
+
 
 void log_selector_record(
     const string &kind, const CandidateSpec &spec,
@@ -700,7 +760,8 @@ PdbLevelSets::PdbLevelSets(
     double cegar_max_time, int cegar_seed, int cegar_max_refinements,
     int cofactor_width_budget, int total_add_node_budget, int value_cap,
     bool select_value_cap, const WbhIncidenceProbe *incidence_probe,
-    WbhIncidenceTrace *incidence_trace)
+    WbhSelectorTrace *selector_trace,
+    const WbhStateCutCertificate *state_cut_certificate)
     : vars(vars), cofactor_width_budget(cofactor_width_budget),
       total_add_node_budget(total_add_node_budget), value_cap(value_cap),
       select_value_cap(select_value_cap) {
@@ -711,25 +772,75 @@ PdbLevelSets::PdbLevelSets(
     const bool incidence_matched =
         pattern_selection ==
         PdbPatternSelection::TERMINAL_INCIDENCE_MATCHED_CONTROL;
-    if (incidence_guided || incidence_matched) {
-        if (!incidence_probe || !incidence_trace ||
+    const bool dual_incidence =
+        pattern_selection ==
+        PdbPatternSelection::TERMINAL_DUAL_INCIDENCE_GUIDED;
+    const bool dual_mj =
+        pattern_selection == PdbPatternSelection::TERMINAL_DUAL_MJ_GUIDED;
+    const bool dual_matched =
+        pattern_selection ==
+        PdbPatternSelection::TERMINAL_DUAL_MATCHED_CONTROL;
+    const bool dual_selector = dual_incidence || dual_mj || dual_matched;
+    if (incidence_guided || incidence_matched || dual_selector) {
+        if (!incidence_probe || !selector_trace ||
             !incidence_probe->complete() ||
             incidence_probe->get_target_layers() != 16 ||
-            incidence_probe->get_layers().size() != 16) {
+            incidence_probe->get_layers().size() != 16 ||
+            (dual_selector && !state_cut_certificate) ||
+            (!dual_selector && state_cut_certificate)) {
             ABORT(
-                "Terminal-incidence selection requires one complete frozen "
-                "16-layer blind probe and a dedicated trace.");
+                "Terminal metric selection requires one complete frozen "
+                "16-layer blind probe, the matching certificate mode and a "
+                "dedicated trace.");
         }
         Cudd_ReorderingType reordering_method;
         if (vars->getCudd()->ReorderingStatus(&reordering_method)) {
             ABORT(
-                "Terminal-incidence selection received a dynamically "
+                "Terminal metric selection received a dynamically "
                 "reordered manager after validation.");
         }
 
         utils::Timer selection_cpu_timer;
         const auto selection_wall_start = chrono::steady_clock::now();
         const int selection_peak_before = utils::get_peak_memory_in_kb();
+
+        vector<vector<long>> state_profiles;
+        string state_profiles_sha256;
+        if (dual_selector) {
+            verify_wbh_state_cut_certificate(vars, *state_cut_certificate);
+            state_profiles = compute_wbh_probe_state_profiles(
+                vars, incidence_probe->get_layers(), *state_cut_certificate);
+            ostringstream state_canonical;
+            for (size_t layer = 0; layer < state_profiles.size(); ++layer) {
+                state_canonical << layer << "|g="
+                                << incidence_probe->get_g_values()[layer]
+                                << "|bdd_nodes="
+                                << incidence_probe->get_bdd_nodes()[layer]
+                                << "|cofactor_counts=";
+                for (size_t cut = 0; cut < state_profiles[layer].size();
+                     ++cut) {
+                    if (cut) {
+                        state_canonical << ",";
+                    }
+                    state_canonical << state_profiles[layer][cut];
+                }
+                state_canonical << "\n";
+            }
+            state_profiles_sha256 = wbh_sha256_hex(state_canonical.str());
+            ostringstream state_event;
+            state_event << "{\"event\":\"probe_state_profiles\","
+                        << "\"state_profiles_sha256\":\""
+                        << state_profiles_sha256 << "\","
+                        << "\"cofactor_counts_by_layer\":[";
+            for (size_t layer = 0; layer < state_profiles.size(); ++layer) {
+                if (layer) {
+                    state_event << ",";
+                }
+                append_long_array(state_event, state_profiles[layer]);
+            }
+            state_event << "]}";
+            selector_trace->write_event(state_event.str());
+        }
 
         vector<CandidateSpec> specs = build_fixed_candidate_pool(
             vars, task, task_proxy, state_budget, cegar_max_time, cegar_seed,
@@ -759,7 +870,8 @@ PdbLevelSets::PdbLevelSets(
         pool_sha256 = wbh_sha256_hex(pool_canonical.str());
         ostringstream pool_event;
         pool_event << "{\"event\":\"pool\",\"protocol\":\""
-                   << INCIDENCE_SELECTOR_PROTOCOL
+                   << (dual_selector ? DUAL_SELECTOR_PROTOCOL
+                                     : INCIDENCE_SELECTOR_PROTOCOL)
                    << "\",\"state_budget\":" << state_budget
                    << ",\"pool_sha256\":\"" << pool_sha256
                    << "\",\"patterns\":[";
@@ -778,7 +890,659 @@ PdbLevelSets::PdbLevelSets(
                        << "}";
         }
         pool_event << "]}";
-        incidence_trace->write_event(pool_event.str());
+        selector_trace->write_event(pool_event.str());
+
+        if (dual_selector) {
+            vector<vector<DualMetricVariant>> variants(specs.size());
+            for (size_t pattern_index = 0; pattern_index < specs.size();
+                 ++pattern_index) {
+                CandidateSpec &spec = specs[pattern_index];
+                if (!spec.within_state_budget) {
+                    spec.pdb.reset();
+                    continue;
+                }
+                unique_ptr<MaterializedCandidate> raw =
+                    materialize_raw_candidate(vars, task_proxy, spec);
+                if (!raw->raw_initial_dead_end) {
+                    raw->raw_initial_value_count =
+                        raw->finite_value_counts.at(raw->raw_initial_h);
+                }
+                raw->raw_value_histogram =
+                    encode_raw_value_histogram(raw->finite_value_counts);
+                vector<int> caps = distinct_cap_grid(*raw);
+                for (int cap : caps) {
+                    unique_ptr<MaterializedCandidate> candidate;
+                    if (cap < 0) {
+                        candidate = move(raw);
+                    } else {
+                        candidate = cap_candidate(vars, *raw, cap);
+                    }
+                    vector<long> heuristic_state_profile =
+                        project_wbh_add_cofactor_profile(
+                            candidate->add_stats.cofactor_counts,
+                            *state_cut_certificate);
+                    WbhDualMetricMeasurement measurement =
+                        measure_wbh_dual_metrics(
+                            vars, incidence_probe->get_layers(),
+                            candidate->h_add, candidate->dead_ends,
+                            candidate->dead_end_value, *state_cut_certificate,
+                            state_profiles, heuristic_state_profile);
+                    const bool reference_feasible =
+                        candidate->add_stats.cofactor_width <=
+                        INCIDENCE_REFERENCE_WIDTH_BUDGET;
+
+                    if (!variants[pattern_index].empty()) {
+                        const DualMetricVariant &weaker =
+                            variants[pattern_index].back();
+                        if (weaker.value_cap < 0 ||
+                            (cap >= 0 && cap <= weaker.value_cap) ||
+                            (!weaker.reference_feasible &&
+                             reference_feasible) ||
+                            weaker.heuristic_state_profile.size() !=
+                                heuristic_state_profile.size() ||
+                            weaker.measurement.layers.size() !=
+                                measurement.layers.size() ||
+                            weaker.measurement.incidence.total >
+                                measurement.incidence.total ||
+                            weaker.measurement.masked_joint_total >
+                                measurement.masked_joint_total) {
+                            ABORT(
+                                "WBH dual selector cap sequence violates "
+                                "its aggregate refinement invariants.");
+                        }
+                        for (size_t cut = 0;
+                             cut < heuristic_state_profile.size(); ++cut) {
+                            if (weaker.heuristic_state_profile[cut] >
+                                heuristic_state_profile[cut]) {
+                                ABORT(
+                                    "WBH dual selector cap refinement "
+                                    "decreased a heuristic cofactor count.");
+                            }
+                        }
+                        for (size_t layer = 0;
+                             layer < measurement.layers.size(); ++layer) {
+                            const WbhDualMetricLayerMeasurement &old_layer =
+                                weaker.measurement.layers[layer];
+                            const WbhDualMetricLayerMeasurement &new_layer =
+                                measurement.layers[layer];
+                            if (old_layer.dead_end_active !=
+                                    new_layer.dead_end_active ||
+                                old_layer.masked_add_nodes >
+                                    new_layer.masked_add_nodes ||
+                                old_layer.active_terminal_count >
+                                    new_layer.active_terminal_count ||
+                                old_layer.joint_cofactor_sum >
+                                    new_layer.joint_cofactor_sum ||
+                                old_layer.masked_joint >
+                                    new_layer.masked_joint ||
+                                weaker.measurement.incidence.by_layer[layer] >
+                                    measurement.incidence.by_layer[layer] ||
+                                old_layer.joint_cofactor_counts.size() !=
+                                    new_layer.joint_cofactor_counts.size()) {
+                                ABORT(
+                                    "WBH dual selector cap refinement "
+                                    "decreased a layer certificate.");
+                            }
+                            for (size_t cut = 0;
+                                 cut < new_layer.joint_cofactor_counts.size();
+                                 ++cut) {
+                                if (old_layer.joint_cofactor_counts[cut] >
+                                    new_layer.joint_cofactor_counts[cut]) {
+                                    ABORT(
+                                        "WBH dual selector cap refinement "
+                                        "decreased a joint cofactor count.");
+                                }
+                            }
+                        }
+                    }
+                    variants[pattern_index].push_back({
+                        pattern_index, cap, move(candidate),
+                        move(heuristic_state_profile), move(measurement),
+                        reference_feasible});
+                }
+                spec.pdb.reset();
+            }
+
+            DualMetricVariant *reference = nullptr;
+            for (vector<DualMetricVariant> &pattern_variants : variants) {
+                DualMetricVariant *representative = nullptr;
+                for (DualMetricVariant &variant : pattern_variants) {
+                    if (variant.reference_feasible) {
+                        representative = &variant;
+                    }
+                }
+                if (representative &&
+                    (!reference ||
+                     candidate_is_better(
+                         *representative->candidate,
+                         *reference->candidate))) {
+                    reference = representative;
+                }
+            }
+            if (!reference) {
+                ABORT(
+                    "The dual selector K=32 cap-aware reference has no "
+                    "feasible candidate; the mandatory empty-pattern "
+                    "invariant failed.");
+            }
+            terminal_incidence_budget = reference->measurement.incidence.total;
+            masked_joint_budget = reference->measurement.masked_joint_total;
+            if (terminal_incidence_budget < 0 || masked_joint_budget < 0) {
+                ABORT("The dual selector reference budgets are invalid.");
+            }
+
+            DualMetricVariant *incidence_winner = nullptr;
+            DualMetricVariant *masked_joint_winner = nullptr;
+            for (vector<DualMetricVariant> &pattern_variants : variants) {
+                DualMetricVariant *incidence_representative = nullptr;
+                DualMetricVariant *masked_joint_representative = nullptr;
+                for (DualMetricVariant &variant : pattern_variants) {
+                    variant.incidence_feasible =
+                        variant.measurement.incidence.total <=
+                        terminal_incidence_budget;
+                    variant.masked_joint_feasible =
+                        variant.measurement.masked_joint_total <=
+                        masked_joint_budget;
+                    if (variant.incidence_feasible) {
+                        incidence_representative = &variant;
+                    }
+                    if (variant.masked_joint_feasible) {
+                        masked_joint_representative = &variant;
+                    }
+                }
+                if (incidence_representative) {
+                    incidence_representative
+                        ->incidence_retained_for_pattern = true;
+                    if (!incidence_winner ||
+                        candidate_is_better(
+                            *incidence_representative->candidate,
+                            *incidence_winner->candidate)) {
+                        incidence_winner = incidence_representative;
+                    }
+                }
+                if (masked_joint_representative) {
+                    masked_joint_representative
+                        ->masked_joint_retained_for_pattern = true;
+                    if (!masked_joint_winner ||
+                        candidate_is_better(
+                            *masked_joint_representative->candidate,
+                            *masked_joint_winner->candidate)) {
+                        masked_joint_winner = masked_joint_representative;
+                    }
+                }
+            }
+            if (!reference->incidence_feasible ||
+                !reference->masked_joint_feasible ||
+                reference->measurement.incidence.total !=
+                    terminal_incidence_budget ||
+                reference->measurement.masked_joint_total !=
+                    masked_joint_budget ||
+                !incidence_winner || !masked_joint_winner) {
+                ABORT(
+                    "Dual-metric selection failed a reference-feasibility "
+                    "invariant; no fallback is permitted.");
+            }
+
+            auto append_canonical_values = [](
+                                               ostringstream &out,
+                                               const auto &values) {
+                for (size_t i = 0; i < values.size(); ++i) {
+                    if (i) {
+                        out << ",";
+                    }
+                    out << values[i];
+                }
+            };
+            auto append_incidence_projection = [&](
+                                                   ostringstream &out,
+                                                   const DualMetricVariant &variant,
+                                                   bool terminate_line) {
+                const MaterializedCandidate &candidate = *variant.candidate;
+                out << variant.pattern_index << "|cap=";
+                if (variant.value_cap < 0) {
+                    out << "exact";
+                } else {
+                    out << variant.value_cap;
+                }
+                out << "|initial_dead_end=" << candidate.initial_dead_end
+                    << "|initial_h=";
+                if (candidate.initial_dead_end) {
+                    out << "null";
+                } else {
+                    out << candidate.initial_h;
+                }
+                out << "|finite_sum=" << candidate.finite_sum
+                    << "|finite_count=" << candidate.finite_count
+                    << "|dead_count=" << candidate.dead_count
+                    << "|cofactor_width="
+                    << candidate.add_stats.cofactor_width
+                    << "|width_upper_bound="
+                    << candidate.add_stats.width_upper_bound
+                    << "|raw_max_finite_value="
+                    << candidate.raw_max_finite_value
+                    << "|raw_value_histogram=";
+                if (variant.value_cap < 0) {
+                    out << candidate.raw_value_histogram;
+                } else {
+                    out << "null";
+                }
+                out << "|incidence=";
+                append_canonical_values(
+                    out, variant.measurement.incidence.by_layer);
+                out << "|incidence_total="
+                    << variant.measurement.incidence.total
+                    << "|reference_feasible="
+                    << variant.reference_feasible;
+                if (terminate_line) {
+                    out << "\n";
+                }
+            };
+            auto append_dual_canonical = [&](
+                                             ostringstream &out,
+                                             const DualMetricVariant &variant) {
+                append_incidence_projection(
+                    out, variant, /*terminate_line=*/false);
+                out << "|heuristic_cofactor_counts=";
+                append_canonical_values(out, variant.heuristic_state_profile);
+                out << "|masked_add_nodes=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ",";
+                    }
+                    out << variant.measurement.layers[layer].masked_add_nodes;
+                }
+                out << "|active_finite_values=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ";";
+                    }
+                    append_canonical_values(
+                        out,
+                        variant.measurement.layers[layer]
+                            .active_finite_values);
+                }
+                out << "|dead_end_active=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ",";
+                    }
+                    out << variant.measurement.layers[layer].dead_end_active;
+                }
+                out << "|active_terminal_count=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ",";
+                    }
+                    out << variant.measurement.layers[layer]
+                               .active_terminal_count;
+                }
+                out << "|joint_cofactor_counts=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ";";
+                    }
+                    append_canonical_values(
+                        out,
+                        variant.measurement.layers[layer]
+                            .joint_cofactor_counts);
+                }
+                out << "|joint_cofactor_sum=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ",";
+                    }
+                    out << variant.measurement.layers[layer]
+                               .joint_cofactor_sum;
+                }
+                out << "|masked_joint=";
+                for (size_t layer = 0;
+                     layer < variant.measurement.layers.size(); ++layer) {
+                    if (layer) {
+                        out << ",";
+                    }
+                    out << variant.measurement.layers[layer].masked_joint;
+                }
+                out << "|masked_joint_total="
+                    << variant.measurement.masked_joint_total << "\n";
+            };
+
+            ostringstream incidence_projection_canonical;
+            ostringstream dual_canonical;
+            size_t variant_count = 0;
+            long joint_cut_entries = 0;
+            for (const vector<DualMetricVariant> &pattern_variants : variants) {
+                for (const DualMetricVariant &variant : pattern_variants) {
+                    append_incidence_projection(
+                        incidence_projection_canonical, variant,
+                        /*terminate_line=*/true);
+                    append_dual_canonical(dual_canonical, variant);
+                    ++variant_count;
+                    if (variant.measurement.joint_cut_entries < 0 ||
+                        joint_cut_entries > numeric_limits<long>::max() -
+                                                variant.measurement
+                                                    .joint_cut_entries) {
+                        ABORT("Dual selector joint work counter overflow.");
+                    }
+                    joint_cut_entries +=
+                        variant.measurement.joint_cut_entries;
+                }
+            }
+            const string incidence_projection_sha256 =
+                wbh_sha256_hex(incidence_projection_canonical.str());
+            preselection_sha256 = wbh_sha256_hex(dual_canonical.str());
+
+            auto log_variant = [&](const DualMetricVariant &variant) {
+                const CandidateSpec &spec = specs[variant.pattern_index];
+                const MaterializedCandidate &candidate = *variant.candidate;
+                vector<long> masked_add_nodes;
+                vector<vector<int>> active_finite_values;
+                vector<bool> dead_end_active;
+                vector<int> active_terminal_count;
+                vector<vector<long>> joint_cofactor_counts;
+                vector<long> joint_cofactor_sum;
+                vector<long> masked_joint;
+                for (const WbhDualMetricLayerMeasurement &layer :
+                     variant.measurement.layers) {
+                    masked_add_nodes.push_back(layer.masked_add_nodes);
+                    active_finite_values.push_back(layer.active_finite_values);
+                    dead_end_active.push_back(layer.dead_end_active);
+                    active_terminal_count.push_back(
+                        layer.active_terminal_count);
+                    joint_cofactor_counts.push_back(
+                        layer.joint_cofactor_counts);
+                    joint_cofactor_sum.push_back(layer.joint_cofactor_sum);
+                    masked_joint.push_back(layer.masked_joint);
+                }
+
+                ostringstream out;
+                out << "{\"event\":\"candidate\",\"protocol\":\""
+                    << DUAL_SELECTOR_PROTOCOL
+                    << "\",\"score_version\":\"" << DUAL_SELECTOR_SCORE
+                    << "\",\"pattern_index\":" << variant.pattern_index
+                    << ",\"sources\":";
+                append_string_array(out, spec.sources);
+                out << ",\"pattern\":";
+                append_int_array(out, spec.pattern);
+                out << ",\"abstract_states\":" << candidate.abstract_states
+                    << ",\"value_cap\":";
+                if (variant.value_cap < 0) {
+                    out << "null";
+                } else {
+                    out << variant.value_cap;
+                }
+                out << ",\"initial_dead_end\":"
+                    << (candidate.initial_dead_end ? "true" : "false")
+                    << ",\"initial_h\":";
+                if (candidate.initial_dead_end) {
+                    out << "null";
+                } else {
+                    out << candidate.initial_h;
+                }
+                out << ",\"finite_sum\":" << candidate.finite_sum
+                    << ",\"finite_count\":" << candidate.finite_count
+                    << ",\"dead_count\":" << candidate.dead_count
+                    << ",\"cofactor_width\":"
+                    << candidate.add_stats.cofactor_width
+                    << ",\"width_upper_bound\":"
+                    << candidate.add_stats.width_upper_bound
+                    << ",\"raw_max_finite_value\":"
+                    << candidate.raw_max_finite_value
+                    << ",\"raw_value_histogram\":";
+                if (variant.value_cap < 0) {
+                    out << "\"" << candidate.raw_value_histogram << "\"";
+                } else {
+                    out << "null";
+                }
+                out << ",\"heuristic_cofactor_counts\":";
+                append_long_array(out, variant.heuristic_state_profile);
+                out << ",\"terminal_incidence_by_layer\":";
+                append_long_array(out, variant.measurement.incidence.by_layer);
+                out << ",\"terminal_incidence\":"
+                    << variant.measurement.incidence.total
+                    << ",\"masked_add_nodes_by_layer\":";
+                append_long_array(out, masked_add_nodes);
+                out << ",\"active_finite_values_by_layer\":";
+                append_nested_int_array(out, active_finite_values);
+                out << ",\"dead_end_active_by_layer\":";
+                append_bool_array(out, dead_end_active);
+                out << ",\"active_terminal_count_by_layer\":";
+                append_int_array(out, active_terminal_count);
+                out << ",\"joint_cofactor_counts_by_layer\":";
+                append_nested_long_array(out, joint_cofactor_counts);
+                out << ",\"joint_cofactor_sum_by_layer\":";
+                append_long_array(out, joint_cofactor_sum);
+                out << ",\"masked_joint_by_layer\":";
+                append_long_array(out, masked_joint);
+                out << ",\"masked_joint\":"
+                    << variant.measurement.masked_joint_total
+                    << ",\"reference_feasible\":"
+                    << (variant.reference_feasible ? "true" : "false")
+                    << ",\"incidence_feasible\":"
+                    << (variant.incidence_feasible ? "true" : "false")
+                    << ",\"masked_joint_feasible\":"
+                    << (variant.masked_joint_feasible ? "true" : "false")
+                    << ",\"incidence_retained_for_pattern\":"
+                    << (variant.incidence_retained_for_pattern ? "true"
+                                                               : "false")
+                    << ",\"masked_joint_retained_for_pattern\":"
+                    << (variant.masked_joint_retained_for_pattern ? "true"
+                                                                  : "false")
+                    << "}";
+                selector_trace->write_event(out.str());
+            };
+            for (const vector<DualMetricVariant> &pattern_variants : variants) {
+                for (const DualMetricVariant &variant : pattern_variants) {
+                    log_variant(variant);
+                }
+            }
+
+            ostringstream preselection_event;
+            preselection_event
+                << "{\"event\":\"preselection\",\"pool_sha256\":\""
+                << pool_sha256 << "\",\"state_profiles_sha256\":\""
+                << state_profiles_sha256
+                << "\",\"incidence_projection_sha256\":\""
+                << incidence_projection_sha256
+                << "\",\"preselection_sha256\":\""
+                << preselection_sha256 << "\",\"candidate_count\":"
+                << variant_count << "}";
+            selector_trace->write_event(preselection_event.str());
+
+            auto append_identity = [&](ostringstream &out,
+                                       const DualMetricVariant &variant,
+                                       const string &prefix) {
+                const CandidateSpec &spec = specs[variant.pattern_index];
+                out << "\"" << prefix << "pattern_index\":"
+                    << variant.pattern_index << ",\"" << prefix
+                    << "sources\":";
+                append_string_array(out, spec.sources);
+                out << ",\"" << prefix << "pattern\":";
+                append_int_array(out, spec.pattern);
+                out << ",\"" << prefix << "value_cap\":";
+                if (variant.value_cap < 0) {
+                    out << "null";
+                } else {
+                    out << variant.value_cap;
+                }
+                out << ",\"" << prefix << "terminal_incidence\":"
+                    << variant.measurement.incidence.total << ",\"" << prefix
+                    << "masked_joint\":"
+                    << variant.measurement.masked_joint_total;
+            };
+
+            ostringstream reference_event;
+            reference_event
+                << "{\"event\":\"reference\",\"pool_sha256\":\""
+                << pool_sha256 << "\",\"state_profiles_sha256\":\""
+                << state_profiles_sha256
+                << "\",\"incidence_projection_sha256\":\""
+                << incidence_projection_sha256
+                << "\",\"preselection_sha256\":\""
+                << preselection_sha256 << "\",";
+            append_identity(reference_event, *reference, "reference_");
+            reference_event
+                << ",\"reference_cofactor_width_budget\":"
+                << INCIDENCE_REFERENCE_WIDTH_BUDGET
+                << ",\"incidence_budget\":" << terminal_incidence_budget
+                << ",\"masked_joint_budget\":" << masked_joint_budget
+                << "}";
+            selector_trace->write_event(reference_event.str());
+
+            ostringstream winners_event;
+            winners_event
+                << "{\"event\":\"metric_winners\",\"pool_sha256\":\""
+                << pool_sha256 << "\",\"state_profiles_sha256\":\""
+                << state_profiles_sha256
+                << "\",\"incidence_projection_sha256\":\""
+                << incidence_projection_sha256
+                << "\",\"preselection_sha256\":\""
+                << preselection_sha256
+                << "\",\"incidence_budget\":" << terminal_incidence_budget
+                << ",\"masked_joint_budget\":" << masked_joint_budget
+                << ",";
+            append_identity(
+                winners_event, *incidence_winner, "incidence_winner_");
+            winners_event << ",";
+            append_identity(
+                winners_event, *masked_joint_winner,
+                "masked_joint_winner_");
+            winners_event << "}";
+            selector_trace->write_event(winners_event.str());
+
+            DualMetricVariant *selected =
+                dual_incidence
+                    ? incidence_winner
+                    : (dual_mj ? masked_joint_winner : reference);
+            const char *decision_mode =
+                dual_incidence
+                    ? "incidence_guided"
+                    : (dual_mj ? "masked_joint_guided" : "matched_control");
+            selected_terminal_incidence =
+                selected->measurement.incidence.total;
+            selected_masked_joint = selected->measurement.masked_joint_total;
+            if ((dual_incidence && !selected->incidence_feasible) ||
+                (dual_mj && !selected->masked_joint_feasible) ||
+                (dual_matched && selected != reference)) {
+                ABORT("Dual selector selected an unauthorized candidate.");
+            }
+
+            ostringstream selected_event;
+            selected_event
+                << "{\"event\":\"selected\",\"decision_mode\":\""
+                << decision_mode << "\",\"pool_sha256\":\""
+                << pool_sha256 << "\",\"state_profiles_sha256\":\""
+                << state_profiles_sha256
+                << "\",\"incidence_projection_sha256\":\""
+                << incidence_projection_sha256
+                << "\",\"preselection_sha256\":\""
+                << preselection_sha256 << "\",";
+            append_identity(selected_event, *selected, "selected_");
+            selected_event
+                << ",\"incidence_budget\":" << terminal_incidence_budget
+                << ",\"masked_joint_budget\":" << masked_joint_budget
+                << "}";
+            selector_trace->write_event(selected_event.str());
+
+            MaterializedCandidate &winner = *selected->candidate;
+            pattern = winner.pattern;
+            selected_source = winner.sources.front();
+            num_abstract_states = winner.abstract_states;
+            selected_initial_dead_end = winner.initial_dead_end;
+            this->value_cap = winner.value_cap;
+            level_sets = move(winner.level_sets);
+            dead_ends = winner.dead_ends;
+            h_add = winner.h_add;
+            add_stats = move(winner.add_stats);
+            selection_name =
+                dual_incidence
+                    ? "terminal_dual_incidence_guided"
+                    : (dual_mj ? "terminal_dual_mj_guided"
+                               : "terminal_dual_matched_control");
+
+            pdbs::Projection selected_projection(task_proxy, pattern);
+            verify_against_pdb(
+                task_proxy, *winner.pdb, selected_projection, 200);
+
+            const size_t layer_count = incidence_probe->get_layers().size();
+            const size_t state_cut_count =
+                state_cut_certificate->cudd_indices.size() + 1;
+            const size_t long_max =
+                static_cast<size_t>(numeric_limits<long>::max());
+            if ((layer_count &&
+                 variant_count > long_max / layer_count) ||
+                state_cut_count > long_max) {
+                ABORT("Dual selector work accounting overflow.");
+            }
+            const long expected_layer_measurements =
+                static_cast<long>(variant_count * layer_count);
+            if (state_cut_count &&
+                expected_layer_measurements >
+                    numeric_limits<long>::max() /
+                        static_cast<long>(state_cut_count)) {
+                ABORT("Dual selector work accounting overflow.");
+            }
+            const long expected_joint_cut_entries =
+                expected_layer_measurements *
+                static_cast<long>(state_cut_count);
+            const long expected_joint_summed_cut_entries =
+                expected_layer_measurements *
+                static_cast<long>(state_cut_count - 1);
+            if (joint_cut_entries != expected_joint_cut_entries) {
+                ABORT("Dual selector work accounting is inconsistent.");
+            }
+            long state_profile_cut_entries = 0;
+            for (const vector<long> &profile : state_profiles) {
+                if (profile.size() != state_cut_count ||
+                    profile.size() > long_max ||
+                    state_profile_cut_entries >
+                        numeric_limits<long>::max() -
+                            static_cast<long>(profile.size())) {
+                    ABORT(
+                        "Dual selector state-profile accounting is "
+                        "inconsistent.");
+                }
+                state_profile_cut_entries += profile.size();
+            }
+
+            const double selection_cpu_seconds = selection_cpu_timer();
+            const double selection_wall_seconds = chrono::duration<double>(
+                                                      chrono::steady_clock::now() -
+                                                      selection_wall_start)
+                                                      .count();
+            const int selection_peak_after = utils::get_peak_memory_in_kb();
+            ostringstream accounting_event;
+            accounting_event
+                << "{\"event\":\"selection_accounting\","
+                << "\"candidate_count\":" << variant_count
+                << ",\"probe_state_profile_count\":"
+                << state_profiles.size()
+                << ",\"probe_state_profile_cut_entries\":"
+                << state_profile_cut_entries
+                << ",\"terminal_incidence_layer_measurements\":"
+                << expected_layer_measurements
+                << ",\"joint_profile_layer_measurements\":"
+                << expected_layer_measurements
+                << ",\"joint_profile_cut_entries\":"
+                << joint_cut_entries
+                << ",\"joint_summed_cut_entries\":"
+                << expected_joint_summed_cut_entries
+                << ",\"cpu_seconds\":"
+                << selection_cpu_seconds << ",\"wall_seconds\":"
+                << selection_wall_seconds << ",\"peak_memory_before_kb\":"
+                << selection_peak_before
+                << ",\"peak_memory_after_kb\":" << selection_peak_after
+                << ",\"peak_memory_delta_kb\":"
+                << max(0, selection_peak_after - selection_peak_before)
+                << "}";
+            selector_trace->write_event(accounting_event.str());
+            return;
+        }
 
         struct IncidenceVariant {
             size_t pattern_index;
@@ -982,7 +1746,7 @@ PdbLevelSets::PdbLevelSets(
                 << ",\"retained_for_pattern\":"
                 << (variant.retained_for_pattern ? "true" : "false")
                 << "}";
-            incidence_trace->write_event(out.str());
+            selector_trace->write_event(out.str());
         };
         for (const vector<IncidenceVariant> &pattern_variants : variants) {
             for (const IncidenceVariant &variant : pattern_variants) {
@@ -999,7 +1763,7 @@ PdbLevelSets::PdbLevelSets(
             variant_count += pattern_variants.size();
         }
         preselection_event << variant_count << "}";
-        incidence_trace->write_event(preselection_event.str());
+        selector_trace->write_event(preselection_event.str());
 
         auto append_identity = [&](ostringstream &out,
                                    const IncidenceVariant &variant,
@@ -1030,7 +1794,7 @@ PdbLevelSets::PdbLevelSets(
                         << INCIDENCE_REFERENCE_WIDTH_BUDGET
                         << ",\"incidence_budget\":"
                         << terminal_incidence_budget << "}";
-        incidence_trace->write_event(reference_event.str());
+        selector_trace->write_event(reference_event.str());
 
         IncidenceVariant *selected = incidence_matched ? reference : guided;
         selected_terminal_incidence = selected->incidence.total;
@@ -1043,7 +1807,7 @@ PdbLevelSets::PdbLevelSets(
         append_identity(selected_event, *selected, "selected_");
         selected_event << ",\"incidence_budget\":"
                        << terminal_incidence_budget << "}";
-        incidence_trace->write_event(selected_event.str());
+        selector_trace->write_event(selected_event.str());
 
         MaterializedCandidate &winner = *selected->candidate;
         pattern = winner.pattern;
@@ -1077,7 +1841,7 @@ PdbLevelSets::PdbLevelSets(
             << selection_peak_before << ",\"peak_memory_after_kb\":"
             << selection_peak_after << ",\"peak_memory_delta_kb\":"
             << max(0, selection_peak_after - selection_peak_before) << "}";
-        incidence_trace->write_event(accounting_event.str());
+        selector_trace->write_event(accounting_event.str());
         return;
     }
 
@@ -1227,8 +1991,8 @@ PdbLevelSets::PdbLevelSets(
             utils::g_log << "exact width=" << add_stats.cofactor_width
                          << " <= " << cofactor_width_budget;
         }
-        if (value_cap >= 0 || select_value_cap) {
-            utils::g_log << ", value_cap=" << value_cap;
+        if (this->value_cap >= 0 || select_value_cap) {
+            utils::g_log << ", value_cap=" << this->value_cap;
         }
         utils::g_log << "): " << pattern << endl;
         return;
@@ -1269,6 +2033,10 @@ PdbLevelSets::PdbLevelSets(
     case PdbPatternSelection::TERMINAL_INCIDENCE_GUIDED:
     case PdbPatternSelection::TERMINAL_INCIDENCE_MATCHED_CONTROL:
         ABORT("Unreachable terminal-incidence selector branch.");
+    case PdbPatternSelection::TERMINAL_DUAL_INCIDENCE_GUIDED:
+    case PdbPatternSelection::TERMINAL_DUAL_MJ_GUIDED:
+    case PdbPatternSelection::TERMINAL_DUAL_MATCHED_CONTROL:
+        ABORT("Unreachable terminal-dual-metric selector branch.");
     }
 
     shared_ptr<pdbs::PatternDatabase> pdb;

@@ -4,9 +4,10 @@
 The two-bit task has an XOR exact layer at g=1. Its two residuals at the
 second cut are represented by complementary CUDD pointers, so the expected
 [1, 2, 2] profile guards against accidentally regularizing complement edges.
-The check also verifies semantic-union blind effort, a selected heuristic ADD
-profile, and that adding the independent profile stream does not change the
-frozen wbh.jsonl schema-v2 trace.
+The opt-in exact self-test also exercises the extracted joint profiler on seven
+golden masked-function cases. The check verifies semantic-union blind effort, a
+selected heuristic ADD profile, and that adding the independent profile stream
+does not change the frozen wbh.jsonl schema-v2 trace.
 """
 
 import argparse
@@ -76,15 +77,25 @@ SCHEMA_V2 = {
     "image_count_convention": "per_piece_attempted_completed",
     "expansion_count_convention": "completed_with_attempts",
 }
-PROFILE_SCHEMA_V1 = {
+PROFILE_SCHEMA_V3 = {
     "event": "schema",
-    "version": 1,
+    "version": 3,
     "cut_convention": (
         "unprimed_state_bits_in_cudd_level_order_including_terminal"
     ),
     "node_count_convention": "regular_cudd_inner_nodes_of_semantic_union",
     "residual_identity": (
         "canonical_signed_cudd_pointer_with_complement_polarity"
+    ),
+    "joint_residual_identity": (
+        "cooccurring_signed_bdd_and_regular_add_pointer_pair"
+    ),
+    "masked_function": "heuristic_on_layer_fresh_bottom_elsewhere",
+    "terminal_incidence": (
+        "sum_of_reachable_nonbottom_terminals_over_regular_inner_masked_add_nodes"
+    ),
+    "partition_audit_effort": (
+        "sum_of_regular_cudd_inner_nodes_of_nonempty_layer_value_buckets_audit_only"
     ),
 }
 
@@ -141,6 +152,11 @@ def validate_order_and_lengths(events):
         if event["event"] in {"layer_profile", "heuristic_profile"}:
             assert len(event["cofactor_counts"]) == order["state_bits"] + 1
             assert event["cofactor_width"] == max(event["cofactor_counts"])
+        if event["event"] == "layer_profile" and event["joint_cofactor_counts"]:
+            assert (
+                len(event["joint_cofactor_counts"])
+                == order["state_bits"] + 1
+            )
 
 
 def main():
@@ -171,7 +187,8 @@ def main():
             "combined",
             (
                 f'sym_fw(wbh_log="{legacy_combined}",'
-                f'wbh_profile_log="{blind_profile}")'
+                f'wbh_profile_log="{blind_profile}",'
+                "wbh_profile_self_test=true)"
             ),
         )
 
@@ -185,7 +202,7 @@ def main():
         ]
 
         blind_events = read_events(blind_profile)
-        assert blind_events[0] == PROFILE_SCHEMA_V1
+        assert blind_events[0] == PROFILE_SCHEMA_V3
         validate_order_and_lengths(blind_events)
         layers = [event for event in blind_events if event["event"] == "layer_profile"]
         assert [event["g"] for event in layers] == [0, 1], layers
@@ -199,6 +216,9 @@ def main():
             {
                 "event": "done",
                 "layer_union_effort": sum(event["bdd_nodes"] for event in layers),
+                "masked_add_effort": 0,
+                "terminal_incidence_effort": 0,
+                "partition_audit_effort": 0,
                 "solution_cost": 2,
             }
         ]
@@ -227,7 +247,7 @@ def main():
             ),
         )
         heuristic_events = read_events(heuristic_profile)
-        assert heuristic_events[0] == PROFILE_SCHEMA_V1
+        assert heuristic_events[0] == PROFILE_SCHEMA_V3
         validate_order_and_lengths(heuristic_events)
         heuristics = [
             event for event in heuristic_events
@@ -262,7 +282,7 @@ def main():
             ),
         )
         pdb_events = read_events(pdb_profile)
-        assert pdb_events[0] == PROFILE_SCHEMA_V1
+        assert pdb_events[0] == PROFILE_SCHEMA_V3
         validate_order_and_lengths(pdb_events)
         assert sum(
             event["event"] == "heuristic_profile" for event in pdb_events

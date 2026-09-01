@@ -2,8 +2,10 @@
 
 #include "../sym_state_space_manager.h"
 #include "../sym_variables.h"
-#include "../wbh_pdb_levels.h"
+#include "../wbh_cofactor_profiles.h"
+#include "../wbh_dual_metric_selector.h"
 #include "../wbh_incidence_selector.h"
+#include "../wbh_pdb_levels.h"
 #include "../wbh_profile.h"
 #include "../wbh_stats.h"
 
@@ -49,6 +51,13 @@ void SymbolicPdbForwardSearch::initialize() {
         pattern_selection == PdbPatternSelection::TERMINAL_INCIDENCE_GUIDED ||
         pattern_selection ==
             PdbPatternSelection::TERMINAL_INCIDENCE_MATCHED_CONTROL;
+    const bool dual_selector =
+        pattern_selection ==
+            PdbPatternSelection::TERMINAL_DUAL_INCIDENCE_GUIDED ||
+        pattern_selection == PdbPatternSelection::TERMINAL_DUAL_MJ_GUIDED ||
+        pattern_selection ==
+            PdbPatternSelection::TERMINAL_DUAL_MATCHED_CONTROL;
+    const bool terminal_selector = incidence_selector || dual_selector;
     if (pattern_selection == PdbPatternSelection::EXACT_WIDTH_FILTER &&
         dynamic_reordering) {
         utils::g_log
@@ -58,9 +67,9 @@ void SymbolicPdbForwardSearch::initialize() {
             << endl;
         utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
     }
-    if (incidence_selector && dynamic_reordering) {
+    if (terminal_selector && dynamic_reordering) {
         utils::g_log
-            << "Terminal-incidence PDB selection requires "
+            << "Terminal-metric PDB selection requires "
                "dynamic_reordering=false."
             << endl;
         utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
@@ -99,7 +108,7 @@ void SymbolicPdbForwardSearch::initialize() {
             << endl;
         utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
     }
-    if (incidence_selector) {
+    if (terminal_selector) {
         bool fd_order = true;
         const vector<int> &order = vars->get_var_order();
         for (size_t i = 0; i < order.size(); ++i) {
@@ -117,7 +126,7 @@ void SymbolicPdbForwardSearch::initialize() {
             batch_f_window == 0 && !incidence_selector_log.empty();
         if (!frozen_options) {
             utils::g_log
-                << "Terminal-incidence selectors require the frozen options "
+                << "Terminal-metric selectors require the frozen options "
                    "budget=100000, gamer_ordering=false, "
                    "dynamic_reordering=false, cegar_seed=2011, "
                    "cegar_max_time=infinity, cegar_max_refinements=128, "
@@ -132,7 +141,7 @@ void SymbolicPdbForwardSearch::initialize() {
     } else if (!incidence_selector_log.empty()) {
         utils::g_log
             << "incidence_selector_log is only valid for a "
-               "terminal-incidence selector."
+               "terminal-metric selector."
             << endl;
         utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
     }
@@ -160,11 +169,19 @@ void SymbolicPdbForwardSearch::initialize() {
         make_shared<SymStateSpaceManager>(vars.get(), sym_params, search_task);
 
     utils::Timer construction_timer;
-    unique_ptr<WbhIncidenceTrace> incidence_trace;
+    unique_ptr<WbhSelectorTrace> selector_trace;
+    unique_ptr<WbhStateCutCertificate> state_cut_certificate;
     unique_ptr<WbhIncidenceProbe> incidence_probe;
-    if (incidence_selector) {
-        incidence_trace =
-            make_unique<WbhIncidenceTrace>(incidence_selector_log);
+    if (terminal_selector) {
+        if (dual_selector) {
+            state_cut_certificate = make_unique<WbhStateCutCertificate>(
+                make_wbh_state_cut_certificate(vars.get()));
+            selector_trace = make_unique<WbhDualMetricTrace>(
+                incidence_selector_log, *state_cut_certificate);
+        } else {
+            selector_trace =
+                make_unique<WbhIncidenceTrace>(incidence_selector_log);
+        }
         incidence_probe = make_unique<WbhIncidenceProbe>(vars.get(), 16);
         SymParameters probe_params = sym_params;
         probe_params.stats.reset();
@@ -188,11 +205,11 @@ void SymbolicPdbForwardSearch::initialize() {
                                                 .count();
         const int probe_peak_after = utils::get_peak_memory_in_kb();
         incidence_probe->log_probe(
-            *incidence_trace, probe_cpu_seconds, probe_wall_seconds,
+            *selector_trace, probe_cpu_seconds, probe_wall_seconds,
             probe_peak_before, probe_peak_after);
         if (!incidence_probe->complete()) {
             utils::g_log
-                << "Terminal-incidence selector could not complete its frozen "
+                << "Terminal-metric selector could not complete its frozen "
                    "16-layer blind probe; no fallback is permitted."
                 << endl;
             utils::exit_with(utils::ExitCode::SEARCH_UNSUPPORTED);
@@ -204,7 +221,8 @@ void SymbolicPdbForwardSearch::initialize() {
             goal_directed, cegar_max_time, cegar_seed,
             cegar_max_refinements,
             cofactor_width_budget, total_add_node_budget, value_cap,
-            select_value_cap, incidence_probe.get(), incidence_trace.get());
+            select_value_cap, incidence_probe.get(), selector_trace.get(),
+            state_cut_certificate.get());
     if (level_sets->uses_terminal_incidence_selector()) {
         utils::g_log << "wbh PDB heuristic: pattern_size="
                      << level_sets->get_pattern().size()
@@ -216,6 +234,32 @@ void SymbolicPdbForwardSearch::initialize() {
                      << level_sets->get_terminal_incidence_budget()
                      << ", terminal_incidence="
                      << level_sets->get_selected_terminal_incidence()
+                     << ", pool_sha256=" << level_sets->get_pool_sha256()
+                     << ", preselection_sha256="
+                     << level_sets->get_preselection_sha256();
+        if (level_sets->get_value_cap() >= 0) {
+            utils::g_log << ", value_cap=" << level_sets->get_value_cap();
+        }
+        utils::g_log << ", values=" << level_sets->get_level_sets().size()
+                     << ", cofactor_width="
+                     << level_sets->get_cofactor_width()
+                     << ", width_upper_bound="
+                     << level_sets->get_width_upper_bound() << endl;
+    } else if (level_sets->uses_terminal_dual_metric_selector()) {
+        utils::g_log << "wbh PDB heuristic: pattern_size="
+                     << level_sets->get_pattern().size()
+                     << ", selected_source="
+                     << level_sets->get_selected_source()
+                     << ", abstract_states="
+                     << level_sets->get_num_abstract_states()
+                     << ", terminal_incidence_budget="
+                     << level_sets->get_terminal_incidence_budget()
+                     << ", terminal_incidence="
+                     << level_sets->get_selected_terminal_incidence()
+                     << ", masked_joint_budget="
+                     << level_sets->get_masked_joint_budget()
+                     << ", masked_joint="
+                     << level_sets->get_selected_masked_joint()
                      << ", pool_sha256=" << level_sets->get_pool_sha256()
                      << ", preselection_sha256="
                      << level_sets->get_preselection_sha256();
@@ -371,23 +415,25 @@ public:
             "remaining budget; cegar uses counterexample-guided refinement; "
             "exact_width_filter applies a deterministic score to a fixed "
             "candidate-generator pool under one exact cofactor-width or "
-            "total-ADD-node budget.",
+            "total-ADD-node budget; the terminal-incidence modes and the "
+            "terminal-dual modes use the frozen cap grid and common K=32 "
+            "reference protocol.",
             "legacy");
         add_option<double>(
             "cegar_max_time",
             "Maximum CEGAR pattern-generation time in seconds (used for "
-            "pattern_selection=cegar and for the exact_width_filter pool).",
+            "pattern_selection=cegar and for the fixed selector pools).",
             "10.0", plugins::Bounds("0.0", "infinity"));
         add_option<int>(
             "cegar_seed",
             "Deterministic CEGAR random seed (used for "
-            "pattern_selection=cegar and for the exact_width_filter pool).",
+            "pattern_selection=cegar and for the fixed selector pools).",
             "2011", plugins::Bounds("0", "infinity"));
         add_option<int>(
             "cegar_max_refinements",
             "Maximum number of CEGAR refinement calls. Solution, decisive "
             "unsolvability, and empty-flaw detection precede the limit check. "
-            "The terminal-incidence modes require 128.",
+            "The terminal-metric modes require 128.",
             "infinity", plugins::Bounds("0", "infinity"));
         add_option<int>(
             "cofactor_width_budget",
@@ -448,8 +494,9 @@ public:
         add_option<string>(
             "incidence_selector_log",
             "Dedicated create-or-truncate JSON-lines trace for the "
-            "terminal-incidence selectors. A nonempty path is mandatory for "
-            "those modes and invalid for every other mode.",
+            "terminal-incidence and terminal-dual-metric selectors. A "
+            "nonempty path is mandatory for those modes and invalid for "
+            "every other mode.",
             "\"\"");
         this->add_option<shared_ptr<symbolic::PlanSelector>>(
             "plan_selection", "plan selection strategy", "top_k(num_plans=1)");
@@ -481,5 +528,16 @@ static plugins::TypedEnumPlugin<PdbPatternSelection>
           "budget of the cap-aware exact-width K=32 reference"},
          {"terminal_incidence_matched_control",
           "perform identical incidence-guided preselection work but execute "
-          "the cap-aware exact-width K=32 reference"}});
+          "the cap-aware exact-width K=32 reference"},
+         {"terminal_dual_incidence_guided",
+          "measure terminal incidence and masked joint cofactors for every "
+          "candidate, then select under the incidence budget of the common "
+          "cap-aware exact-width K=32 reference"},
+         {"terminal_dual_mj_guided",
+          "measure terminal incidence and masked joint cofactors for every "
+          "candidate, then select under the masked-joint budget of the common "
+          "cap-aware exact-width K=32 reference"},
+         {"terminal_dual_matched_control",
+          "perform identical dual-metric preselection work but execute the "
+          "common cap-aware exact-width K=32 reference"}});
 }

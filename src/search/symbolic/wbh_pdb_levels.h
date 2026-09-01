@@ -21,7 +21,8 @@ class Projection;
 namespace symbolic {
 class WbhStats;
 class WbhIncidenceProbe;
-class WbhIncidenceTrace;
+class WbhSelectorTrace;
+struct WbhStateCutCertificate;
 
 enum class PdbPatternSelection {
     LEGACY,
@@ -32,6 +33,9 @@ enum class PdbPatternSelection {
     EXACT_WIDTH_FILTER,
     TERMINAL_INCIDENCE_GUIDED,
     TERMINAL_INCIDENCE_MATCHED_CONTROL,
+    TERMINAL_DUAL_INCIDENCE_GUIDED,
+    TERMINAL_DUAL_MJ_GUIDED,
+    TERMINAL_DUAL_MATCHED_CONTROL,
 };
 
 /*
@@ -71,6 +75,8 @@ class PdbLevelSets {
     bool selected_initial_dead_end = false;
     long selected_terminal_incidence = -1;
     long terminal_incidence_budget = -1;
+    long selected_masked_joint = -1;
+    long masked_joint_budget = -1;
     std::string pool_sha256;
     std::string preselection_sha256;
 
@@ -88,7 +94,8 @@ public:
         int cegar_max_refinements, int cofactor_width_budget,
         int total_add_node_budget, int value_cap, bool select_value_cap,
         const WbhIncidenceProbe *incidence_probe = nullptr,
-        WbhIncidenceTrace *incidence_trace = nullptr);
+        WbhSelectorTrace *selector_trace = nullptr,
+        const WbhStateCutCertificate *state_cut_certificate = nullptr);
 
     const std::map<int, BDD> &get_level_sets() const {
         return level_sets;
@@ -140,9 +147,15 @@ public:
                selection_name == "terminal_incidence_matched_control";
     }
 
+    bool uses_terminal_dual_metric_selector() const {
+        return selection_name == "terminal_dual_incidence_guided" ||
+               selection_name == "terminal_dual_mj_guided" ||
+               selection_name == "terminal_dual_matched_control";
+    }
+
     bool uses_candidate_pool() const {
-        return uses_exact_width_filter() ||
-               uses_terminal_incidence_selector();
+        return uses_exact_width_filter() || uses_terminal_incidence_selector() ||
+               uses_terminal_dual_metric_selector();
     }
 
     long get_selected_terminal_incidence() const {
@@ -151,6 +164,14 @@ public:
 
     long get_terminal_incidence_budget() const {
         return terminal_incidence_budget;
+    }
+
+    long get_selected_masked_joint() const {
+        return selected_masked_joint;
+    }
+
+    long get_masked_joint_budget() const {
+        return masked_joint_budget;
     }
 
     const std::string &get_pool_sha256() const {

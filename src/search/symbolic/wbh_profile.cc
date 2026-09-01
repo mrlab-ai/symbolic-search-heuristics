@@ -3,6 +3,7 @@
 #include "closed_list.h"
 #include "sym_variables.h"
 #include "wbh_add_stats.h"
+#include "wbh_cofactor_profiles.h"
 
 #include "../utils/system.h"
 #include "../utils/timer.h"
@@ -12,7 +13,6 @@
 #include <limits>
 #include <set>
 #include <sstream>
-#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -20,23 +20,6 @@ using namespace std;
 
 namespace symbolic {
 namespace {
-struct ResidualPair {
-    DdNode *bdd;
-    DdNode *add;
-
-    bool operator==(const ResidualPair &other) const {
-        return bdd == other.bdd && add == other.add;
-    }
-};
-
-struct ResidualPairHash {
-    size_t operator()(const ResidualPair &pair) const {
-        size_t left = hash<DdNode *>{}(pair.bdd);
-        size_t right = hash<DdNode *>{}(pair.add);
-        return left ^ (right + 0x9e3779b9 + (left << 6) + (left >> 2));
-    }
-};
-
 struct MaskedLayerStats {
     long add_nodes;
     int active_value_count;
@@ -488,157 +471,6 @@ MaskedLayerStats compute_masked_layer_stats(
         event_masked_seconds, partition_timer()};
 }
 
-DdNode *advance_bdd_residual(
-    DdManager *dd, DdNode *node, int expected_index, int level,
-    bool take_then) {
-    DdNode *regular = Cudd_Regular(node);
-    if (Cudd_IsConstant(regular)) {
-        return node;
-    }
-    const int node_index = Cudd_NodeReadIndex(regular);
-    const int node_level = Cudd_ReadPerm(dd, node_index);
-    if (node_level < level) {
-        ABORT(
-            "WBH joint profile encountered non-state BDD support between "
-            "certified unprimed cuts.");
-    }
-    if (node_level > level) {
-        return node;
-    }
-    if (node_index != expected_index) {
-        ABORT("WBH joint profile CUDD index/level certificate mismatch.");
-    }
-    const int complemented = Cudd_IsComplement(node);
-    DdNode *child = take_then ? Cudd_T(regular) : Cudd_E(regular);
-    return Cudd_NotCond(child, complemented);
-}
-
-DdNode *advance_add_residual(
-    DdManager *dd, DdNode *node, int expected_index, int level,
-    bool take_then) {
-    DdNode *regular = Cudd_Regular(node);
-    if (Cudd_IsConstant(regular)) {
-        return regular;
-    }
-    const int node_index = Cudd_NodeReadIndex(regular);
-    const int node_level = Cudd_ReadPerm(dd, node_index);
-    if (node_level < level) {
-        ABORT(
-            "WBH joint profile encountered non-state ADD support between "
-            "certified unprimed cuts.");
-    }
-    if (node_level > level) {
-        return regular;
-    }
-    if (node_index != expected_index) {
-        ABORT("WBH joint profile ADD index/level certificate mismatch.");
-    }
-    return Cudd_Regular(take_then ? Cudd_T(regular) : Cudd_E(regular));
-}
-
-vector<long> compute_joint_profile(
-    DdManager *dd, const BDD &bdd, const ADD &add,
-    const vector<int> &state_indices, const vector<int> &state_levels) {
-    unordered_set<ResidualPair, ResidualPairHash> frontier{
-        {bdd.getNode(), Cudd_Regular(add.getNode())}};
-    vector<long> counts;
-    counts.reserve(state_indices.size() + 1);
-    counts.push_back(1);
-
-    for (size_t position = 0; position < state_indices.size(); ++position) {
-        const int expected_index = state_indices[position];
-        const int level = state_levels[position];
-        if (Cudd_ReadPerm(dd, expected_index) != level) {
-            ABORT(
-                "WBH joint profile variable order changed after its "
-                "certificate was written (dynamic reordering is unsupported).");
-        }
-        unordered_set<ResidualPair, ResidualPairHash> next;
-        next.reserve(frontier.size() * 2);
-        for (const ResidualPair &pair : frontier) {
-            for (bool take_then : {false, true}) {
-                next.insert({
-                    advance_bdd_residual(
-                        dd, pair.bdd, expected_index, level, take_then),
-                    advance_add_residual(
-                        dd, pair.add, expected_index, level, take_then)});
-            }
-        }
-        frontier.swap(next);
-        counts.push_back(static_cast<long>(frontier.size()));
-    }
-
-    for (const ResidualPair &pair : frontier) {
-        if (!Cudd_IsConstant(Cudd_Regular(pair.bdd)) ||
-            !Cudd_IsConstant(Cudd_Regular(pair.add))) {
-            ABORT(
-                "WBH joint profile retains nonterminal support after the "
-                "final unprimed cut.");
-        }
-    }
-    return counts;
-}
-
-vector<long> compute_bdd_profile(
-    DdManager *dd, const BDD &bdd, const vector<int> &state_indices,
-    const vector<int> &state_levels) {
-    unordered_set<DdNode *> frontier{bdd.getNode()};
-    vector<long> counts;
-    counts.reserve(state_indices.size() + 1);
-    counts.push_back(1);
-
-    for (size_t position = 0; position < state_indices.size(); ++position) {
-        const int expected_index = state_indices[position];
-        const int level = state_levels[position];
-        if (Cudd_ReadPerm(dd, expected_index) != level) {
-            ABORT(
-                "WBH profile variable order changed after its certificate "
-                "was written (dynamic reordering is unsupported).");
-        }
-
-        unordered_set<DdNode *> next;
-        next.reserve(frontier.size() * 2);
-        for (DdNode *node : frontier) {
-            DdNode *regular = Cudd_Regular(node);
-            if (Cudd_IsConstant(regular)) {
-                next.insert(node);
-                continue;
-            }
-            const int node_index = Cudd_NodeReadIndex(regular);
-            const int node_level = Cudd_ReadPerm(dd, node_index);
-            if (node_level < level) {
-                ABORT(
-                    "WBH profile encountered non-state BDD support between "
-                    "certified unprimed cuts.");
-            }
-            if (node_level == level) {
-                if (node_index != expected_index) {
-                    ABORT("WBH profile CUDD index/level certificate mismatch.");
-                }
-                const int complemented = Cudd_IsComplement(node);
-                // CUDD complement edges are semantic: f and !f must remain
-                // different residuals. Propagate the root polarity to both
-                // cofactors instead of regularizing them.
-                next.insert(Cudd_NotCond(Cudd_T(regular), complemented));
-                next.insert(Cudd_NotCond(Cudd_E(regular), complemented));
-            } else {
-                next.insert(node);
-            }
-        }
-        frontier.swap(next);
-        counts.push_back(static_cast<long>(frontier.size()));
-    }
-
-    for (DdNode *node : frontier) {
-        if (!Cudd_IsConstant(Cudd_Regular(node))) {
-            ABORT(
-                "WBH profile BDD depends on a primed or auxiliary variable "
-                "after the final unprimed cut.");
-        }
-    }
-    return counts;
-}
-
 void append_long_vector(ostringstream &stream, const vector<long> &values) {
     stream << "[";
     for (size_t i = 0; i < values.size(); ++i) {
@@ -722,41 +554,25 @@ void WbhProfile::log_variable_order(SymVariables *vars) {
     if (variable_order_written) {
         return;
     }
-    DdManager *dd = vars->getCudd()->getManager();
-    vector<tuple<int, int, int, int>> bits;
-    for (int fd_var : vars->get_var_order()) {
-        const vector<int> &indices = vars->vars_index_pre(fd_var);
-        for (size_t bit = 0; bit < indices.size(); ++bit) {
-            const int index = indices[bit];
-            bits.emplace_back(
-                Cudd_ReadPerm(dd, index), index, fd_var,
-                static_cast<int>(bit));
-        }
-    }
-    sort(bits.begin(), bits.end());
-
-    vector<int> fd_variables;
-    vector<int> fd_bit_positions;
-    for (const auto &[level, index, fd_var, bit] : bits) {
-        state_levels.push_back(level);
-        state_indices.push_back(index);
-        fd_variables.push_back(fd_var);
-        fd_bit_positions.push_back(bit);
-    }
+    WbhStateCutCertificate certificate =
+        make_wbh_state_cut_certificate(vars);
+    state_indices = certificate.cudd_indices;
+    state_levels = certificate.cudd_levels;
     variable_order_written = true;
 
     utils::Timer serialization_timer;
     ostringstream event;
     event << "{\"event\":\"variable_order\",\"manager_variables\":"
-          << Cudd_ReadSize(dd) << ",\"state_bits\":" << state_indices.size()
+          << certificate.manager_variables << ",\"state_bits\":"
+          << state_indices.size()
           << ",\"cudd_indices\":";
     append_int_vector(event, state_indices);
     event << ",\"cudd_levels\":";
     append_int_vector(event, state_levels);
     event << ",\"fd_variables\":";
-    append_int_vector(event, fd_variables);
+    append_int_vector(event, certificate.fd_variables);
     event << ",\"fd_bit_positions\":";
-    append_int_vector(event, fd_bit_positions);
+    append_int_vector(event, certificate.fd_bit_positions);
     event << "}";
     serialization_seconds += serialization_timer();
     write_payload(event.str());
@@ -772,7 +588,7 @@ void WbhProfile::run_masked_self_test(SymVariables *vars) {
     BDD x1 = vars->getCudd()->bddVar(state_indices[1]);
     ADD zero = vars->constant(0);
     auto measure = [&](const BDD &layer, const ADD &heuristic) {
-        vector<long> joint = compute_joint_profile(
+        vector<long> joint = compute_wbh_joint_cofactor_profile(
             dd, layer, heuristic, state_indices, state_levels);
         vector<int> values = validate_heuristic_terminals(heuristic);
         MaskedLayerStats stats = compute_masked_layer_stats(
@@ -985,7 +801,7 @@ void WbhProfile::prepare_blind_layer(
     const double event_union_seconds = union_timer();
 
     utils::Timer cofactor_timer;
-    vector<long> profile = compute_bdd_profile(
+    vector<long> profile = compute_wbh_bdd_cofactor_profile(
         vars->getCudd()->getManager(), layer, state_indices, state_levels);
     const double event_cofactor_seconds = cofactor_timer();
     vector<long> joint_profile;
@@ -994,7 +810,7 @@ void WbhProfile::prepare_blind_layer(
         0, 0, {}, false, {}, 0, 0, 0, {}, 0, 0};
     if (heuristic_written) {
         utils::Timer joint_cofactor_timer;
-        joint_profile = compute_joint_profile(
+        joint_profile = compute_wbh_joint_cofactor_profile(
             vars->getCudd()->getManager(), layer, heuristic_add, state_indices,
             state_levels);
         event_joint_cofactor_seconds = joint_cofactor_timer();

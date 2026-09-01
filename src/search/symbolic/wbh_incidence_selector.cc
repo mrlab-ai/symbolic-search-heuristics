@@ -47,7 +47,7 @@ void append_long_vector(ostringstream &out, const vector<long> &values) {
     out << "]";
 }
 
-long terminal_incidence(
+WbhIncidenceLayerMeasurement measure_layer(
     SymVariables *vars, const BDD &layer, const ADD &heuristic) {
     if (layer.IsZero()) {
         ABORT("WBH incidence selector received an empty completed layer.");
@@ -155,7 +155,14 @@ long terminal_incidence(
     if (incidence < add_nodes || incidence > add_nodes * active_values) {
         ABORT("WBH incidence selector violates its exact product bounds.");
     }
-    return incidence;
+    vector<int> active_terminal_values;
+    active_terminal_values.reserve(active_terminal_ids.size());
+    for (size_t terminal_id : active_terminal_ids) {
+        active_terminal_values.push_back(
+            static_cast<int>(Cudd_V(nodes[terminal_id])));
+    }
+    sort(active_terminal_values.begin(), active_terminal_values.end());
+    return {incidence, add_nodes, move(active_terminal_values)};
 }
 
 uint32_t rotate_right(uint32_t value, unsigned shift) {
@@ -250,6 +257,11 @@ string sha256(const string &payload) {
     }
     return out.str();
 }
+}
+
+WbhIncidenceLayerMeasurement measure_terminal_incidence_layer(
+    SymVariables *vars, const BDD &layer, const ADD &heuristic) {
+    return measure_layer(vars, layer, heuristic);
 }
 
 WbhIncidenceTrace::WbhIncidenceTrace(const string &path) {
@@ -350,7 +362,7 @@ const vector<BDD> &WbhIncidenceProbe::get_layers() const {
 }
 
 void WbhIncidenceProbe::log_probe(
-    WbhIncidenceTrace &trace, double cpu_seconds, double wall_seconds,
+    WbhSelectorTrace &trace, double cpu_seconds, double wall_seconds,
     int peak_memory_before_kb, int peak_memory_after_kb) const {
     ostringstream out;
     out << "{\"event\":\"probe\",\"target_layers\":" << target_layers
@@ -377,7 +389,9 @@ WbhIncidenceMeasurement measure_terminal_incidence(
     WbhIncidenceMeasurement result{{}, 0};
     result.by_layer.reserve(layers.size());
     for (const BDD &layer : layers) {
-        long incidence = terminal_incidence(vars, layer, heuristic);
+        long incidence = measure_terminal_incidence_layer(
+                             vars, layer, heuristic)
+                             .terminal_incidence;
         result.by_layer.push_back(incidence);
         result.total = checked_add(
             result.total, incidence, "multi-layer terminal incidence");
