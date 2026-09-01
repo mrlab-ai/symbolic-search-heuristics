@@ -103,6 +103,106 @@ class SourceAuditV5Test(unittest.TestCase):
             },
         )
 
+    def test_distribution_record_path_normalizes_only_within_pinned_venv(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="source-audit-v5-venv-") as tmp:
+            root = Path(tmp) / "venv"
+            (root / "bin").mkdir(parents=True)
+            tool = root / "bin" / "tool"
+            tool.write_bytes(b"tool\n")
+            located = (
+                root / "lib" / "python3.12" / "site-packages" /
+                "../../../bin/tool"
+            )
+            distribution = SimpleNamespace(
+                locate_file=lambda relative: located
+            )
+            with mock.patch.object(Source, "PYTHON_ENVIRONMENT_ROOT", root):
+                self.assertEqual(
+                    Source._installed_distribution_path(
+                        distribution, "../../../bin/tool"
+                    ),
+                    tool,
+                )
+                loaded = Source._safe_file(
+                    tool,
+                    "installed distribution file",
+                    expected_path=tool,
+                    root=root,
+                )
+                self.assertEqual(loaded.raw, b"tool\n")
+
+                outside = Path(tmp) / "outside"
+                outside.mkdir()
+                (outside / "tool").write_bytes(b"outside\n")
+                (root / "linked").symlink_to(
+                    outside, target_is_directory=True
+                )
+                linked = Source._installed_distribution_path(
+                    SimpleNamespace(
+                        locate_file=lambda relative: root / "linked" / "tool"
+                    ),
+                    "linked/tool",
+                )
+                with self.assertRaisesRegex(
+                    Source.SourceAuditError, "ancestor is not a directory"
+                ):
+                    Source._safe_file(
+                        linked,
+                        "installed distribution file",
+                        expected_path=linked,
+                        root=root,
+                    )
+
+        with mock.patch.object(
+            Source, "_safe_file", wraps=Source._safe_file
+        ) as safe_file:
+            environment = Source._environment_attestation(
+                Source.Base.REQUIREMENTS, verify_installed_files=True
+            )
+        self.assertEqual(
+            environment["python_environment_sha256"],
+            Source.Base.PINNED_PYTHON_ENVIRONMENT_SHA256,
+        )
+        installed_calls = [
+            call for call in safe_file.call_args_list
+            if len(call.args) > 1
+            and call.args[1] == "installed distribution file"
+        ]
+        self.assertGreater(len(installed_calls), 2000)
+        for call in installed_calls:
+            self.assertEqual(call.kwargs["expected_path"], call.args[0])
+            self.assertEqual(
+                call.kwargs["root"], Source.PYTHON_ENVIRONMENT_ROOT
+            )
+
+    def test_distribution_record_path_rejects_escape_and_invalid_values(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="source-audit-v5-venv-") as tmp:
+            root = Path(tmp) / "venv"
+            cases = (
+                str(root / "lib" / "../../outside"),
+                str(root.parent / (root.name + "-evil") / "tool"),
+                str(root.parent / "outside" / "tool"),
+                "relative/path",
+                "",
+                b"/not-a-string",
+                None,
+            )
+            with mock.patch.object(Source, "PYTHON_ENVIRONMENT_ROOT", root):
+                for located in cases:
+                    with self.subTest(located=located), self.assertRaises(
+                        Source.SourceAuditError
+                    ):
+                        Source._installed_distribution_path(
+                            SimpleNamespace(
+                                locate_file=lambda relative, value=located: value
+                            ),
+                            "record-entry",
+                        )
+
     def test_submit_command_is_unthrottled_closed_and_original_only(self) -> None:
         command = Launch._submit_command(
             Launch.SOURCE_INVENTORY_SHA256, Launch.OUTPUT_DIR, "a" * 24

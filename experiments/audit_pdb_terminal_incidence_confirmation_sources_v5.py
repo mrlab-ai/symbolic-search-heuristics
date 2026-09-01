@@ -56,6 +56,9 @@ TMP_ROOT = (
 )
 TMPDIR_TEMPLATE = str(TMP_ROOT / "task-{array_job_id}-{array_task_id}")
 PYTHON_CACHE_PREFIX_TEMPLATE = TMPDIR_TEMPLATE + "/pycache"
+PYTHON_ENVIRONMENT_ROOT = (
+    SCRIPT_DIR / "data" / "pdb-terminal-incidence-shadow-venv"
+)
 TASK_ENVIRONMENT_SCHEMA = Base.SCHEMA + "/campaign-v5/task-environment/v1"
 SOURCE_SNAPSHOT_SCHEMA = Base.SCHEMA + "/campaign-v5/source-snapshot/v1"
 SOURCE_SNAPSHOT_POLICY = {
@@ -266,6 +269,30 @@ def translator_source_digest(*, tree_callback=None) -> str:
     return value
 
 
+def _installed_distribution_path(distribution, relative) -> Path:
+    """Normalize a RECORD path without allowing it to leave the pinned venv."""
+    try:
+        raw = os.fspath(distribution.locate_file(relative))
+    except (TypeError, ValueError, OSError) as err:
+        raise SourceAuditError(
+            "installed distribution file path is invalid"
+        ) from err
+    if not isinstance(raw, str) or not raw:
+        raise SourceAuditError("installed distribution file path is invalid")
+    path = Path(os.path.normpath(raw))
+    if not path.is_absolute():
+        raise SourceAuditError(
+            "installed distribution file path is not absolute"
+        )
+    try:
+        path.relative_to(PYTHON_ENVIRONMENT_ROOT)
+    except ValueError as err:
+        raise SourceAuditError(
+            "installed distribution file path escapes pinned environment"
+        ) from err
+    return path
+
+
 def _environment_attestation(
     requirements_path: Path, *, verify_installed_files: bool
 ) -> dict:
@@ -301,8 +328,13 @@ def _environment_attestation(
         versions[name] = distribution.version
         if verify_installed_files:
             for relative in sorted(distribution.files, key=str):
-                path = Path(distribution.locate_file(relative))
-                item = _safe_file(path, "installed distribution file")
+                path = _installed_distribution_path(distribution, relative)
+                item = _safe_file(
+                    path,
+                    "installed distribution file",
+                    expected_path=path,
+                    root=PYTHON_ENVIRONMENT_ROOT,
+                )
                 manifest.append({
                     "distribution": name,
                     "path": str(relative),
@@ -331,6 +363,7 @@ def _environment_attestation(
     }
     if (
         value["python_version"] != Base.PINNED_PYTHON_VERSION
+        or sys.prefix != str(PYTHON_ENVIRONMENT_ROOT)
         or getattr(sys, "_base_executable", None) != str(executable)
         or executable_sha256 != Base.PINNED_PYTHON_EXECUTABLE_SHA256
         or loaded_requirements.sha256 != Base.PINNED_REQUIREMENTS_SHA256
