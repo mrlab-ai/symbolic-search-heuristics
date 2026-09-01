@@ -259,13 +259,13 @@ WbhIncidenceTrace::WbhIncidenceTrace(const string &path) {
     }
     write_event(
         "{\"event\":\"schema\",\"schema\":\"symbolic-search-heuristics/"
-        "terminal-incidence-selector-trace/v1\",\"version\":1,"
+        "terminal-incidence-selector-trace/v3\",\"version\":3,"
         "\"probe_layers\":16,\"reference_cofactor_width_budget\":32,"
         "\"candidate_sources\":[\"empty\",\"bdd_prefix\","
         "\"goal_prefix\",\"goal_fill\",\"cegar\"],"
         "\"value_cap_grid\":[0,1,2,4,8,16,32,64,128,256,\"exact\"],"
         "\"pool_hash_encoding\":\"sources-pattern-states-feasible-lines-v1\","
-        "\"preselection_hash_encoding\":\"candidate-structural-lines-v1\","
+        "\"preselection_hash_encoding\":\"candidate-structural-lines-v3\","
         "\"incidence_budget\":\"sum-first-16-completed-blind-layers-of-"
         "reference-v1\"}");
 }

@@ -906,7 +906,15 @@ PdbLevelSets::PdbLevelSets(
                     << candidate.add_stats.cofactor_width
                     << "|width_upper_bound="
                     << candidate.add_stats.width_upper_bound
-                    << "|incidence=";
+                    << "|raw_max_finite_value="
+                    << candidate.raw_max_finite_value
+                    << "|raw_value_histogram=";
+                if (variant.value_cap < 0) {
+                    preselection_canonical << candidate.raw_value_histogram;
+                } else {
+                    preselection_canonical << "null";
+                }
+                preselection_canonical << "|incidence=";
                 for (size_t i = 0; i < variant.incidence.by_layer.size(); ++i) {
                     if (i) {
                         preselection_canonical << ",";
@@ -956,7 +964,15 @@ PdbLevelSets::PdbLevelSets(
                 << candidate.add_stats.cofactor_width
                 << ",\"width_upper_bound\":"
                 << candidate.add_stats.width_upper_bound
-                << ",\"terminal_incidence_by_layer\":";
+                << ",\"raw_max_finite_value\":"
+                << candidate.raw_max_finite_value
+                << ",\"raw_value_histogram\":";
+            if (variant.value_cap < 0) {
+                out << "\"" << candidate.raw_value_histogram << "\"";
+            } else {
+                out << "null";
+            }
+            out << ",\"terminal_incidence_by_layer\":";
             append_long_array(out, variant.incidence.by_layer);
             out << ",\"terminal_incidence\":" << variant.incidence.total
                 << ",\"reference_feasible\":"

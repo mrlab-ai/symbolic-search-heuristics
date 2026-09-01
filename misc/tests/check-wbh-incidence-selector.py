@@ -6,16 +6,22 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 import tempfile
 from fractions import Fraction
 from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "experiments"))
+
+import pdb_terminal_incidence_selector_parser as SelectorParser
+
+
 GRIPPER = REPO / "misc/tests/benchmarks/gripper/prob01.pddl"
 SOURCE_ORDER = ["empty", "bdd_prefix", "goal_prefix", "goal_fill", "cegar"]
 CAP_GRID = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, "exact"]
-SCHEMA = "symbolic-search-heuristics/terminal-incidence-selector-trace/v1"
+SCHEMA = "symbolic-search-heuristics/terminal-incidence-selector-trace/v3"
 CEGAR_SUMMARY_RE = re.compile(
     r"CEGAR refinement summary: configured=(\d+), actual=(\d+), "
     r"reached=(true|false)"
@@ -137,6 +143,8 @@ def preselection_canonical(candidates):
             "null" if candidate["initial_dead_end"] else str(candidate["initial_h"])
         )
         incidence = ",".join(map(str, candidate["terminal_incidence_by_layer"]))
+        histogram = candidate["raw_value_histogram"]
+        histogram = "null" if histogram is None else histogram
         lines.append(
             f'{candidate["pattern_index"]}|cap={cap_text(candidate["value_cap"])}'
             f'|initial_dead_end={int(candidate["initial_dead_end"])}'
@@ -146,6 +154,8 @@ def preselection_canonical(candidates):
             f'|dead_count={candidate["dead_count"]}'
             f'|cofactor_width={candidate["cofactor_width"]}'
             f'|width_upper_bound={candidate["width_upper_bound"]}'
+            f'|raw_max_finite_value={candidate["raw_max_finite_value"]}'
+            f"|raw_value_histogram={histogram}"
             f"|incidence={incidence}"
             f'|incidence_total={candidate["terminal_incidence"]}'
             f'|reference_feasible={int(candidate["reference_feasible"])}\n'
@@ -193,9 +203,15 @@ def event_identity(event, prefix):
 
 
 def validate_trace(path, mode):
-    events = [json.loads(line) for line in path.read_text().splitlines()]
+    content = path.read_text()
+    events = [json.loads(line) for line in content.splitlines()]
     assert events[0]["event"] == "schema"
     assert events[0]["schema"] == SCHEMA
+    assert events[0]["version"] == 3
+    assert (
+        events[0]["preselection_hash_encoding"]
+        == "candidate-structural-lines-v3"
+    )
     assert events[0]["candidate_sources"] == SOURCE_ORDER
     assert events[0]["value_cap_grid"] == CAP_GRID
 
@@ -232,6 +248,13 @@ def validate_trace(path, mode):
         assert accounting[field] >= 0
 
     assert sha256(pool_canonical(pool["patterns"])) == pool["pool_sha256"]
+    assert pool["patterns"][0]["pattern"] == []
+    source_occurrences = [
+        source
+        for pattern in pool["patterns"]
+        for source in pattern["sources"]
+    ]
+    assert source_occurrences == SOURCE_ORDER
     assert sha256(preselection_canonical(candidates)) == preselection[
         "preselection_sha256"
     ]
@@ -251,6 +274,42 @@ def validate_trace(path, mode):
         assert candidate["terminal_incidence"] == sum(
             candidate["terminal_incidence_by_layer"]
         )
+    for variants in by_pattern.values():
+        exact = variants[-1]
+        raw_max = exact["raw_max_finite_value"]
+        assert all(v["raw_max_finite_value"] == raw_max for v in variants)
+        expected_caps = [
+            str(cap) for cap in CAP_GRID[:-1] if cap < raw_max
+        ] + ["exact"]
+        assert [cap_text(v["value_cap"]) for v in variants] == expected_caps
+        assert all(
+            variant["raw_value_histogram"] is None
+            for variant in variants[:-1]
+        )
+        assert isinstance(exact["raw_value_histogram"], str)
+        histogram = SelectorParser._decode_raw_value_histogram(
+            exact["raw_value_histogram"]
+        )
+        finite_count = sum(count for _, count in histogram)
+        assert exact["finite_count"] == finite_count
+        assert exact["finite_sum"] == sum(
+            value * count for value, count in histogram
+        )
+        assert exact["raw_max_finite_value"] == (
+            histogram[-1][0] if histogram else 0
+        )
+        for variant in variants:
+            cap = variant["value_cap"]
+            assert variant["finite_count"] == finite_count
+            assert variant["finite_sum"] == sum(
+                (value if cap is None else min(value, cap)) * count
+                for value, count in histogram
+            )
+    empty = by_pattern[0][0]
+    assert empty["pattern"] == []
+    assert empty["abstract_states"] == empty["finite_count"] == 1
+    assert empty["dead_count"] == empty["initial_h"] == 0
+    assert empty["terminal_incidence_by_layer"] == probe["bdd_nodes"]
     reference_reps = []
     for pattern_variants in by_pattern.values():
         feasible = [v for v in pattern_variants if v["reference_feasible"]]
@@ -280,6 +339,19 @@ def validate_trace(path, mode):
     assert selected["decision_mode"] == mode
     assert event_identity(selected, "selected_") == identity(expected_selected)
     assert selected["incidence_budget"] == budget
+    algorithm = (
+        SelectorParser.MATCHED
+        if mode == "matched_control"
+        else SelectorParser.GUIDED
+    )
+    props = {
+        "algorithm": algorithm,
+        "coverage": 1,
+        "planner_exit_code": 0,
+    }
+    SelectorParser.parse_selector_trace(content, props)
+    assert props["incidence_selector_trace_status"] == "complete"
+    assert props["incidence_selector_trace_certified"] is True
     return {
         "pool_sha256": pool["pool_sha256"],
         "preselection_sha256": preselection["preselection_sha256"],
@@ -393,10 +465,19 @@ def check_fail_closed(build, directory):
         input_text=make_chain_sas(3),
     )
     assert "no fallback is permitted" in output
-    probe = [json.loads(line) for line in trace.read_text().splitlines()][1]
+    content = trace.read_text()
+    probe = [json.loads(line) for line in content.splitlines()][1]
     assert probe["event"] == "probe"
     assert probe["complete"] is False
     assert probe["completed_layers"] == 3
+    props = {
+        "algorithm": SelectorParser.GUIDED,
+        "coverage": 0,
+        "planner_exit_code": 34,
+    }
+    SelectorParser.parse_selector_trace(content, props)
+    assert props["incidence_selector_trace_status"] == "short_probe"
+    assert props["incidence_selector_trace_certified"] is True
 
 
 def main():
