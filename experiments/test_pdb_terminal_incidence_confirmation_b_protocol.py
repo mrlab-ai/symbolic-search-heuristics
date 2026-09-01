@@ -146,69 +146,64 @@ class SourceFixture(AFixtures.SourceFixture):
     def patch(self):
         with super().patch(), mock.patch.multiple(
                 P,
-                SOURCE_V3_REPO=self.repo,
-                SOURCE_V3_ATTESTATION_PATH=self.attestation,
-                SOURCE_V3_ARTIFACT_DIR=self.artifact_dir,
-                SOURCE_V3_INTENT_PATH=self.intent,
-                SOURCE_V3_LAUNCH_RECEIPT_PATH=self.launch,
-                SOURCE_V3_LAUNCH_RECEIPT_SHA256=self.launch_sha,
-                SOURCE_V3_EXECUTION_RECEIPT_PATH=self.execution,
-                SOURCE_V3_SLURM_PATH=self.slurm,
-                SOURCE_V3_CODE_MANIFEST_PATH=self.manifest,
-                SOURCE_V3_AMENDMENT_PATH=self.amendment,
-                SOURCE_V3_INVENTORY_PATH=self.inventory,
-                SOURCE_V3_OUTPUT_DIR=self.output_dir,
-                SOURCE_V3_CANDIDATE_PATH=self.candidate,
-                SOURCE_V3_SLURM_SHA256=self.slurm_sha,
-                SOURCE_V3_CODE_MANIFEST_SHA256=self.manifest_sha,
-                SOURCE_V3_AMENDMENT_SHA256=self.amendment_sha,
-                SOURCE_V3_INVENTORY_SHA256=self.inventory_sha,
-                SOURCE_V3_FIXED_HASHES=self.fixed_hashes,
-                SOURCE_V3_V2_DIAGNOSTIC_SHA256=self.v2_diagnostic_sha,
-                SOURCE_V3_V2_SCHEDULER_STATE_COUNTS=self.v2_state_counts,
-                SOURCE_V3_V2_SCHEDULER_ROWS_SHA256=self.v2_rows_sha,
-                SOURCE_V3_V2_FAILURE_LOGS_SHA256=self.v2_logs_sha,
-                SOURCE_V3_V1_DIAGNOSTIC_SHA256=self.v1_diagnostic_sha,
-                _repository_snapshot_files=lambda commit, relatives: {
-                    relative: (self.repo / relative).read_bytes()
-                    for relative in relatives
-                },
+                SOURCE_V4_REPO=self.repo,
+                SOURCE_V4_ATTESTATION_PATH=self.attestation,
+                SOURCE_V4_ARTIFACT_DIR=self.artifact_dir,
+                SOURCE_V4_INTENT_PATH=self.intent,
+                SOURCE_V4_LAUNCH_RECEIPT_PATH=self.launch,
+                SOURCE_V4_LAUNCH_RECEIPT_SHA256=self.launch_sha,
+                SOURCE_V4_LAUNCH_INTENT_SHA256=self.intent_sha,
+                SOURCE_V4_EXECUTION_RECEIPT_PATH=self.execution,
+                SOURCE_V4_SLURM_PATH=self.slurm,
+                SOURCE_V4_CODE_MANIFEST_PATH=self.manifest,
+                SOURCE_V4_AMENDMENT_PATH=self.amendment,
+                SOURCE_V4_INVENTORY_PATH=self.inventory,
+                SOURCE_V4_OUTPUT_DIR=self.output_dir,
+                SOURCE_V4_CANDIDATE_PATH=self.candidate,
+                SOURCE_V4_SLURM_SHA256=self.slurm_sha,
+                SOURCE_V4_CODE_MANIFEST_SHA256=self.manifest_sha,
+                SOURCE_V4_AMENDMENT_SHA256=self.amendment_sha,
+                SOURCE_V4_INVENTORY_SHA256=self.inventory_sha,
+                SOURCE_V4_FIXED_HASHES=self.fixed_hashes,
+                SOURCE_V4_V3_DIAGNOSTIC_SHA256=self.diagnostic_sha,
+                SOURCE_V4_PRODUCER_COMMIT_ID="4" * 40,
+                SOURCE_V4_JOB_ID="123456",
         ):
             yield
 
 
 class ConfirmationBProtocolTest(unittest.TestCase):
-    def test_v3_manifest_contract_has_exact_order_and_cardinality(self):
-        self.assertEqual(len(P.SOURCE_V3_MANIFEST_FILES), 14)
-        self.assertEqual(len(set(P.SOURCE_V3_MANIFEST_FILES)), 14)
+    def test_v4_manifest_contract_has_exact_order_and_cardinality(self):
+        self.assertEqual(len(P.SOURCE_V4_MANIFEST_FILES), 24)
+        self.assertEqual(len(set(P.SOURCE_V4_MANIFEST_FILES)), 24)
         self.assertEqual(
-            P.SOURCE_V3_MANIFEST_FILES[-1],
+            P.SOURCE_V4_MANIFEST_FILES[-1],
             "experiments/"
-            "test_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+            "test_pdb_terminal_incidence_confirmation_source_audit_v4.py",
         )
 
-    def test_committed_v3_launch_byte_chain_is_accepted(self):
+    def test_committed_v4_launch_byte_chain_is_accepted(self):
         raw, launch = P._load_canonical(
-            P.SOURCE_V3_LAUNCH_RECEIPT_PATH, "v3 launch receipt"
+            P.SOURCE_V4_LAUNCH_RECEIPT_PATH, "v4 launch receipt"
         )
         self.assertEqual(
             hashlib.sha256(raw).hexdigest(),
-            P.SOURCE_V3_LAUNCH_RECEIPT_SHA256,
+            P.SOURCE_V4_LAUNCH_RECEIPT_SHA256,
         )
-        _, _, manifest = P._load_source_v3_byte_chain(launch)
-        self.assertEqual(len(manifest), 14)
+        _, _, manifest = P._load_source_v4_byte_chain(launch)
+        self.assertEqual(len(manifest), 24)
         self.assertEqual(
-            len(P._source_v3_tracked_file_sha256(launch, manifest)), 18
+            len(P._source_v4_tracked_file_sha256(launch, manifest)), 26
         )
 
-    def test_v3_local_byte_chain_tampering_is_rejected(self):
+    def test_v4_local_byte_chain_tampering_is_rejected(self):
         targets = (
             lambda fixture: fixture.intent,
             lambda fixture: fixture.slurm,
             lambda fixture: fixture.manifest,
             lambda fixture: fixture.amendment,
             lambda fixture: fixture.inventory,
-            lambda fixture: fixture.repo / P.SOURCE_V3_MANIFEST_FILES[4],
+            lambda fixture: fixture.repo / P.SOURCE_V4_MANIFEST_FILES[4],
         )
         for target in targets:
             with self.subTest(target=target), tempfile.TemporaryDirectory() as tmp:
@@ -217,6 +212,12 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                 path.write_bytes(path.read_bytes() + b"tamper\n")
                 with self.assertRaises(P.ProtocolError):
                     fixture.load()
+
+    def test_shared_v4_consumer_constants_cannot_drift(self):
+        P._validate_shared_v4_constants()
+        with mock.patch.object(P, "SOURCE_V4_JOB_ID", "999999"):
+            with self.assertRaisesRegex(P.ProtocolError, "bindings diverged"):
+                P._validate_shared_v4_constants()
 
     def test_symlinked_sealed_source_artifacts_are_rejected(self):
         for attribute in ("attestation", "execution", "launch"):
@@ -232,35 +233,44 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                 ):
                     fixture.load()
 
-    def test_v3_intent_and_repository_snapshot_are_bound(self):
+    def test_v4_intent_and_repository_snapshot_are_bound(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             fixture.mutate_intent(lambda intent: intent.update(
                 submit_command=["sbatch", "mutated"]
             ))
-            with self.assertRaisesRegex(P.ProtocolError, "local byte chain"):
+            with self.assertRaises(P.ProtocolError):
                 fixture.load()
+
+    def test_v4_attestation_and_execution_receipt_are_both_required(self):
+        for missing in ("attestation", "execution"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                getattr(fixture, missing).unlink()
+                with self.assertRaisesRegex(P.ProtocolError, "cannot load"):
+                    fixture.load()
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             with fixture.patch():
                 scoped = sorted({
-                    *P.SOURCE_V3_MANIFEST_FILES,
-                    P.SOURCE_V3_SLURM_RELATIVE,
-                    P.SOURCE_V3_MANIFEST_RELATIVE,
+                    *P.SOURCE_V4_MANIFEST_FILES,
+                    P.SOURCE_V4_SLURM_RELATIVE,
+                    P.SOURCE_V4_MANIFEST_RELATIVE,
                 })
                 snapshot = {
                     relative: (fixture.repo / relative).read_bytes()
                     for relative in scoped
                 }
-                snapshot[P.SOURCE_V3_MANIFEST_FILES[2]] += b"tamper\n"
+                snapshot[P.SOURCE_V4_MANIFEST_FILES[2]] += b"tamper\n"
                 with mock.patch.object(
-                    P, "_repository_snapshot_files", return_value=snapshot
+                    P.SourceValidation, "_repository_snapshot_files",
+                    return_value=snapshot
                 ), self.assertRaisesRegex(P.ProtocolError, "snapshot"):
                     P.load_source_materials(
                         fixture.attestation, fixture.execution, fixture.launch
                     )
 
-    def test_freeze_revision_tracks_all_v3_bound_files(self):
+    def test_freeze_revision_tracks_all_v4_bound_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             materials = fixture.load()
@@ -273,7 +283,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                         ),
                     ):
                 self.assertEqual(
-                    Freeze._tracked_source_v3_hashes(materials, "4" * 40),
+                    Freeze._tracked_source_v4_hashes(materials, "4" * 40),
                     materials.tracked_file_sha256,
                 )
             first = next(iter(materials.tracked_file_sha256))
@@ -286,7 +296,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                             else materials.tracked_file_sha256[relative]
                         ),
                     ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
-                Freeze._tracked_source_v3_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v4_hashes(materials, "4" * 40)
 
     def test_freeze_requires_source_revision_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -298,15 +308,16 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             Freeze._require_source_ancestor(materials, "4" * 40)
 
     def test_source_snapshot_rechecks_jj_after_each_subprocess(self):
+        shared = P.SourceValidation
         with mock.patch.object(
-                P, "sha256_file",
-                side_effect=[P.SOURCE_V3_JJ_EXECUTABLE_SHA256, "9" * 64],
+                shared, "sha256_file",
+                side_effect=[shared.SOURCE_V4_JJ_EXECUTABLE_SHA256, "9" * 64],
         ), mock.patch.object(
-                P.subprocess, "check_output", return_value="file\n"
+                shared.subprocess, "check_output", return_value="file\n"
         ) as query, self.assertRaisesRegex(
-                P.ProtocolError, "Jujutsu executable identity"
+                shared.ProtocolError, "Jujutsu executable identity"
         ):
-            P._repository_snapshot_files("4" * 40, ["file"])
+            shared._repository_snapshot_files("4" * 40, ["file"])
         query.assert_called_once()
 
     def test_freeze_rechecks_live_bytes_around_revision_lookup(self):
@@ -330,7 +341,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                     ), self.assertRaisesRegex(
                         Freeze.FreezeError, "changed during revision check"
                     ):
-                Freeze._tracked_source_v3_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v4_hashes(materials, "4" * 40)
 
     def test_freeze_reloads_source_after_mocked_planner_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -421,25 +432,35 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             "experiments/pdb_fixed_pattern_parser.py",
             P.EXPERIMENT_SOURCE_FILES,
         )
+        self.assertIn(
+            "experiments/pdb_cap_selector_parser.py",
+            P.EXPERIMENT_SOURCE_FILES,
+        )
+        self.assertIn(
+            "experiments/exp_arrhenius_common.py",
+            P.EXPERIMENT_SOURCE_FILES,
+        )
 
-    def test_dynamic_cardinality_contract_accepts_200_and_300(self):
-        for tasks in (200, 300):
-            cells = 9 * tasks
-            with mock.patch.multiple(
-                P,
-                COHORT_TASKS=tasks,
-                CELL_COUNT=cells,
-                EXPECTED_ARRAY_TASKS=(cells + 2) // 3,
-            ):
-                P.validate_protocol_design()
+    def test_dynamic_cardinality_contract_requires_exactly_300(self):
+        tasks = 300
+        cells = 9 * tasks
+        with mock.patch.multiple(
+            P,
+            COHORT_TASKS=tasks,
+            CELL_COUNT=cells,
+            EXPECTED_ARRAY_TASKS=(cells + 2) // 3,
+            RUN_CELL_MAPPING_SHA256="a" * 64,
+        ):
+            P.validate_protocol_design()
 
     def test_dynamic_cardinality_contract_rejects_out_of_range(self):
-        for tasks in (199, 301):
+        for tasks in (299, 301):
             with mock.patch.multiple(
                 P,
                 COHORT_TASKS=tasks,
                 CELL_COUNT=9 * tasks,
                 EXPECTED_ARRAY_TASKS=3 * tasks,
+                RUN_CELL_MAPPING_SHA256="a" * 64,
             ):
                 with self.assertRaisesRegex(P.ProtocolError, "cardinalities"):
                     P.validate_protocol_design()
@@ -508,45 +529,24 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                 with self.assertRaisesRegex(P.ProtocolError, "resource accounting"):
                     fixture.load()
 
-    def test_v2_failure_diagnostic_is_identical_and_consistent(self):
+    def test_v3_failure_diagnostic_is_identical_and_consistent(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             execution = json.loads(fixture.execution.read_text())
-            execution["v2_failure_diagnostic"]["reused_v2_shards"] = 1
+            execution["v3_infrastructure_diagnostic"][
+                "successful_v3_log_contents_inspected"
+            ] = True
             _write(fixture.execution, execution)
             with self.assertRaisesRegex(P.ProtocolError, "diagnostic"):
                 fixture.load()
 
-    def test_v2_failure_diagnostic_rejects_self_rehashed_substitution(self):
-        def add_failure(intent):
-            diagnostic = intent["v2_failure_diagnostic"]
-            row = diagnostic["v2_scheduler_rows"][2]
-            row["state"] = "FAILED"
-            row["exit_code"] = "75:0"
-            diagnostic["v2_scheduler_rows_sha256"] = hashlib.sha256(
-                P.canonical_json_line(diagnostic["v2_scheduler_rows"])
-            ).hexdigest()
-            diagnostic["v2_scheduler_state_counts"] = {
-                "COMPLETED": 817, "FAILED": 2, "OUT_OF_MEMORY": 1,
-            }
-            diagnostic["v2_failure_logs"].append({
-                "array_task": 2, "state": "FAILED", "sha256": "9" * 64,
-            })
-            diagnostic["v2_failure_logs_sha256"] = hashlib.sha256(
-                P.canonical_json_line(diagnostic["v2_failure_logs"])
-            ).hexdigest()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            fixture = SourceFixture(Path(tmp))
-            fixture.mutate_intent(add_failure)
-            with self.assertRaisesRegex(P.ProtocolError, "diagnostic"):
-                fixture.load()
+    def test_v3_failure_diagnostic_rejects_self_rehashed_substitution(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             fixture.mutate_intent(lambda intent: intent[
-                "v2_failure_diagnostic"
-            ].update(v2_scheduler_state_counts={"COMPLETED": 820}))
-            with self.assertRaisesRegex(P.ProtocolError, "diagnostic"):
+                "v3_infrastructure_diagnostic"
+            ].update(successful_v3_shard_contents_inspected=True))
+            with self.assertRaises(P.ProtocolError):
                 fixture.load()
 
     def test_source_scheduler_rows_and_state_counts_are_bound(self):
@@ -698,28 +698,26 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                 with self.assertRaises(P.ProtocolError):
                     fixture.load()
 
-    def test_unrecovered_source_union_and_tree_are_exact(self):
+    def test_v4_original_output_and_environment_tree_are_exact(self):
         def recovery(execution):
             execution["recovery"] = {"unexpected": True}
 
-        def recovered_origin(execution):
-            execution["union_sources"][17]["origin"] = "recovery"
+        def wrong_environment_hash(execution):
+            execution["task_environment_manifest"]["records"][17][
+                "sha256"
+            ] = "9" * 64
 
-        def wrong_source_path(execution):
-            execution["union_sources"][17]["source"] = "wrong/shard.json"
-
-        def wrong_union_hash(execution):
-            execution["union_sources"][17]["union_sha256"] = "9" * 64
-
-        def boolean_shard_index(execution):
-            execution["union_sources"][0]["shard_index"] = False
+        def boolean_task_index(execution):
+            execution["task_environment_manifest"]["records"][0][
+                "array_task"
+            ] = False
 
         def wrong_tree_count(execution):
-            execution["union_tree"]["files_count"] = 819
+            execution["original_output_tree"]["files_count"] = 819
 
         for mutation in (
-            recovery, recovered_origin, wrong_source_path,
-            wrong_union_hash, boolean_shard_index, wrong_tree_count,
+            recovery, wrong_environment_hash, boolean_task_index,
+            wrong_tree_count,
         ):
             with self.subTest(mutation=mutation.__name__):
                 with tempfile.TemporaryDirectory() as tmp:

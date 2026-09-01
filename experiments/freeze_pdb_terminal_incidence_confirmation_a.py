@@ -84,15 +84,15 @@ def _require_clean_parent(revision: str | None) -> str:
     return revision
 
 
-def _tracked_source_v3_hashes(materials, revision: str) -> dict[str, str]:
+def _tracked_source_v4_hashes(materials, revision: str) -> dict[str, str]:
     hashes = dict(materials.tracked_file_sha256)
-    if len(hashes) != 18:
-        raise FreezeError("source-audit v3 bound file set changed")
+    if len(hashes) != 26:
+        raise FreezeError("source-audit v4 bound file set changed")
     for relative, expected in hashes.items():
         path = REPO / relative
         _attest_tracked_file(
             path, expected, revision,
-            "source-audit v3 bound file {}".format(relative),
+            "source-audit v4 bound file {}".format(relative),
         )
     return hashes
 
@@ -126,7 +126,7 @@ def build_freeze(
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
     ):
         _attest_tracked_file(path, expected, revision, "sealed source artifact")
-    tracked_file_sha256 = _tracked_source_v3_hashes(materials, revision)
+    tracked_file_sha256 = _tracked_source_v4_hashes(materials, revision)
     cached = JJ.JjCachedFastDownwardRevision(
         REVISION_CACHE, REPO, revision, list(P.BUILD_OPTIONS)
     )
@@ -161,7 +161,9 @@ def build_freeze(
         "job_id": source_launch["job_id"],
         "code_manifest_sha256": source_execution["code_manifest_sha256"],
         "repository_commit_id": source_launch["repository_commit_id"],
-        "union_tree_sha256": source_execution["union_tree"]["sha256"],
+        "original_output_tree_sha256": source_execution[
+            "original_output_tree"
+        ]["sha256"],
         "slurm_script_sha256": source_launch["slurm_script_sha256"],
         "launch_intent_sha256": source_launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked_file_sha256,
@@ -209,7 +211,7 @@ def _revalidate_before_write(
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
     ):
         _attest_tracked_file(path, expected, revision, "sealed source artifact")
-    tracked = _tracked_source_v3_hashes(materials, revision)
+    tracked = _tracked_source_v4_hashes(materials, revision)
     launch = materials.launch_receipt
     execution = materials.execution_receipt
     expected_sources = {
@@ -225,7 +227,9 @@ def _revalidate_before_write(
         "job_id": launch["job_id"],
         "code_manifest_sha256": execution["code_manifest_sha256"],
         "repository_commit_id": launch["repository_commit_id"],
-        "union_tree_sha256": execution["union_tree"]["sha256"],
+        "original_output_tree_sha256": execution[
+            "original_output_tree"
+        ]["sha256"],
         "slurm_script_sha256": launch["slurm_script_sha256"],
         "launch_intent_sha256": launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked,

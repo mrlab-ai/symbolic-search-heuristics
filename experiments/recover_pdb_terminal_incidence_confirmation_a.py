@@ -10,12 +10,14 @@ import json
 import os
 import re
 import secrets
-import shutil
+import shlex
+import stat
 import subprocess
 from pathlib import Path
 
 import audit_pdb_terminal_incidence_confirmation_a as Audit
 import exp_pdb_terminal_incidence_confirmation_a as Runner
+import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_a_protocol as P
 
 
@@ -25,14 +27,18 @@ class RecoveryError(RuntimeError):
 
 IMMUTABLE_NAMES = {"run", "static-properties", "domain.pddl", "problem.pddl"}
 SUBMISSION_TOKEN_RE = re.compile(r"^[0-9a-f]{24}$")
-JOURNAL_FIELDS = "JobID%64,JobName%128,Comment%128"
+JOURNAL_FIELDS = Runner.JOURNAL_FIELDS
 
 
 def _next_wave() -> tuple[int, Path]:
     for wave in range(1, 1000):
         path = Audit.RECOVERY_ROOT / "wave-{:04d}".format(wave)
-        if not path.exists():
+        try:
+            path.lstat()
+        except FileNotFoundError:
             return wave, path
+        except OSError as err:
+            raise RecoveryError("cannot inspect recovery namespace") from err
     raise RecoveryError("recovery wave namespace is exhausted")
 
 
@@ -50,6 +56,9 @@ def _archive_plan(cells: list[int]) -> list[dict]:
     for run_id in cells:
         run_dir = _run_dir(run_id)
         try:
+            info = run_dir.lstat()
+            if not stat.S_ISDIR(info.st_mode):
+                raise RecoveryError("interrupted cell directory is not regular")
             entries = list(run_dir.iterdir())
         except OSError as err:
             raise RecoveryError("cannot inspect interrupted cell") from err
@@ -59,20 +68,20 @@ def _archive_plan(cells: list[int]) -> list[dict]:
         }
         if unexpected:
             raise RecoveryError("interrupted cell has unexpected files")
-        driver = run_dir / "driver.log"
-        if driver.exists():
-            try:
-                lines = driver.read_text(encoding="utf-8").splitlines()
-            except (OSError, UnicodeDecodeError) as err:
-                raise RecoveryError("cannot inspect interrupted driver log") from err
-            if lines and Audit.Legacy.DRIVER_TERMINAL_RE.fullmatch(lines[-1]):
-                raise RecoveryError("recovery plan includes a completed cell")
         for name in sorted(LegacyDynamic.names()):
             source = run_dir / name
-            if not source.exists():
+            try:
+                source.lstat()
+            except FileNotFoundError:
                 continue
-            if source.is_symlink() or not source.is_file():
-                raise RecoveryError("partial dynamic artifact is not regular")
+            except OSError as err:
+                raise RecoveryError("cannot inspect partial dynamic artifact") from err
+            try:
+                loaded = SafeIO.read_regular_file(
+                    source, label="partial dynamic artifact", root=run_dir
+                )
+            except SafeIO.SafeReadError as err:
+                raise RecoveryError(str(err)) from err
             target = (
                 Path("interrupted-cell-files") /
                 "{:05d}".format(run_id) / name
@@ -82,8 +91,9 @@ def _archive_plan(cells: list[int]) -> list[dict]:
                 "name": name,
                 "source": source.relative_to(Audit.EXPERIMENT_PATH).as_posix(),
                 "target": target.as_posix(),
-                "size": source.stat().st_size,
-                "sha256": P.sha256_file(source),
+                "size": loaded.identity["size"],
+                "sha256": loaded.sha256,
+                "identity": loaded.identity,
             })
     return plan
 
@@ -91,25 +101,103 @@ def _archive_plan(cells: list[int]) -> list[dict]:
 class LegacyDynamic:
     @staticmethod
     def names() -> set[str]:
-        return set(Audit.Legacy.RECOVERY_DYNAMIC_NAMES)
+        return set(Runner.DYNAMIC_OUTPUT_NAMES)
 
 
-def _archive(plan: list[dict], wave_dir: Path) -> None:
+def _assert_cells_clean(cells: list[int]) -> None:
+    if _archive_plan(cells):
+        raise RecoveryError("recovery cell dynamic namespace is not clean")
+
+
+def _archive_parent(wave_dir: Path, run_id: int) -> Path:
+    paths = (
+        wave_dir,
+        wave_dir / "interrupted-cell-files",
+        wave_dir / "interrupted-cell-files" / "{:05d}".format(run_id),
+    )
+    for index, path in enumerate(paths):
+        if index:
+            try:
+                path.mkdir()
+            except FileExistsError:
+                pass
+            except OSError as err:
+                raise RecoveryError("cannot create archive directory") from err
+        try:
+            info = path.lstat()
+        except OSError as err:
+            raise RecoveryError("cannot inspect archive directory") from err
+        if not stat.S_ISDIR(info.st_mode):
+            raise RecoveryError("archive directory is not regular")
+    return paths[-1]
+
+
+def _archive(plan: list[dict], wave_dir: Path, cells: list[int]) -> None:
+    if _archive_plan(cells) != plan:
+        raise RecoveryError("partial artifacts changed after recovery intent")
     for item in plan:
         source = Audit.EXPERIMENT_PATH / item["source"]
         target = wave_dir / item["target"]
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if any((
-            target.exists(),
-            source.is_symlink(),
-            not source.is_file(),
-            source.stat().st_size != item["size"],
-            P.sha256_file(source) != item["sha256"],
-        )):
+        if target.parent != _archive_parent(wave_dir, item["run_id"]):
+            raise RecoveryError("archive target parent changed")
+        try:
+            target.lstat()
+        except FileNotFoundError:
+            pass
+        except OSError as err:
+            raise RecoveryError("cannot inspect archive target") from err
+        else:
+            raise RecoveryError("archive target already exists")
+        try:
+            loaded = SafeIO.read_regular_file(
+                source, label="partial dynamic artifact",
+                root=Audit.EXPERIMENT_PATH,
+            )
+        except SafeIO.SafeReadError as err:
+            raise RecoveryError(str(err)) from err
+        if (
+            loaded.sha256 != item["sha256"]
+            or loaded.identity != item["identity"]
+        ):
             raise RecoveryError("partial artifact changed after recovery intent")
-        shutil.move(str(source), str(target))
-        if source.exists() or P.sha256_file(target) != item["sha256"]:
+        try:
+            os.link(source, target, follow_symlinks=False)
+            archived = SafeIO.read_regular_file(
+                target, label="archived partial dynamic artifact", root=wave_dir
+            )
+        except (OSError, SafeIO.SafeReadError) as err:
+            raise RecoveryError("partial artifact archive failed") from err
+        if (
+            archived.sha256 != item["sha256"]
+            or archived.identity != item["identity"]
+        ):
             raise RecoveryError("partial artifact archive failed")
+        try:
+            source_info = source.lstat()
+            if (
+                not stat.S_ISREG(source_info.st_mode)
+                or source_info.st_dev != item["identity"]["device"]
+                or source_info.st_ino != item["identity"]["inode"]
+            ):
+                raise RecoveryError("partial artifact changed before unlink")
+            source.unlink()
+        except OSError as err:
+            raise RecoveryError("partial artifact archive failed") from err
+        try:
+            source.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise RecoveryError("partial artifact archive failed")
+        try:
+            final = SafeIO.read_regular_file(
+                target, label="archived partial dynamic artifact", root=wave_dir
+            )
+        except SafeIO.SafeReadError as err:
+            raise RecoveryError("partial artifact archive failed") from err
+        if final.sha256 != item["sha256"] or final.identity != item["identity"]:
+            raise RecoveryError("partial artifact archive failed")
+    _assert_cells_clean(cells)
 
 
 def _submission_identity(wave: int, token: str) -> tuple[str, str]:
@@ -136,7 +224,7 @@ def submit_command(
         raise RecoveryError("recovery array is throttled")
     name, comment = _submission_identity(wave, token)
     return [
-        "sbatch", "--parsable", "--export=NONE", "--no-requeue",
+        str(Runner.SBATCH_COMMAND), "--parsable", "--export=NONE", "--no-requeue",
         "--array={}".format(array_spec),
         "--job-name={}".format(name),
         "--comment={}".format(comment),
@@ -147,9 +235,10 @@ def submit_command(
             (wave_dir / "slurm-%A_%a.err").resolve()
         ),
         "--partition=fat", "--qos=normal", "--time=01:40:00",
-        "--mem-per-cpu=26G", "--cpus-per-task=1",
+        "--mem-per-cpu=26G", "--cpus-per-task=1", "--nodes=1", "--ntasks=1",
         "--account={}".format(P.ACCOUNT),
-        str(Runner.JOB_FILE.resolve()),
+        "--chdir={}".format(Runner.GRID_DIR.resolve()),
+        "--open-mode=append", "--mail-type=NONE", "--mail-user=",
     ]
 
 
@@ -175,10 +264,8 @@ def recovery_plan() -> dict:
             "cells": [],
             "source_rows": [],
         }
-    incomplete = set(status["incomplete_cells"])
     cells = sorted(
         cell for task in tasks for cell in Audit._task_cells(task)
-        if cell in incomplete
     )
     latest = _latest_rows(rows, recoveries)
     source_rows = [latest[task] for task in tasks]
@@ -201,6 +288,14 @@ def _common(
     if launch != plan["launch"]:
         raise RecoveryError("launch changed during recovery preparation")
     command = submit_command(wave, wave_dir, plan["tasks"], token)
+    job_sha = launch["slurm_stdin_sha256"]
+    job_raw = Runner._submission_job_bytes(job_sha)
+    sbatch = Runner._executable_identity(
+        Runner.SBATCH_COMMAND, Runner.SBATCH_COMMAND_SHA256, "sbatch"
+    )
+    sacct = Runner._executable_identity(
+        Runner.SACCT_COMMAND, Runner.SACCT_COMMAND_SHA256, "sacct"
+    )
     return {
         "wave": wave,
         "source_job_id": launch["job_id"],
@@ -220,6 +315,16 @@ def _common(
         "cells": 2600,
         "recoverable_cells": plan["cells"],
         "submission_export": "NONE",
+        "slurm_submission_mode": "stdin",
+        "slurm_stdin_sha256": job_sha,
+        "slurm_stdin_bytes": len(job_raw),
+        "slurm_path_argument": False,
+        "submission_journal_contract": "exact sbatch options-only SubmitLine",
+        "sbatch_executable": sbatch["path"],
+        "sbatch_executable_sha256": sbatch["sha256"],
+        "sacct_executable": sacct["path"],
+        "sacct_executable_sha256": sacct["sha256"],
+        "submission_environment": dict(Runner.SUBMISSION_ENVIRONMENT),
         "nice_adjustment": None,
         "requeue": False,
         "submission_token": token,
@@ -265,12 +370,23 @@ def launch() -> None:
     Runner._exclusive_bytes(
         wave_dir / "launch-intent.json", intent_raw, "recovery launch intent"
     )
-    _archive(archive_plan, wave_dir)
+    _archive(archive_plan, wave_dir, plan["cells"])
+    raw = Runner._submission_job_bytes(common["slurm_stdin_sha256"])
+    if len(raw) != common["slurm_stdin_bytes"]:
+        raise RecoveryError("recovery job byte count changed")
+    Runner._executable_identity(
+        Runner.SBATCH_COMMAND, Runner.SBATCH_COMMAND_SHA256, "sbatch"
+    )
+    _assert_cells_clean(plan["cells"])
     try:
-        output = subprocess.check_output(
-            common["submit_command"], cwd=Runner.GRID_DIR, text=True
-        ).strip()
-    except (OSError, subprocess.CalledProcessError) as err:
+        completed = subprocess.run(
+            common["submit_command"], input=raw,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cwd=Runner.GRID_DIR, env=dict(Runner.SUBMISSION_ENVIRONMENT),
+            check=True,
+        )
+        output = completed.stdout.decode("ascii").strip()
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError) as err:
         raise RecoveryError("recovery sbatch failed after intent") from err
     job_id = output.split(";", 1)[0]
     _write_receipt(wave_dir, intent_raw, intent, job_id)
@@ -295,12 +411,39 @@ def _load_intent(wave_dir: Path) -> tuple[bytes, dict]:
     except Runner.ConfirmationLaunchError as err:
         raise RecoveryError("recovery submission timestamp changed") from err
     command = submit_command(wave, wave_dir, tasks, token)
-    if any((
-        intent.get("schema") != Audit.RECOVERY_SCHEMA + "/launch/intent",
-        intent.get("wave") != wave,
-        intent.get("submit_command") != command,
-        intent.get("submission_comment") != _submission_identity(wave, token)[1],
-    )):
+    source_rows = intent.get("source_latest_scheduler_rows")
+    cells = intent.get("recoverable_cells")
+    expected_cells = sorted(
+        cell for task in tasks for cell in Audit._task_cells(task)
+    )
+    if (
+        not isinstance(source_rows, list)
+        or [row.get("array_task") for row in source_rows
+            if isinstance(row, dict)] != tasks
+        or len(source_rows) != len(tasks)
+        or any(Audit._row_class(row) != "recoverable" for row in source_rows)
+        or cells != expected_cells
+    ):
+        raise RecoveryError("recovery intent task provenance changed")
+    try:
+        _, launch = Runner.load_launch_receipt(verify_live=True)
+        expected_common = _common({
+            "launch": launch,
+            "source_rows": source_rows,
+            "tasks": tasks,
+            "cells": cells,
+        }, wave, wave_dir, token)
+    except (
+        Runner.ConfirmationLaunchError, Audit.ExecutionAuditError
+    ) as err:
+        raise RecoveryError("cannot revalidate recovery launch inputs") from err
+    expected_intent = {
+        "schema": Audit.RECOVERY_SCHEMA + "/launch/intent",
+        "recorded_utc": intent.get("recorded_utc"),
+        **expected_common,
+        "archive_plan": intent.get("archive_plan"),
+    }
+    if intent != expected_intent or intent.get("submit_command") != command:
         raise RecoveryError("recovery launch intent changed")
     Audit._validate_archive(wave_dir, intent.get("archive_plan"), intent.get("recoverable_cells"))
     return raw, intent
@@ -325,6 +468,9 @@ def _write_receipt(
 
 
 def _journal_ids(intent: dict) -> list[str]:
+    Runner._executable_identity(
+        Runner.SACCT_COMMAND, Runner.SACCT_COMMAND_SHA256, "sacct"
+    )
     try:
         recorded = datetime.datetime.fromisoformat(intent["recorded_utc"])
     except (KeyError, TypeError, ValueError) as err:
@@ -332,30 +478,62 @@ def _journal_ids(intent: dict) -> list[str]:
     if recorded.tzinfo is None:
         raise RecoveryError("recovery timestamp lacks a timezone")
     command = [
-        "sacct", "-X", "-S", recorded.date().isoformat(), "-n", "-P",
+        str(Runner.SACCT_COMMAND), "-X", "-S", recorded.date().isoformat(),
+        "--name=" + _submission_identity(
+            intent["wave"], intent["submission_token"]
+        )[0], "-n", "-P",
         "-o", JOURNAL_FIELDS,
     ]
     try:
-        output = subprocess.check_output(command, text=True)
+        output = subprocess.check_output(
+            command, env=dict(Runner.SUBMISSION_ENVIRONMENT), text=True
+        )
     except (OSError, subprocess.CalledProcessError) as err:
         raise RecoveryError("cannot query recovery submission journal") from err
     name, comment = _submission_identity(
         intent["wave"], intent["submission_token"]
     )
     parents = set()
+    indices_by_parent = {}
+    expected_tasks = set(intent["array_tasks"])
+    expected_command = intent.get("submit_command")
     for line in output.splitlines():
-        fields = line.split("|")
-        if len(fields) != 3:
+        fields = line.split("|", 3)
+        if len(fields) != 4:
             raise RecoveryError("recovery submission journal row changed")
-        job_id, actual_name, actual_comment = fields
-        if actual_name != name and actual_comment != comment:
+        job_id, actual_name, actual_comment, submit_line = fields
+        if (
+            actual_name != name and actual_comment != comment
+            and intent["submission_token"] not in submit_line
+        ):
             continue
-        match = re.fullmatch(r"([0-9]+)(?:_[0-9]+)?", job_id)
-        if match is None or actual_name != name or actual_comment != comment:
+        try:
+            actual_command = shlex.split(submit_line)
+        except ValueError as err:
+            raise RecoveryError("recovery SubmitLine is malformed") from err
+        if actual_command and actual_command[0] == "sbatch":
+            actual_command[0] = str(Runner.SBATCH_COMMAND)
+        parent_match = re.fullmatch(r"([0-9]+)", job_id)
+        array_match = re.fullmatch(r"([0-9]+)_([0-9]+)", job_id)
+        if (
+            actual_name != name
+            or actual_comment not in ("", comment)
+            or actual_command != expected_command
+            or (parent_match is None and array_match is None)
+        ):
             raise RecoveryError("recovery submission identity collided")
-        parents.add(match.group(1))
+        parent = (parent_match or array_match).group(1)
+        parents.add(parent)
+        if array_match is not None:
+            indices_by_parent.setdefault(parent, set()).add(
+                int(array_match.group(2))
+            )
     if len(parents) > 1:
         raise RecoveryError("recovery submission identity is not unique")
+    if len(parents) == 1:
+        parent = next(iter(parents))
+        if indices_by_parent.get(parent, set()) != expected_tasks:
+            raise RecoveryError("recovery submission journal array is incomplete")
     return sorted(parents, key=int)
 
 

@@ -11,11 +11,35 @@ from pathlib import Path
 from unittest import mock
 
 import analyze_pdb_terminal_incidence_confirmation_b as A
+import pdb_cap_selector_parser as CapParser
 import pdb_terminal_incidence_confirmation_b_protocol as P
 
 
 def _selector_record(*, status="complete", differs=False, selected=None):
-    structural = [{"event": "schema"}, {"event": "probe", "g_values": [1]}]
+    pool = [{
+        "pattern_index": 0,
+        "sources": ["empty"],
+        "pattern": [],
+        "abstract_states": 1,
+        "within_state_budget": True,
+    }]
+    structural = [
+        {"event": "schema"},
+        {"event": "probe", "g_values": [0]},
+    ]
+    if status == "complete":
+        structural.append({"event": "pool", "patterns": pool})
+    reference_identity = {
+        "pattern_index": 0,
+        "sources": ["empty"],
+        "pattern": [],
+        "value_cap": None,
+        "terminal_incidence": 1,
+    }
+    selected_identity = {
+        **reference_identity,
+        "value_cap": selected,
+    }
     value = {
         "coverage": 0 if status == "short_probe" else 1,
         "planner_exit_code": 34 if status == "short_probe" else 0,
@@ -32,10 +56,10 @@ def _selector_record(*, status="complete", differs=False, selected=None):
             "3" * 64 if status == "complete" else None
         ),
         "incidence_selector_reference_identity": (
-            {"value_cap": None} if status == "complete" else None
+            reference_identity if status == "complete" else None
         ),
         "incidence_selector_selected_identity": (
-            {"value_cap": selected} if status == "complete" else None
+            selected_identity if status == "complete" else None
         ),
         "incidence_selector_selected_differs_from_reference": differs,
         "incidence_selector_probe_completed_layers": (
@@ -75,6 +99,20 @@ def _matrix(
         matrix[(P.PLAIN_REFERENCE_LABEL, task)] = {
             "record": {"coverage": int(plain < P.PAR2_SECONDS)},
             "par2": Fraction(plain),
+            "plain_reference_identity": {
+                "pattern_index": 0,
+                "sources": ["empty"],
+                "pattern": [],
+                "value_cap": None,
+            },
+            "plain_reference_pool": [{
+                "pattern_index": 0,
+                "sources": ["empty"],
+                "pattern": [],
+                "abstract_states": 1,
+                "within_state_budget": True,
+            }],
+            "plain_reference_pool_sha256": "4" * 64,
         }
         for label in P.NON_GATING_REFERENCE_LABELS:
             matrix[(label, task)] = {
@@ -149,7 +187,7 @@ class GateTest(unittest.TestCase):
         self.assertFalse(result["pass"])
         self.assertFalse(result["clauses"]["family_macro_at_least_0_02"])
         self.assertFalse(
-            result["clauses"]["every_leave_one_domain_out_positive"]
+            result["clauses"]["every_leave_one_family_out_positive"]
         )
 
     def test_selector_pair_requires_exact_preselection_evidence(self):
@@ -163,6 +201,17 @@ class GateTest(unittest.TestCase):
         failed, _ = A._selector_pair_gate(matrix, self.tasks)
         self.assertFalse(failed["pass"])
         self.assertEqual(failed["status_counts"]["failed"], 1)
+
+        matrix = _matrix(self.tasks)
+        matrix[(P.PLAIN_REFERENCE_LABEL, self.tasks[0])][
+            "plain_reference_pool"
+        ][0]["abstract_states"] = 2
+        failed, _ = A._selector_pair_gate(matrix, self.tasks)
+        self.assertFalse(failed["pass"])
+        self.assertEqual(
+            failed["failed_pairs"][0]["reason"],
+            "standalone_reference_pool_mismatch",
+        )
 
     def test_selector_identity_roles_and_difference_flag_are_derived(self):
         guided = _selector_record(differs=True, selected=None)
@@ -178,7 +227,9 @@ class GateTest(unittest.TestCase):
 
         matrix = _matrix(self.tasks)
         matrix[(P.GUIDED_LABEL, self.tasks[0])]["record"].update({
-            "incidence_selector_selected_identity": {"value_cap": None},
+            "incidence_selector_selected_identity": matrix[
+                (P.GUIDED_LABEL, self.tasks[0])
+            ]["record"]["incidence_selector_reference_identity"],
             "incidence_selector_selected_differs_from_reference": True,
         })
         matrix[(P.MATCHED_LABEL, self.tasks[1])]["record"].update({
@@ -189,6 +240,35 @@ class GateTest(unittest.TestCase):
         self.assertFalse(gate["pass"])
         self.assertEqual(gate["status_counts"]["failed"], 2)
         self.assertNotIn(self.tasks[0], different)
+
+    def test_standalone_k32_identity_requires_certified_cap_trace(self):
+        record = {
+            "pdb_cap_selector_parser_protocol": CapParser.PARSER_PROTOCOL,
+            "pdb_selector_trace_complete": True,
+            "pdb_selector_trace_certified": True,
+            "pdb_selector_validation_error": None,
+            "pdb_selector_candidates": [{
+                "pattern": [], "sources": ["empty"], "abstract_states": 1,
+            }],
+            "pdb_selector_selected": {
+                "pattern": [],
+                "sources": ["empty"],
+                "value_cap": -1,
+                "cofactor_width_budget": 32,
+            },
+            "pdb_selector_final": {"value_cap": -1},
+        }
+        self.assertEqual(A._plain_reference_identity(record), {
+            "pattern_index": 0,
+            "sources": ["empty"],
+            "pattern": [],
+            "value_cap": None,
+        })
+        record["pdb_selector_trace_certified"] = False
+        with self.assertRaisesRegex(
+            A.ConfirmationBAnalysisError, "certified cap-selector"
+        ):
+            A._plain_reference_identity(record)
 
     def test_short_probe_pair_is_accounted_but_not_mechanism_eligible(self):
         matrix = _matrix(self.tasks)
@@ -236,6 +316,16 @@ class GateTest(unittest.TestCase):
                 record.update(mutation)
                 with self.assertRaises(A.ConfirmationBAnalysisError):
                     A._validate_trace_record(record, P.GUIDED_LABEL)
+        record = _selector_record()
+        structural = record["incidence_selector_structural_trace"][:2]
+        record["incidence_selector_structural_trace"] = structural
+        record["incidence_selector_structural_trace_sha256"] = hashlib.sha256(
+            P.canonical_json(structural)
+        ).hexdigest()
+        with self.assertRaisesRegex(
+            A.ConfirmationBAnalysisError, "lacks its pattern pool"
+        ):
+            A._validate_trace_record(record, P.GUIDED_LABEL)
         complete_with_short_probe_exit = _selector_record()
         complete_with_short_probe_exit.update({
             "coverage": 0,
@@ -261,7 +351,7 @@ class GateTest(unittest.TestCase):
                 ):
                     A._validate_trace_record(record, P.GUIDED_LABEL)
 
-    def test_mechanism_claim_is_conditioned_on_selection_difference(self):
+    def test_mechanism_claim_requires_frozen_support_floors(self):
         matrix = _matrix(self.tasks, guided=10, matched=3600, differs=True)
         outcomes = {("blind_fw", "solved"): 3}
         accounting = [{"cell": index} for index in range(27)]
@@ -273,6 +363,24 @@ class GateTest(unittest.TestCase):
         ):
             result = A.analyze_records([])
         self.assertEqual(result["mechanism"]["eligible_tasks"], 3)
+        self.assertFalse(result["mechanism"]["support"]["pass"])
+        self.assertFalse(result["mechanism"]["claim_authorized"])
+
+        tasks = [("d{:02d}".format(index), "p") for index in range(50)]
+        sources = {
+            task: {"family": "f{:02d}".format(index % 10)}
+            for index, task in enumerate(tasks)
+        }
+        matrix = _matrix(tasks, guided=10, matched=3600, differs=True)
+        accounting = [{"cell": index} for index in range(9 * len(tasks))]
+        with mock.patch.object(
+            A, "validate_matrix",
+            return_value=(matrix, tasks, sources, outcomes, accounting),
+        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100), mock.patch.object(
+            P, "CELL_COUNT", 9 * len(tasks)
+        ):
+            result = A.analyze_records([])
+        self.assertTrue(result["mechanism"]["support"]["pass"])
         self.assertTrue(result["mechanism"]["claim_authorized"])
 
     def test_all_existing_arms_are_reported_without_changing_primary_gate(self):
@@ -310,6 +418,31 @@ class GateTest(unittest.TestCase):
 
 
 class DoubleExecutionTest(unittest.TestCase):
+    def test_sealed_input_rejects_lexical_symlink_alias_before_provenance_io(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sealed = root / "properties"
+            sealed.write_bytes(b"[]")
+            alias = root / "alias"
+            alias.symlink_to(sealed)
+            with mock.patch.object(
+                A.Audit, "EVAL_PROPERTIES", sealed
+            ), mock.patch.object(
+                A.Audit, "load_fetch_receipt"
+            ) as fetch, mock.patch.object(
+                A.P, "validate_protocol_without_sources"
+            ) as protocol, mock.patch.object(
+                A.SafeIO.os, "lstat"
+            ) as inspected:
+                with self.assertRaisesRegex(
+                    A.ConfirmationBAnalysisError,
+                    "analysis input is not the sealed matrix",
+                ):
+                    A._load_sealed_input(alias)
+                protocol.assert_not_called()
+                fetch.assert_not_called()
+                inspected.assert_not_called()
+
     def test_sealed_input_is_parsed_from_the_bytes_that_were_hashed(self):
         raw_a = b'[{"marker":"A"}]'
         raw_b = b'[{"marker":"B"}]'

@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 import tempfile
 import unittest
+from fractions import Fraction
 from pathlib import Path
 from unittest import mock
 
 import analyze_pdb_terminal_incidence_confirmation_a as Analyze
 import audit_pdb_terminal_incidence_confirmation_a as Audit
 import exp_pdb_terminal_incidence_confirmation_a as Runner
+import pdb_confirmation_run_cell as RunCell
+import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_a_protocol as P
 import recover_pdb_terminal_incidence_confirmation_a as Recover
 
@@ -56,7 +61,150 @@ class SchedulerContractTest(unittest.TestCase):
         self.assertFalse(any("nice" in item for item in command))
         self.assertIn("--export=NONE", command)
         self.assertIn("--mem-per-cpu=26G", command)
+        self.assertEqual(command[0], str(Runner.SBATCH_COMMAND))
+        self.assertTrue(all(item.startswith("--") for item in command[1:]))
+        self.assertNotIn(str(Runner.JOB_FILE), command)
         self.assertEqual(comment, "pdb-incidence-confirm-a-recovery/1/" + token)
+
+    def test_primary_submit_command_is_options_only(self):
+        command = Runner._submit_command("a" * 24)
+        self.assertEqual(command[0], "/usr/bin/sbatch")
+        self.assertTrue(all(item.startswith("--") for item in command[1:]))
+        self.assertNotIn(str(Runner.JOB_FILE), command)
+        self.assertIn("--array=1-867", command)
+        self.assertIn("--export=NONE", command)
+
+    def test_submission_journal_requires_exact_command_and_full_array(self):
+        token = "a" * 24
+        command = Runner._submit_command(token)
+        materials = {
+            "recorded_utc": "2026-09-01T12:34:56+00:00",
+            "job_name": Runner.EXPECTED_JOB_NAME,
+            "submission_comment": Runner._submission_identity(token)[1],
+            "submission_token": token,
+            "submit_command": command,
+        }
+        submit_line = " ".join(command)
+        rows = "\n".join((
+            "123|{}|{}|{}".format(
+                materials["job_name"], materials["submission_comment"],
+                submit_line,
+            ),
+            "123_1|{}||{}".format(materials["job_name"], submit_line),
+            "123_2|{}||{}".format(materials["job_name"], submit_line),
+        ))
+        with mock.patch.object(P, "EXPECTED_ARRAY_TASKS", 2), mock.patch.object(
+            Runner, "_executable_identity"
+        ), mock.patch.object(
+            Runner.subprocess, "check_output", return_value=rows
+        ) as query:
+            self.assertEqual(Runner._journal_job_ids(materials), ["123"])
+        self.assertEqual(query.call_args.kwargs["env"], Runner.SUBMISSION_ENVIRONMENT)
+        self.assertEqual(query.call_args.args[0][0], "/usr/bin/sacct")
+
+        incomplete = "\n".join(rows.splitlines()[:-1])
+        with mock.patch.object(P, "EXPECTED_ARRAY_TASKS", 2), mock.patch.object(
+            Runner, "_executable_identity"
+        ), mock.patch.object(
+            Runner.subprocess, "check_output", return_value=incomplete
+        ), self.assertRaisesRegex(
+            Runner.ConfirmationLaunchError, "array is incomplete"
+        ):
+            Runner._journal_job_ids(materials)
+
+    def test_recovery_journal_and_stdin_materials_are_exact(self):
+        token = "b" * 24
+        with tempfile.TemporaryDirectory() as tmp:
+            wave_dir = Path(tmp) / "wave-0001"
+            command = Recover.submit_command(1, wave_dir, [2, 7], token)
+            intent = {
+                "recorded_utc": "2026-09-01T12:34:56+00:00",
+                "wave": 1,
+                "submission_token": token,
+                "array_tasks": [2, 7],
+                "submit_command": command,
+            }
+            name, comment = Recover._submission_identity(1, token)
+            submit_line = " ".join(command)
+            rows = "\n".join((
+                "456|{}|{}|{}".format(name, comment, submit_line),
+                "456_2|{}||{}".format(name, submit_line),
+                "456_7|{}||{}".format(name, submit_line),
+            ))
+            with mock.patch.object(
+                Runner, "_executable_identity"
+            ), mock.patch.object(
+                Recover.subprocess, "check_output", return_value=rows
+            ) as query:
+                self.assertEqual(Recover._journal_ids(intent), ["456"])
+            self.assertEqual(
+                query.call_args.kwargs["env"], Runner.SUBMISSION_ENVIRONMENT
+            )
+
+            launch = {
+                "job_id": "123",
+                "job_file_sha256": "1" * 64,
+                "slurm_stdin_sha256": "2" * 64,
+            }
+            plan = {
+                "launch": launch,
+                "source_rows": [{
+                    "array_task": 2, "state": "NODE_FAIL",
+                    "exit_code": "1:0",
+                }],
+                "tasks": [2],
+                "cells": [4],
+            }
+
+            def executable(path, digest, label):
+                return {"path": str(path), "sha256": digest}
+
+            with mock.patch.object(
+                Runner, "load_launch_receipt", return_value=("3" * 64, launch)
+            ), mock.patch.object(
+                Runner, "_submission_job_bytes", return_value=b"job-bytes"
+            ), mock.patch.object(
+                Runner, "_executable_identity", side_effect=executable
+            ):
+                common = Recover._common(plan, 1, wave_dir, token)
+            self.assertEqual(common["slurm_submission_mode"], "stdin")
+            self.assertEqual(common["slurm_stdin_bytes"], len(b"job-bytes"))
+            self.assertFalse(common["slurm_path_argument"])
+            self.assertEqual(
+                common["submission_environment"], Runner.SUBMISSION_ENVIRONMENT
+            )
+
+    def test_execution_receipt_records_actual_resource_rows(self):
+        scheduler = [{
+            "array_task": 1, "state": "COMPLETED", "exit_code": "0:0"
+        }]
+        row = "|".join((
+            "123_1", P.ACCOUNT, "fat", "normal", "1", "26G",
+            "01:40:00", "COMPLETED", "0:0", Runner.EXPECTED_JOB_NAME,
+        ))
+        with mock.patch.object(
+            Runner, "_executable_identity"
+        ), mock.patch.object(
+            Audit.subprocess, "check_output", return_value=row
+        ) as query:
+            actual = Audit.scheduler_contract_rows(
+                "123", Runner.EXPECTED_JOB_NAME, scheduler, {1}
+            )
+        self.assertEqual(actual[0]["req_mem"], "26G")
+        self.assertEqual(actual[0]["time_limit"], "01:40:00")
+        self.assertEqual(query.call_args.kwargs["env"], Runner.SUBMISSION_ENVIRONMENT)
+        self.assertEqual(query.call_args.args[0][0], "/usr/bin/sacct")
+
+        with mock.patch.object(
+            Runner, "_executable_identity"
+        ), mock.patch.object(
+            Audit.subprocess, "check_output", return_value=row.replace("26G", "25G")
+        ), self.assertRaisesRegex(
+            Audit.ExecutionAuditError, "resource contract changed"
+        ):
+            Audit.scheduler_contract_rows(
+                "123", Runner.EXPECTED_JOB_NAME, scheduler, {1}
+            )
 
     def test_malformed_recovery_archive_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -76,6 +224,10 @@ class SchedulerContractTest(unittest.TestCase):
                 "target": "interrupted-cell-files/00001/driver.log",
                 "size": 1,
                 "sha256": "0" * 64,
+                "identity": {
+                    "device": 1, "inode": 1, "mode": 0o100600,
+                    "size": 1, "mtime_ns": 1,
+                },
             }
             with self.assertRaises(Audit.ExecutionAuditError):
                 Audit._validate_archive(
@@ -85,6 +237,23 @@ class SchedulerContractTest(unittest.TestCase):
                 Audit._validate_archive(
                     wave_dir, [{**base, "unexpected": True}], [1]
                 )
+
+    def test_recovery_replays_the_whole_array_element(self):
+        with mock.patch.object(
+            Audit, "make_status",
+            return_value=(
+                {"job_id": "1"},
+                [{"array_task": 2, "state": "NODE_FAIL", "exit_code": "1:0"}],
+                [],
+                {
+                    "active_array_tasks": [],
+                    "recoverable_array_tasks": [2],
+                    "incomplete_cells": [4],
+                },
+            ),
+        ):
+            plan = Recover.recovery_plan()
+        self.assertEqual(plan["cells"], [4, 5, 6])
 
     def test_reused_auditor_validates_the_confirmation_a_source_set(self):
         with tempfile.TemporaryDirectory(
@@ -98,6 +267,16 @@ class SchedulerContractTest(unittest.TestCase):
                 Audit._legacy_validate_live_sources({name: digest})
                 with self.assertRaises(Audit.Legacy.ExecutionAuditError):
                     Audit._legacy_validate_live_sources({name: "0" * 64})
+
+    def test_legacy_parse_pipeline_uses_extended_execution_receipt(self):
+        with mock.patch.object(
+            Runner, "load_launch_receipt", return_value=("0" * 64, {})
+        ):
+            Audit._configure_legacy()
+        self.assertIs(
+            Audit.Legacy.load_execution_receipt,
+            Audit._legacy_load_execution_receipt,
+        )
 
 
 class JobHeaderTest(unittest.TestCase):
@@ -115,26 +294,10 @@ class JobHeaderTest(unittest.TestCase):
             '    printf "runs-%05d-%05d/%05d" $lower $upper $run_id',
             "}",
             "",
-            "function execute_run {",
-            "    if [[ -f driver.log ]]; then",
-            '        echo "The run in $(pwd) has already been started --> skip it"',
-            "        return",
-            "    fi",
-            "",
-            "    (",
-            '    "{}" run'.format(Path(Runner.sys.executable)),
-            "    RETCODE=$?",
-            "    if [[ $RETCODE != 0 ]]; then",
-            '        >&2 echo "The run script finished with exit code $RETCODE"',
-            "    fi",
-            "    ) > driver.log 2> driver.err",
-            "",
-            "    # Delete empty driver.err files. driver.log always has content "
-            "(for started runs).",
-            "    if [[ ! -s driver.err ]]; then",
-            "        rm driver.err",
-            "    fi",
-            "}",
+            SafeIO.hardened_execute_run_block(
+                Path(Runner.sys.executable), Runner.RUN_CELL_HELPER,
+                Runner.DYNAMIC_OUTPUT_NAMES,
+            ),
         ))
 
     def mapping(self):
@@ -162,6 +325,10 @@ class JobHeaderTest(unittest.TestCase):
             '    (cd "{}/$run_dir" && execute_run ${{run_id}})'.format(
                 Runner.EXPERIMENT_PATH.resolve()
             ),
+            "    CELL_STATUS=$?",
+            "    if [[ $CELL_STATUS != 0 ]]; then",
+            '        exit "$CELL_STATUS"',
+            "    fi",
             "done",
         ))
 
@@ -194,12 +361,94 @@ class JobHeaderTest(unittest.TestCase):
             lines.append(self.mapping())
         return "\n".join(lines) + "\n"
 
+    def execute_first_array(self, *, collision_position=None, child_codes=None):
+        if child_codes is None:
+            child_codes = (0, 0, 0)
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        experiment = root / "experiment"
+        run_dirs = []
+        for run_id, code in enumerate(child_codes, start=1):
+            run_dir = experiment / "runs-00001-00100" / "{:05d}".format(run_id)
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "run").write_text("\n".join((
+                "from pathlib import Path",
+                'Path("invoked").write_text("yes")',
+                "raise SystemExit({})".format(code),
+                "",
+            )))
+            run_dirs.append(run_dir)
+        if collision_position is not None:
+            (run_dirs[collision_position - 1] / "driver.log").write_bytes(
+                b"preexisting\n"
+            )
+        job = root / Runner.EXPECTED_JOB_NAME
+        with mock.patch.object(
+            Runner, "EXPERIMENT_PATH", experiment
+        ), mock.patch.object(Runner, "JOB_FILE", job):
+            job.write_text(self.header())
+            Runner._validate_job_file()
+        environment = dict(os.environ)
+        environment["SLURM_ARRAY_TASK_ID"] = "1"
+        completed = subprocess.run(
+            ["/bin/bash", str(job)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=environment, check=False,
+        )
+        return completed, run_dirs
+
     def test_exact_header_is_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / Runner.EXPECTED_JOB_NAME
             path.write_text(self.header())
             with mock.patch.object(Runner, "JOB_FILE", path):
-                self.assertRegex(Runner._validate_job_file(), r"^[0-9a-f]{64}$")
+                digest = Runner._validate_job_file()
+                self.assertRegex(digest, r"^[0-9a-f]{64}$")
+                self.assertEqual(
+                    Runner._submission_job_bytes(digest), path.read_bytes()
+                )
+
+    def test_namespace_collision_aborts_array_before_later_cells(self):
+        for position in (1, 2):
+            with self.subTest(position=position):
+                completed, run_dirs = self.execute_first_array(
+                    collision_position=position
+                )
+                self.assertEqual(
+                    completed.returncode, RunCell.INFRASTRUCTURE_EXIT_CODE
+                )
+                self.assertEqual(
+                    [(path / "invoked").exists() for path in run_dirs],
+                    [index < position for index in range(1, 4)],
+                )
+
+    def test_ordinary_child_outcome_keeps_array_outcome_accounting(self):
+        completed, run_dirs = self.execute_first_array(child_codes=(23, 0, 0))
+        self.assertEqual(completed.returncode, 0)
+        self.assertTrue(all((path / "invoked").is_file() for path in run_dirs))
+        self.assertIn(
+            b"run script finished with exit code 23",
+            (run_dirs[0] / "driver.err").read_bytes(),
+        )
+
+    def test_sanitizer_replaces_legacy_redirection_with_exclusive_wrapper(self):
+        hardened = SafeIO.hardened_execute_run_block(
+            Path(Runner.sys.executable), Runner.RUN_CELL_HELPER,
+            Runner.DYNAMIC_OUTPUT_NAMES,
+        )
+        legacy = SafeIO.legacy_execute_run_block(Path(Runner.sys.executable))
+        content = self.header("#SBATCH --nice=0").replace(hardened, legacy)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / Runner.EXPECTED_JOB_NAME
+            path.write_text(content)
+            with mock.patch.object(Runner, "JOB_FILE", path):
+                Runner._sanitize_job_file()
+                sanitized = path.read_text()
+        self.assertIn(hardened, sanitized)
+        self.assertNotIn(legacy, sanitized)
+        self.assertNotIn("#SBATCH --nice", sanitized)
+        self.assertNotIn(") > driver.log 2> driver.err", sanitized)
 
     def test_throttle_and_nice_are_rejected(self):
         cases = (
@@ -277,8 +526,8 @@ class JobHeaderTest(unittest.TestCase):
             self.header("exit 0"),
             self.header("echo unexpected-command"),
             self.header().replace(
-                '    "{}" run'.format(Path(Runner.sys.executable)),
-                "    true",
+                " --run-script run ",
+                " --run-script changed ",
                 1,
             ),
             self.header().replace(
@@ -313,24 +562,33 @@ class JobHeaderTest(unittest.TestCase):
                     Runner._validate_recorded_utc(value)
 
 
-def _comparison(i_value=0.70, control_value=0.60, families=10, pairs=100):
-    def fraction(value):
-        return {
-            "numerator": int(round(value * 100)),
-            "denominator": 100,
-            "value": value,
-        }
+def _comparison(
+    i_value=0.70, control_value=0.60, families=10, pairs=100, tasks=50
+):
+    i_value = Fraction(str(i_value))
+    control_value = Fraction(str(control_value))
+    family_names = ["family-{:02d}".format(i) for i in range(families)]
 
-    predictors = {
-        key: {"equal_family": {"macro": fraction(
-            i_value if key == "I" else control_value
-        )}}
-        for key in Analyze.Original.PREDICTORS
-    }
+    predictors = {}
+    for key in Analyze.Original.PREDICTORS:
+        value = i_value if key == "I" else control_value
+        predictors[key] = {
+            "equal_family": {
+                "macro": Analyze.Original._fraction_record(value)
+            },
+            "_family_values": {
+                family: value for family in family_names
+            },
+            "_family_lodo": {
+                family: value for family in family_names
+            },
+        }
     return {
+        "protocol": Analyze.Original.TIE_AWARE_COMPARISON_PROTOCOL,
         "support": {
+            "tasks_with_shared_pairs": tasks,
             "families_with_shared_pairs": families,
-            "grand_shared_strict": pairs,
+            "target_strict": pairs,
         },
         "target_orientations": {
             "orders_identical": True,
@@ -341,20 +599,163 @@ def _comparison(i_value=0.70, control_value=0.60, families=10, pairs=100):
 
 
 class AnalysisGateTest(unittest.TestCase):
-    def test_new_family_gate_passes_only_strict_control_advantages(self):
-        gate = Analyze._stratum_gate(_comparison())
+    def test_stratum_returns_selected_frontier_and_comparison(self):
+        task = ("directory", "p01.pddl")
+        comparison = _comparison()
+        with mock.patch.object(
+            P, "DIRECTORY_TO_FAMILY", {"directory": "family"}
+        ), mock.patch.object(
+            Analyze.Original, "target_strict_tie_aware_comparison",
+            return_value=comparison,
+        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            result = Analyze._stratum(
+                {task: {"a": {}}}, {task: {"g": 1}}, ("family",),
+                gating=True,
+            )
+        self.assertTrue(result["gating"])
+        self.assertEqual(result["eligible_tasks"], 1)
+        self.assertEqual(result["eligible_families"], 1)
+        self.assertEqual(result["comparison"]["protocol"], comparison["protocol"])
+
+    def test_primary_gate_uses_target_strict_support(self):
+        comparison = _comparison(
+            families=25, pairs=600, tasks=300
+        )
+        with mock.patch.object(
+            Analyze.Original, "P", P
+        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            gate = Analyze.Original.primary_gates(comparison, 300, 25)
         self.assertTrue(gate["pass"])
-        tied = Analyze._stratum_gate(_comparison(control_value=0.70))
-        self.assertFalse(tied["pass"])
-        self.assertFalse(tied["controls"]["kD"]["strictly_positive"])
+        self.assertEqual(
+            gate["support"]["comparison_pair_definition"], "target_strict"
+        )
+        comparison["support"]["target_strict"] = 599
+        with mock.patch.object(
+            Analyze.Original, "P", P
+        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            gate = Analyze.Original.primary_gates(comparison, 300, 25)
+        self.assertFalse(gate["support"]["pass"])
+
+    def test_new_family_gate_passes_only_strict_control_advantages(self):
+        with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            gate = Analyze._stratum_gate(_comparison())
+            self.assertTrue(gate["pass"])
+            too_small = Analyze._stratum_gate(
+                _comparison(control_value=0.69)
+            )
+        self.assertFalse(too_small["pass"])
+        self.assertFalse(too_small["controls"]["kD"]["advantage_pass"])
 
     def test_new_family_support_floor_is_binding(self):
-        self.assertFalse(Analyze._stratum_gate(
-            _comparison(families=9)
-        )["pass"])
-        self.assertFalse(Analyze._stratum_gate(
-            _comparison(pairs=99)
-        )["pass"])
+        with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            self.assertFalse(Analyze._stratum_gate(
+                _comparison(tasks=49)
+            )["pass"])
+            self.assertFalse(Analyze._stratum_gate(
+                _comparison(families=9)
+            )["pass"])
+            self.assertFalse(Analyze._stratum_gate(
+                _comparison(pairs=99)
+            )["pass"])
+
+    def test_new_family_gate_requires_bootstrap_and_lodo_robustness(self):
+        comparison = _comparison()
+        bad_bootstrap = {
+            control: {
+                "families": 10,
+                "observed_difference": {"numerator": 1, "denominator": 10},
+                "lower_95": {"numerator": 0, "denominator": 1},
+                "upper_95": {"numerator": 1, "denominator": 10},
+            }
+            for control in Analyze.Original.CONTROLS
+        }
+        with mock.patch.object(
+            Analyze.Original, "_bootstrap_differences",
+            return_value=bad_bootstrap,
+        ):
+            self.assertFalse(Analyze._stratum_gate(comparison)["pass"])
+
+        comparison["predictors"]["kD"]["_family_lodo"][
+            "family-00"
+        ] = Fraction(7, 10)
+        with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            gate = Analyze._stratum_gate(comparison)
+        self.assertFalse(gate["pass"])
+        self.assertFalse(
+            gate["controls"]["kD"][
+                "every_leave_one_family_out_positive"
+            ]
+        )
+
+    def test_target_strict_comparison_scores_predictor_ties_half(self):
+        predictors = Analyze.Original.PREDICTORS
+
+        def observation(semantic_id, target, primary, kd, other):
+            row = {
+                "semantic_id": semantic_id,
+                "U": 10,
+                "E": target,
+                "I": primary,
+                "kD": kd,
+            }
+            row.update({key: other for key in predictors[2:]})
+            return row
+
+        grouped = {("directory", "p01.pddl"): {
+            "a": observation("a", 1, 1, 1, 1),
+            "b": observation("b", 2, 2, 1, 2),
+            "c": observation("c", 2, 3, 1, 3),
+        }}
+        with mock.patch.object(Analyze.Original, "P", P), mock.patch.object(
+            P, "DIRECTORY_TO_FAMILY", {"directory": "family"}
+        ), mock.patch.object(P, "DIRECTORIES", ("directory",)):
+            tie_aware = Analyze.Original.target_strict_tie_aware_comparison(
+                grouped
+            )
+            strict = Analyze.Original.grand_shared_comparison(grouped)
+        self.assertEqual(tie_aware["support"]["semantic_pairs"], 3)
+        self.assertEqual(tie_aware["support"]["target_tied"], 1)
+        self.assertEqual(tie_aware["support"]["target_strict"], 2)
+        self.assertEqual(tie_aware["predictors"]["I"]["comparable"], 2)
+        self.assertEqual(tie_aware["predictors"]["kD"]["tied"], 2)
+        self.assertEqual(
+            tie_aware["predictors"]["kD"]["micro_concordance"],
+            {"numerator": 1, "denominator": 2, "value": 0.5},
+        )
+        self.assertEqual(
+            tie_aware["predictors"]["kD"]["tie_rate"],
+            {"numerator": 1, "denominator": 1, "value": 1.0},
+        )
+        self.assertEqual(strict["support"].get("grand_shared_strict", 0), 0)
+
+    def test_top_choice_regret_averages_predictor_ties(self):
+        predictors = Analyze.Original.PREDICTORS
+        left = {
+            "semantic_id": "a", "E": 1, "I": 1, "kD": 1,
+            **{key: 2 for key in predictors[2:]},
+        }
+        right = {
+            "semantic_id": "b", "E": 3, "I": 2, "kD": 1,
+            **{key: 1 for key in predictors[2:]},
+        }
+        grouped = {("directory", "p01.pddl"): {"a": left, "b": right}}
+        with mock.patch.object(
+            P, "DIRECTORY_TO_FAMILY", {"directory": "family"}
+        ):
+            result = Analyze._top_choice_regret(grouped)
+        self.assertFalse(result["gating"])
+        self.assertEqual(
+            result["predictors"]["I"]["equal_family_normalized_regret"],
+            {"numerator": 0, "denominator": 1, "value": 0.0},
+        )
+        self.assertEqual(
+            result["predictors"]["kD"]["equal_family_normalized_regret"],
+            {"numerator": 1, "denominator": 2, "value": 0.5},
+        )
+        self.assertEqual(
+            result["predictors"]["kD"]["top_choice_tie_rate"],
+            {"numerator": 1, "denominator": 1, "value": 1.0},
+        )
 
     def test_double_analysis_publishes_only_identical_bytes(self):
         result = {

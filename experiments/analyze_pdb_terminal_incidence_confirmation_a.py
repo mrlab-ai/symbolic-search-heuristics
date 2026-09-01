@@ -16,6 +16,7 @@ from pathlib import Path
 
 import analyze_pdb_terminal_incidence_shadow as Original
 import audit_pdb_terminal_incidence_confirmation_a as Audit
+import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_a_protocol as P
 
 
@@ -25,14 +26,14 @@ class ConfirmationAnalysisError(RuntimeError):
 
 SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-a-analysis/v1"
+    "pdb-terminal-incidence-confirmation-a-analysis/v2"
 )
 RECEIPT_SCHEMA = SCHEMA + "/double-execution"
 ARTIFACT_DIR = Audit.ARTIFACT_DIR
-DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v1.json"
-DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v1-repeat.json"
-DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v1.json"
-DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v1.sha256"
+DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v2.json"
+DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v2-repeat.json"
+DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v2.json"
+DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v2.sha256"
 
 
 def _configure_original() -> None:
@@ -110,12 +111,17 @@ def _fraction(record, label: str) -> Fraction | None:
 
 
 def _stratum_gate(comparison: dict) -> dict:
+    bootstrap = Original._bootstrap_differences(comparison)
     support = comparison["support"]
     i_record = comparison["predictors"]["I"]["equal_family"]["macro"]
     i_macro = _fraction(i_record, "stratum I family macro")
     minimum = Fraction(
         P.MIN_NEW_STRATUM_CONCORDANCE_NUMERATOR,
         P.MIN_NEW_STRATUM_CONCORDANCE_DENOMINATOR,
+    )
+    minimum_advantage = Fraction(
+        P.MIN_NEW_STRATUM_ADVANTAGE_NUMERATOR,
+        P.MIN_NEW_STRATUM_ADVANTAGE_DENOMINATOR,
     )
     controls = {}
     for control in Original.CONTROLS:
@@ -129,32 +135,81 @@ def _stratum_gate(comparison: dict) -> dict:
             i_macro - control_macro
             if i_macro is not None and control_macro is not None else None
         )
+        lower_record = bootstrap[control]["lower_95"]
+        lower = _fraction(
+            lower_record, "stratum {} bootstrap lower".format(control)
+        )
+        i_lodo = comparison["predictors"]["I"]["_family_lodo"]
+        control_lodo = comparison["predictors"][control]["_family_lodo"]
+        if set(i_lodo) != set(control_lodo):
+            raise ConfirmationAnalysisError(
+                "stratum comparison produced different family supports"
+            )
+        lodo_differences = {
+            family: (
+                None
+                if i_lodo[family] is None or control_lodo[family] is None
+                else i_lodo[family] - control_lodo[family]
+            )
+            for family in sorted(i_lodo)
+        }
+        lodo_pass = bool(lodo_differences) and all(
+            value is not None and value > 0
+            for value in lodo_differences.values()
+        )
+        advantage_pass = (
+            advantage is not None and advantage >= minimum_advantage
+        )
+        bootstrap_pass = lower is not None and lower > 0
         controls[control] = {
             "advantage": Original._fraction_record(advantage),
-            "strictly_positive": advantage is not None and advantage > 0,
+            "minimum_advantage": Original._fraction_record(
+                minimum_advantage
+            ),
+            "advantage_pass": advantage_pass,
+            "bootstrap": bootstrap[control],
+            "bootstrap_lower_strictly_positive": bootstrap_pass,
+            "leave_one_family_out_differences": {
+                family: Original._fraction_record(value)
+                for family, value in lodo_differences.items()
+            },
+            "every_leave_one_family_out_positive": lodo_pass,
+            "pass": advantage_pass and bootstrap_pass and lodo_pass,
         }
     support_pass = all((
+        support.get("tasks_with_shared_pairs", 0)
+        >= P.MIN_NEW_STRATUM_COMPARISON_TASKS,
         support.get("families_with_shared_pairs", 0)
         >= P.MIN_NEW_STRATUM_COMPARISON_FAMILIES,
-        support.get("grand_shared_strict", 0)
-        >= P.MIN_NEW_STRATUM_SHARED_STRICT_PAIRS,
+        support.get("target_strict", 0)
+        >= P.MIN_NEW_STRATUM_TARGET_STRICT_PAIRS,
     ))
     macro_pass = i_macro is not None and i_macro >= minimum
+    orientation_pass = (
+        comparison["target_orientations"].get("orders_identical") is True
+        and comparison["target_orientations"].get("inverse_U_null")
+        == "tied_within_task"
+    )
     pass_value = (
         support_pass
         and macro_pass
-        and all(row["strictly_positive"] for row in controls.values())
+        and orientation_pass
+        and all(row["pass"] for row in controls.values())
     )
     return {
         "pass": pass_value,
         "support": {
+            "comparison_tasks": support.get("tasks_with_shared_pairs", 0),
+            "minimum_comparison_tasks": (
+                P.MIN_NEW_STRATUM_COMPARISON_TASKS
+            ),
             "comparison_families": support.get("families_with_shared_pairs", 0),
             "minimum_comparison_families": (
                 P.MIN_NEW_STRATUM_COMPARISON_FAMILIES
             ),
-            "shared_strict_pairs": support.get("grand_shared_strict", 0),
-            "minimum_shared_strict_pairs": (
-                P.MIN_NEW_STRATUM_SHARED_STRICT_PAIRS
+            "target_strict_pairs": support.get("target_strict", 0),
+            "minimum_target_strict_pairs": (
+                P.MIN_NEW_STRATUM_TARGET_STRICT_PAIRS
             ),
             "pass": support_pass,
         },
@@ -171,7 +226,11 @@ def _stratum_gate(comparison: dict) -> dict:
             "inverse_U_tied": comparison["target_orientations"].get(
                 "inverse_U_null"
             ) == "tied_within_task",
+            "pass": orientation_pass,
         },
+        "bootstrap_protocol": Original.BOOTSTRAP_PROTOCOL,
+        "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
+        "bootstrap_seed": P.BOOTSTRAP_SEED,
     }
 
 
@@ -187,7 +246,7 @@ def _stratum(
         task: frontier for task, frontier in frontiers.items()
         if P.DIRECTORY_TO_FAMILY[task[0]] in family_set
     }
-    comparison = Original.grand_shared_comparison(selected_grouped)
+    comparison = Original.target_strict_tie_aware_comparison(selected_grouped)
     return {
         "gating": gating,
         "frozen_families": list(families),
@@ -200,6 +259,107 @@ def _stratum(
     }
 
 
+def _top_choice_regret(grouped: dict) -> dict:
+    """Report bounded regret when each predictor chooses its minimum."""
+    task_values = {key: {} for key in Original.PREDICTORS}
+    tie_counts = Counter()
+    rows = []
+    exclusions = Counter()
+    for task in sorted(grouped):
+        observations = sorted(
+            grouped[task].values(), key=lambda item: item["semantic_id"]
+        )
+        if len(observations) < 2:
+            exclusions["fewer_than_two_semantic_observations"] += 1
+            continue
+        target_min = min(item["E"] for item in observations)
+        target_max = max(item["E"] for item in observations)
+        if target_min == target_max:
+            exclusions["target_tied_tasks"] += 1
+            continue
+        predictor_rows = {}
+        for key in Original.PREDICTORS:
+            best_value = min(item[key] for item in observations)
+            selected = [
+                item for item in observations if item[key] == best_value
+            ]
+            if len(selected) > 1:
+                tie_counts[key] += 1
+            selected_target = Fraction(
+                sum(item["E"] for item in selected), len(selected)
+            )
+            regret = Fraction(
+                selected_target - target_min, target_max - target_min
+            )
+            task_values[key][task] = regret
+            predictor_rows[key] = {
+                "minimum_predictor_value": best_value,
+                "selected_semantic_ids": [
+                    item["semantic_id"] for item in selected
+                ],
+                "selected_target_mean": Original._fraction_record(
+                    selected_target
+                ),
+                "normalized_regret": Original._fraction_record(regret),
+            }
+        rows.append({
+            "domain": task[0],
+            "family": P.DIRECTORY_TO_FAMILY[task[0]],
+            "problem": task[1],
+            "oracle_target_minimum": target_min,
+            "target_maximum": target_max,
+            "predictors": predictor_rows,
+        })
+
+    summaries = {}
+    for key in Original.PREDICTORS:
+        by_family = {}
+        for task, value in task_values[key].items():
+            by_family.setdefault(P.DIRECTORY_TO_FAMILY[task[0]], []).append(
+                value
+            )
+        family_values = {
+            name: Original._mean(values)
+            for name, values in sorted(by_family.items())
+        }
+        task_count = len(task_values[key])
+        summaries[key] = {
+            "tasks": task_count,
+            "families": len(family_values),
+            "top_choice_tied_tasks": tie_counts[key],
+            "top_choice_tie_rate": Original._fraction_record(
+                Fraction(tie_counts[key], task_count) if task_count else None
+            ),
+            "task_macro_normalized_regret": Original._fraction_record(
+                Original._mean(task_values[key].values())
+            ),
+            "equal_family_normalized_regret": Original._fraction_record(
+                Original._mean(family_values.values())
+            ),
+            "family_normalized_regret": {
+                name: Original._fraction_record(value)
+                for name, value in family_values.items()
+            },
+        }
+    return {
+        "gating": False,
+        "definition": (
+            "within each target-nontied task, choose every predictor-minimal "
+            "semantic heuristic; average E across a tied top set; report "
+            "(selected_mean_E-min_E)/(max_E-min_E)"
+        ),
+        "lower_is_better": True,
+        "tie_policy": "average-target-over-all-predictor-minimal-choices",
+        "support": {
+            **dict(exclusions),
+            "eligible_tasks": len(rows),
+            "eligible_families": len({row["family"] for row in rows}),
+        },
+        "predictors": summaries,
+        "rows": rows,
+    }
+
+
 def analyze_records(records: list[dict]) -> dict:
     _configure_original()
     P.validate_protocol_without_sources()
@@ -208,7 +368,10 @@ def analyze_records(records: list[dict]) -> dict:
             records, P.COHORT_TASKS
         )
     primary = Original.primary_observations(matrix, tasks)
-    comparison = Original.grand_shared_comparison(primary["grouped"])
+    comparison = Original.target_strict_tie_aware_comparison(
+        primary["grouped"]
+    )
+    strict_comparison = Original.grand_shared_comparison(primary["grouped"])
     eligible_tasks = len(primary["frontiers"])
     eligible_families = len({
         P.DIRECTORY_TO_FAMILY[task[0]] for task in primary["frontiers"]
@@ -269,6 +432,8 @@ def analyze_records(records: list[dict]) -> dict:
         },
         "sensitivity": {
             "gating": False,
+            "all_predictor_strict": _public_comparison(strict_comparison),
+            "top_choice_regret": _top_choice_regret(primary["grouped"]),
             "equal_directory_results": {
                 key: summary["equal_directory"]
                 for key, summary in _public_comparison(comparison)[
@@ -285,6 +450,13 @@ def analyze_records(records: list[dict]) -> dict:
 
 
 def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
+    try:
+        path = SafeIO.validate_lexical_path(
+            Path(path), label="sealed Confirmation A properties",
+            expected_path=Audit.EVAL_PROPERTIES,
+        )
+    except SafeIO.SafeReadError as err:
+        raise ConfirmationAnalysisError("analysis input is not the sealed matrix") from err
     P.validate_protocol_without_sources()
     try:
         fetch_sha, fetch = Audit.load_fetch_receipt(verify_live=True)
@@ -293,17 +465,16 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
             "fetched properties provenance is invalid"
         ) from err
     try:
-        info = path.lstat()
-        raw = path.read_bytes()
-    except OSError as err:
+        loaded = SafeIO.read_regular_file(
+            path, label="sealed Confirmation A properties",
+            expected_path=Audit.EVAL_PROPERTIES,
+        )
+        raw = loaded.raw
+    except SafeIO.SafeReadError as err:
         raise ConfirmationAnalysisError("cannot read sealed properties") from err
-    properties_sha = hashlib.sha256(raw).hexdigest()
+    properties_sha = loaded.sha256
     if (
-        Path(os.path.abspath(path))
-        != Path(os.path.abspath(Audit.EVAL_PROPERTIES))
-        or path.is_symlink()
-        or not stat.S_ISREG(info.st_mode)
-        or properties_sha != fetch["properties_sha256"]
+        properties_sha != fetch["properties_sha256"]
     ):
         raise ConfirmationAnalysisError("analysis input is not the sealed matrix")
     try:
@@ -317,8 +488,6 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
         raise ConfirmationAnalysisError(
             "sealed properties must contain a matrix of objects"
         )
-    if hashlib.sha256(path.read_bytes()).hexdigest() != properties_sha:
-        raise ConfirmationAnalysisError("sealed properties changed while loading")
     return records, properties_sha, fetch_sha
 
 
@@ -366,7 +535,16 @@ def run_twice(
     second_sha = _exclusive(
         repeat_output, raw_two, "repeat analysis output"
     )
-    if first_sha != second_sha or output.read_bytes() != repeat_output.read_bytes():
+    try:
+        first_readback = SafeIO.read_regular_file(
+            output, label="primary analysis output"
+        ).raw
+        second_readback = SafeIO.read_regular_file(
+            repeat_output, label="repeat analysis output"
+        ).raw
+    except SafeIO.SafeReadError as err:
+        raise ConfirmationAnalysisError("cannot verify published analyses") from err
+    if first_sha != second_sha or first_readback != second_readback:
         raise ConfirmationAnalysisError("published analyses differ")
     receipt = {
         "schema": RECEIPT_SCHEMA,
@@ -412,17 +590,16 @@ def load_analysis_receipt(
         receipt_raw, receipt = P._load_canonical(
             receipt_path, "Confirmation A analysis receipt"
         )
-        pin_info = receipt_pin.lstat()
-        pin_raw = receipt_pin.read_bytes()
-    except (OSError, P.ProtocolError) as err:
+        pin_raw = SafeIO.read_regular_file(
+            receipt_pin, label="Confirmation A analysis receipt pin"
+        ).raw
+    except (P.ProtocolError, SafeIO.SafeReadError) as err:
         raise ConfirmationAnalysisError(
             "Confirmation A analysis receipt is not sealed"
         ) from err
     receipt_sha = hashlib.sha256(receipt_raw).hexdigest()
     if (
-        receipt_pin.is_symlink()
-        or not stat.S_ISREG(pin_info.st_mode)
-        or pin_raw != (receipt_sha + "\n").encode("ascii")
+        pin_raw != (receipt_sha + "\n").encode("ascii")
     ):
         raise ConfirmationAnalysisError(
             "Confirmation A analysis receipt pin changed"

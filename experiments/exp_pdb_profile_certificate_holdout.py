@@ -97,6 +97,7 @@ PRE_PARSE_VALIDATOR = None
 POST_PARSE_SEALER = None
 PRE_FETCH_VALIDATOR = None
 POST_FETCH_SEALER = None
+RUN_ORDER_BUILDER = None
 
 
 def _sha256_file(path: Path) -> str:
@@ -751,64 +752,72 @@ def make_experiment(cohort, cached):
             self._algorithms[name] = algorithm
 
         def _add_runs(self):
-            for algorithm in self._algorithms.values():
-                for task in self._get_tasks():
-                    run = FastDownwardRun(self, algorithm, task)
-                    properties = {
-                        "protocol": P.PROTOCOL,
-                        "analysis_protocol": P.ANALYSIS_PROTOCOL,
-                        "cohort_role": P.COHORT_ROLE,
-                        "cohort_manifest_sha256": P.COHORT_MANIFEST_SHA256,
-                        "cohort_task_count": P.COHORT_TASKS,
-                        "cohort_domain_count": P.COHORT_DOMAINS,
-                        "config_count": P.CONFIG_COUNT,
-                        "declared_run_count": P.CELL_COUNT,
-                        "option_matrix_sha256": P.OPTION_MATRIX_SHA256,
-                        "protocol_sha256": P.PROTOCOL_SHA256,
-                        "source_protocol": SOURCE_PROTOCOL,
-                        "planner_revision": PLANNER_REVISION,
-                        "planner_binary_sha256": PLANNER_BINARY_SHA256,
-                        "preprocess_binary_sha256": PREPROCESS_BINARY_SHA256,
-                        "planner_preprocess_sha256": PREPROCESS_BINARY_SHA256,
-                        "required_lab_version": P.REQUIRED_LAB_VERSION,
-                        "planner_time_limit": P.TIME_LIMIT_SECONDS,
-                        "planner_memory_limit": P.MEMORY_LIMIT_MIB,
-                        "external_validation_requested": False,
-                        "slurm_partition": PARTITION,
-                        "array_throttle": 0,
-                    }
-                    if MATERIALIZE_PDDL_INPUTS:
-                        source = cohort_sources.get(
-                            (task.domain, task.problem)
-                        )
-                        required = (
-                            "domain_file",
-                            "problem_file",
-                            "domain_sha256",
-                            "problem_sha256",
-                        )
-                        if source is None or any(
-                            not hasattr(source, field) for field in required
-                        ):
-                            raise LaunchError(
-                                "Lab task lacks frozen source provenance"
-                            )
-                        properties.update({
-                            "domain_source_path": source.domain_file,
-                            "problem_source_path": source.problem_file,
-                            "domain_source_sha256": source.domain_sha256,
-                            "problem_source_sha256": source.problem_sha256,
-                        })
-                    overlap = set(properties).intersection(EXTRA_RUN_PROPERTIES)
-                    if overlap:
+            tasks = tuple(self._get_tasks())
+            if RUN_ORDER_BUILDER is None:
+                cells = (
+                    (algorithm, task)
+                    for algorithm in self._algorithms.values()
+                    for task in tasks
+                )
+            else:
+                cells = RUN_ORDER_BUILDER(self._algorithms, tasks)
+            for algorithm, task in cells:
+                run = FastDownwardRun(self, algorithm, task)
+                properties = {
+                    "protocol": P.PROTOCOL,
+                    "analysis_protocol": P.ANALYSIS_PROTOCOL,
+                    "cohort_role": P.COHORT_ROLE,
+                    "cohort_manifest_sha256": P.COHORT_MANIFEST_SHA256,
+                    "cohort_task_count": P.COHORT_TASKS,
+                    "cohort_domain_count": P.COHORT_DOMAINS,
+                    "config_count": P.CONFIG_COUNT,
+                    "declared_run_count": P.CELL_COUNT,
+                    "option_matrix_sha256": P.OPTION_MATRIX_SHA256,
+                    "protocol_sha256": P.PROTOCOL_SHA256,
+                    "source_protocol": SOURCE_PROTOCOL,
+                    "planner_revision": PLANNER_REVISION,
+                    "planner_binary_sha256": PLANNER_BINARY_SHA256,
+                    "preprocess_binary_sha256": PREPROCESS_BINARY_SHA256,
+                    "planner_preprocess_sha256": PREPROCESS_BINARY_SHA256,
+                    "required_lab_version": P.REQUIRED_LAB_VERSION,
+                    "planner_time_limit": P.TIME_LIMIT_SECONDS,
+                    "planner_memory_limit": P.MEMORY_LIMIT_MIB,
+                    "external_validation_requested": False,
+                    "slurm_partition": PARTITION,
+                    "array_throttle": 0,
+                }
+                if MATERIALIZE_PDDL_INPUTS:
+                    source = cohort_sources.get(
+                        (task.domain, task.problem)
+                    )
+                    required = (
+                        "domain_file",
+                        "problem_file",
+                        "domain_sha256",
+                        "problem_sha256",
+                    )
+                    if source is None or any(
+                        not hasattr(source, field) for field in required
+                    ):
                         raise LaunchError(
-                            "extra run properties override fixed fields: {}"
-                            .format(", ".join(sorted(overlap)))
+                            "Lab task lacks frozen source provenance"
                         )
-                    properties.update(EXTRA_RUN_PROPERTIES)
-                    for key, value in properties.items():
-                        run.set_property(key, value)
-                    self.add_run(run)
+                    properties.update({
+                        "domain_source_path": source.domain_file,
+                        "problem_source_path": source.problem_file,
+                        "domain_source_sha256": source.domain_sha256,
+                        "problem_source_sha256": source.problem_sha256,
+                    })
+                overlap = set(properties).intersection(EXTRA_RUN_PROPERTIES)
+                if overlap:
+                    raise LaunchError(
+                        "extra run properties override fixed fields: {}"
+                        .format(", ".join(sorted(overlap)))
+                    )
+                properties.update(EXTRA_RUN_PROPERTIES)
+                for key, value in properties.items():
+                    run.set_property(key, value)
+                self.add_run(run)
 
     environment = ArrheniusEnvironment(
         partition=PARTITION,

@@ -23,9 +23,22 @@ def _write(path: Path, value: dict) -> bytes:
     return raw
 
 
-def _tree(records: list[dict]) -> dict:
+def _root_identity(path: Path, inode: int = 1) -> dict:
+    value = str(path)
+    return {
+        "path": value,
+        "canonical_path": value,
+        "uid": 1,
+        "mode": "0700",
+        "device": 1,
+        "inode": inode,
+    }
+
+
+def _tree(records: list[dict], root_identity: dict) -> dict:
     records = sorted(records, key=lambda record: record["path"])
     digest = hashlib.sha256()
+    digest.update(b"root-identity\0" + P.canonical_json(root_identity))
     for record in records:
         digest.update(
             record["path"].encode("ascii") + b"\0"
@@ -33,16 +46,19 @@ def _tree(records: list[dict]) -> dict:
         )
     return {
         "sha256": digest.hexdigest(),
+        "root_identity": root_identity,
         "files_count": len(records),
         "files": records,
     }
 
 
-def _source_execution_environment():
-    cache = (
-        "/tmp/symk-confirmation-source-audit-v3-"
-        "{array_job_id}-{array_task_id}"
+def _source_execution_environment(repo: Path):
+    tmp_root = (
+        repo / "experiments" / "data" /
+        "pdb_terminal_incidence_confirmation_source_audit_v4_tmp"
     )
+    tmpdir = str(tmp_root / "task-{array_job_id}-{array_task_id}")
+    cache = tmpdir + "/pycache"
     controlled_path = "/usr/bin:/bin"
     return {
         "submission_export": "NONE",
@@ -52,25 +68,58 @@ def _source_execution_environment():
         "python_no_user_site_flag": 1,
         "python_dont_write_bytecode": "1",
         "python_dont_write_bytecode_flag": True,
+        "tmpdir_root": str(tmp_root),
+        "tmpdir_template": tmpdir,
+        "python_tempfile_directory_template": tmpdir,
         "python_pycache_prefix_template": cache,
+        "tmpdir_mode": "0700",
+        "tmpdir_cleanup": "EXIT trap with pinned /usr/bin/rmdir; no recursion",
+        "root_identity_policy": (
+            "canonical absolute path; no direct/ancestor symlinks; mode 0700; "
+            "launch uid/device/inode retained"
+        ),
+        "source_snapshot_policy": {
+            "scope": "one domain/problem snapshot tree per candidate",
+            "location": "inside the exact per-array-task TMPDIR",
+            "directory_mode": "0700",
+            "file_mode": "0400",
+            "consumers": ["translator", "axiom_based normalization"],
+            "verify_before_each_consumer": True,
+            "verify_identity_and_sha256_after_use": True,
+            "cleanup": (
+                "unlink exact files, then rmdir exact directories; no recursion"
+            ),
+        },
         "outer_python_flag": "-B",
         "path": controlled_path,
         "translator_child_environment": {
             "PATH": controlled_path,
             "PYTHONNOUSERSITE": "1",
             "PYTHONDONTWRITEBYTECODE": "1",
+            "TMPDIR": tmpdir,
             "PYTHONPYCACHEPREFIX": cache,
-            "PYTHONPATH": str(P.REPO / "src"),
+            "PYTHONPATH": str(repo / "src"),
         },
         "python_command": str(
-            P.SCRIPT_DIR / "data" / "pdb-terminal-incidence-shadow-venv" /
+            repo / "experiments" / "data" /
+            "pdb-terminal-incidence-shadow-venv" /
             "bin" / "python"
         ),
         "python_executable": "/pinned/python3.12",
         "python_executable_sha256": "a" * 64,
         "sha256sum_command": "/usr/bin/sha256sum",
         "sha256sum_executable": "/usr/bin/sha256sum",
-        "sha256sum_executable_sha256": "b" * 64,
+        "sha256sum_executable_sha256": (
+            "1950eda10a1bb0c6c2a086ba009b847edec6f30d25eb311b9154ae08819041a9"
+        ),
+        "mkdir_executable": "/usr/bin/mkdir",
+        "mkdir_executable_sha256": (
+            "9a71255933f2013dda3fe7e8ad928dc50b7e4c2ae6a7cac58fc1225106c10814"
+        ),
+        "rmdir_executable": "/usr/bin/rmdir",
+        "rmdir_executable_sha256": (
+            "b87fd3112c40dd30dca11fa5bc1b3dacc9ed2e309868344dd696824abafc5ded"
+        ),
     }
 
 
@@ -225,35 +274,39 @@ class SourceFixture:
         script_dir = self.repo / "experiments"
         self.artifact_dir = (
             script_dir / "artifacts" /
-            "pdb-terminal-incidence-confirmation-v3"
+            "pdb-terminal-incidence-confirmation-v4"
         )
-        self.intent = self.artifact_dir / "source-audit-launch-intent-v3.json"
-        self.launch = self.artifact_dir / "source-audit-launch-receipt-v3.json"
+        self.intent = self.artifact_dir / "source-audit-launch-intent-v4.json"
+        self.launch = self.artifact_dir / "source-audit-launch-receipt-v4.json"
         self.execution = (
-            self.artifact_dir / "source-audit-execution-receipt-v3.json"
+            self.artifact_dir / "source-audit-execution-receipt-v4.json"
         )
         self.attestation = (
-            script_dir / "pdb_terminal_incidence_confirmation_source_audit_v3.json"
+            script_dir / "pdb_terminal_incidence_confirmation_source_audit_v4.json"
         )
         self.slurm = (
-            script_dir / "pdb_terminal_incidence_confirmation_source_scan_v3.slurm"
+            script_dir / "pdb_terminal_incidence_confirmation_source_scan_v4.slurm"
         )
         self.manifest = (
             script_dir /
-            "pdb_terminal_incidence_confirmation_source_audit_v3_code.sha256"
+            "pdb_terminal_incidence_confirmation_source_audit_v4_code.sha256"
         )
         self.amendment = (
             script_dir /
-            "pdb_terminal_incidence_confirmation_source_audit_v3_protocol.md"
+            "pdb_terminal_incidence_confirmation_source_audit_v4_protocol.md"
         )
         self.output_dir = (
             script_dir / "data" /
-            "pdb_terminal_incidence_confirmation_source_audit_v3"
+            "pdb_terminal_incidence_confirmation_source_audit_v4"
         )
-        self.inventory = self.output_dir / "source-inventory-v3.json"
+        self.inventory = self.output_dir / "source-inventory-v4.json"
+        self.tmpdir_root = (
+            script_dir / "data" /
+            "pdb_terminal_incidence_confirmation_source_audit_v4_tmp"
+        )
         self.candidate = (
             script_dir / "data" /
-            "pdb_terminal_incidence_confirmation_source_audit_v3_candidate.json"
+            "pdb_terminal_incidence_confirmation_source_audit_v4_candidate.json"
         )
         for path in (
             self.intent, self.launch, self.execution, self.attestation,
@@ -261,6 +314,21 @@ class SourceFixture:
         ):
             path.parent.mkdir(parents=True, exist_ok=True)
 
+        schema = P.SOURCE_AUDIT_SCHEMA
+        diagnostic_relative = P.SOURCE_V4_V3_DIAGNOSTIC_RELATIVE
+        diagnostic = {
+            "schema": schema + "/campaign-v4/v3-infrastructure-diagnostic",
+            "successful_v3_shard_contents_inspected": False,
+            "successful_v3_log_contents_inspected": False,
+            "source_support_outcomes_used_for_v4_design": False,
+            "full_rerun_decision": {
+                "reused_v1_shards": 0,
+                "reused_v2_shards": 0,
+                "reused_v3_shards": 0,
+                "scope": "all-820-original-shards-and-1640-candidates",
+                "whole_campaign_rerun": True,
+            },
+        }
         manifest_hashes = {}
         producer_relative = (
             "experiments/audit_pdb_terminal_incidence_confirmation_sources.py"
@@ -268,11 +336,13 @@ class SourceFixture:
         inventory_producer_relative = (
             "experiments/pdb_terminal_incidence_confirmation_inventory.py"
         )
-        for relative in P.SOURCE_V3_MANIFEST_FILES:
+        for relative in P.SOURCE_V4_MANIFEST_FILES:
             path = self.repo / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            if relative in P.SOURCE_V3_MANIFEST_FILES[:2]:
+            if relative in P.SOURCE_V4_MANIFEST_FILES[:2]:
                 raw = P.canonical_json_line({})
+            elif relative == diagnostic_relative:
+                raw = P.canonical_json_line(diagnostic)
             elif relative == producer_relative:
                 raw = Path(SourceAudit.__file__).read_bytes()
             elif relative == inventory_producer_relative:
@@ -283,15 +353,16 @@ class SourceFixture:
             manifest_hashes[relative] = hashlib.sha256(raw).hexdigest()
         self.amendment_sha = manifest_hashes[
             "experiments/"
-            "pdb_terminal_incidence_confirmation_source_audit_v3_protocol.md"
+            "pdb_terminal_incidence_confirmation_source_audit_v4_protocol.md"
         ]
+        self.diagnostic_sha = manifest_hashes[diagnostic_relative]
         manifest_raw = "".join(
             "{}  {}\n".format(manifest_hashes[relative], relative)
-            for relative in P.SOURCE_V3_MANIFEST_FILES
+            for relative in P.SOURCE_V4_MANIFEST_FILES
         ).encode("ascii")
         self.manifest.write_bytes(manifest_raw)
         self.manifest_sha = hashlib.sha256(manifest_raw).hexdigest()
-        slurm_raw = b"#!/bin/bash\n# synthetic source-audit v3 producer\n"
+        slurm_raw = b"#!/bin/bash\n# synthetic source-audit v4 producer\n"
         self.slurm.write_bytes(slurm_raw)
         self.slurm_sha = hashlib.sha256(slurm_raw).hexdigest()
         inventory_tasks = [_task(index) for index in range(1640)]
@@ -330,7 +401,7 @@ class SourceFixture:
             ],
             "translation": {
                 "status": "success",
-                "timeout_seconds": 7200,
+                "timeout_seconds": 14400,
                 "returncode": 0,
                 "stdout": empty_stream,
                 "stderr": empty_stream,
@@ -395,7 +466,7 @@ class SourceFixture:
             P.canonical_json_line(guided_tasks)
         ).hexdigest()
         self.fixed_hashes = {
-            **P.SOURCE_V3_FIXED_HASHES,
+            **P.SOURCE_V4_FIXED_HASHES,
             "shadow_unrepresented_family_sequence_sha256": hashlib.sha256(
                 P.canonical_json(shadow)
             ).hexdigest(),
@@ -403,114 +474,10 @@ class SourceFixture:
                 P.canonical_json(all_prior)
             ).hexdigest(),
         }
-        schema = P.SOURCE_AUDIT_SCHEMA
-        v1_rows = [{
-            "array_task": index,
-            "state": "OUT_OF_MEMORY" if index == 0 else "COMPLETED",
-            "exit_code": "0:125" if index == 0 else "0:0",
-            "elapsed": "00:01:00",
-            "partition": "fat",
-        } for index in range(820)]
-        v1_diagnostic = {
-            "schema": schema + "/campaign-v2/v1-infrastructure-diagnostic",
-            "v1_launch_receipt_path": str(
-                (self.repo / P.SOURCE_V3_MANIFEST_FILES[0]).resolve()
-            ),
-            "v1_launch_receipt_sha256": manifest_hashes[
-                P.SOURCE_V3_MANIFEST_FILES[0]
-            ],
-            "v1_job_id": "1860905",
-            "v1_memory_per_cpu": "26G",
-            "v1_scheduler_rows": v1_rows,
-            "v1_scheduler_rows_sha256": hashlib.sha256(
-                P.canonical_json_line(v1_rows)
-            ).hexdigest(),
-            "v1_scheduler_state_counts": {
-                "COMPLETED": 819, "OUT_OF_MEMORY": 1,
-            },
-            "v1_source_attestation_absent": True,
-            "rerun_scope": "all-820-shards",
-            "reused_v1_shards": 0,
-            "successful_shard_contents_used_for_v2_design": False,
-            "source_support_outcomes_used_for_v2_design": False,
-            "inspection_scope": (
-                "scheduler states plus OOM log/task diagnostics only"
-            ),
-            "failure_class": "scheduler-out-of-memory",
-        }
-        v2_rows = [{
-            "array_task": index,
-            "state": (
-                "FAILED" if index == 0
-                else "OUT_OF_MEMORY" if index == 1
-                else "COMPLETED"
-            ),
-            "exit_code": (
-                "75:0" if index == 0 else "0:125" if index == 1 else "0:0"
-            ),
-            "elapsed": "00:01:00",
-            "partition": "fat",
-        } for index in range(820)]
-        failure_logs = [
-            {"array_task": 0, "state": "FAILED", "sha256": "e" * 64},
-            {
-                "array_task": 1, "state": "OUT_OF_MEMORY",
-                "sha256": "f" * 64,
-            },
-        ]
-        diagnostic = {
-            "schema": schema + "/campaign-v3/v2-infrastructure-diagnostic",
-            "v2_launch_receipt_path": str(
-                (self.repo / P.SOURCE_V3_MANIFEST_FILES[1]).resolve()
-            ),
-            "v2_launch_receipt_sha256": manifest_hashes[
-                P.SOURCE_V3_MANIFEST_FILES[1]
-            ],
-            "v2_job_id": "1861842",
-            "v2_memory_per_cpu": "256G",
-            "v2_task_timeout_seconds": 2700,
-            "v2_time_limit": "01:40:00",
-            "v2_scheduler_rows": v2_rows,
-            "v2_scheduler_rows_sha256": hashlib.sha256(
-                P.canonical_json_line(v2_rows)
-            ).hexdigest(),
-            "v2_scheduler_state_counts": {
-                "COMPLETED": 818, "FAILED": 1, "OUT_OF_MEMORY": 1,
-            },
-            "v2_failure_logs": failure_logs,
-            "v2_failure_logs_sha256": hashlib.sha256(
-                P.canonical_json_line(failure_logs)
-            ).hexdigest(),
-            "v2_source_attestation_absent": True,
-            "successful_v1_v2_shard_contents_used_for_v3_design": False,
-            "source_support_outcomes_used_for_v3_design": False,
-            "inspection_scope": (
-                "scheduler rows plus timeout/OOM logs and task names only"
-            ),
-            "failure_class": "translator-timeout-and-out-of-memory",
-            "resource_amendment": {
-                "memory_per_cpu": "512G",
-                "task_timeout_seconds": 7200,
-                "time_limit": "04:10:00",
-            },
-            "rerun_scope": "all-820-shards",
-            "reused_v1_shards": 0,
-            "reused_v2_shards": 0,
-            "v1_failure_diagnostic": v1_diagnostic,
-        }
-        self.v1_diagnostic_sha = hashlib.sha256(
-            P.canonical_json_line(v1_diagnostic)
-        ).hexdigest()
-        self.v2_diagnostic_sha = hashlib.sha256(
-            P.canonical_json_line(diagnostic)
-        ).hexdigest()
-        self.v2_state_counts = diagnostic["v2_scheduler_state_counts"]
-        self.v2_rows_sha = diagnostic["v2_scheduler_rows_sha256"]
-        self.v2_logs_sha = diagnostic["v2_failure_logs_sha256"]
         attestation = {
             "schema": schema,
             "benchmark_revision": P.BENCHMARK_REVISION,
-            "translator_source_sha256": P.SOURCE_V3_FIXED_HASHES[
+            "translator_source_sha256": P.SOURCE_V4_FIXED_HASHES[
                 "translator_source_sha256"
             ],
             "source_inventory_sha256": self.inventory_sha,
@@ -569,11 +536,18 @@ class SourceFixture:
             "records": source_records,
         }
         attestation_raw = _write(self.attestation, attestation)
+        output_root_identity = _root_identity(self.output_dir, 1)
+        tmp_root_identity = _root_identity(self.tmpdir_root, 2)
+        launch_roots = {
+            "output_dir": output_root_identity,
+            "tmpdir_root": tmp_root_identity,
+        }
         fixed = {
-            "campaign": "v3",
+            "campaign": "v4",
             "whole_campaign_rerun": True,
             "reused_v1_shards": 0,
             "reused_v2_shards": 0,
+            "reused_v3_shards": 0,
             "partition": "fat",
             "qos": "normal",
             "account": P.ACCOUNT,
@@ -583,24 +557,31 @@ class SourceFixture:
             "tasks_per_array_task": 2,
             "candidates": 1640,
             "cpus_per_task": 1,
-            "time_limit": "04:10:00",
-            "memory_per_cpu": "512G",
-            "task_timeout_seconds": 7200,
+            "time_limit": "08:20:00",
+            "memory_per_cpu": "1024G",
+            "task_timeout_seconds": 14400,
             "benchmark_revision": P.BENCHMARK_REVISION,
             **self.fixed_hashes,
             "source_inventory_sha256": self.inventory_sha,
             "source_inventory_path": str(self.inventory),
             "slurm_script_sha256": self.slurm_sha,
+            "slurm_submission_mode": "stdin",
+            "slurm_stdin_sha256": self.slurm_sha,
+            "slurm_stdin_bytes": len(slurm_raw),
+            "slurm_path_argument": False,
+            "submission_journal_contract": (
+                "exact sbatch options-only SubmitLine"
+            ),
             "code_manifest_sha256": self.manifest_sha,
             "launcher_sha256": manifest_hashes[
                 "experiments/"
-                "launch_pdb_terminal_incidence_confirmation_source_audit_v3.py"
+                "launch_pdb_terminal_incidence_confirmation_source_audit_v4.py"
             ],
             "repository_commit_id": "4" * 40,
             "scoped_repository_files": sorted({
-                *P.SOURCE_V3_MANIFEST_FILES,
-                P.SOURCE_V3_SLURM_RELATIVE,
-                P.SOURCE_V3_MANIFEST_RELATIVE,
+                *P.SOURCE_V4_MANIFEST_FILES,
+                P.SOURCE_V4_SLURM_RELATIVE,
+                P.SOURCE_V4_MANIFEST_RELATIVE,
             }),
             "jj_executable": "/home/jendrik/bin/jj",
             "jj_executable_sha256": (
@@ -618,9 +599,16 @@ class SourceFixture:
                 "LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin",
             },
             "output_dir": str(self.output_dir),
+            "tmpdir_root": str(self.tmpdir_root),
+            "launch_root_identities": launch_roots,
             "candidate_attestation": str(self.candidate),
             "frozen_attestation": str(self.attestation),
-            "execution_environment": _source_execution_environment(),
+            "execution_environment": _source_execution_environment(self.repo),
+            "v3_infrastructure_diagnostic_path": str(
+                self.repo / diagnostic_relative
+            ),
+            "v3_infrastructure_diagnostic_sha256": self.diagnostic_sha,
+            "v3_infrastructure_diagnostic": diagnostic,
             "python_version": P.REQUIRED_PYTHON_VERSION,
             "python_executable": "/pinned/python3.12",
             "python_executable_sha256": "a" * 64,
@@ -638,30 +626,29 @@ class SourceFixture:
         token = "a" * 24
         submit_command = [
             "/usr/bin/sbatch", "--parsable", "--export=NONE",
-            "--job-name=confirmation-source-audit-v3-{}".format(token),
-            "--comment=confirmation-source-audit-v3/{}".format(token),
+            "--job-name=confirmation-source-audit-v4-{}".format(token),
+            "--comment=confirmation-source-audit-v4/{}".format(token),
             "--account={}".format(P.ACCOUNT), "--partition=fat",
             "--qos=normal", "--array=0-819", "--nodes=1", "--ntasks=1",
-            "--cpus-per-task=1", "--mem-per-cpu=512G", "--time=04:10:00",
+            "--cpus-per-task=1", "--mem-per-cpu=1024G", "--time=08:20:00",
             "--nice=0", "--no-requeue", "--chdir={}".format(self.repo),
             "--output={}".format(
                 (self.output_dir / "slurm-%A_%a.out").resolve()
             ),
-            str(self.slurm), self.inventory_sha, str(self.output_dir.resolve()),
         ]
         intent_value = {
-            "schema": schema + "/campaign-v3/launch/intent",
+            "schema": schema + "/campaign-v4/launch/intent",
             **fixed,
-            "v2_failure_diagnostic": diagnostic,
             "recorded_utc": "2026-09-01T12:00:00+00:00",
             "submission_token": token,
             "submit_command": submit_command,
         }
         intent_raw = _write(self.intent, intent_value)
+        self.intent_sha = hashlib.sha256(intent_raw).hexdigest()
         launch = {
-            "schema": schema + "/campaign-v3/launch",
+            "schema": schema + "/campaign-v4/launch",
             **{key: value for key, value in intent_value.items() if key != "schema"},
-            "launch_intent_sha256": hashlib.sha256(intent_raw).hexdigest(),
+            "launch_intent_sha256": self.intent_sha,
             "job_id": "123456",
         }
         launch.update(launch_special)
@@ -675,32 +662,55 @@ class SourceFixture:
             name: hashlib.sha256(name.encode("ascii")).hexdigest()
             for name in shard_names
         }
-        source_root = self.output_dir
-        union_sources = [{
-            "shard_index": index,
-            "origin": "original",
-            "source": str(source_root / name),
-            "source_sha256": shard_hashes[name],
-            "union": name,
-            "union_sha256": shard_hashes[name],
-        } for index, name in enumerate(shard_names)]
+        environment_names = [
+            "environment-{:04d}-of-0820.json".format(index)
+            for index in range(820)
+        ]
+        environment_hashes = {
+            name: hashlib.sha256(name.encode("ascii")).hexdigest()
+            for name in environment_names
+        }
         original_records = [{
-            "path": "source-inventory-v3.json", "size": 1,
+            "path": "source-inventory-v4.json", "bytes": 1,
             "sha256": self.inventory_sha,
         }]
         original_records.extend({
-            "path": name, "size": 1, "sha256": shard_hashes[name],
+            "path": name, "bytes": 1, "sha256": shard_hashes[name],
         } for name in shard_names)
         original_records.extend({
+            "path": name, "bytes": 1, "sha256": environment_hashes[name],
+        } for name in environment_names)
+        original_records.extend({
             "path": "slurm-123456_{}.out".format(index),
-            "size": 1,
+            "bytes": 1,
             "sha256": hashlib.sha256(
                 "log-{}".format(index).encode("ascii")
             ).hexdigest(),
         } for index in range(820))
-        union_tree = _tree([{
-            "path": name, "size": 1, "sha256": shard_hashes[name],
-        } for name in shard_names])
+        environment_records = [{
+            "array_task": index,
+            "path": environment_names[index],
+            "sha256": environment_hashes[environment_names[index]],
+            "tmpdir": str(self.tmpdir_root / "task-123456-{}".format(index)),
+            "tmpdir_identity": _root_identity(
+                self.tmpdir_root / "task-123456-{}".format(index),
+                10 + index,
+            ),
+            "output_dir_identity": output_root_identity,
+            "shard_sha256": shard_hashes[shard_names[index]],
+        } for index in range(820)]
+        environment_manifest = {
+            "schema": (
+                schema + "/campaign-v4/task-environment/v1/manifest/v1"
+            ),
+            "records": environment_records,
+            "records_sha256": hashlib.sha256(
+                P.canonical_json(environment_records)
+            ).hexdigest(),
+            "tmpdir_root_identity": tmp_root_identity,
+            "output_dir_identity": output_root_identity,
+            "all_task_tmpdirs_removed_by_rmdir": True,
+        }
         scheduler_rows = [{
             "array_task": index,
             "state": "COMPLETED",
@@ -714,19 +724,21 @@ class SourceFixture:
             "partition": "fat",
             "qos": "normal",
             "req_cpus": 1,
-            "req_mem": "512G",
-            "time_limit": "04:10:00",
+            "req_mem": "1024G",
+            "time_limit": "08:20:00",
             "state": "COMPLETED",
             "exit_code": "0:0",
-            "job_name": "confirmation-source-audit-v3-{}".format(token),
+            "job_name": "confirmation-source-audit-v4-{}".format(token),
         } for index in range(820)]
         execution = {
-            "schema": schema + "/campaign-v3/execution",
-            "campaign": "v3",
+            "schema": schema + "/campaign-v4/execution",
+            "campaign": "v4",
             "whole_campaign_rerun": True,
+            "original_only": True,
+            "recovery": None,
             "reused_v1_shards": 0,
             "reused_v2_shards": 0,
-            "v2_failure_diagnostic": diagnostic,
+            "reused_v3_shards": 0,
             "launch_receipt_sha256": hashlib.sha256(launch_raw).hexdigest(),
             "job_id": "123456",
             "partition": "fat",
@@ -736,25 +748,26 @@ class SourceFixture:
             "array_tasks": 820,
             "tasks_per_array_task": 2,
             "cpus_per_task": 1,
-            "memory_per_cpu": "512G",
-            "time_limit": "04:10:00",
-            "task_timeout_seconds": 7200,
+            "memory_per_cpu": "1024G",
+            "time_limit": "08:20:00",
+            "task_timeout_seconds": 14400,
             "array_throttle": 0,
             "shards": 820,
             "candidates": 1640,
             "scheduler_rows": scheduler_rows,
             "scheduler_state_counts": {"COMPLETED": 820},
             "scheduler_contract_rows": scheduler_contract_rows,
-            "sacct_executable": "/usr/bin/sacct",
-            "sacct_executable_sha256": (
-                "58f3976b19baa2bc26772a92ab224dd0c1bf0ab3d9b675d85aa3e4636c836315"
+            "launch_root_identities": launch_roots,
+            "sealing_root_identities_before": launch_roots,
+            "sealing_root_identities_after": launch_roots,
+            "original_output_tree": _tree(
+                original_records, output_root_identity
             ),
-            "original_output_tree": _tree(original_records),
-            "recovery": None,
-            "union_sources": union_sources,
-            "union_tree": union_tree,
+            "task_environment_manifest": environment_manifest,
             "code_manifest_sha256": self.manifest_sha,
             "source_inventory_sha256": self.inventory_sha,
+            "v3_infrastructure_diagnostic_sha256": self.diagnostic_sha,
+            "v3_infrastructure_diagnostic": diagnostic,
             "execution_environment": launch["execution_environment"],
             "source_audit_complete": True,
             "confirmation_prelaunch_authorized": True,
@@ -784,29 +797,28 @@ class SourceFixture:
     def patch(self):
         with mock.patch.multiple(
                 P,
-                SOURCE_V3_REPO=self.repo,
-                SOURCE_V3_ATTESTATION_PATH=self.attestation,
-                SOURCE_V3_ARTIFACT_DIR=self.artifact_dir,
-                SOURCE_V3_INTENT_PATH=self.intent,
-                SOURCE_V3_LAUNCH_RECEIPT_PATH=self.launch,
-                SOURCE_V3_LAUNCH_RECEIPT_SHA256=self.launch_sha,
-                SOURCE_V3_EXECUTION_RECEIPT_PATH=self.execution,
-                SOURCE_V3_SLURM_PATH=self.slurm,
-                SOURCE_V3_CODE_MANIFEST_PATH=self.manifest,
-                SOURCE_V3_AMENDMENT_PATH=self.amendment,
-                SOURCE_V3_INVENTORY_PATH=self.inventory,
-                SOURCE_V3_OUTPUT_DIR=self.output_dir,
-                SOURCE_V3_CANDIDATE_PATH=self.candidate,
-                SOURCE_V3_SLURM_SHA256=self.slurm_sha,
-                SOURCE_V3_CODE_MANIFEST_SHA256=self.manifest_sha,
-                SOURCE_V3_AMENDMENT_SHA256=self.amendment_sha,
-                SOURCE_V3_INVENTORY_SHA256=self.inventory_sha,
-                SOURCE_V3_FIXED_HASHES=self.fixed_hashes,
-                SOURCE_V3_V2_DIAGNOSTIC_SHA256=self.v2_diagnostic_sha,
-                SOURCE_V3_V2_SCHEDULER_STATE_COUNTS=self.v2_state_counts,
-                SOURCE_V3_V2_SCHEDULER_ROWS_SHA256=self.v2_rows_sha,
-                SOURCE_V3_V2_FAILURE_LOGS_SHA256=self.v2_logs_sha,
-                SOURCE_V3_V1_DIAGNOSTIC_SHA256=self.v1_diagnostic_sha,
+                SOURCE_V4_REPO=self.repo,
+                SOURCE_V4_ATTESTATION_PATH=self.attestation,
+                SOURCE_V4_ARTIFACT_DIR=self.artifact_dir,
+                SOURCE_V4_INTENT_PATH=self.intent,
+                SOURCE_V4_LAUNCH_RECEIPT_PATH=self.launch,
+                SOURCE_V4_LAUNCH_RECEIPT_SHA256=self.launch_sha,
+                SOURCE_V4_LAUNCH_INTENT_SHA256=self.intent_sha,
+                SOURCE_V4_EXECUTION_RECEIPT_PATH=self.execution,
+                SOURCE_V4_SLURM_PATH=self.slurm,
+                SOURCE_V4_CODE_MANIFEST_PATH=self.manifest,
+                SOURCE_V4_AMENDMENT_PATH=self.amendment,
+                SOURCE_V4_INVENTORY_PATH=self.inventory,
+                SOURCE_V4_OUTPUT_DIR=self.output_dir,
+                SOURCE_V4_CANDIDATE_PATH=self.candidate,
+                SOURCE_V4_SLURM_SHA256=self.slurm_sha,
+                SOURCE_V4_CODE_MANIFEST_SHA256=self.manifest_sha,
+                SOURCE_V4_AMENDMENT_SHA256=self.amendment_sha,
+                SOURCE_V4_INVENTORY_SHA256=self.inventory_sha,
+                SOURCE_V4_FIXED_HASHES=self.fixed_hashes,
+                SOURCE_V4_V3_DIAGNOSTIC_SHA256=self.diagnostic_sha,
+                SOURCE_V4_PRODUCER_COMMIT_ID="4" * 40,
+                SOURCE_V4_JOB_ID="123456",
                 _repository_snapshot_files=lambda commit, relatives: {
                     relative: (self.repo / relative).read_bytes()
                     for relative in relatives
@@ -839,7 +851,7 @@ class SourceFixture:
         launch = json.loads(self.launch.read_text())
         job_id = launch["job_id"]
         launch = {
-            "schema": P.SOURCE_AUDIT_SCHEMA + "/campaign-v3/launch",
+            "schema": P.SOURCE_AUDIT_SCHEMA + "/campaign-v4/launch",
             **{key: value for key, value in intent.items() if key != "schema"},
             "launch_intent_sha256": hashlib.sha256(intent_raw).hexdigest(),
             "job_id": job_id,
@@ -850,8 +862,8 @@ class SourceFixture:
         execution["launch_receipt_sha256"] = hashlib.sha256(
             launch_raw
         ).hexdigest()
-        execution["v2_failure_diagnostic"] = launch[
-            "v2_failure_diagnostic"
+        execution["v3_infrastructure_diagnostic"] = launch[
+            "v3_infrastructure_diagnostic"
         ]
         _write(self.execution, execution)
 
@@ -886,8 +898,8 @@ class SourceFixture:
                 "repository_commit_id": materials.launch_receipt[
                     "repository_commit_id"
                 ],
-                "union_tree_sha256": materials.execution_receipt[
-                    "union_tree"
+                "original_output_tree_sha256": materials.execution_receipt[
+                    "original_output_tree"
                 ]["sha256"],
                 "slurm_script_sha256": materials.launch_receipt[
                     "slurm_script_sha256"
@@ -925,27 +937,27 @@ class SourceFixture:
 
 
 class ConfirmationAProtocolTest(unittest.TestCase):
-    def test_v3_manifest_contract_has_exact_order_and_cardinality(self):
-        self.assertEqual(len(P.SOURCE_V3_MANIFEST_FILES), 14)
-        self.assertEqual(len(set(P.SOURCE_V3_MANIFEST_FILES)), 14)
+    def test_v4_manifest_contract_has_exact_order_and_cardinality(self):
+        self.assertEqual(len(P.SOURCE_V4_MANIFEST_FILES), 24)
+        self.assertEqual(len(set(P.SOURCE_V4_MANIFEST_FILES)), 24)
         self.assertEqual(
-            P.SOURCE_V3_MANIFEST_FILES[-1],
+            P.SOURCE_V4_MANIFEST_FILES[-1],
             "experiments/"
-            "test_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+            "test_pdb_terminal_incidence_confirmation_source_audit_v4.py",
         )
 
-    def test_committed_v3_launch_byte_chain_is_accepted(self):
+    def test_committed_v4_launch_byte_chain_is_accepted(self):
         raw, launch = P._load_canonical(
-            P.SOURCE_V3_LAUNCH_RECEIPT_PATH, "v3 launch receipt"
+            P.SOURCE_V4_LAUNCH_RECEIPT_PATH, "v4 launch receipt"
         )
         self.assertEqual(
             hashlib.sha256(raw).hexdigest(),
-            P.SOURCE_V3_LAUNCH_RECEIPT_SHA256,
+            P.SOURCE_V4_LAUNCH_RECEIPT_SHA256,
         )
-        _, _, manifest = P._load_source_v3_byte_chain(launch)
-        self.assertEqual(len(manifest), 14)
+        _, _, manifest = P._load_source_v4_byte_chain(launch)
+        self.assertEqual(len(manifest), 24)
         self.assertEqual(
-            len(P._source_v3_tracked_file_sha256(launch, manifest)), 18
+            len(P._source_v4_tracked_file_sha256(launch, manifest)), 26
         )
 
     def test_design_and_cegar_bound(self):
@@ -956,11 +968,19 @@ class ConfirmationAProtocolTest(unittest.TestCase):
         prose = " ".join(P.PROTOCOL_PATH.read_text().split())
         self.assertIn("at most 128 refinement calls", prose)
 
-    def test_exact_v3_campaign_is_accepted(self):
+    def test_exact_v4_campaign_is_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:
             materials = SourceFixture(Path(tmp)).load()
         self.assertEqual(len(materials.tasks), 650)
-        self.assertEqual(materials.launch_receipt["memory_per_cpu"], "512G")
+        self.assertEqual(materials.launch_receipt["memory_per_cpu"], "1024G")
+
+    def test_v4_attestation_and_execution_receipt_are_both_required(self):
+        for missing in ("attestation", "execution"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                getattr(fixture, missing).unlink()
+                with self.assertRaisesRegex(P.ProtocolError, "cannot load"):
+                    fixture.load()
 
     def test_attestation_envelope_and_split_replay_are_exact(self):
         mutations = (
@@ -1133,7 +1153,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             with self.assertRaises(P.ProtocolError):
                 fixture.load()
 
-    def test_v3_local_byte_chain_tampering_is_rejected(self):
+    def test_v4_local_byte_chain_tampering_is_rejected(self):
         def corrupt(path):
             path.write_bytes(path.read_bytes() + b"tamper\n")
 
@@ -1143,7 +1163,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             lambda fixture: fixture.manifest,
             lambda fixture: fixture.amendment,
             lambda fixture: fixture.inventory,
-            lambda fixture: fixture.repo / P.SOURCE_V3_MANIFEST_FILES[3],
+            lambda fixture: fixture.repo / P.SOURCE_V4_MANIFEST_FILES[3],
         )
         for target in targets:
             with self.subTest(target=target), tempfile.TemporaryDirectory() as tmp:
@@ -1166,13 +1186,13 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                 ):
                     fixture.load()
 
-    def test_v3_intent_fixed_materials_and_repository_snapshot_are_bound(self):
+    def test_v4_intent_fixed_materials_and_repository_snapshot_are_bound(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             fixture.mutate_intent(lambda intent: intent.update(
                 candidate_records_sha256="9" * 64
             ))
-            with self.assertRaisesRegex(P.ProtocolError, "local byte chain"):
+            with self.assertRaises(P.ProtocolError):
                 fixture.load()
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
@@ -1180,12 +1200,12 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                 snapshot = {
                     relative: (fixture.repo / relative).read_bytes()
                     for relative in sorted({
-                        *P.SOURCE_V3_MANIFEST_FILES,
-                        P.SOURCE_V3_SLURM_RELATIVE,
-                        P.SOURCE_V3_MANIFEST_RELATIVE,
+                        *P.SOURCE_V4_MANIFEST_FILES,
+                        P.SOURCE_V4_SLURM_RELATIVE,
+                        P.SOURCE_V4_MANIFEST_RELATIVE,
                     })
                 }
-                snapshot[P.SOURCE_V3_SLURM_RELATIVE] += b"tamper\n"
+                snapshot[P.SOURCE_V4_SLURM_RELATIVE] += b"tamper\n"
                 with mock.patch.object(
                     P, "_repository_snapshot_files", return_value=snapshot
                 ), self.assertRaisesRegex(P.ProtocolError, "snapshot"):
@@ -1193,7 +1213,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                         fixture.attestation, fixture.execution, fixture.launch
                     )
 
-    def test_freeze_revision_tracks_all_v3_bound_files(self):
+    def test_freeze_revision_tracks_all_v4_bound_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             materials = fixture.load()
@@ -1206,7 +1226,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                         ),
                     ):
                 self.assertEqual(
-                    Freeze._tracked_source_v3_hashes(materials, "4" * 40),
+                    Freeze._tracked_source_v4_hashes(materials, "4" * 40),
                     materials.tracked_file_sha256,
                 )
             first = next(iter(materials.tracked_file_sha256))
@@ -1219,7 +1239,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                             else materials.tracked_file_sha256[relative]
                         ),
                     ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
-                Freeze._tracked_source_v3_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v4_hashes(materials, "4" * 40)
 
     def test_freeze_requires_source_revision_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1254,7 +1274,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
     def test_source_snapshot_rechecks_jj_after_each_subprocess(self):
         with mock.patch.object(
                 P, "sha256_file",
-                side_effect=[P.SOURCE_V3_JJ_EXECUTABLE_SHA256, "9" * 64],
+                side_effect=[P.SOURCE_V4_JJ_EXECUTABLE_SHA256, "9" * 64],
         ), mock.patch.object(
                 P.subprocess, "check_output", return_value="file\n"
         ) as query, self.assertRaisesRegex(
@@ -1284,7 +1304,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     ), self.assertRaisesRegex(
                         Freeze.FreezeError, "changed during revision check"
                     ):
-                Freeze._tracked_source_v3_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v4_hashes(materials, "4" * 40)
 
     def test_freeze_reloads_source_after_mocked_planner_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1332,36 +1352,13 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                         "sealed source artifact",
                     )
 
-    def test_v2_failure_diagnostic_rejects_self_rehashed_substitution(self):
-        def add_failure(intent):
-            diagnostic = intent["v2_failure_diagnostic"]
-            row = diagnostic["v2_scheduler_rows"][2]
-            row["state"] = "FAILED"
-            row["exit_code"] = "75:0"
-            diagnostic["v2_scheduler_rows_sha256"] = hashlib.sha256(
-                P.canonical_json_line(diagnostic["v2_scheduler_rows"])
-            ).hexdigest()
-            diagnostic["v2_scheduler_state_counts"] = {
-                "COMPLETED": 817, "FAILED": 2, "OUT_OF_MEMORY": 1,
-            }
-            diagnostic["v2_failure_logs"].append({
-                "array_task": 2, "state": "FAILED", "sha256": "9" * 64,
-            })
-            diagnostic["v2_failure_logs_sha256"] = hashlib.sha256(
-                P.canonical_json_line(diagnostic["v2_failure_logs"])
-            ).hexdigest()
-
-        with tempfile.TemporaryDirectory() as tmp:
-            fixture = SourceFixture(Path(tmp))
-            fixture.mutate_intent(add_failure)
-            with self.assertRaisesRegex(P.ProtocolError, "diagnostic"):
-                fixture.load()
+    def test_v3_diagnostic_rejects_self_rehashed_substitution(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             fixture.mutate_intent(lambda intent: intent[
-                "v2_failure_diagnostic"
-            ].update(v2_scheduler_state_counts={"COMPLETED": 820}))
-            with self.assertRaisesRegex(P.ProtocolError, "diagnostic"):
+                "v3_infrastructure_diagnostic"
+            ].update(successful_v3_log_contents_inspected=True))
+            with self.assertRaises(P.ProtocolError):
                 fixture.load()
 
     def test_cohort_hash_matches_source_audit_canonical_line_convention(self):
@@ -1381,12 +1378,12 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             fixture = SourceFixture(root)
             launch = json.loads(fixture.launch.read_text())
             launch["schema"] = launch["schema"].replace(
-                "/campaign-v3/launch", "/launch"
+                "/campaign-v4/launch", "/launch"
             )
             launch_raw = _write(fixture.launch, launch)
             execution = json.loads(fixture.execution.read_text())
             execution["schema"] = execution["schema"].replace(
-                "/campaign-v3/execution", "/execution"
+                "/campaign-v4/execution", "/execution"
             )
             execution["launch_receipt_sha256"] = hashlib.sha256(
                 launch_raw
@@ -1407,37 +1404,39 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             with self.assertRaisesRegex(P.ProtocolError, "schema chain"):
                 fixture.load()
 
-    def test_mismatched_v2_failure_diagnostic_is_rejected(self):
+    def test_mismatched_v3_failure_diagnostic_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             execution = json.loads(fixture.execution.read_text())
-            execution["v2_failure_diagnostic"] = {
-                **execution["v2_failure_diagnostic"],
-                "rerun_scope": "selected-shards",
+            execution["v3_infrastructure_diagnostic"] = {
+                **execution["v3_infrastructure_diagnostic"],
+                "successful_v3_log_contents_inspected": True,
             }
             _write(fixture.execution, execution)
             with self.assertRaisesRegex(P.ProtocolError, "diagnostic chain"):
                 fixture.load()
 
-    def test_non_full_v3_rerun_diagnostic_is_rejected_even_when_matched(self):
+    def test_non_full_v4_rerun_diagnostic_is_rejected_even_when_matched(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             fixture.mutate_intent(lambda intent: intent[
-                "v2_failure_diagnostic"
-            ].update(rerun_scope="selected-shards"))
-            with self.assertRaisesRegex(P.ProtocolError, "diagnostic chain"):
+                "v3_infrastructure_diagnostic"
+            ]["full_rerun_decision"].update(scope="selected-shards"))
+            with self.assertRaises(P.ProtocolError):
                 fixture.load()
 
     def test_prior_reuse_and_wrong_v3_resources_are_rejected(self):
         cases = (
-            {"launch": {"campaign": "v2"}},
-            {"execution": {"campaign": "v2"}},
+            {"launch": {"campaign": "v3"}},
+            {"execution": {"campaign": "v3"}},
             {"launch": {"reused_v1_shards": 1}},
             {"execution": {"reused_v1_shards": 1}},
             {"launch": {"reused_v2_shards": 1}},
             {"execution": {"reused_v2_shards": 1}},
             {"launch": {"reused_v2_shards": False}},
             {"execution": {"reused_v2_shards": False}},
+            {"launch": {"reused_v3_shards": 1}},
+            {"execution": {"reused_v3_shards": 1}},
             {"launch": {"whole_campaign_rerun": False}},
             {"execution": {"whole_campaign_rerun": False}},
             {"launch": {"memory_per_cpu": "256G"}},
@@ -1452,27 +1451,25 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     ):
                         fixture.load()
 
-    def test_v2_diagnostic_must_attest_a_full_outcome_blind_rerun(self):
+    def test_v3_diagnostic_must_attest_a_full_outcome_blind_rerun(self):
         cases = (
             ("schema", P.SOURCE_AUDIT_SCHEMA + "/wrong-diagnostic"),
-            ("rerun_scope", "selected-shards"),
-            ("reused_v1_shards", 1),
-            ("reused_v2_shards", 1),
-            ("successful_v1_v2_shard_contents_used_for_v3_design", True),
-            ("source_support_outcomes_used_for_v3_design", True),
+            ("successful_v3_shard_contents_inspected", True),
+            ("successful_v3_log_contents_inspected", True),
+            ("source_support_outcomes_used_for_v4_design", True),
         )
         for field, value in cases:
             with self.subTest(field=field, value=value):
                 with tempfile.TemporaryDirectory() as tmp:
                     fixture = SourceFixture(Path(tmp))
                     fixture.mutate_intent(
-                        lambda intent: intent["v2_failure_diagnostic"].update(
+                        lambda intent: intent[
+                            "v3_infrastructure_diagnostic"
+                        ].update(
                             {field: value}
                         )
                     )
-                    with self.assertRaisesRegex(
-                        P.ProtocolError, "diagnostic chain"
-                    ):
+                    with self.assertRaises(P.ProtocolError):
                         fixture.load()
 
     def test_source_provenance_chain_must_match(self):
@@ -1490,7 +1487,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     with self.assertRaises(P.ProtocolError):
                         fixture.load()
 
-    def test_source_v3_scheduler_contract_is_exact(self):
+    def test_source_v4_scheduler_contract_is_exact(self):
         cases = (
             {"launch": {"partition": "thin"}},
             {"launch": {"qos": "low"}},
@@ -1519,7 +1516,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     ):
                         fixture.load()
 
-    def test_source_v3_scheduler_row_identity_is_exact(self):
+    def test_source_v4_scheduler_row_identity_is_exact(self):
         completed_rows = [{
             "array_task": index,
             "state": "COMPLETED",
@@ -1573,7 +1570,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     ):
                         fixture.load()
 
-    def test_source_v3_scheduler_resource_rows_are_exact(self):
+    def test_source_v4_scheduler_resource_rows_are_exact(self):
         mutations = (
             ("array_task", False),
             ("account", "other"),
@@ -1596,20 +1593,32 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     fixture.load()
 
     def test_source_execution_environment_is_bound(self):
-        changed_export = _source_execution_environment()
-        changed_export["submission_export"] = "ALL"
-        boolean_flag = _source_execution_environment()
-        boolean_flag["python_no_user_site_flag"] = True
-        cases = (
-            {"launch": {"execution_environment": None}},
-            {"launch": {"execution_environment": changed_export}},
-            {"launch": {"execution_environment": boolean_flag}},
-            {"launch": {"python_environment_sha256": "invalid"}},
-            {"execution": {"execution_environment": {"unexpected": True}}},
-        )
-        for overrides in cases:
-            with self.subTest(overrides=overrides):
-                with tempfile.TemporaryDirectory() as tmp:
+        for case in (
+            "missing", "export", "boolean", "python-hash", "execution",
+        ):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp).resolve()
+                    changed_export = _source_execution_environment(root)
+                    changed_export["submission_export"] = "ALL"
+                    boolean_flag = _source_execution_environment(root)
+                    boolean_flag["python_no_user_site_flag"] = True
+                    overrides = {
+                        "missing": {"launch": {"execution_environment": None}},
+                        "export": {
+                            "launch": {"execution_environment": changed_export}
+                        },
+                        "boolean": {
+                            "launch": {"execution_environment": boolean_flag}
+                        },
+                        "python-hash": {
+                            "launch": {"python_environment_sha256": "invalid"}
+                        },
+                        "execution": {
+                            "execution": {
+                                "execution_environment": {"unexpected": True}
+                            }
+                        },
+                    }[case]
                     fixture = SourceFixture(Path(tmp), **overrides)
                     with self.assertRaisesRegex(
                         P.ProtocolError, "execution environment"
@@ -1668,22 +1677,31 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                 with self.assertRaises(P.ProtocolError):
                     fixture.load()
 
-    def test_unrecovered_source_union_and_tree_are_exact(self):
+    def test_v4_original_output_and_environment_tree_are_exact(self):
         def recovery(execution):
             execution["recovery"] = {"unexpected": True}
 
-        def recovered_origin(execution):
-            execution["union_sources"][17]["origin"] = "recovery"
+        def wrong_environment_hash(execution):
+            execution["task_environment_manifest"]["records"][17][
+                "sha256"
+            ] = "9" * 64
 
         def wrong_tree_digest(execution):
-            execution["union_tree"]["sha256"] = "9" * 64
+            execution["original_output_tree"]["sha256"] = "9" * 64
 
-        def boolean_shard_index(execution):
-            execution["union_sources"][0]["shard_index"] = False
+        def boolean_task_index(execution):
+            execution["task_environment_manifest"]["records"][0][
+                "array_task"
+            ] = False
+
+        def wrong_root(execution):
+            execution["original_output_tree"]["root_identity"][
+                "inode"
+            ] = 99
 
         for mutation in (
-            recovery, recovered_origin, boolean_shard_index,
-            wrong_tree_digest,
+            recovery, wrong_environment_hash, boolean_task_index,
+            wrong_tree_digest, wrong_root,
         ):
             with self.subTest(mutation=mutation.__name__):
                 with tempfile.TemporaryDirectory() as tmp:

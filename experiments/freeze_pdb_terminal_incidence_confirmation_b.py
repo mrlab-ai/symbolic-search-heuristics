@@ -84,15 +84,15 @@ def _require_clean_parent(revision: str | None) -> str:
     return revision
 
 
-def _tracked_source_v3_hashes(materials, revision: str) -> dict[str, str]:
+def _tracked_source_v4_hashes(materials, revision: str) -> dict[str, str]:
     hashes = dict(materials.tracked_file_sha256)
-    if len(hashes) != 18:
-        raise FreezeError("source-audit v3 bound file set changed")
+    if len(hashes) != 26:
+        raise FreezeError("source-audit v4 bound file set changed")
     for relative, expected in hashes.items():
         path = REPO / relative
         _attest_tracked_file(
             path, expected, revision,
-            "source-audit v3 bound file {}".format(relative),
+            "source-audit v4 bound file {}".format(relative),
         )
     return hashes
 
@@ -137,7 +137,7 @@ def build_freeze(
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
     ):
         _attest_tracked_file(path, expected, revision, "sealed source artifact")
-    tracked_file_sha256 = _tracked_source_v3_hashes(materials, revision)
+    tracked_file_sha256 = _tracked_source_v4_hashes(materials, revision)
     authorization_hashes = {
         authorization["receipt_path"]: authorization["receipt_sha256"],
         authorization["first_output_path"]: authorization[
@@ -191,7 +191,9 @@ def build_freeze(
         "job_id": source_launch["job_id"],
         "code_manifest_sha256": source_execution["code_manifest_sha256"],
         "repository_commit_id": source_launch["repository_commit_id"],
-        "union_tree_sha256": source_execution["union_tree"]["sha256"],
+        "original_output_tree_sha256": source_execution[
+            "original_output_tree"
+        ]["sha256"],
         "slurm_script_sha256": source_launch["slurm_script_sha256"],
         "launch_intent_sha256": source_launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked_file_sha256,
@@ -232,10 +234,16 @@ def build_freeze(
             "cells": cells,
             "expected_array_tasks": array_tasks,
             "runs_per_array_task": P.RUNS_PER_ARRAY_TASK,
+            "run_order_protocol": P.RUN_ORDER_PROTOCOL,
+            "run_cell_mapping_sha256": P.run_cell_mapping_digest(
+                materials.tasks
+            ),
             "probe_layers": P.PROBE_LAYERS,
             "par2_seconds": P.PAR2_SECONDS,
             "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
             "bootstrap_seed": P.BOOTSTRAP_SEED,
+            "minimum_mechanism_tasks": P.MIN_MECHANISM_TASKS,
+            "minimum_mechanism_families": P.MIN_MECHANISM_FAMILIES,
             "non_gating_reference_labels": list(
                 P.NON_GATING_REFERENCE_LABELS
             ),
@@ -275,7 +283,7 @@ def _revalidate_before_write(
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
     ):
         _attest_tracked_file(path, expected, revision, "sealed source artifact")
-    tracked = _tracked_source_v3_hashes(materials, revision)
+    tracked = _tracked_source_v4_hashes(materials, revision)
     authorization_hashes = {
         authorization["receipt_path"]: authorization["receipt_sha256"],
         authorization["first_output_path"]: authorization[
@@ -310,7 +318,9 @@ def _revalidate_before_write(
         "job_id": launch["job_id"],
         "code_manifest_sha256": execution["code_manifest_sha256"],
         "repository_commit_id": launch["repository_commit_id"],
-        "union_tree_sha256": execution["union_tree"]["sha256"],
+        "original_output_tree_sha256": execution[
+            "original_output_tree"
+        ]["sha256"],
         "slurm_script_sha256": launch["slurm_script_sha256"],
         "launch_intent_sha256": launch["launch_intent_sha256"],
         "tracked_file_sha256": tracked,

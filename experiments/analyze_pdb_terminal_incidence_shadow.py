@@ -26,6 +26,9 @@ class TerminalIncidenceAnalysisError(RuntimeError):
 
 SCHEMA = "symbolic-search-heuristics/pdb-terminal-incidence-shadow-analysis/v1"
 COMPARISON_PROTOCOL = "grand-shared-strict-task-family-macro/v1"
+TIE_AWARE_COMPARISON_PROTOCOL = (
+    "target-strict-tie-half-task-family-macro/v2"
+)
 BOOTSTRAP_PROTOCOL = "paired-family-percentile-lower-bound/v1"
 LAB_SLURM_ERROR = "output-to-slurm.err"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -1055,10 +1058,11 @@ def _aggregate_task_first(task_counts, universe, level):
     by_group = defaultdict(list)
     task_values = {}
     for task, counts in task_counts.items():
-        comparable = counts["concordant"] + counts["discordant"]
+        tied = counts.get("tied", 0)
+        comparable = counts["concordant"] + tied + counts["discordant"]
         if not comparable:
             continue
-        value = Fraction(counts["concordant"], comparable)
+        value = Fraction(2 * counts["concordant"] + tied, 2 * comparable)
         task_values[task] = value
         directory = task[0]
         group = (
@@ -1233,6 +1237,157 @@ def grand_shared_comparison(grouped):
     }
 
 
+def target_strict_tie_aware_comparison(grouped):
+    """Compare every predictor on one E-strict set, giving ties half credit."""
+    exclusions = Counter()
+    predictor_ties = Counter()
+    counts = {key: defaultdict(Counter) for key in PREDICTORS}
+    pair_ids = []
+    all_predictors_strict = 0
+    inverse_u_ties = 0
+    for task in sorted(grouped):
+        observations = sorted(
+            grouped[task].values(), key=lambda item: item["semantic_id"]
+        )
+        for left, right in itertools.combinations(observations, 2):
+            exclusions["semantic_pairs"] += 1
+            if left["U"] != right["U"]:
+                raise TerminalIncidenceAnalysisError(
+                    "fixed-task observations have different blind denominators"
+                )
+            target_order = _compare(left["E"], right["E"])
+            if left["U"] == 0:
+                if target_order != 0:
+                    raise TerminalIncidenceAnalysisError(
+                        "zero blind denominator accompanies a strict target"
+                    )
+                normalized_order = 0
+            else:
+                normalized_order = _compare_ratio(
+                    left["E"], left["U"], right["E"], right["U"]
+                )
+                inverse_u_order = _compare_ratio(
+                    1, left["U"], 1, right["U"]
+                )
+                if inverse_u_order != 0:
+                    raise TerminalIncidenceAnalysisError(
+                        "inverse-U null is not tied within a fixed task"
+                    )
+                inverse_u_ties += 1
+            if normalized_order != target_order:
+                raise TerminalIncidenceAnalysisError(
+                    "absolute and E/U target orientations disagree"
+                )
+            if target_order == 0:
+                exclusions["target_tied"] += 1
+                continue
+
+            exclusions["target_strict"] += 1
+            pair_ids.append({
+                "task": list(task),
+                "left": left["semantic_id"],
+                "right": right["semantic_id"],
+            })
+            orders = {
+                key: _compare(left[key], right[key]) for key in PREDICTORS
+            }
+            tied = [key for key, order in orders.items() if order == 0]
+            if not tied:
+                all_predictors_strict += 1
+            for key in tied:
+                predictor_ties[key] += 1
+            for key, order in orders.items():
+                outcome = (
+                    "tied" if order == 0 else
+                    "concordant" if order == target_order else "discordant"
+                )
+                counts[key][task][outcome] += 1
+
+    family_universe = tuple(sorted(set(P.DIRECTORY_TO_FAMILY.values())))
+    directory_universe = tuple(P.DIRECTORIES)
+    summaries = {}
+    for key in PREDICTORS:
+        family = _aggregate_task_first(
+            counts[key], family_universe, "family"
+        )
+        directory = _aggregate_task_first(
+            counts[key], directory_universe, "directory"
+        )
+        concordant = sum(
+            task_counts["concordant"] for task_counts in counts[key].values()
+        )
+        tied = sum(
+            task_counts["tied"] for task_counts in counts[key].values()
+        )
+        discordant = sum(
+            task_counts["discordant"] for task_counts in counts[key].values()
+        )
+        total = concordant + tied + discordant
+        summaries[key] = {
+            "concordant": concordant,
+            "tied": tied,
+            "discordant": discordant,
+            "comparable": total,
+            "tasks_with_pairs": len(counts[key]),
+            "micro_concordance": _fraction_record(
+                Fraction(2 * concordant + tied, 2 * total)
+                if total else None
+            ),
+            "tie_rate": _fraction_record(
+                Fraction(tied, total) if total else None
+            ),
+            "equal_family": {
+                field: value for field, value in family.items()
+                if not field.startswith("_")
+            },
+            "equal_directory": {
+                field: value for field, value in directory.items()
+                if not field.startswith("_")
+            },
+            "_family_values": family["_group_values"],
+            "_family_lodo": family["_lodo"],
+        }
+    return {
+        "protocol": TIE_AWARE_COMPARISON_PROTOCOL,
+        "score": {
+            "concordant": "1",
+            "predictor_tie": "1/2",
+            "discordant": "0",
+            "target_ties": "excluded",
+        },
+        "support": {
+            **dict(exclusions),
+            "all_predictors_strict": all_predictors_strict,
+            "predictor_ties_on_target_strict": dict(predictor_ties),
+            "tasks_with_shared_pairs": len({
+                task for task, task_counts
+                in counts[PRIMARY_PREDICTOR].items()
+                if sum(task_counts.values())
+            }),
+            "families_with_shared_pairs": len({
+                P.DIRECTORY_TO_FAMILY.get(task[0], task[0])
+                for task, task_counts
+                in counts[PRIMARY_PREDICTOR].items()
+                if sum(task_counts.values())
+            }),
+            "directories_with_shared_pairs": len({
+                task[0] for task, task_counts
+                in counts[PRIMARY_PREDICTOR].items()
+                if sum(task_counts.values())
+            }),
+            "shared_pair_sha256": _sha(pair_ids),
+        },
+        "target_orientations": {
+            "absolute": "E",
+            "normalized": "E/U",
+            "orders_identical": True,
+            "inverse_U_tied_pairs": inverse_u_ties,
+            "inverse_U_null": "tied_within_task",
+        },
+        "predictors": summaries,
+    }
+
+
 def _bootstrap_differences(comparison):
     family_values = {
         key: comparison["predictors"][key]["_family_values"]
@@ -1307,12 +1462,19 @@ def primary_gates(comparison, eligible_tasks, eligible_families):
         if i_macro_record is not None else None
     )
     support = comparison["support"]
+    tie_aware = comparison.get("protocol") == TIE_AWARE_COMPARISON_PROTOCOL
+    pair_support_key = (
+        "target_strict" if tie_aware else "grand_shared_strict"
+    )
+    pair_minimum = (
+        P.MIN_TARGET_STRICT_PAIRS if tie_aware else P.MIN_SHARED_STRICT_PAIRS
+    )
     support_pass = all((
         eligible_tasks >= P.MIN_ELIGIBLE_TASKS,
         eligible_families >= P.MIN_ELIGIBLE_FAMILIES,
         support.get("tasks_with_shared_pairs", 0)
         >= P.MIN_COMPARISON_TASKS,
-        support.get("grand_shared_strict", 0) >= P.MIN_SHARED_STRICT_PAIRS,
+        support.get(pair_support_key, 0) >= pair_minimum,
         support.get("families_with_shared_pairs", 0)
         >= P.MIN_COMPARISON_FAMILIES,
     ))
@@ -1391,8 +1553,9 @@ def primary_gates(comparison, eligible_tasks, eligible_families):
             "minimum_eligible_tasks": P.MIN_ELIGIBLE_TASKS,
             "eligible_families": eligible_families,
             "minimum_eligible_families": P.MIN_ELIGIBLE_FAMILIES,
-            "shared_strict_pairs": support.get("grand_shared_strict", 0),
-            "minimum_shared_strict_pairs": P.MIN_SHARED_STRICT_PAIRS,
+            "comparison_pair_definition": pair_support_key,
+            "comparison_pairs": support.get(pair_support_key, 0),
+            "minimum_comparison_pairs": pair_minimum,
             "comparison_tasks": support.get("tasks_with_shared_pairs", 0),
             "minimum_comparison_tasks": P.MIN_COMPARISON_TASKS,
             "comparison_families": support.get("families_with_shared_pairs", 0),

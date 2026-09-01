@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import stat
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from pathlib import Path
 
 import exp_pdb_profile_certificate_holdout as Base
 import jj_cached_revision as JJ
+import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_a_protocol as P
 
 
@@ -47,7 +49,42 @@ LAUNCH_SCHEMA = (
 EXPECTED_JOB_NAME = "exp_pdb_terminal_incidence_confirmation_a-02-start"
 JOB_FILE = GRID_DIR / EXPECTED_JOB_NAME
 SUBMISSION_TOKEN_RE = re.compile(r"^[0-9a-f]{24}$")
-JOURNAL_FIELDS = "JobID%64,JobName%128,Comment%128"
+SBATCH_COMMAND = Path("/usr/bin/sbatch")
+SBATCH_COMMAND_SHA256 = (
+    "efbb8e172acc7ed768430740d04e19cc07a3ac4701b005d1a997c08424bde741"
+)
+SACCT_COMMAND = Path("/usr/bin/sacct")
+SACCT_COMMAND_SHA256 = (
+    "58f3976b19baa2bc26772a92ab224dd0c1bf0ab3d9b675d85aa3e4636c836315"
+)
+SUBMISSION_ENVIRONMENT = {"LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin"}
+JOURNAL_FIELDS = "JobID%64,JobName%128,Comment%128,SubmitLine%4096"
+RUN_CELL_HELPER = SCRIPT_DIR / "pdb_confirmation_run_cell.py"
+DYNAMIC_OUTPUT_NAMES = (
+    "driver.err", "driver.log", "output.sas", "run.err", "run.log",
+    "sas_plan", "wbh-profile.jsonl", "wbh.jsonl",
+)
+
+
+def _executable_identity(path: Path, expected_sha256: str, label: str) -> dict:
+    path = Path(path)
+    try:
+        info = path.lstat()
+        actual = P.sha256_file(path)
+        after = path.lstat()
+    except (OSError, P.ProtocolError) as err:
+        raise ConfirmationLaunchError("cannot verify {} executable".format(label)) from err
+    if (
+        not path.is_absolute()
+        or path.is_symlink()
+        or not stat.S_ISREG(info.st_mode)
+        or not info.st_mode & 0o111
+        or (info.st_dev, info.st_ino, info.st_size)
+        != (after.st_dev, after.st_ino, after.st_size)
+        or actual != expected_sha256
+    ):
+        raise ConfirmationLaunchError("{} executable identity changed".format(label))
+    return {"path": str(path), "sha256": actual}
 
 
 def _exclusive_bytes(path: Path, raw: bytes, label: str) -> str:
@@ -68,19 +105,12 @@ def _exclusive_json(path: Path, value, label: str) -> str:
 
 def _load_json(path: Path, label: str) -> tuple[bytes, dict]:
     try:
-        info = path.lstat()
-        raw = path.read_bytes()
-        value = json.loads(raw.decode("ascii"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
-        raise ConfirmationLaunchError("cannot load {}".format(label)) from err
-    if (
-        path.is_symlink()
-        or not stat.S_ISREG(info.st_mode)
-        or not isinstance(value, dict)
-        or raw != P.canonical_json_line(value)
-    ):
-        raise ConfirmationLaunchError("{} is not canonical".format(label))
-    return raw, value
+        loaded, value = SafeIO.read_canonical_json(
+            Path(path), label=label, canonical_json_line=P.canonical_json_line
+        )
+    except SafeIO.SafeReadError as err:
+        raise ConfirmationLaunchError(str(err)) from err
+    return loaded.raw, value
 
 
 def _source_names() -> tuple[str, ...]:
@@ -223,43 +253,64 @@ def configure() -> None:
 
 
 def _sanitize_job_file() -> None:
-    if JOB_FILE.is_symlink() or not JOB_FILE.is_file():
-        raise ConfirmationLaunchError("generated Confirmation A job file is absent")
     try:
-        raw = JOB_FILE.read_bytes()
-        text = raw.decode("utf-8")
-    except (OSError, UnicodeDecodeError) as err:
+        loaded = SafeIO.read_regular_file(
+            JOB_FILE, label="generated Confirmation A job"
+        )
+        text = loaded.raw.decode("utf-8")
+    except (SafeIO.SafeReadError, UnicodeDecodeError) as err:
         raise ConfirmationLaunchError("cannot read generated job file") from err
     lines = text.splitlines(keepends=True)
     nice = [line for line in lines if line.startswith("#SBATCH --nice=")]
-    if nice == ["#SBATCH --nice=0\n"]:
+    if nice not in ([], ["#SBATCH --nice=0\n"]):
+        raise ConfirmationLaunchError("generated job requests a nice adjustment")
+    if nice:
         lines = [line for line in lines if not line.startswith("#SBATCH --nice=")]
-        payload = "".join(lines).encode("utf-8")
+    text = "".join(lines)
+    legacy = SafeIO.legacy_execute_run_block(Path(sys.executable))
+    hardened = SafeIO.hardened_execute_run_block(
+        Path(sys.executable), RUN_CELL_HELPER, DYNAMIC_OUTPUT_NAMES
+    )
+    if text.count(legacy) == 1 and text.count(hardened) == 0:
+        text = text.replace(legacy, hardened)
+    elif text.count(legacy) != 0 or text.count(hardened) != 1:
+        raise ConfirmationLaunchError("generated job execution body changed")
+    payload = text.encode("utf-8")
+    if payload != loaded.raw:
         temporary = JOB_FILE.with_name(".{}.no-nice".format(JOB_FILE.name))
         try:
             with temporary.open("xb") as stream:
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
-            temporary.chmod(JOB_FILE.stat().st_mode & 0o777)
+            temporary.chmod(loaded.identity["mode"] & 0o777)
+            current = JOB_FILE.lstat()
+            if {
+                "device": current.st_dev,
+                "inode": current.st_ino,
+                "mode": current.st_mode,
+                "size": current.st_size,
+                "mtime_ns": current.st_mtime_ns,
+            } != loaded.identity:
+                raise ConfirmationLaunchError(
+                    "generated job changed during sanitization"
+                )
             os.replace(temporary, JOB_FILE)
-        except OSError as err:
+        except (OSError, ConfirmationLaunchError) as err:
             try:
                 temporary.unlink()
             except OSError:
                 pass
-            raise ConfirmationLaunchError("cannot remove zero nice directive") from err
-    elif nice:
-        raise ConfirmationLaunchError("generated job requests a nice adjustment")
+            raise ConfirmationLaunchError("cannot harden generated job") from err
     _validate_job_file()
 
 
 def _validate_job_file() -> str:
-    if JOB_FILE.is_symlink() or not JOB_FILE.is_file():
-        raise ConfirmationLaunchError("Confirmation A job file is not regular")
     try:
-        text = JOB_FILE.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as err:
+        loaded = SafeIO.read_regular_file(JOB_FILE, label="Confirmation A job")
+        raw = loaded.raw
+        text = raw.decode("utf-8")
+    except (SafeIO.SafeReadError, UnicodeDecodeError) as err:
         raise ConfirmationLaunchError("cannot inspect Confirmation A job") from err
     lines = text.splitlines()
     if not lines or lines[0] != "#! /bin/bash -l":
@@ -311,28 +362,9 @@ def _validate_job_file() -> str:
         '    printf "runs-%05d-%05d/%05d" $lower $upper $run_id',
         "}",
     ))
-    execute_run_block = "\n".join((
-        "function execute_run {",
-        "    if [[ -f driver.log ]]; then",
-        '        echo "The run in $(pwd) has already been started --> skip it"',
-        "        return",
-        "    fi",
-        "",
-        "    (",
-        '    "{}" run'.format(Path(sys.executable)),
-        "    RETCODE=$?",
-        "    if [[ $RETCODE != 0 ]]; then",
-        '        >&2 echo "The run script finished with exit code $RETCODE"',
-        "    fi",
-        "    ) > driver.log 2> driver.err",
-        "",
-        "    # Delete empty driver.err files. driver.log always has content "
-        "(for started runs).",
-        "    if [[ ! -s driver.err ]]; then",
-        "        rm driver.err",
-        "    fi",
-        "}",
-    ))
+    execute_run_block = SafeIO.hardened_execute_run_block(
+        Path(sys.executable), RUN_CELL_HELPER, DYNAMIC_OUTPUT_NAMES
+    )
     if (
         text.count(print_block) != 1
         or text.count(print_run_dir_block) != 1
@@ -382,6 +414,10 @@ def _validate_job_file() -> str:
         '    (cd "{}/$run_dir" && execute_run ${{run_id}})'.format(
             EXPERIMENT_PATH.resolve()
         ),
+        "    CELL_STATUS=$?",
+        "    if [[ $CELL_STATUS != 0 ]]; then",
+        '        exit "$CELL_STATUS"',
+        "    fi",
         "done",
     ))
     if text.count(mapping_block) != 1:
@@ -402,7 +438,23 @@ def _validate_job_file() -> str:
         raise ConfirmationLaunchError(
             "generated job contains an unrecognized executable line"
         )
-    return P.sha256_file(JOB_FILE)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _submission_job_bytes(expected_sha256: str) -> bytes:
+    try:
+        loaded = SafeIO.read_regular_file(JOB_FILE, label="Confirmation A job")
+        raw = loaded.raw
+    except SafeIO.SafeReadError as err:
+        raise ConfirmationLaunchError(
+            "cannot read Confirmation A job bytes"
+        ) from err
+    if (
+        loaded.sha256 != expected_sha256
+        or _validate_job_file() != expected_sha256
+    ):
+        raise ConfirmationLaunchError("Confirmation A job bytes changed")
+    return raw
 
 
 def _clean_repository_commit() -> str:
@@ -443,10 +495,17 @@ def _validate_recorded_utc(value: str) -> None:
 def _submit_command(token: str) -> list[str]:
     job_name, comment = _submission_identity(token)
     return [
-        "sbatch", "--parsable", "--export=NONE", "--no-requeue",
+        str(SBATCH_COMMAND), "--parsable", "--export=NONE", "--no-requeue",
         "--job-name={}".format(job_name),
         "--comment={}".format(comment),
-        str(JOB_FILE.resolve()),
+        "--account={}".format(P.ACCOUNT),
+        "--partition=fat", "--qos=normal", "--array=1-867",
+        "--nodes=1", "--ntasks=1", "--cpus-per-task=1",
+        "--mem-per-cpu=26G", "--time=01:40:00",
+        "--chdir={}".format(GRID_DIR.resolve()),
+        "--output={}".format((GRID_DIR / "slurm.log").resolve()),
+        "--error={}".format((GRID_DIR / "slurm.err").resolve()),
+        "--open-mode=append", "--mail-type=NONE", "--mail-user=",
     ]
 
 
@@ -467,12 +526,29 @@ def _build_launch_materials(
     if P.sha256_file(BUILD_RECEIPT) != build_sha:
         raise ConfirmationLaunchError("build receipt changed during launch")
     command = _submit_command(token)
+    sbatch = _executable_identity(
+        SBATCH_COMMAND, SBATCH_COMMAND_SHA256, "sbatch"
+    )
+    sacct = _executable_identity(
+        SACCT_COMMAND, SACCT_COMMAND_SHA256, "sacct"
+    )
+    job_raw = _submission_job_bytes(job_sha)
     return {
         "schema": LAUNCH_SCHEMA,
         "recorded_utc": recorded_utc,
         "submission_token": token,
         "submission_comment": _submission_identity(token)[1],
         "submit_command": command,
+        "slurm_submission_mode": "stdin",
+        "slurm_stdin_sha256": job_sha,
+        "slurm_stdin_bytes": len(job_raw),
+        "slurm_path_argument": False,
+        "submission_journal_contract": "exact sbatch options-only SubmitLine",
+        "sbatch_executable": sbatch["path"],
+        "sbatch_executable_sha256": sbatch["sha256"],
+        "sacct_executable": sacct["path"],
+        "sacct_executable_sha256": sacct["sha256"],
+        "submission_environment": dict(SUBMISSION_ENVIRONMENT),
         "job_name": EXPECTED_JOB_NAME,
         "partition": "fat",
         "qos": "normal",
@@ -562,11 +638,18 @@ def launch() -> None:
     }
     intent_raw = P.canonical_json_line(intent)
     _exclusive_bytes(LAUNCH_INTENT, intent_raw, "launch intent")
+    raw = _submission_job_bytes(materials["slurm_stdin_sha256"])
+    if len(raw) != materials["slurm_stdin_bytes"]:
+        raise ConfirmationLaunchError("Confirmation A job byte count changed")
+    _executable_identity(SBATCH_COMMAND, SBATCH_COMMAND_SHA256, "sbatch")
     try:
-        output = subprocess.check_output(
-            materials["submit_command"], cwd=GRID_DIR, text=True
-        ).strip()
-    except (OSError, subprocess.CalledProcessError) as err:
+        completed = subprocess.run(
+            materials["submit_command"], input=raw,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cwd=GRID_DIR, env=dict(SUBMISSION_ENVIRONMENT), check=True,
+        )
+        output = completed.stdout.decode("ascii").strip()
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError) as err:
         raise ConfirmationLaunchError("sbatch failed after launch intent") from err
     job_id = output.split(";", 1)[0]
     digest = _write_launch_receipt(intent_raw, materials, job_id)
@@ -578,6 +661,7 @@ def launch() -> None:
 
 
 def _journal_job_ids(materials: dict) -> list[str]:
+    _executable_identity(SACCT_COMMAND, SACCT_COMMAND_SHA256, "sacct")
     try:
         recorded = datetime.datetime.fromisoformat(materials["recorded_utc"])
     except (KeyError, TypeError, ValueError) as err:
@@ -585,29 +669,69 @@ def _journal_job_ids(materials: dict) -> list[str]:
     if recorded.tzinfo is None:
         raise ConfirmationLaunchError("submission timestamp lacks a timezone")
     command = [
-        "sacct", "-X", "-S", recorded.date().isoformat(), "-n", "-P",
+        str(SACCT_COMMAND), "-X", "-S", recorded.date().isoformat(),
+        "--name=" + materials["job_name"], "-n", "-P",
         "-o", JOURNAL_FIELDS,
     ]
     try:
-        output = subprocess.check_output(command, text=True)
+        output = subprocess.check_output(
+            command, env=dict(SUBMISSION_ENVIRONMENT), text=True
+        )
     except (OSError, subprocess.CalledProcessError) as err:
         raise ConfirmationLaunchError("cannot query submission journal") from err
     parents = set()
+    indices_by_parent = {}
+    expected_indices = set(range(1, P.EXPECTED_ARRAY_TASKS + 1))
     expected_name = materials["job_name"]
     expected_comment = materials["submission_comment"]
+    expected_command = materials.get("submit_command")
+    if (
+        not isinstance(expected_command, list)
+        or not expected_command
+        or expected_command[0] != str(SBATCH_COMMAND)
+        or any(not option.startswith("--") for option in expected_command[1:])
+    ):
+        raise ConfirmationLaunchError("submit command is not options-only")
     for line in output.splitlines():
-        fields = line.split("|")
-        if len(fields) != 3:
+        fields = line.split("|", 3)
+        if len(fields) != 4:
             raise ConfirmationLaunchError("submission journal row changed")
-        job_id, name, comment = fields
-        if name != expected_name and comment != expected_comment:
+        job_id, name, comment, submit_line = fields
+        if (
+            name != expected_name
+            and comment != expected_comment
+            and materials["submission_token"] not in submit_line
+        ):
             continue
-        match = re.fullmatch(r"([0-9]+)(?:_[0-9]+)?", job_id)
-        if match is None or name != expected_name or comment != expected_comment:
+        try:
+            actual_command = shlex.split(submit_line)
+        except ValueError as err:
+            raise ConfirmationLaunchError(
+                "submission journal command is malformed"
+            ) from err
+        if actual_command and actual_command[0] == "sbatch":
+            actual_command[0] = str(SBATCH_COMMAND)
+        parent_match = re.fullmatch(r"([0-9]+)", job_id)
+        array_match = re.fullmatch(r"([0-9]+)_([0-9]+)", job_id)
+        if (
+            name != expected_name
+            or comment not in ("", expected_comment)
+            or actual_command != expected_command
+            or (parent_match is None and array_match is None)
+        ):
             raise ConfirmationLaunchError("submission identity collided")
-        parents.add(match.group(1))
+        parent = (parent_match or array_match).group(1)
+        parents.add(parent)
+        if array_match is not None:
+            indices_by_parent.setdefault(parent, set()).add(
+                int(array_match.group(2))
+            )
     if len(parents) > 1:
         raise ConfirmationLaunchError("submission identity is not unique")
+    if len(parents) == 1:
+        parent = next(iter(parents))
+        if indices_by_parent.get(parent, set()) != expected_indices:
+            raise ConfirmationLaunchError("submission journal array is incomplete")
     return sorted(parents, key=int)
 
 
@@ -655,8 +779,10 @@ def load_launch_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
     intent_raw, _, materials = _load_intent_only()
     raw, receipt = _load_json(LAUNCH_RECEIPT, "Confirmation A launch receipt")
     try:
-        pin_raw = LAUNCH_RECEIPT_PIN.read_bytes()
-    except OSError as err:
+        pin_raw = SafeIO.read_regular_file(
+            LAUNCH_RECEIPT_PIN, label="Confirmation A launch receipt pin"
+        ).raw
+    except SafeIO.SafeReadError as err:
         raise ConfirmationLaunchError("launch receipt is not pinned") from err
     digest = hashlib.sha256(raw).hexdigest()
     expected = {
@@ -672,7 +798,11 @@ def load_launch_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
     ):
         raise ConfirmationLaunchError("launch receipt provenance changed")
     if verify_live:
-        _validate_job_file()
+        if (
+            _validate_job_file() != receipt["slurm_stdin_sha256"]
+            or _journal_job_ids(receipt) != [receipt["job_id"]]
+        ):
+            raise ConfirmationLaunchError("launch receipt is not journal-bound")
     return digest, receipt
 
 

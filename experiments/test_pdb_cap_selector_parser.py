@@ -182,6 +182,18 @@ def render(candidates, selected, final):
 
 
 class CapSelectorParserTest(unittest.TestCase):
+    def test_final_log_uses_the_installed_selected_cap(self):
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "src" / "search" / "symbolic" / "wbh_pdb_levels.cc"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'utils::g_log << ", value_cap=" << this->value_cap;', source
+        )
+        self.assertNotIn(
+            'utils::g_log << ", value_cap=" << value_cap;', source
+        )
+
     def parse(self, candidates=None, selected=None, final=None):
         base_candidates, base_selected, base_final = fixture()
         props = {}

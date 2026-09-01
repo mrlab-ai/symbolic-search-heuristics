@@ -37,23 +37,23 @@ CONFIRMATION_A_ARTIFACT_DIR = (
     "confirmation-a"
 )
 CONFIRMATION_A_RECEIPT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v1.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v2.json"
 )
 CONFIRMATION_A_RECEIPT_PIN_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v1.sha256"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v2.sha256"
 )
 CONFIRMATION_A_FIRST_OUTPUT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v1.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v2.json"
 )
 CONFIRMATION_A_SECOND_OUTPUT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v1-repeat.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v2-repeat.json"
 )
 SOURCE_AUDIT_SCHEMA = (
     "symbolic-search-heuristics/"
     "universal-unseen-confirmation-source-audit/v1"
 )
 PROTOCOL = "pdb-terminal-incidence-confirmation-b-measurement-v1"
-ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-b-analysis-v1"
+ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-b-analysis-v2"
 COHORT_ROLE = "source-disjoint-universal-confirmation-b"
 COHORT_SEED = (
     "symbolic-search-heuristics/universal-unseen-confirmation-guided-split/v1"
@@ -65,7 +65,7 @@ REQUIRED_LAB_VERSION = "8.10"
 REQUIRED_PYTHON_VERSION = "3.12.13"
 BUILD_OPTIONS = ("release_no_lp",)
 
-MIN_COHORT_TASKS = 200
+MIN_COHORT_TASKS = 300
 TARGET_COHORT_TASKS = 300
 MAX_COHORT_TASKS = 300
 MIN_COHORT_FAMILIES = 30
@@ -119,83 +119,102 @@ MIN_NORMALIZED_PAR2_IMPROVEMENT_NUMERATOR = 1
 MIN_NORMALIZED_PAR2_IMPROVEMENT_DENOMINATOR = 50
 BOOTSTRAP_REPLICATES = 100000
 BOOTSTRAP_SEED = 20260902
+MIN_MECHANISM_TASKS = 50
+MIN_MECHANISM_FAMILIES = 10
+RUN_ORDER_PROTOCOL = "task-major-family-balanced-triads/v1"
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-SOURCE_V3_REPO = REPO
-SOURCE_V3_ATTESTATION_PATH = (
-    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v3.json"
+SOURCE_V4_REPO = REPO
+SOURCE_V4_ATTESTATION_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v4.json"
 )
-SOURCE_V3_ARTIFACT_DIR = (
-    SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation-v3"
+SOURCE_V4_ARTIFACT_DIR = (
+    SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation-v4"
 )
-SOURCE_V3_INTENT_PATH = (
-    SOURCE_V3_ARTIFACT_DIR / "source-audit-launch-intent-v3.json"
+SOURCE_V4_INTENT_PATH = (
+    SOURCE_V4_ARTIFACT_DIR / "source-audit-launch-intent-v4.json"
 )
-SOURCE_V3_LAUNCH_RECEIPT_PATH = (
-    SOURCE_V3_ARTIFACT_DIR / "source-audit-launch-receipt-v3.json"
+SOURCE_V4_LAUNCH_RECEIPT_PATH = (
+    SOURCE_V4_ARTIFACT_DIR / "source-audit-launch-receipt-v4.json"
 )
-SOURCE_V3_LAUNCH_RECEIPT_SHA256 = (
-    "c331b7a42acd911f9b4a17b8a4999037874b105f2a9c8e6df7f11667d830e76e"
+SOURCE_V4_LAUNCH_RECEIPT_SHA256 = (
+    "90ec55eb1d603cb7434885eeb99ceb2a0123ac02f4f9c02c885cab2635442921"
 )
-SOURCE_V3_EXECUTION_RECEIPT_PATH = (
-    SOURCE_V3_ARTIFACT_DIR / "source-audit-execution-receipt-v3.json"
+SOURCE_V4_LAUNCH_INTENT_SHA256 = (
+    "d4c106b9aa6975f63a14ef3e59cc9186c2f28add9e31a1090f9d0b8d7ff82e27"
 )
-SOURCE_V3_SLURM_PATH = (
-    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_scan_v3.slurm"
+SOURCE_V4_EXECUTION_RECEIPT_PATH = (
+    SOURCE_V4_ARTIFACT_DIR / "source-audit-execution-receipt-v4.json"
 )
-SOURCE_V3_CODE_MANIFEST_PATH = (
-    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v3_code.sha256"
+SOURCE_V4_SLURM_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_scan_v4.slurm"
 )
-SOURCE_V3_AMENDMENT_PATH = (
-    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v3_protocol.md"
+SOURCE_V4_CODE_MANIFEST_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v4_code.sha256"
 )
-SOURCE_V3_INVENTORY_PATH = (
-    SCRIPT_DIR / "data" / "pdb_terminal_incidence_confirmation_source_audit_v3" /
-    "source-inventory-v3.json"
+SOURCE_V4_AMENDMENT_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v4_protocol.md"
 )
-SOURCE_V3_OUTPUT_DIR = SOURCE_V3_INVENTORY_PATH.parent
-SOURCE_V3_CANDIDATE_PATH = (
+SOURCE_V4_INVENTORY_PATH = (
+    SCRIPT_DIR / "data" / "pdb_terminal_incidence_confirmation_source_audit_v4" /
+    "source-inventory-v4.json"
+)
+SOURCE_V4_OUTPUT_DIR = SOURCE_V4_INVENTORY_PATH.parent
+SOURCE_V4_CANDIDATE_PATH = (
     SCRIPT_DIR / "data" /
-    "pdb_terminal_incidence_confirmation_source_audit_v3_candidate.json"
+    "pdb_terminal_incidence_confirmation_source_audit_v4_candidate.json"
 )
-SOURCE_V3_MANIFEST_FILES = (
+SOURCE_V4_MANIFEST_FILES = (
     "experiments/artifacts/pdb-terminal-incidence-confirmation/"
     "source-audit-launch-receipt-v1.json",
     "experiments/artifacts/pdb-terminal-incidence-confirmation-v2/"
     "source-audit-launch-receipt-v2.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v3/"
+    "source-audit-launch-intent-v3.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v3/"
+    "source-audit-launch-receipt-v3.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v4/"
+    "v3-infrastructure-failure-diagnostic.json",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v3.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v4.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v4.py",
     "experiments/pdb_terminal_incidence_confirmation_inventory.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v3_code.sha256",
     "experiments/pdb_terminal_incidence_confirmation_source_audit_v3_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v4_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_scan_v3.slurm",
     "experiments/pdb_terminal_incidence_shadow_cost_attestation.json",
     "experiments/recover_pdb_terminal_incidence_confirmation_source_audit.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+    "experiments/recover_pdb_terminal_incidence_confirmation_source_audit_v4.py",
     "experiments/requirements-pdb-terminal-incidence-shadow.txt",
     "experiments/suite_wbh_operator_costs.json",
     "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v4.py",
 )
-SOURCE_V3_SLURM_RELATIVE = (
-    "experiments/pdb_terminal_incidence_confirmation_source_scan_v3.slurm"
+SOURCE_V4_SLURM_RELATIVE = (
+    "experiments/pdb_terminal_incidence_confirmation_source_scan_v4.slurm"
 )
-SOURCE_V3_MANIFEST_RELATIVE = (
-    "experiments/pdb_terminal_incidence_confirmation_source_audit_v3_code.sha256"
+SOURCE_V4_MANIFEST_RELATIVE = (
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v4_code.sha256"
 )
-SOURCE_V3_SLURM_SHA256 = (
-    "5eb4b8ff62eb40797cfa39d9b49e1bbf425ad242bcc24052a7834a92a2804de9"
+SOURCE_V4_SLURM_SHA256 = (
+    "8504f5b778d74a5120605947e710713532018e2007d276df8c580167b9ce1a8f"
 )
-SOURCE_V3_CODE_MANIFEST_SHA256 = (
-    "7577f375bcba062417bef2c651016e5e69d27e145f24ff5770ff53199690f21f"
+SOURCE_V4_CODE_MANIFEST_SHA256 = (
+    "d3b571aaffce9f58f09d15f118df57997773c522e3da74bcdcbfbc00299f0518"
 )
-SOURCE_V3_AMENDMENT_SHA256 = (
-    "bf25fbf317182bf0a354c622b8ab3a3534c6766e23400a8239be138684484f3e"
+SOURCE_V4_AMENDMENT_SHA256 = (
+    "f146aa22c517ecb266d6d323455beffa961ff4e04fcad3155df61c29c02ca9a4"
 )
-SOURCE_V3_INVENTORY_SHA256 = (
+SOURCE_V4_INVENTORY_SHA256 = (
     "bb9be49a4652ff7bedcadb04b4db35cad701a5b2a2a6d6347c15e0ad670e056e"
 )
-SOURCE_V3_FIXED_HASHES = {
+SOURCE_V4_FIXED_HASHES = {
     "candidate_records_sha256": (
         "5add608b876d236a3fc6b3ab0eaeb67a4b7629c9328039ba2752c4c380e3035c"
     ),
@@ -224,23 +243,25 @@ SOURCE_V3_FIXED_HASHES = {
         "c93a014324c4866cc9f83c456d75fc2ad9d4b397bae48411bdc0c757e2f88cbc"
     ),
 }
-SOURCE_V3_V2_DIAGNOSTIC_SHA256 = (
-    "6bcb0870c179defa87fd40829ef571e9bcec42b8679c3bfb110371048f432e30"
+SOURCE_V4_V3_DIAGNOSTIC_RELATIVE = (
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v4/"
+    "v3-infrastructure-failure-diagnostic.json"
 )
-SOURCE_V3_V2_SCHEDULER_STATE_COUNTS = {
-    "COMPLETED": 793, "FAILED": 23, "OUT_OF_MEMORY": 4,
-}
-SOURCE_V3_V2_SCHEDULER_ROWS_SHA256 = (
-    "2b111f8cab6acd395cee1e63b159671b1cfc4682c48b40846cf7439df2ee8e13"
+SOURCE_V4_V3_DIAGNOSTIC_SHA256 = (
+    "a340d2de01304702f6c101d2bb1592536ebc6dfedc1638c5ce1c0559e5ddcf57"
 )
-SOURCE_V3_V2_FAILURE_LOGS_SHA256 = (
-    "d60542cef3c0d04b860f8a5f59fd6a2bdab50f7f56e6c175d84f3ac47b53fe47"
+SOURCE_V4_PRODUCER_COMMIT_ID = "9fa1387455f947772b8b37e3b103f1ca84efb27b"
+SOURCE_V4_JOB_ID = "1865695"
+SOURCE_V4_SBATCH_EXECUTABLE = "/usr/bin/sbatch"
+SOURCE_V4_SBATCH_EXECUTABLE_SHA256 = (
+    "efbb8e172acc7ed768430740d04e19cc07a3ac4701b005d1a997c08424bde741"
 )
-SOURCE_V3_V1_DIAGNOSTIC_SHA256 = (
-    "25845171d495660be419e3bae52abb6e71aff319ca2070298de11d9e0fb646ec"
+SOURCE_V4_SACCT_EXECUTABLE = "/usr/bin/sacct"
+SOURCE_V4_SACCT_EXECUTABLE_SHA256 = (
+    "58f3976b19baa2bc26772a92ab224dd0c1bf0ab3d9b675d85aa3e4636c836315"
 )
-SOURCE_V3_JJ_EXECUTABLE = Path("/home/jendrik/bin/jj")
-SOURCE_V3_JJ_EXECUTABLE_SHA256 = (
+SOURCE_V4_JJ_EXECUTABLE = Path("/home/jendrik/bin/jj")
+SOURCE_V4_JJ_EXECUTABLE_SHA256 = (
     "d1d69a0f87df266eebf0d2592dd019eb288c300b15fd019afe26cb1ed11ba152"
 )
 
@@ -263,21 +284,10 @@ def canonical_json_line(value) -> bytes:
 
 
 def sha256_file(path: Path) -> str:
-    path = Path(path)
     try:
-        info = path.lstat()
-    except OSError as err:
-        raise ProtocolError("cannot inspect {}".format(path)) from err
-    if path.is_symlink() or not stat.S_ISREG(info.st_mode):
-        raise ProtocolError("{} is not a regular file".format(path))
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as stream:
-            for block in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(block)
-    except OSError as err:
-        raise ProtocolError("cannot hash {}".format(path)) from err
-    return digest.hexdigest()
+        return SourceValidation.sha256_file(Path(path))
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
 
 
 def _same_exact(actual, expected) -> bool:
@@ -285,514 +295,66 @@ def _same_exact(actual, expected) -> bool:
     return type(actual) is type(expected) and actual == expected
 
 
-def _validate_source_execution_environment(launch: dict, execution: dict) -> None:
-    environment = launch.get("execution_environment")
-    cache_template = (
-        "/tmp/symk-confirmation-source-audit-v3-"
-        "{array_job_id}-{array_task_id}"
-    )
-    controlled_path = "/usr/bin:/bin"
-    python_command = str(
-        SCRIPT_DIR / "data" / "pdb-terminal-incidence-shadow-venv" /
-        "bin" / "python"
-    )
-    expected_scalars = {
-        "submission_export": "NONE",
-        "slurm_export": "NONE",
-        "unset_variables": ["PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"],
-        "python_no_user_site": "1",
-        "python_no_user_site_flag": 1,
-        "python_dont_write_bytecode": "1",
-        "python_dont_write_bytecode_flag": True,
-        "python_pycache_prefix_template": cache_template,
-        "outer_python_flag": "-B",
-        "path": controlled_path,
-        "python_command": python_command,
-        "sha256sum_command": "/usr/bin/sha256sum",
-        "sha256sum_executable": "/usr/bin/sha256sum",
-    }
-    if (
-        not isinstance(environment, dict)
-        or execution.get("execution_environment") != environment
-        or set(environment) != set(expected_scalars) | {
-            "translator_child_environment", "python_executable",
-            "python_executable_sha256", "sha256sum_executable_sha256",
-        }
-        or any(
-            not _same_exact(environment.get(field), expected)
-            for field, expected in expected_scalars.items()
-        )
-        or environment.get("translator_child_environment") != {
-            "PATH": controlled_path,
-            "PYTHONNOUSERSITE": "1",
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONPYCACHEPREFIX": cache_template,
-            "PYTHONPATH": str(REPO / "src"),
-        }
-        or not isinstance(environment.get("python_executable"), str)
-        or not Path(environment["python_executable"]).is_absolute()
-        or SHA256_RE.fullmatch(
-            environment.get("python_executable_sha256", "")
-        ) is None
-        or SHA256_RE.fullmatch(
-            environment.get("sha256sum_executable_sha256", "")
-        ) is None
-        or launch.get("python_version") != REQUIRED_PYTHON_VERSION
-        or launch.get("python_executable") != environment["python_executable"]
-        or launch.get("python_executable_sha256")
-        != environment["python_executable_sha256"]
-        or SHA256_RE.fullmatch(
-            launch.get("python_environment_sha256", "")
-        ) is None
-        or SHA256_RE.fullmatch(
-            launch.get("python_requirements_sha256", "")
-        ) is None
-        or not isinstance(launch.get("python_distributions"), dict)
-    ):
-        raise ProtocolError("source-audit execution environment changed")
-
-
 def _load_canonical(path: Path, label: str) -> tuple[bytes, dict]:
-    path = Path(path)
     try:
-        info = path.lstat()
-        raw = path.read_bytes()
-        value = json.loads(raw.decode("ascii"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
-        raise ProtocolError("cannot load {}".format(label)) from err
-    if (
-        path.is_symlink()
-        or not stat.S_ISREG(info.st_mode)
-        or not isinstance(value, dict)
-        or raw != canonical_json_line(value)
-    ):
-        raise ProtocolError("{} is not canonical regular JSON".format(label))
-    return raw, value
+        return SourceValidation._load_canonical(Path(path), label)
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
 
 
-def _read_regular_bytes(path: Path, label: str) -> bytes:
-    path = Path(path)
+# Confirmation A and B consume the same immutable source-audit campaign.  Keep
+# one fail-closed implementation of the v4 byte, output-tree, environment, and
+# accounting contracts instead of allowing the two consumers to drift again.
+def _validate_shared_v4_constants() -> None:
+    names = (
+        "SOURCE_V4_REPO", "SOURCE_V4_ATTESTATION_PATH",
+        "SOURCE_V4_ARTIFACT_DIR",
+        "SOURCE_V4_INTENT_PATH", "SOURCE_V4_LAUNCH_RECEIPT_PATH",
+        "SOURCE_V4_LAUNCH_RECEIPT_SHA256", "SOURCE_V4_LAUNCH_INTENT_SHA256",
+        "SOURCE_V4_EXECUTION_RECEIPT_PATH", "SOURCE_V4_SLURM_PATH",
+        "SOURCE_V4_CODE_MANIFEST_PATH", "SOURCE_V4_AMENDMENT_PATH",
+        "SOURCE_V4_INVENTORY_PATH", "SOURCE_V4_OUTPUT_DIR",
+        "SOURCE_V4_CANDIDATE_PATH", "SOURCE_V4_MANIFEST_FILES",
+        "SOURCE_V4_SLURM_RELATIVE", "SOURCE_V4_MANIFEST_RELATIVE",
+        "SOURCE_V4_SLURM_SHA256", "SOURCE_V4_CODE_MANIFEST_SHA256",
+        "SOURCE_V4_AMENDMENT_SHA256", "SOURCE_V4_INVENTORY_SHA256",
+        "SOURCE_V4_FIXED_HASHES", "SOURCE_V4_V3_DIAGNOSTIC_RELATIVE",
+        "SOURCE_V4_V3_DIAGNOSTIC_SHA256", "SOURCE_V4_PRODUCER_COMMIT_ID",
+        "SOURCE_V4_JOB_ID", "SOURCE_V4_SBATCH_EXECUTABLE",
+        "SOURCE_V4_SBATCH_EXECUTABLE_SHA256", "SOURCE_V4_SACCT_EXECUTABLE",
+        "SOURCE_V4_SACCT_EXECUTABLE_SHA256", "SOURCE_V4_JJ_EXECUTABLE",
+        "SOURCE_V4_JJ_EXECUTABLE_SHA256",
+    )
+    if any(globals()[name] != getattr(SourceValidation, name) for name in names):
+        raise ProtocolError("Confirmation A/B source-audit v4 bindings diverged")
+
+
+def _load_source_v4_byte_chain(launch: dict) -> tuple[bytes, dict, dict]:
+    _validate_shared_v4_constants()
     try:
-        info = path.lstat()
-        raw = path.read_bytes()
-    except OSError as err:
-        raise ProtocolError("cannot load {}".format(label)) from err
-    if path.is_symlink() or not stat.S_ISREG(info.st_mode):
-        raise ProtocolError("{} is not a regular file".format(label))
-    return raw
+        return SourceValidation._load_source_v4_byte_chain(launch)
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
 
 
-def _repository_snapshot_files(
-    commit_id: str, relative_paths: list[str]
-) -> dict[str, bytes]:
-    def checked(command, *, text=False):
-        if sha256_file(
-            SOURCE_V3_JJ_EXECUTABLE
-        ) != SOURCE_V3_JJ_EXECUTABLE_SHA256:
-            raise ProtocolError("source-audit Jujutsu executable identity changed")
-        result = subprocess.check_output(
-            command, cwd=SOURCE_V3_REPO, text=text
-        )
-        if sha256_file(
-            SOURCE_V3_JJ_EXECUTABLE
-        ) != SOURCE_V3_JJ_EXECUTABLE_SHA256:
-            raise ProtocolError("source-audit Jujutsu executable identity changed")
-        return result
-
-    base = [
-        str(SOURCE_V3_JJ_EXECUTABLE), "--ignore-working-copy", "--no-pager"
-    ]
-    try:
-        listed = checked(
-            [*base, "file", "list", "-r", commit_id, "--", *relative_paths],
-            text=True,
-        ).splitlines()
-        values = {
-            relative: checked(
-                [*base, "file", "show", "-r", commit_id, "--", relative]
-            )
-            for relative in relative_paths
-        }
-    except (OSError, subprocess.CalledProcessError) as err:
-        raise ProtocolError("cannot verify source-audit v3 repository snapshot") from err
-    if len(listed) != len(relative_paths) or set(listed) != set(relative_paths):
-        raise ProtocolError("source-audit v3 repository snapshot changed")
-    return values
-
-
-def _ordered_scheduler_rows(rows, label: str, allowed_states: set[str]):
-    if not isinstance(rows, list) or len(rows) != 820:
-        raise ProtocolError("{} scheduler rows changed".format(label))
-    for index, row in enumerate(rows):
-        if (
-            not isinstance(row, dict)
-            or set(row) != {
-                "array_task", "state", "exit_code", "elapsed", "partition",
-            }
-            or type(row.get("array_task")) is not int
-            or row["array_task"] != index
-            or row.get("state") not in allowed_states
-            or row.get("partition") != "fat"
-            or any(
-                not isinstance(row.get(field), str) or not row[field]
-                for field in ("state", "exit_code", "elapsed")
-            )
-        ):
-            raise ProtocolError("{} scheduler rows changed".format(label))
-    return Counter(row["state"] for row in rows)
-
-
-def _validate_v1_failure_diagnostic(value: dict, manifest_hashes: dict) -> None:
-    expected_keys = {
-        "schema", "v1_launch_receipt_path", "v1_launch_receipt_sha256",
-        "v1_job_id", "v1_memory_per_cpu", "v1_scheduler_rows",
-        "v1_scheduler_rows_sha256", "v1_scheduler_state_counts",
-        "v1_source_attestation_absent",
-        "successful_shard_contents_used_for_v2_design",
-        "source_support_outcomes_used_for_v2_design", "inspection_scope",
-        "failure_class", "rerun_scope", "reused_v1_shards",
-    }
-    v1_relative = SOURCE_V3_MANIFEST_FILES[0]
-    rows = value.get("v1_scheduler_rows") if isinstance(value, dict) else None
-    states = _ordered_scheduler_rows(
-        rows, "v1 diagnostic", {
-            "BOOT_FAIL", "CANCELLED", "COMPLETED", "DEADLINE", "FAILED",
-            "NODE_FAIL", "OUT_OF_MEMORY", "PREEMPTED", "REVOKED", "TIMEOUT",
-        }
-    )
-    if (
-        set(value) != expected_keys
-        or value.get("schema")
-        != SOURCE_AUDIT_SCHEMA + "/campaign-v2/v1-infrastructure-diagnostic"
-        or value.get("v1_launch_receipt_path")
-        != str((SOURCE_V3_REPO / v1_relative).resolve())
-        or value.get("v1_launch_receipt_sha256") != manifest_hashes[v1_relative]
-        or value.get("v1_job_id") != "1860905"
-        or value.get("v1_memory_per_cpu") != "26G"
-        or value.get("v1_scheduler_rows_sha256")
-        != hashlib.sha256(canonical_json_line(rows)).hexdigest()
-        or value.get("v1_scheduler_state_counts") != dict(sorted(states.items()))
-        or states["OUT_OF_MEMORY"] < 1
-        or value.get("v1_source_attestation_absent") is not True
-        or value.get("successful_shard_contents_used_for_v2_design") is not False
-        or value.get("source_support_outcomes_used_for_v2_design") is not False
-        or value.get("inspection_scope")
-        != "scheduler states plus OOM log/task diagnostics only"
-        or value.get("failure_class") != "scheduler-out-of-memory"
-        or value.get("rerun_scope") != "all-820-shards"
-        or not _same_exact(value.get("reused_v1_shards"), 0)
-    ):
-        raise ProtocolError("source-audit v1 failure diagnostic chain changed")
-
-
-def _validate_v2_failure_diagnostic(value: dict, manifest_hashes: dict) -> None:
-    expected_keys = {
-        "schema", "v2_launch_receipt_path", "v2_launch_receipt_sha256",
-        "v2_job_id", "v2_memory_per_cpu", "v2_task_timeout_seconds",
-        "v2_time_limit", "v2_scheduler_rows", "v2_scheduler_rows_sha256",
-        "v2_scheduler_state_counts", "v2_failure_logs",
-        "v2_failure_logs_sha256", "v2_source_attestation_absent",
-        "successful_v1_v2_shard_contents_used_for_v3_design",
-        "source_support_outcomes_used_for_v3_design", "inspection_scope",
-        "failure_class", "resource_amendment", "rerun_scope",
-        "reused_v1_shards", "reused_v2_shards", "v1_failure_diagnostic",
-    }
-    if not isinstance(value, dict):
-        raise ProtocolError("source-audit v2 failure diagnostic chain changed")
-    if (
-        hashlib.sha256(canonical_json_line(value)).hexdigest()
-        != SOURCE_V3_V2_DIAGNOSTIC_SHA256
-    ):
-        raise ProtocolError("source-audit v2 failure diagnostic chain changed")
-    rows = value.get("v2_scheduler_rows")
-    states = _ordered_scheduler_rows(
-        rows, "v2 diagnostic", {"COMPLETED", "FAILED", "OUT_OF_MEMORY"}
-    )
-    if any(
-        row["exit_code"] != {
-            "COMPLETED": "0:0", "FAILED": "75:0", "OUT_OF_MEMORY": "0:125",
-        }[row["state"]]
-        for row in rows
-    ):
-        raise ProtocolError("source-audit v2 diagnostic exit classes changed")
-    failure_logs = value.get("v2_failure_logs")
-    expected_failures = [
-        (row["array_task"], row["state"])
-        for row in rows if row["state"] != "COMPLETED"
-    ]
-    if (
-        not isinstance(failure_logs, list)
-        or len(failure_logs) != len(expected_failures)
-        or any(
-            not isinstance(item, dict)
-            or set(item) != {"array_task", "state", "sha256"}
-            or type(item.get("array_task")) is not int
-            or (item["array_task"], item.get("state")) != expected
-            or SHA256_RE.fullmatch(item.get("sha256", "")) is None
-            for item, expected in zip(failure_logs, expected_failures)
-        )
-    ):
-        raise ProtocolError("source-audit v2 failure-log manifest changed")
-    v2_relative = SOURCE_V3_MANIFEST_FILES[1]
-    if (
-        set(value) != expected_keys
-        or value.get("schema")
-        != SOURCE_AUDIT_SCHEMA + "/campaign-v3/v2-infrastructure-diagnostic"
-        or value.get("v2_launch_receipt_path")
-        != str((SOURCE_V3_REPO / v2_relative).resolve())
-        or value.get("v2_launch_receipt_sha256") != manifest_hashes[v2_relative]
-        or value.get("v2_job_id") != "1861842"
-        or value.get("v2_memory_per_cpu") != "256G"
-        or not _same_exact(value.get("v2_task_timeout_seconds"), 2700)
-        or value.get("v2_time_limit") != "01:40:00"
-        or value.get("v2_scheduler_rows_sha256")
-        != hashlib.sha256(canonical_json_line(rows)).hexdigest()
-        or value.get("v2_scheduler_rows_sha256")
-        != SOURCE_V3_V2_SCHEDULER_ROWS_SHA256
-        or value.get("v2_scheduler_state_counts")
-        != SOURCE_V3_V2_SCHEDULER_STATE_COUNTS
-        or value.get("v2_scheduler_state_counts") != dict(sorted(states.items()))
-        or states["FAILED"] < 1
-        or states["OUT_OF_MEMORY"] < 1
-        or value.get("v2_failure_logs_sha256")
-        != hashlib.sha256(canonical_json_line(failure_logs)).hexdigest()
-        or value.get("v2_failure_logs_sha256")
-        != SOURCE_V3_V2_FAILURE_LOGS_SHA256
-        or value.get("v2_source_attestation_absent") is not True
-        or value.get(
-            "successful_v1_v2_shard_contents_used_for_v3_design"
-        ) is not False
-        or value.get("source_support_outcomes_used_for_v3_design") is not False
-        or value.get("inspection_scope")
-        != "scheduler rows plus timeout/OOM logs and task names only"
-        or value.get("failure_class")
-        != "translator-timeout-and-out-of-memory"
-        or value.get("resource_amendment") != {
-            "memory_per_cpu": "512G",
-            "task_timeout_seconds": 7200,
-            "time_limit": "04:10:00",
-        }
-        or value.get("rerun_scope") != "all-820-shards"
-        or not _same_exact(value.get("reused_v1_shards"), 0)
-        or not _same_exact(value.get("reused_v2_shards"), 0)
-    ):
-        raise ProtocolError("source-audit v2 failure diagnostic chain changed")
-    if (
-        hashlib.sha256(canonical_json_line(
-            value.get("v1_failure_diagnostic")
-        )).hexdigest()
-        != SOURCE_V3_V1_DIAGNOSTIC_SHA256
-    ):
-        raise ProtocolError("source-audit v1 failure diagnostic chain changed")
-    _validate_v1_failure_diagnostic(
-        value.get("v1_failure_diagnostic"), manifest_hashes
-    )
-
-
-def _load_source_v3_byte_chain(launch: dict) -> tuple[bytes, dict, dict]:
-    intent_raw, intent = _load_canonical(
-        SOURCE_V3_INTENT_PATH, "source-audit v3 launch intent"
-    )
-    manifest_raw = _read_regular_bytes(
-        SOURCE_V3_CODE_MANIFEST_PATH, "source-audit v3 code manifest"
-    )
-    slurm_raw = _read_regular_bytes(
-        SOURCE_V3_SLURM_PATH, "source-audit v3 Slurm script"
-    )
-    if (
-        hashlib.sha256(manifest_raw).hexdigest()
-        != SOURCE_V3_CODE_MANIFEST_SHA256
-        or hashlib.sha256(slurm_raw).hexdigest() != SOURCE_V3_SLURM_SHA256
-    ):
-        raise ProtocolError("source-audit v3 producer roots changed")
-    try:
-        manifest_lines = manifest_raw.decode("ascii").splitlines()
-    except UnicodeDecodeError as err:
-        raise ProtocolError("source-audit v3 code manifest is not ASCII") from err
-    matches = [
-        re.fullmatch(r"([0-9a-f]{64})  (experiments/[A-Za-z0-9_./-]+)", line)
-        for line in manifest_lines
-    ]
-    if (
-        not manifest_raw.endswith(b"\n")
-        or any(match is None for match in matches)
-        or tuple(match.group(2) for match in matches) != SOURCE_V3_MANIFEST_FILES
-        or len(set(SOURCE_V3_MANIFEST_FILES)) != len(SOURCE_V3_MANIFEST_FILES)
-    ):
-        raise ProtocolError("source-audit v3 code manifest schema changed")
-    manifest_hashes = {
-        match.group(2): match.group(1) for match in matches
-    }
-    for relative, expected_sha in manifest_hashes.items():
-        raw = _read_regular_bytes(
-            SOURCE_V3_REPO / relative,
-            "source-audit v3 manifest file {}".format(relative),
-        )
-        if hashlib.sha256(raw).hexdigest() != expected_sha:
-            raise ProtocolError("source-audit v3 manifest-listed bytes changed")
-    if (
-        SOURCE_V3_AMENDMENT_PATH.resolve()
-        != (SOURCE_V3_REPO / SOURCE_V3_MANIFEST_FILES[7]).resolve()
-        or manifest_hashes[SOURCE_V3_MANIFEST_FILES[7]]
-        != SOURCE_V3_AMENDMENT_SHA256
-    ):
-        raise ProtocolError("source-audit v3 amendment protocol changed")
-    expected_scoped = sorted({
-        *SOURCE_V3_MANIFEST_FILES,
-        SOURCE_V3_SLURM_RELATIVE,
-        SOURCE_V3_MANIFEST_RELATIVE,
-    })
-    launcher_relative = (
-        "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v3.py"
-    )
-    inventory_raw, inventory = _load_canonical(
-        SOURCE_V3_INVENTORY_PATH, "source-audit v3 inventory"
-    )
-    inventory_sha = hashlib.sha256(inventory_raw).hexdigest()
-    token = intent.get("submission_token") if isinstance(intent, dict) else None
-    expected_submit = [
-        "/usr/bin/sbatch", "--parsable", "--export=NONE",
-        "--job-name=confirmation-source-audit-v3-{}".format(token),
-        "--comment=confirmation-source-audit-v3/{}".format(token),
-        "--account={}".format(ACCOUNT),
-        "--partition=fat", "--qos=normal", "--array=0-819",
-        "--nodes=1", "--ntasks=1", "--cpus-per-task=1",
-        "--mem-per-cpu=512G", "--time=04:10:00", "--nice=0",
-        "--no-requeue", "--chdir={}".format(SOURCE_V3_REPO),
-        "--output={}".format(
-            (SOURCE_V3_OUTPUT_DIR / "slurm-%A_%a.out").resolve()
-        ),
-        str(SOURCE_V3_SLURM_PATH), inventory_sha,
-        str(SOURCE_V3_OUTPUT_DIR.resolve()),
-    ]
-    intent_keys = {
-        "schema", "campaign", "whole_campaign_rerun", "reused_v1_shards",
-        "reused_v2_shards", "partition", "qos", "account", "array",
-        "array_throttle", "array_tasks", "tasks_per_array_task", "candidates",
-        "cpus_per_task", "time_limit", "memory_per_cpu",
-        "task_timeout_seconds", "benchmark_revision", "candidate_records_sha256",
-        "alias_groups_sha256", "prior_identity_ledger_sha256",
-        "prior_family_ledger_sha256", "prior_directory_family_map_sha256",
-        "shadow_unrepresented_family_sequence_sha256",
-        "all_prior_family_sequence_sha256",
-        "all_prior_unrepresented_family_sequence_sha256",
-        "translator_source_sha256", "source_inventory_sha256",
-        "source_inventory_path", "slurm_script_sha256", "code_manifest_sha256",
-        "launcher_sha256", "repository_commit_id", "scoped_repository_files",
-        "jj_executable", "jj_executable_sha256", "sbatch_executable",
-        "sbatch_executable_sha256", "sacct_executable",
-        "sacct_executable_sha256", "submission_environment", "output_dir",
-        "candidate_attestation", "frozen_attestation", "execution_environment",
-        "python_version", "python_executable", "python_executable_sha256",
-        "python_environment_sha256", "python_distributions",
-        "python_requirements_sha256", "v2_failure_diagnostic", "recorded_utc",
-        "submission_token", "submit_command",
-    }
-    job_id = launch.get("job_id") if isinstance(launch, dict) else None
-    expected_launch = {
-        "schema": SOURCE_AUDIT_SCHEMA + "/campaign-v3/launch",
-        **{key: value for key, value in intent.items() if key != "schema"},
-        "launch_intent_sha256": hashlib.sha256(intent_raw).hexdigest(),
-        "job_id": job_id,
-    }
-    hash_fields = (
-        "candidate_records_sha256", "alias_groups_sha256",
-        "prior_identity_ledger_sha256", "prior_family_ledger_sha256",
-        "prior_directory_family_map_sha256",
-        "shadow_unrepresented_family_sequence_sha256",
-        "all_prior_family_sequence_sha256",
-        "all_prior_unrepresented_family_sequence_sha256",
-        "translator_source_sha256", "jj_executable_sha256",
-        "sbatch_executable_sha256", "sacct_executable_sha256",
-    )
-    if (
-        set(intent) != intent_keys
-        or intent.get("schema")
-        != SOURCE_AUDIT_SCHEMA + "/campaign-v3/launch/intent"
-        or launch != expected_launch
-        or not isinstance(job_id, str) or not job_id.isdigit()
-        or not isinstance(token, str) or re.fullmatch(r"[0-9a-f]{24}", token) is None
-        or not isinstance(intent.get("recorded_utc"), str)
-        or intent.get("submit_command") != expected_submit
-        or intent.get("jj_executable") != "/home/jendrik/bin/jj"
-        or intent.get("jj_executable_sha256")
-        != "d1d69a0f87df266eebf0d2592dd019eb288c300b15fd019afe26cb1ed11ba152"
-        or intent.get("sbatch_executable") != "/usr/bin/sbatch"
-        or intent.get("sbatch_executable_sha256")
-        != "efbb8e172acc7ed768430740d04e19cc07a3ac4701b005d1a997c08424bde741"
-        or intent.get("sacct_executable") != "/usr/bin/sacct"
-        or intent.get("sacct_executable_sha256")
-        != "58f3976b19baa2bc26772a92ab224dd0c1bf0ab3d9b675d85aa3e4636c836315"
-        or intent.get("submission_environment") != {
-            "LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin",
-        }
-        or inventory_sha != SOURCE_V3_INVENTORY_SHA256
-        or intent.get("source_inventory_sha256") != inventory_sha
-        or intent.get("source_inventory_path") != str(SOURCE_V3_INVENTORY_PATH)
-        or intent.get("output_dir") != str(SOURCE_V3_OUTPUT_DIR)
-        or intent.get("candidate_attestation") != str(SOURCE_V3_CANDIDATE_PATH)
-        or intent.get("frozen_attestation") != str(SOURCE_V3_ATTESTATION_PATH)
-        or intent.get("slurm_script_sha256") != SOURCE_V3_SLURM_SHA256
-        or intent.get("code_manifest_sha256")
-        != SOURCE_V3_CODE_MANIFEST_SHA256
-        or intent.get("launcher_sha256") != manifest_hashes[launcher_relative]
-        or intent.get("scoped_repository_files") != expected_scoped
-        or COMMIT_RE.fullmatch(intent.get("repository_commit_id", "")) is None
-        or any(
-            SHA256_RE.fullmatch(intent.get(field, "")) is None
-            for field in hash_fields
-        )
-        or any(
-            intent.get(field) != expected
-            for field, expected in SOURCE_V3_FIXED_HASHES.items()
-        )
-    ):
-        raise ProtocolError("source-audit v3 local byte chain changed")
-    _validate_v2_failure_diagnostic(
-        intent.get("v2_failure_diagnostic"), manifest_hashes
-    )
-    snapshot = _repository_snapshot_files(
-        intent["repository_commit_id"], expected_scoped
-    )
-    expected_snapshot_hashes = {
-        **manifest_hashes,
-        SOURCE_V3_SLURM_RELATIVE: SOURCE_V3_SLURM_SHA256,
-        SOURCE_V3_MANIFEST_RELATIVE: SOURCE_V3_CODE_MANIFEST_SHA256,
-    }
-    if (
-        set(snapshot) != set(expected_scoped)
-        or any(
-            hashlib.sha256(snapshot[relative]).hexdigest() != expected_sha
-            for relative, expected_sha in expected_snapshot_hashes.items()
-        )
-    ):
-        raise ProtocolError("source-audit v3 repository snapshot changed")
-    return inventory_raw, inventory, manifest_hashes
-
-
-def _source_v3_tracked_file_sha256(
+def _source_v4_tracked_file_sha256(
     launch: dict, manifest_hashes: dict
 ) -> dict[str, str]:
-    def relative(path: Path) -> str:
-        try:
-            lexical = Path(os.path.abspath(path))
-            root = Path(os.path.abspath(SOURCE_V3_REPO))
-            return lexical.relative_to(root).as_posix()
-        except ValueError as err:
-            raise ProtocolError("source-audit v3 bound path escaped repository") from err
+    _validate_shared_v4_constants()
+    try:
+        return SourceValidation._source_v4_tracked_file_sha256(
+            launch, manifest_hashes
+        )
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
 
-    values = {
-        **manifest_hashes,
-        SOURCE_V3_SLURM_RELATIVE: SOURCE_V3_SLURM_SHA256,
-        SOURCE_V3_MANIFEST_RELATIVE: SOURCE_V3_CODE_MANIFEST_SHA256,
-        relative(SOURCE_V3_INTENT_PATH): launch["launch_intent_sha256"],
-        relative(SOURCE_V3_INVENTORY_PATH): SOURCE_V3_INVENTORY_SHA256,
-    }
-    if len(values) != 18 or any(
-        SHA256_RE.fullmatch(value) is None for value in values.values()
-    ):
-        raise ProtocolError("source-audit v3 tracked file set changed")
-    return dict(sorted(values.items()))
+
+def _validate_source_execution_environment(launch: dict, execution: dict) -> None:
+    _validate_shared_v4_constants()
+    try:
+        SourceValidation._validate_source_execution_environment(launch, execution)
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
 
 
 def _safe_repo_path(value: str, label: str) -> Path:
@@ -864,6 +426,85 @@ LABELS = tuple(label for label, _ in CONFIGS)
 SEARCHES = dict(CONFIGS)
 
 
+def _task_identity(task) -> tuple[str, str, str]:
+    if isinstance(task, dict):
+        domain = task.get("directory", task.get("domain"))
+        problem = task.get("problem")
+        family = task.get("family")
+    else:
+        domain = getattr(task, "domain", None)
+        problem = getattr(task, "problem", None)
+        family = getattr(task, "family", None)
+    if family is None and isinstance(domain, str):
+        family = DIRECTORY_TO_FAMILY.get(domain)
+    if not all(isinstance(value, str) and value for value in (
+        domain, problem, family,
+    )):
+        raise ProtocolError("run-order task identity is incomplete")
+    return domain, problem, family
+
+
+def task_major_cell_mapping(tasks) -> list[dict]:
+    """Return the deterministic task-major run order used by Lab and Slurm."""
+    identities = sorted(_task_identity(task) for task in tasks)
+    if len(identities) != len(set(
+        (domain, problem) for domain, problem, _ in identities
+    )):
+        raise ProtocolError("run-order task identity is duplicated")
+    fixed = PRIMARY_LABELS[:-3]
+    triad = PRIMARY_LABELS[-3:]
+    if triad != (PLAIN_REFERENCE_LABEL, GUIDED_LABEL, MATCHED_LABEL):
+        raise ProtocolError("primary blocked triad changed")
+    family_positions = Counter()
+    rows = []
+    for domain, problem, family in identities:
+        position = family_positions[family]
+        family_positions[family] += 1
+        rotation = position % len(triad)
+        rotated = triad[rotation:] + triad[:rotation]
+        for label in (*fixed, *rotated):
+            rows.append({
+                "run_id": len(rows) + 1,
+                "algorithm": label,
+                "domain": domain,
+                "problem": problem,
+                "family": family,
+                "family_sequence_index": position,
+                "triad_position": (
+                    rotated.index(label) if label in triad else None
+                ),
+            })
+    return rows
+
+
+def run_cell_mapping_digest(tasks) -> str:
+    return hashlib.sha256(
+        canonical_json(task_major_cell_mapping(tasks))
+    ).hexdigest()
+
+
+def task_major_blocked_run_order(algorithms, tasks):
+    """Translate the frozen mapping into Fast Downward run objects."""
+    if tuple(algorithms) != LABELS:
+        raise ProtocolError("Lab algorithm insertion order changed")
+    task_by_identity = {}
+    for task in tasks:
+        domain, problem, _ = _task_identity(task)
+        identity = (domain, problem)
+        if identity in task_by_identity:
+            raise ProtocolError("Lab task identity is duplicated")
+        task_by_identity[identity] = task
+    rows = task_major_cell_mapping(tasks)
+    if len(rows) != len(tasks) * CONFIG_COUNT:
+        raise ProtocolError("Lab run mapping cardinality changed")
+    return [
+        (algorithms[row["algorithm"]], task_by_identity[
+            (row["domain"], row["problem"])
+        ])
+        for row in rows
+    ]
+
+
 def option_matrix_digest(configs=CONFIGS) -> str:
     return hashlib.sha256(canonical_json([
         {"label": label, "search": search} for label, search in configs
@@ -877,11 +518,15 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/audit_pdb_terminal_incidence_confirmation_a.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_b.py",
     "experiments/audit_pdb_terminal_incidence_shadow.py",
+    "experiments/exp_arrhenius_common.py",
     "experiments/exp_pdb_profile_certificate_holdout.py",
     "experiments/exp_pdb_terminal_incidence_confirmation_a.py",
     "experiments/exp_pdb_terminal_incidence_confirmation_b.py",
     "experiments/freeze_pdb_terminal_incidence_confirmation_b.py",
     "experiments/jj_cached_revision.py",
+    "experiments/pdb_cap_selector_parser.py",
+    "experiments/pdb_confirmation_safe_io.py",
+    "experiments/pdb_confirmation_run_cell.py",
     "experiments/pdb_fixed_pattern_parser.py",
     "experiments/pdb_profile_certificate_holdout_protocol.md",
     "experiments/pdb_profile_certificate_holdout_protocol.py",
@@ -944,16 +589,16 @@ def load_confirmation_a_authorization(
     second_output_path: Path,
 ) -> dict:
     """Load the sealed complete A gate through A's canonical verifier."""
-    paths = tuple(Path(os.path.abspath(path)) for path in (
+    paths = tuple(Path(path) for path in (
         receipt_path, receipt_pin_path, first_output_path, second_output_path,
     ))
-    expected_paths = tuple(Path(os.path.abspath(path)) for path in (
+    expected_paths = tuple(Path(path) for path in (
         CONFIRMATION_A_RECEIPT_PATH,
         CONFIRMATION_A_RECEIPT_PIN_PATH,
         CONFIRMATION_A_FIRST_OUTPUT_PATH,
         CONFIRMATION_A_SECOND_OUTPUT_PATH,
     ))
-    if paths != expected_paths:
+    if tuple(map(os.fspath, paths)) != tuple(map(os.fspath, expected_paths)):
         raise ProtocolError(
             "Confirmation A authorization artifact paths changed"
         )
@@ -1130,117 +775,28 @@ def _validate_task(task: dict) -> None:
         raise ProtocolError("confirmation task split rank changed")
 
 
-def _validated_tree(tree, expected_paths: list[str], label: str) -> dict[str, str]:
-    if not isinstance(tree, dict) or set(tree) != {
-        "sha256", "files_count", "files",
-    }:
-        raise ProtocolError("source-audit {} schema changed".format(label))
-    files = tree.get("files")
-    if (
-        type(tree.get("files_count")) is not int
-        or tree["files_count"] != len(expected_paths)
-        or not isinstance(files, list)
-        or len(files) != len(expected_paths)
-        or SHA256_RE.fullmatch(tree.get("sha256", "")) is None
-    ):
-        raise ProtocolError("source-audit {} cardinality changed".format(label))
-    digest = hashlib.sha256()
-    hashes = {}
-    for record, expected_path in zip(files, sorted(expected_paths)):
-        if (
-            not isinstance(record, dict)
-            or set(record) != {"path", "size", "sha256"}
-            or record.get("path") != expected_path
-            or type(record.get("size")) is not int
-            or record["size"] < 0
-            or SHA256_RE.fullmatch(record.get("sha256", "")) is None
-        ):
-            raise ProtocolError("source-audit {} file changed".format(label))
-        hashes[expected_path] = record["sha256"]
-        digest.update(
-            expected_path.encode("ascii") + b"\0"
-            + bytes.fromhex(record["sha256"])
+def _validate_v4_original_output(
+    execution: dict, launch: dict, source_inventory_sha256: str
+) -> dict[str, str]:
+    _validate_shared_v4_constants()
+    try:
+        return SourceValidation._validate_v4_original_output(
+            execution, launch, source_inventory_sha256
         )
-    if digest.hexdigest() != tree["sha256"]:
-        raise ProtocolError("source-audit {} digest changed".format(label))
-    return hashes
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
 
 
-def _validate_unrecovered_source_union(
-    execution: dict, job_id: str, source_inventory_sha256: str
-) -> None:
-    shard_names = [
-        "shard-{:04d}-of-0820.json".format(index) for index in range(820)
-    ]
-    original_names = [
-        "source-inventory-v3.json",
-        *shard_names,
-        *("slurm-{}_{}.out".format(job_id, index) for index in range(820)),
-    ]
-    original_hashes = _validated_tree(
-        execution.get("original_output_tree"), original_names,
-        "original output tree",
-    )
-    union_hashes = _validated_tree(
-        execution.get("union_tree"), shard_names, "union tree"
-    )
-    if original_hashes["source-inventory-v3.json"] != source_inventory_sha256:
-        raise ProtocolError("source-audit inventory tree binding changed")
-    sources = execution.get("union_sources")
-    source_root = SOURCE_V3_OUTPUT_DIR
-    if not isinstance(sources, list) or len(sources) != 820:
-        raise ProtocolError("source-audit union source cardinality changed")
-    for index, (item, name) in enumerate(zip(sources, shard_names)):
-        if (
-            not isinstance(item, dict)
-            or set(item) != {
-                "shard_index", "origin", "source", "source_sha256",
-                "union", "union_sha256",
-            }
-            or type(item.get("shard_index")) is not int
-            or item.get("shard_index") != index
-            or item.get("origin") != "original"
-            or item.get("source") != str(source_root / name)
-            or item.get("union") != name
-            or SHA256_RE.fullmatch(item.get("source_sha256", "")) is None
-            or item.get("source_sha256") != item.get("union_sha256")
-            or item.get("source_sha256") != original_hashes[name]
-            or item.get("union_sha256") != union_hashes[name]
-        ):
-            raise ProtocolError("source-audit unrecovered union source changed")
-
-
-def _validate_v3_scheduler_contract_rows(
+def _validate_v4_scheduler_contract_rows(
     execution: dict, launch: dict, scheduler_rows: list[dict]
 ) -> None:
-    rows = execution.get("scheduler_contract_rows")
-    token = launch.get("submission_token")
-    expected_name = "confirmation-source-audit-v3-{}".format(token)
-    expected_keys = {
-        "array_task", "account", "partition", "qos", "req_cpus",
-        "req_mem", "time_limit", "state", "exit_code", "job_name",
-    }
-    if not isinstance(rows, list) or len(rows) != 820:
-        raise ProtocolError("source-audit v3 resource accounting changed")
-    for index, (row, scheduler_row) in enumerate(zip(rows, scheduler_rows)):
-        if (
-            not isinstance(row, dict)
-            or set(row) != expected_keys
-            or type(row.get("array_task")) is not int
-            or row["array_task"] != index
-            or row.get("account") != ACCOUNT
-            or row.get("partition") != "fat"
-            or row.get("qos") != "normal"
-            or not _same_exact(row.get("req_cpus"), 1)
-            or row.get("req_mem") != "512G"
-            or row.get("time_limit") != "04:10:00"
-            or row.get("state") != "COMPLETED"
-            or row.get("exit_code") != "0:0"
-            or row.get("job_name") != expected_name
-            or row["state"] != scheduler_row["state"]
-            or row["exit_code"] != scheduler_row["exit_code"]
-        ):
-            raise ProtocolError("source-audit v3 resource accounting changed")
+    _validate_shared_v4_constants()
+    try:
+        SourceValidation._validate_v4_scheduler_contract_rows(
+            execution, launch, scheduler_rows
+        )
+    except SourceValidation.ProtocolError as err:
+        raise ProtocolError(str(err)) from err
 
 
 def load_source_materials(
@@ -1255,13 +811,13 @@ def load_source_materials(
     execution_receipt_path = Path(os.path.abspath(execution_receipt_path))
     launch_receipt_path = Path(os.path.abspath(launch_receipt_path))
     if (
-        attestation_path != Path(os.path.abspath(SOURCE_V3_ATTESTATION_PATH))
+        attestation_path != Path(os.path.abspath(SOURCE_V4_ATTESTATION_PATH))
         or execution_receipt_path
-        != Path(os.path.abspath(SOURCE_V3_EXECUTION_RECEIPT_PATH))
+        != Path(os.path.abspath(SOURCE_V4_EXECUTION_RECEIPT_PATH))
         or launch_receipt_path
-        != Path(os.path.abspath(SOURCE_V3_LAUNCH_RECEIPT_PATH))
+        != Path(os.path.abspath(SOURCE_V4_LAUNCH_RECEIPT_PATH))
     ):
-        raise ProtocolError("source-audit v3 fixed artifact paths changed")
+        raise ProtocolError("source-audit v4 fixed artifact paths changed")
     attestation_raw, attestation = _load_canonical(
         attestation_path, "source attestation"
     )
@@ -1276,16 +832,19 @@ def load_source_materials(
     launch_sha = hashlib.sha256(launch_raw).hexdigest()
     schema = attestation.get("schema")
     execution_keys = {
-        "schema", "campaign", "whole_campaign_rerun", "reused_v1_shards",
-        "reused_v2_shards", "v2_failure_diagnostic",
+        "schema", "campaign", "whole_campaign_rerun", "original_only",
+        "recovery", "reused_v1_shards", "reused_v2_shards",
+        "reused_v3_shards",
         "launch_receipt_sha256", "job_id", "partition", "qos", "account",
         "array", "array_tasks", "tasks_per_array_task", "cpus_per_task",
         "memory_per_cpu", "time_limit", "task_timeout_seconds",
         "array_throttle", "shards", "candidates", "scheduler_state_counts",
-        "scheduler_rows", "scheduler_contract_rows", "sacct_executable",
-        "sacct_executable_sha256", "original_output_tree", "recovery",
-        "union_sources", "union_tree", "code_manifest_sha256",
-        "source_inventory_sha256", "execution_environment",
+        "scheduler_rows", "scheduler_contract_rows", "launch_root_identities",
+        "sealing_root_identities_before", "sealing_root_identities_after",
+        "original_output_tree", "task_environment_manifest",
+        "code_manifest_sha256", "source_inventory_sha256",
+        "v3_infrastructure_diagnostic_sha256",
+        "v3_infrastructure_diagnostic", "execution_environment",
         "source_audit_complete", "confirmation_prelaunch_authorized",
         "prelaunch_gate", "attestation_sha256",
         "attestation_records_sha256", "cohort_manifest_sha256", "counts",
@@ -1294,24 +853,28 @@ def load_source_materials(
     if (
         schema != SOURCE_AUDIT_SCHEMA
         or set(execution) != execution_keys
-        or execution.get("schema") != schema + "/campaign-v3/execution"
-        or launch.get("schema") != schema + "/campaign-v3/launch"
+        or execution.get("schema") != schema + "/campaign-v4/execution"
+        or launch.get("schema") != schema + "/campaign-v4/launch"
     ):
         raise ProtocolError("source-audit schema chain changed")
     if any((
         attestation.get("benchmark_revision") != BENCHMARK_REVISION,
         launch.get("benchmark_revision") != BENCHMARK_REVISION,
-        launch.get("campaign") != "v3",
-        execution.get("campaign") != "v3",
+        launch.get("campaign") != "v4",
+        execution.get("campaign") != "v4",
         launch.get("whole_campaign_rerun") is not True,
         execution.get("whole_campaign_rerun") is not True,
+        execution.get("original_only") is not True,
+        execution.get("recovery") is not None,
         not _same_exact(launch.get("reused_v1_shards"), 0),
         not _same_exact(execution.get("reused_v1_shards"), 0),
         not _same_exact(launch.get("reused_v2_shards"), 0),
         not _same_exact(execution.get("reused_v2_shards"), 0),
-        launch.get("memory_per_cpu") != "512G",
-        execution.get("memory_per_cpu") != "512G",
-        launch_sha != SOURCE_V3_LAUNCH_RECEIPT_SHA256,
+        not _same_exact(launch.get("reused_v3_shards"), 0),
+        not _same_exact(execution.get("reused_v3_shards"), 0),
+        launch.get("memory_per_cpu") != "1024G",
+        execution.get("memory_per_cpu") != "1024G",
+        launch_sha != SOURCE_V4_LAUNCH_RECEIPT_SHA256,
         execution.get("launch_receipt_sha256") != launch_sha,
         execution.get("attestation_sha256") != attestation_sha,
         execution.get("source_audit_complete") is not True,
@@ -1337,9 +900,9 @@ def load_source_materials(
         "tasks_per_array_task": 2,
         "candidates": 1640,
         "cpus_per_task": 1,
-        "time_limit": "04:10:00",
-        "memory_per_cpu": "512G",
-        "task_timeout_seconds": 7200,
+        "time_limit": "08:20:00",
+        "memory_per_cpu": "1024G",
+        "task_timeout_seconds": 14400,
     }
     expected_execution_scheduler = {
         "partition": "fat",
@@ -1349,13 +912,12 @@ def load_source_materials(
         "array_tasks": 820,
         "tasks_per_array_task": 2,
         "cpus_per_task": 1,
-        "memory_per_cpu": "512G",
-        "time_limit": "04:10:00",
-        "task_timeout_seconds": 7200,
+        "memory_per_cpu": "1024G",
+        "time_limit": "08:20:00",
+        "task_timeout_seconds": 14400,
         "array_throttle": 0,
         "shards": 820,
         "candidates": 1640,
-        "recovery": None,
     }
     if any(
         not _same_exact(launch.get(field), expected)
@@ -1364,7 +926,7 @@ def load_source_materials(
         not _same_exact(execution.get(field), expected)
         for field, expected in expected_execution_scheduler.items()
     ):
-        raise ProtocolError("source-audit v3 scheduler contract changed")
+        raise ProtocolError("source-audit v4 scheduler contract changed")
     scheduler_rows = execution.get("scheduler_rows")
     if (
         not isinstance(scheduler_rows, list)
@@ -1389,11 +951,11 @@ def load_source_materials(
         or dict(Counter(row["state"] for row in scheduler_rows))
         != {"COMPLETED": 820}
     ):
-        raise ProtocolError("source-audit v3 scheduler rows changed")
-    _validate_v3_scheduler_contract_rows(execution, launch, scheduler_rows)
+        raise ProtocolError("source-audit v4 scheduler rows changed")
+    _validate_v4_scheduler_contract_rows(execution, launch, scheduler_rows)
     _validate_source_execution_environment(launch, execution)
 
-    inventory_raw, inventory, manifest_hashes = _load_source_v3_byte_chain(launch)
+    inventory_raw, inventory, manifest_hashes = _load_source_v4_byte_chain(launch)
     try:
         SourceValidation._validate_attestation_envelope(attestation, inventory)
         SourceValidation._validate_attestation_split(
@@ -1401,14 +963,14 @@ def load_source_materials(
         )
     except SourceValidation.ProtocolError as err:
         raise ProtocolError(str(err)) from err
-    tracked_file_sha256 = _source_v3_tracked_file_sha256(
+    tracked_file_sha256 = _source_v4_tracked_file_sha256(
         launch, manifest_hashes
     )
 
     source_inventory_sha = attestation.get("source_inventory_sha256")
     code_manifest_sha = attestation.get("code_manifest_sha256")
     records_sha = attestation.get("records_sha256")
-    union_tree = execution.get("union_tree")
+    original_tree = execution.get("original_output_tree")
     if any((
         SHA256_RE.fullmatch(source_inventory_sha or "") is None,
         SHA256_RE.fullmatch(code_manifest_sha or "") is None,
@@ -1418,47 +980,41 @@ def load_source_materials(
         source_inventory_sha != hashlib.sha256(inventory_raw).hexdigest(),
         launch.get("code_manifest_sha256") != code_manifest_sha,
         execution.get("code_manifest_sha256") != code_manifest_sha,
-        code_manifest_sha != SOURCE_V3_CODE_MANIFEST_SHA256,
+        code_manifest_sha != SOURCE_V4_CODE_MANIFEST_SHA256,
         launch.get("translator_source_sha256")
         != attestation.get("translator_source_sha256"),
         execution.get("job_id") != launch.get("job_id"),
-        execution.get("sacct_executable") != launch.get("sacct_executable"),
-        execution.get("sacct_executable_sha256")
-        != launch.get("sacct_executable_sha256"),
-        COMMIT_RE.fullmatch(launch.get("repository_commit_id", "")) is None,
-        SHA256_RE.fullmatch(launch.get("slurm_script_sha256", "")) is None,
-        SHA256_RE.fullmatch(launch.get("launch_intent_sha256", "")) is None,
-        not isinstance(union_tree, dict),
+        launch.get("repository_commit_id") != SOURCE_V4_PRODUCER_COMMIT_ID,
+        launch.get("slurm_script_sha256") != SOURCE_V4_SLURM_SHA256,
+        launch.get("launch_intent_sha256") != SOURCE_V4_LAUNCH_INTENT_SHA256,
+        not isinstance(original_tree, dict),
         SHA256_RE.fullmatch(
-            union_tree.get("sha256", "") if isinstance(union_tree, dict) else ""
+            original_tree.get("sha256", "")
+            if isinstance(original_tree, dict) else ""
         ) is None,
     )):
         raise ProtocolError("source-audit provenance chain changed")
-    _validate_unrecovered_source_union(
-        execution, launch["job_id"], source_inventory_sha
+    _validate_v4_original_output(
+        execution, launch, source_inventory_sha
     )
-    diagnostic = launch.get("v2_failure_diagnostic")
+    diagnostic = launch.get("v3_infrastructure_diagnostic")
     if (
         not isinstance(diagnostic, dict)
-        or execution.get("v2_failure_diagnostic") != diagnostic
+        or execution.get("v3_infrastructure_diagnostic") != diagnostic
+        or execution.get("v3_infrastructure_diagnostic_sha256")
+        != SOURCE_V4_V3_DIAGNOSTIC_SHA256
         or diagnostic.get("schema")
-        != schema + "/campaign-v3/v2-infrastructure-diagnostic"
-        or diagnostic.get("rerun_scope") != "all-820-shards"
-        or not _same_exact(diagnostic.get("reused_v1_shards"), 0)
-        or not _same_exact(diagnostic.get("reused_v2_shards"), 0)
-        or diagnostic.get(
-            "successful_v1_v2_shard_contents_used_for_v3_design"
-        )
-        is not False
-        or diagnostic.get("source_support_outcomes_used_for_v3_design")
-        is not False
+        != schema + "/campaign-v4/v3-infrastructure-diagnostic"
+        or diagnostic.get("successful_v3_shard_contents_inspected") is not False
+        or diagnostic.get("successful_v3_log_contents_inspected") is not False
+        or diagnostic.get("source_support_outcomes_used_for_v4_design") is not False
     ):
-        raise ProtocolError("source-audit v2 failure diagnostic chain changed")
+        raise ProtocolError("source-audit v3 infrastructure diagnostic chain changed")
     cohort = attestation.get("cohorts", {}).get("guided_b")
     tasks = cohort.get("tasks") if isinstance(cohort, dict) else None
     if (
         not isinstance(tasks, list)
-        or not MIN_COHORT_TASKS <= len(tasks) <= MAX_COHORT_TASKS
+        or len(tasks) != TARGET_COHORT_TASKS
         or cohort.get("role") != "guided-b"
         or cohort.get("top_up_role") != "guided-b-topup"
         or cohort.get("target_tasks") != TARGET_COHORT_TASKS
@@ -1538,7 +1094,7 @@ def load_source_materials(
             raise ProtocolError("source audit maps one directory to two families")
     try:
         shadow, all_prior = SourceValidation._validate_split_strata(
-            attestation, SOURCE_V3_FIXED_HASHES
+            attestation, SOURCE_V4_FIXED_HASHES
         )
         SourceValidation._validate_prelaunch_gate(
             attestation, shadow, all_prior
@@ -1654,7 +1210,9 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "repository_commit_id": materials.launch_receipt[
             "repository_commit_id"
         ],
-        "union_tree_sha256": materials.execution_receipt["union_tree"][
+        "original_output_tree_sha256": materials.execution_receipt[
+            "original_output_tree"
+        ][
             "sha256"
         ],
         "slurm_script_sha256": materials.launch_receipt[
@@ -1703,10 +1261,14 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "cells": cells,
         "expected_array_tasks": array_tasks,
         "runs_per_array_task": RUNS_PER_ARRAY_TASK,
+        "run_order_protocol": RUN_ORDER_PROTOCOL,
+        "run_cell_mapping_sha256": run_cell_mapping_digest(materials.tasks),
         "probe_layers": PROBE_LAYERS,
         "par2_seconds": PAR2_SECONDS,
         "bootstrap_replicates": BOOTSTRAP_REPLICATES,
         "bootstrap_seed": BOOTSTRAP_SEED,
+        "minimum_mechanism_tasks": MIN_MECHANISM_TASKS,
+        "minimum_mechanism_families": MIN_MECHANISM_FAMILIES,
         "non_gating_reference_labels": list(NON_GATING_REFERENCE_LABELS),
     }
     if design != expected_design:
@@ -1748,6 +1310,7 @@ def _unfrozen_defaults() -> dict:
         "PLANNER_TREE_MANIFEST_SHA256": "TO_FREEZE",
         "COHORT_MANIFEST_SHA256": "TO_FREEZE",
         "TASK_NAME_SHA256": "TO_FREEZE",
+        "RUN_CELL_MAPPING_SHA256": "TO_FREEZE",
         "COST_ATTESTATION_SHA256": "TO_FREEZE",
         "COST_ATTESTATION_RECORDS_SHA256": "TO_FREEZE",
         "TRANSLATOR_SOURCE_SHA256": "TO_FREEZE",
@@ -1802,6 +1365,7 @@ def _installed_values() -> dict:
         "PLANNER_TREE_MANIFEST_SHA256": planner["tree_manifest_sha256"],
         "COHORT_MANIFEST_SHA256": materials.cohort_manifest_sha256,
         "TASK_NAME_SHA256": hashlib.sha256(task_payload).hexdigest(),
+        "RUN_CELL_MAPPING_SHA256": run_cell_mapping_digest(materials.tasks),
         "COST_ATTESTATION_SHA256": materials.attestation_sha256,
         "COST_ATTESTATION_RECORDS_SHA256": materials.records_sha256,
         "TRANSLATOR_SOURCE_SHA256": materials.translator_source_sha256,
@@ -1810,7 +1374,9 @@ def _installed_values() -> dict:
         "SOURCE_AUDIT_JOB_ID": launch["job_id"],
         "SOURCE_AUDIT_CODE_MANIFEST_SHA256": execution["code_manifest_sha256"],
         "SOURCE_AUDIT_REPOSITORY_COMMIT_ID": launch["repository_commit_id"],
-        "SOURCE_AUDIT_OUTPUT_TREE_SHA256": execution["union_tree"]["sha256"],
+        "SOURCE_AUDIT_OUTPUT_TREE_SHA256": execution[
+            "original_output_tree"
+        ]["sha256"],
         "SOURCE_AUDIT_SLURM_SHA256": launch["slurm_script_sha256"],
         "SOURCE_AUDIT_INTENT_SHA256": launch["launch_intent_sha256"],
         "CONFIRMATION_A_AUTHORIZATION_RECEIPT_SHA256": freeze[
@@ -1902,6 +1468,13 @@ def validate_static_design() -> None:
         LABELS != PRIMARY_LABELS,
         len(set(LABELS)) != CONFIG_COUNT,
         CONFIG_COUNT != 9,
+        MIN_COHORT_TASKS != 300,
+        TARGET_COHORT_TASKS != 300,
+        MAX_COHORT_TASKS != 300,
+        MIN_COHORT_FAMILIES != 30,
+        MIN_SHADOW_UNREPRESENTED_FAMILIES != 12,
+        MIN_ALL_PRIOR_UNREPRESENTED_TASKS != 50,
+        MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES != 10,
         RUNS_PER_ARRAY_TASK != 3,
         TIME_LIMIT_SECONDS != 1800,
         MEMORY_LIMIT_MIB != 24576,
@@ -1911,6 +1484,9 @@ def validate_static_design() -> None:
         PAR2_SECONDS != 3600,
         BOOTSTRAP_REPLICATES != 100000,
         BOOTSTRAP_SEED != 20260902,
+        MIN_MECHANISM_TASKS != 50,
+        MIN_MECHANISM_FAMILIES != 10,
+        RUN_ORDER_PROTOCOL != "task-major-family-balanced-triads/v1",
         ACCOUNT != "naiss2025-5-561-cpu",
         PLAIN_REFERENCE_LABEL != "pdb_cap_aware_k32",
         GUIDED_LABEL != "pdb_terminal_incidence_guided",
@@ -1997,12 +1573,13 @@ def validate_static_design() -> None:
 def validate_protocol_design() -> None:
     validate_static_design()
     if any((
-        not MIN_COHORT_TASKS <= COHORT_TASKS <= MAX_COHORT_TASKS,
+        COHORT_TASKS != TARGET_COHORT_TASKS,
         CELL_COUNT != CONFIG_COUNT * COHORT_TASKS,
         EXPECTED_ARRAY_TASKS
         != (CELL_COUNT + RUNS_PER_ARRAY_TASK - 1) // RUNS_PER_ARRAY_TASK,
         (EXPECTED_ARRAY_TASKS - 1) * RUNS_PER_ARRAY_TASK >= CELL_COUNT,
         EXPECTED_ARRAY_TASKS * RUNS_PER_ARRAY_TASK < CELL_COUNT,
+        RUN_CELL_MAPPING_SHA256 == "TO_FREEZE",
     )):
         raise ProtocolError("Confirmation B frozen cardinalities changed")
 

@@ -18,35 +18,53 @@ freeze and materialize verified PDDL bytes into every run directory.  A launch
 intent is written before `sbatch`; a unique Slurm comment permits recovery of a
 launch receipt if submission succeeded but the client failed before recording
 the returned job ID.  An unresolved intent never authorizes resubmission.
+All canonical protocol, launch, audit, and analysis inputs are lexically
+validated before filesystem I/O and are read and hashed from one `O_NOFOLLOW`
+descriptor, with regular-file and stable-identity checks before and after the
+read. Symlinks, directories, FIFOs, and identity-changing races fail closed.
 
-The source chain must be the outcome-blind, complete campaign-v3 rerun: exact
-v3 launch and execution schemas, 512 GiB per source-audit array element, a
-7,200-second task timeout, a 04:10:00 Slurm limit, all 820 shards rerun, and
-exactly zero reused v1 or v2 shards. Campaign v1 failed because 26 GiB was
-insufficient. Campaign v2 failed for both translator timeouts and out-of-memory
-conditions at 256 GiB and 2,700 seconds. Only scheduler rows, failure logs, and
-task names were used to diagnose those infrastructure failures; no successful
-shard contents or source-support outcomes informed v3. The launch intent and
-both v3 receipts carry the same internally consistent v2 diagnostic, including
-its embedded v1 diagnostic and the outcome-blind 512 GiB/7,200-second/04:10:00
-resource amendment.
+The source chain must be the outcome-blind, complete campaign-v4 rerun. Its
+launch is pinned to producer commit
+`9fa1387455f947772b8b37e3b103f1ca84efb27b`, job `1865695`, launch-receipt
+SHA-256 `90ec55eb1d603cb7434885eeb99ceb2a0123ac02f4f9c02c885cab2635442921`,
+24-entry code-manifest SHA-256
+`d3b571aaffce9f58f09d15f118df57997773c522e3da74bcdcbfbc00299f0518`,
+Slurm-script SHA-256
+`8504f5b778d74a5120605947e710713532018e2007d276df8c580167b9ce1a8f`,
+and source-inventory SHA-256
+`bb9be49a4652ff7bedcadb04b4db35cad701a5b2a2a6d6347c15e0ad670e056e`.
+The outcome-blind v3 infrastructure diagnostic is pinned at
+`a340d2de01304702f6c101d2bb1592536ebc6dfedc1638c5ce1c0559e5ddcf57`.
+It records the full-rerun decision without inspecting successful v3 shard or
+log contents or source-support outcomes.
 
-Campaign v3 is accepted only in its actual unrecovered shape: all ordered array
-rows 0--819 are `COMPLETED` with exit `0:0`, all 820 resource-accounting rows
-attest the exact account, partition, QoS, CPU, memory, time limit, and unique
-submission identity, and `recovery` is null. The 820 ordered union records must
-all name original v3 shards, bind equal source and union hashes, and match the
-canonical original-output and union-tree manifests and digests.
-The launch and execution receipts must carry the same exact isolated
-execution-environment attestation (`--export=NONE`, controlled path, cleared
-Python inheritance, per-array bytecode cache, and pinned Python/tool hashes).
-The consumer loads the canonical launch intent, Slurm script, 14-entry code
-manifest, amendment protocol, frozen inventory, and every manifest-listed
-file. It verifies their live hashes, the exact submission command and fixed
-materials, and their bytes at the source repository commit. At the experiment
-freeze revision, `tracked_file_sha256` independently proves that the same 18
-bound files (the 14 manifest entries, Slurm script, manifest, intent, and
-inventory) are tracked with those exact hashes.
+Campaign v4 uses exactly 1,024 GiB per CPU, a 14,400-second source timeout, an
+08:20:00 Slurm limit, the `fat` partition, normal QoS, and all 820 unthrottled
+array elements. It is original-only: all 820 shards and all 1,640 candidates
+are rerun, `recovery` is null, and reuse counts for v1, v2, and v3 are zero.
+Each candidate is consumed from a read-only domain/problem snapshot inside the
+exact per-task temporary root; both consumers revalidate the snapshot and the
+task removes only its own pinned files and directories. The launch binds
+regular, nonsymlink output and temporary roots by path, owner, mode, device,
+and inode. The execution receipt must retain these identities, prove that the
+temporary root is empty, and bind the exact 2,461-file original output tree:
+one inventory, 820 shard files, 820 environment-evidence files, and 820 Slurm
+logs with stderr merged into stdout. It must also bind all 820 per-task
+environment records and detailed actual scheduler resource rows. No recovered
+or substituted source file is accepted.
+
+The source launch submits the exact in-memory Slurm bytes on standard input to
+the hash-pinned `/usr/bin/sbatch` under a controlled `C` environment; its
+command contains options only and no script path. The hash-pinned
+`/usr/bin/sacct` journal must reproduce the exact `SubmitLine`, unique job,
+and complete array. The consumer verifies the canonical launch intent, Slurm
+script, 24-entry manifest, amendment protocol, inventory, all manifest-listed
+live files, and their bytes at the source repository commit. At the experiment
+freeze revision, `tracked_file_sha256` independently proves the same 26 bound
+files (the 24 manifest entries, Slurm script, and manifest) are tracked with
+those exact hashes. Neither Confirmation A building nor freezing is possible
+until both the canonical v4 attestation and execution receipt exist and pass
+this complete validation.
 The consumer also checks the exact attestation envelope and replays the
 manifest-verified producer's split over all 1,640 sealed source records; the
 replayed gate and both cohorts must be byte-identical to the attestation. Thus
@@ -63,6 +81,14 @@ There are 2,600 cells, grouped in fixed order as three sequential cells in each
 of 867 array elements; the final element contains two cells.  The array is not
 throttled, has no nice adjustment, is not requeued automatically, and is
 submitted with `--export=NONE`.
+The primary launch and every recovery pin `/usr/bin/sbatch` and
+`/usr/bin/sacct` by SHA-256, use only the controlled `C` environment, and pass
+the stable regular generated job bytes in memory on standard input to an
+options-only `sbatch` command. The launch journal must reproduce that complete
+command and every array index for the unique recorded job. The sealed execution
+receipt includes a second `sacct` view of the actual account, partition, QoS,
+CPU, memory, time limit, state, exit code, and job name for every original and
+recovery array element.
 
 ## Fixed measurements
 
@@ -101,27 +127,49 @@ receipt, and hash pin.  Analysis accepts only the sealed fetched properties.
 No cell is selectively rerun for an experimental outcome.  A retry is allowed
 only for an array element whose latest Slurm state is one of `BOOT_FAIL`,
 `NODE_FAIL`, `PREEMPTED`, or `REVOKED`.  The recovery uses the identical frozen
-job file, resources, array indices, and run-to-cell mapping.  Completed cells in
-an interrupted element remain untouched; partial dynamic files for incomplete
-cells are moved into a hash-attested archive before retry.  Time limits,
+job file, resources, array indices, and run-to-cell mapping. All cells in each
+interrupted array element are replayed together, including cells that had
+already finished before the scheduler interruption. Before retry, every
+dynamic name in those cells is inventoried with `lstat`; any symlink or
+nonregular entry fails before it is read. Every existing dynamic file is bound
+by device, inode, mode, size, modification time, and SHA-256 and moved through
+an exclusive, no-follow hard-link archive without overwriting a target. The
+identity-bearing recovery intent and receipt use recovery schema v2. The
+complete replay set is rescanned immediately after archiving and again
+immediately before `sbatch`; any reappearing, unexpected, symlinked, or
+nonregular dynamic entry aborts submission. The generated job likewise refuses
+every preexisting dynamic name and creates `driver.log` and `driver.err` with
+exclusive no-follow descriptors rather than shell redirection. Namespace,
+redirection, and helper failures before a valid child outcome use dedicated
+infrastructure status 70; the generated three-cell loop exits immediately and
+does not invoke a later cell. Once the run script has launched, its return code
+remains an ordinary recorded planner outcome: it is written to `driver.err`,
+the helper returns success, and later cells retain the frozen accounting
+behavior. Time limits,
 out-of-memory states, cancellation, application failures, nonzero completed
 jobs, and unrecognized scheduler states fail closed and are not recoverable.
 Every recovery launch has the same intent/journal/receipt protection as the
-primary launch.
+primary launch, including exact standard-input bytes, pinned executable
+identities, controlled environment, options-only command, and complete array
+journal evidence.
 
 ## Primary comparison and gate
 
-Within each eligible task, all seven predictors are compared on one
-grand-shared set of semantic PDB pairs for which `E` and every predictor are
-strictly ordered.  Concordance is computed task first, then family, then with
-equal family weight.  Absolute `E` and normalized `E/U` orientations must have
-identical pair orders and gate decisions; the inverse-`U` null must remain tied.
+Within each eligible task, all seven predictors are compared on one common set
+of semantic PDB pairs for which the target `E` is strictly ordered.  A
+predictor receives score 1 for the correct order, 0.5 for a tie, and 0 for the
+wrong order.  We report each predictor's tie rate.  Concordance is computed
+task first, then family, then with equal family weight.  Absolute `E` and
+normalized `E/U` orientations must have identical pair orders and gate
+decisions; the inverse-`U` null must remain tied.  The former comparison that
+also requires every predictor to be strict is retained, unchanged, as a
+non-gating sensitivity analysis.
 
 The primary gate passes only if every clause passes:
 
 - at least 300 eligible tasks and 25 eligible families;
-- at least 300 comparison tasks, 25 comparison families, and 600 grand-shared
-  strict pairs;
+- at least 300 comparison tasks, 25 comparison families, and 600 target-strict
+  pairs;
 - equal-family concordance of `I` is at least 0.65;
 - `I` exceeds each control by at least 0.02;
 - for every control, the lower endpoint of a paired-family percentile
@@ -130,12 +178,19 @@ The primary gate passes only if every clause passes:
   strictly positive.
 
 The genuine all-prior-unrepresented stratum is fixed by the source audit, not
-by task outcomes.  It is an additional gate: it must contribute at least 10
-comparison families and 100 grand-shared strict pairs; its equal-family
-concordance for `I` must be at least 0.65; and `I` must exceed every control by
-a strictly positive amount.  The analogously frozen shadow-unrepresented
-stratum is reported as a non-gating diagnostic.  All other sensitivities are
-explicitly non-gating.
+by task outcomes.  It is an additional gate.  It must contribute at least 50
+comparison tasks, 10 comparison families, and 100 target-strict pairs.  Its
+equal-family concordance for `I` must be at least 0.65.  Relative to every
+control, the advantage of `I` must be at least 0.02, the lower endpoint of the
+same paired-family bootstrap must be strictly positive, and every
+leave-one-family-out difference must be strictly positive.  The analogously
+frozen shadow-unrepresented stratum is reported as a non-gating diagnostic.
+The non-gating top-choice-regret diagnostic also asks what happens if each
+predictor selects its minimum-valued semantic heuristic within a task. If
+several heuristics tie for that minimum, their target efforts are averaged;
+regret is `(mean selected E - min E) / (max E - min E)` on target-nontied
+tasks and is aggregated task first with equal family weight. All other
+sensitivities are explicitly non-gating.
 
 Support failure is a failed confirmation, even if all achieved-support effect
 clauses pass.  Confirmation A authorizes the separately frozen guided study

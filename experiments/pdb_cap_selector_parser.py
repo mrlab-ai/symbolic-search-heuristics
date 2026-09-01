@@ -119,6 +119,28 @@ def _nonnegative_int(value):
 
 
 def _load(payload):
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in payload:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character in "[{":
+            depth += 1
+            if depth > 256:
+                raise ValueError("JSON nesting exceeds the parser limit")
+        elif character in "]}":
+            depth -= 1
+            if depth < 0:
+                raise ValueError("JSON delimiters are unbalanced")
     return json.loads(
         payload,
         object_pairs_hook=C._unique_json_object,

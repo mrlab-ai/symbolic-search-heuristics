@@ -14,6 +14,8 @@ from fractions import Fraction
 from pathlib import Path
 
 import audit_pdb_terminal_incidence_confirmation_b as Audit
+import pdb_cap_selector_parser as CapParser
+import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_b_protocol as P
 
 
@@ -23,14 +25,14 @@ class ConfirmationBAnalysisError(RuntimeError):
 
 SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-b-analysis/v1"
+    "pdb-terminal-incidence-confirmation-b-analysis/v2"
 )
 RECEIPT_SCHEMA = SCHEMA + "/double-execution"
 ARTIFACT_DIR = Audit.ARTIFACT_DIR
-DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v1.json"
-DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v1-repeat.json"
-DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v1.json"
-DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v1.sha256"
+DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v2.json"
+DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v2-repeat.json"
+DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v2.json"
+DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v2.sha256"
 
 
 def _fraction_record(value: Fraction | None):
@@ -65,8 +67,10 @@ def _decode_records(raw: bytes) -> list[dict]:
 
 def _load_records(path: Path) -> list[dict]:
     try:
-        raw = Path(path).read_bytes()
-    except OSError as err:
+        raw = SafeIO.read_regular_file(
+            Path(path), label="fetched properties"
+        ).raw
+    except SafeIO.SafeReadError as err:
         raise ConfirmationBAnalysisError("cannot load fetched properties") from err
     return _decode_records(raw)
 
@@ -117,6 +121,8 @@ def _fixed_properties() -> dict:
         "intervention_label": P.INTERVENTION_LABEL,
         "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
         "bootstrap_seed": P.BOOTSTRAP_SEED,
+        "run_order_protocol": P.RUN_ORDER_PROTOCOL,
+        "run_cell_mapping_sha256": P.RUN_CELL_MAPPING_SHA256,
         "confirmation_b_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
         "confirmation_a_authorization_receipt_sha256": (
             P.CONFIRMATION_A_AUTHORIZATION_RECEIPT_SHA256
@@ -210,6 +216,23 @@ def _phase_overhead(record: dict, phase: str, *, required: bool):
     return values
 
 
+def _complete_selector_pattern_pool(record: dict) -> list[dict]:
+    """Return the pool event only after checking its required position/shape."""
+    structural = record.get("incidence_selector_structural_trace")
+    if (
+        not isinstance(structural, list)
+        or len(structural) < 3
+        or not isinstance(structural[2], dict)
+        or structural[2].get("event") != "pool"
+        or not isinstance(structural[2].get("patterns"), list)
+        or not structural[2]["patterns"]
+    ):
+        raise ConfirmationBAnalysisError(
+            "complete selector structural trace lacks its pattern pool"
+        )
+    return structural[2]["patterns"]
+
+
 def _validate_trace_record(record: dict, label: str) -> None:
     status = record.get("incidence_selector_trace_status")
     certified = record.get("incidence_selector_trace_certified")
@@ -275,6 +298,7 @@ def _validate_trace_record(record: dict, label: str) -> None:
                 "complete selector trace lacks identity evidence"
             )
         if status == "complete":
+            _complete_selector_pattern_pool(record)
             reference = record["incidence_selector_reference_identity"]
             selected = record["incidence_selector_selected_identity"]
             differs = selected != reference
@@ -318,6 +342,84 @@ def _validate_trace_record(record: dict, label: str) -> None:
         "invalid", "partial", "unexpected", None
     }:
         raise ConfirmationBAnalysisError("selector trace status is malformed")
+
+
+def _plain_reference_evidence(record: dict) -> dict:
+    """Certify the standalone K32 endpoint and its complete fixed pool."""
+    candidates = record.get("pdb_selector_candidates")
+    selected = record.get("pdb_selector_selected")
+    final = record.get("pdb_selector_final")
+    if any((
+        record.get("pdb_cap_selector_parser_protocol")
+        != CapParser.PARSER_PROTOCOL,
+        record.get("pdb_selector_trace_complete") is not True,
+        record.get("pdb_selector_trace_certified") is not True,
+        record.get("pdb_selector_validation_error") is not None,
+        not isinstance(candidates, list),
+        not isinstance(selected, dict),
+        not isinstance(final, dict),
+    )):
+        raise ConfirmationBAnalysisError(
+            "standalone K32 reference lacks a certified cap-selector trace"
+        )
+    pattern = selected.get("pattern")
+    sources = selected.get("sources")
+    cap = selected.get("value_cap")
+    if any((
+        selected.get("cofactor_width_budget") != 32,
+        type(selected.get("cofactor_width_budget")) is not int,
+        not isinstance(pattern, list),
+        any(type(value) is not int for value in pattern),
+        not isinstance(sources, list),
+        not sources,
+        any(not isinstance(source, str) or not source for source in sources),
+        type(cap) is not int,
+        cap < -1,
+    )):
+        raise ConfirmationBAnalysisError(
+            "standalone K32 reference identity is malformed"
+        )
+    patterns = []
+    for candidate in candidates:
+        if (
+            not isinstance(candidate, dict)
+            or type(candidate.get("abstract_states")) is not int
+            or candidate["abstract_states"] < 1
+        ):
+            raise ConfirmationBAnalysisError(
+                "standalone K32 candidate identity is malformed"
+            )
+        candidate_pattern = candidate.get("pattern")
+        if any(row["pattern"] == candidate_pattern for row in patterns):
+            continue
+        patterns.append({
+            "pattern_index": len(patterns),
+            "sources": candidate.get("sources"),
+            "pattern": candidate_pattern,
+            "abstract_states": candidate["abstract_states"],
+            "within_state_budget": candidate["abstract_states"] <= 100000,
+        })
+    matching = [
+        row["pattern_index"] for row in patterns if row["pattern"] == pattern
+    ]
+    if len(matching) != 1:
+        raise ConfirmationBAnalysisError(
+            "standalone K32 selected pattern is not unique in its pool"
+        )
+    return {
+        "identity": {
+            "pattern_index": matching[0],
+            "sources": sources,
+            "pattern": pattern,
+            "value_cap": None if cap == -1 else cap,
+        },
+        "pool": patterns,
+        "pool_sha256": hashlib.sha256(P.canonical_json(patterns)).hexdigest(),
+    }
+
+
+def _plain_reference_identity(record: dict) -> dict:
+    return _plain_reference_evidence(record)["identity"]
 
 
 def validate_matrix(records: list[dict]):
@@ -381,6 +483,10 @@ def validate_matrix(records: list[dict]):
                for field, value in expected_source.items()):
             raise ConfirmationBAnalysisError("cell source identity changed")
         _validate_trace_record(record, label)
+        plain_reference_evidence = (
+            _plain_reference_evidence(record)
+            if label == P.PLAIN_REFERENCE_LABEL else None
+        )
         value, outcome = _par2(record)
         outcome_classes[(label, outcome)] += 1
         accounting_rows.append({
@@ -396,7 +502,22 @@ def validate_matrix(records: list[dict]):
                 "incidence_selector_trace_status"
             ),
         })
-        matrix[key] = {"record": record, "par2": value}
+        matrix[key] = {
+            "record": record,
+            "par2": value,
+            "plain_reference_identity": (
+                plain_reference_evidence["identity"]
+                if plain_reference_evidence is not None else None
+            ),
+            "plain_reference_pool": (
+                plain_reference_evidence["pool"]
+                if plain_reference_evidence is not None else None
+            ),
+            "plain_reference_pool_sha256": (
+                plain_reference_evidence["pool_sha256"]
+                if plain_reference_evidence is not None else None
+            ),
+        }
     tasks = sorted(source_tasks)
     if len(matrix) != P.CELL_COUNT or any(
         (label, task) not in matrix for task in tasks for label in P.LABELS
@@ -445,6 +566,17 @@ def _selector_pair_gate(matrix, tasks) -> tuple[dict, set[tuple[str, str]]]:
             "incidence_selector_selected_identity"
         ) != matched.get("incidence_selector_reference_identity"):
             reason = "matched_selection_is_not_reference"
+        elif g_status == "complete" and matrix[
+            (P.PLAIN_REFERENCE_LABEL, task)
+        ].get("plain_reference_identity") != {
+            key: guided["incidence_selector_reference_identity"][key]
+            for key in ("pattern_index", "sources", "pattern", "value_cap")
+        }:
+            reason = "standalone_reference_identity_mismatch"
+        elif g_status == "complete" and matrix[
+            (P.PLAIN_REFERENCE_LABEL, task)
+        ].get("plain_reference_pool") != _complete_selector_pattern_pool(guided):
+            reason = "standalone_reference_pool_mismatch"
         elif g_status == "complete" and guided.get(
             "incidence_selector_selected_differs_from_reference"
         ) is not (
@@ -474,6 +606,9 @@ def _selector_pair_gate(matrix, tasks) -> tuple[dict, set[tuple[str, str]]]:
                 "incidence_selector_preselection_sha256"
             ),
             "guided_selected_differs": differs,
+            "standalone_reference_pool_sha256": matrix[
+                (P.PLAIN_REFERENCE_LABEL, task)
+            ].get("plain_reference_pool_sha256"),
         })
     passed = not failures and sum(counts.values()) == len(tasks)
     return {
@@ -485,6 +620,8 @@ def _selector_pair_gate(matrix, tasks) -> tuple[dict, set[tuple[str, str]]]:
         "failed_pairs": failures,
         "all_tasks_accounted": sum(counts.values()) == len(tasks),
         "exact_structural_identity_required": True,
+        "standalone_reference_identity_required": True,
+        "standalone_normalized_pattern_pool_required": True,
         "timing_and_memory_excluded_from_identity": True,
         "pair_rows": pair_rows,
         "selected_difference_tasks": len(different),
@@ -553,7 +690,7 @@ def _contrast(matrix, tasks, source_tasks, reference: str) -> dict:
         "bootstrap_lower_95_positive": (
             lower_fraction is not None and lower_fraction > 0
         ),
-        "every_leave_one_domain_out_positive": (
+        "every_leave_one_family_out_positive": (
             bool(leave_one_out)
             and all(value is not None and value > 0
                     for value in leave_one_out.values())
@@ -579,7 +716,7 @@ def _contrast(matrix, tasks, source_tasks, reference: str) -> dict:
         "family_macro_normalized_improvement": _fraction_record(macro),
         "minimum_family_macro": _fraction_record(minimum),
         "bootstrap": bootstrap,
-        "leave_one_domain_out": {
+        "leave_one_family_out": {
             family: _fraction_record(value)
             for family, value in leave_one_out.items()
         },
@@ -671,11 +808,28 @@ def analyze_records(records: list[dict]) -> dict:
     selector_overhead = _selector_overhead(matrix, tasks, source_tasks)
     mechanism = None
     mechanism_authorized = False
+    mechanism_families = {
+        source_tasks[task]["family"] for task in different
+    }
+    mechanism_support = {
+        "tasks": len(different),
+        "minimum_tasks": P.MIN_MECHANISM_TASKS,
+        "families": len(mechanism_families),
+        "minimum_families": P.MIN_MECHANISM_FAMILIES,
+        "pass": (
+            len(different) >= P.MIN_MECHANISM_TASKS
+            and len(mechanism_families) >= P.MIN_MECHANISM_FAMILIES
+        ),
+    }
     if different:
         mechanism = _contrast(
             matrix, sorted(different), source_tasks, P.MATCHED_LABEL
         )
-        mechanism_authorized = provenance["pass"] and mechanism["pass"]
+        mechanism_authorized = (
+            provenance["pass"]
+            and mechanism_support["pass"]
+            and mechanism["pass"]
+        )
     complete_pass = provenance["pass"] and all(
         contrast["pass"] for contrast in contrasts.values()
     )
@@ -709,6 +863,8 @@ def analyze_records(records: list[dict]) -> dict:
         "mechanism": {
             "claim_is_conditional_on_selected_heuristic_differing": True,
             "eligible_tasks": len(different),
+            "eligible_families": len(mechanism_families),
+            "support": mechanism_support,
             "contrast": mechanism,
             "claim_authorized": mechanism_authorized,
         },
@@ -725,6 +881,15 @@ def analyze_records(records: list[dict]) -> dict:
 
 
 def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
+    try:
+        path = SafeIO.validate_lexical_path(
+            Path(path), label="sealed Confirmation B properties",
+            expected_path=Audit.EVAL_PROPERTIES,
+        )
+    except SafeIO.SafeReadError as err:
+        raise ConfirmationBAnalysisError(
+            "analysis input is not the sealed matrix"
+        ) from err
     P.validate_protocol_without_sources()
     try:
         fetch_sha, fetch = Audit.load_fetch_receipt(verify_live=True)
@@ -733,24 +898,19 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
             "fetched properties provenance is invalid"
         ) from err
     try:
-        raw = Path(path).read_bytes()
-    except OSError as err:
+        loaded = SafeIO.read_regular_file(
+            path, label="sealed Confirmation B properties",
+            expected_path=Audit.EVAL_PROPERTIES,
+        )
+        raw = loaded.raw
+    except SafeIO.SafeReadError as err:
         raise ConfirmationBAnalysisError("cannot read sealed properties") from err
-    properties_sha = hashlib.sha256(raw).hexdigest()
+    properties_sha = loaded.sha256
     if (
-        Path(path).resolve() != Audit.EVAL_PROPERTIES.resolve()
-        or properties_sha != fetch.get("properties_sha256")
+        properties_sha != fetch.get("properties_sha256")
     ):
         raise ConfirmationBAnalysisError("analysis input is not the sealed matrix")
     records = _decode_records(raw)
-    try:
-        readback = Path(path).read_bytes()
-    except OSError as err:
-        raise ConfirmationBAnalysisError(
-            "sealed properties changed while loading"
-        ) from err
-    if readback != raw:
-        raise ConfirmationBAnalysisError("sealed properties changed while loading")
     return records, properties_sha, fetch_sha
 
 
@@ -795,9 +955,13 @@ def run_twice(properties, output, repeat_output, receipt_path, receipt_pin):
     first_sha = _exclusive(paths[0], raw_one, "primary analysis output")
     second_sha = _exclusive(paths[1], raw_two, "repeat analysis output")
     try:
-        first_readback = paths[0].read_bytes()
-        second_readback = paths[1].read_bytes()
-    except OSError as err:
+        first_readback = SafeIO.read_regular_file(
+            paths[0], label="primary analysis output"
+        ).raw
+        second_readback = SafeIO.read_regular_file(
+            paths[1], label="repeat analysis output"
+        ).raw
+    except SafeIO.SafeReadError as err:
         raise ConfirmationBAnalysisError("cannot verify published analyses") from err
     if any((
         first_sha != second_sha,

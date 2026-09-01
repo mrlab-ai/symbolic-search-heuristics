@@ -6,28 +6,45 @@ canonical double-execution receipt for Confirmation A passes its complete gate
 and explicitly authorizes the guided study. The B freeze binds that receipt,
 its pin, both byte-identical A outputs, the sealed source-audit artifacts, the
 planner revision, every executed Python source, and the option matrix.
-The shared source chain is the outcome-blind, full campaign-v3 rerun. Campaign
-v1 failed for insufficient 26 GiB memory; campaign v2 failed for both
-translator timeouts and out-of-memory conditions at 256 GiB and 2,700 seconds.
-No successful v1/v2 shard contents or source-support outcomes informed v3.
-The identical launch/execution diagnostic records both failures, their
-internally consistent scheduler/log manifests, and the full-rerun amendment to
-512 GiB, a 7,200-second task timeout, and a 04:10:00 Slurm limit. Exactly zero
-v1 or v2 shards may be reused.
+The shared source chain is the outcome-blind, full campaign-v4 rerun. Its
+launch is pinned to producer commit
+`9fa1387455f947772b8b37e3b103f1ca84efb27b`, job `1865695`, launch-receipt
+SHA-256 `90ec55eb1d603cb7434885eeb99ceb2a0123ac02f4f9c02c885cab2635442921`,
+24-entry code-manifest SHA-256
+`d3b571aaffce9f58f09d15f118df57997773c522e3da74bcdcbfbc00299f0518`,
+Slurm-script SHA-256
+`8504f5b778d74a5120605947e710713532018e2007d276df8c580167b9ce1a8f`,
+and source-inventory SHA-256
+`bb9be49a4652ff7bedcadb04b4db35cad701a5b2a2a6d6347c15e0ad670e056e`.
+The pinned outcome-blind v3 infrastructure diagnostic
+`a340d2de01304702f6c101d2bb1592536ebc6dfedc1638c5ce1c0559e5ddcf57`
+authorizes a complete rerun without inspecting successful v3 shard or log
+contents or source-support outcomes.
 
-The v3 receipt is accepted only in its actual unrecovered shape: ordered rows
-0--819 must all be `COMPLETED` with exit `0:0`, all 820 resource-accounting
-rows must attest the exact submission and resources, and recovery is null. Its
-820 ordered union records must all come from original v3 output, have equal
-source/union hashes, and match the canonical original-output and union-tree
-manifests and digests. The consumer verifies the canonical launch intent,
-Slurm script, exact 14-entry code manifest, amendment protocol, frozen
-inventory, every listed live file, the exact submit command, and all bytes at
-the source repository commit. The B freeze additionally records and checks an
-18-entry `tracked_file_sha256` proof at its planner revision.
-The launch and execution receipts must also carry the same exact isolated
-execution-environment attestation (`--export=NONE`, controlled path, cleared
-Python inheritance, per-array bytecode cache, and pinned Python/tool hashes).
+Campaign v4 uses exactly 1,024 GiB per CPU, a 14,400-second source timeout, an
+08:20:00 Slurm limit, the `fat` partition, normal QoS, and all 820 unthrottled
+array elements. It is original-only: all 820 shards and all 1,640 candidates
+are rerun, `recovery` is null, and reuse counts for v1, v2, and v3 are zero.
+Each candidate is consumed from a read-only domain/problem snapshot inside the
+exact per-task temporary root and revalidated around both consumers. The
+execution receipt must preserve the launch identities of the regular,
+nonsymlink output and temporary roots, prove that the temporary root is empty,
+bind all 820 isolated task-environment records, and bind the exact 2,461-file
+original output tree: one inventory, 820 shard files, 820 environment-evidence
+files, and 820 Slurm logs with stderr merged into stdout. Detailed actual
+scheduler resource rows are mandatory.
+
+The source launch passes the exact in-memory Slurm bytes on standard input to
+hash-pinned `/usr/bin/sbatch` under a controlled `C` environment. Its command
+contains options only and no script path; hash-pinned `/usr/bin/sacct` must
+reproduce the exact `SubmitLine`, unique job, and complete array. The consumer
+verifies the canonical launch intent, Slurm script, exact 24-entry manifest,
+amendment protocol, inventory, every listed live file, and all bytes at the
+source repository commit. The B freeze records and checks the corresponding
+26-entry `tracked_file_sha256` proof (24 manifest entries, Slurm script, and
+manifest) at its planner revision. Neither B freezing nor launching is
+possible until both the canonical v4 attestation and execution receipt exist
+and validate completely.
 The exact attestation envelope is required, and the manifest-verified producer
 is replayed over all 1,640 source records; its gate and complete A/B split must
 be byte-identical to the sealed values. The producer revision must be an
@@ -35,11 +52,17 @@ ancestor of the planner revision. After planner caching and immediately before
 the exclusive freeze write, B repeats the clean-parent, source-chain,
 live/tracked byte, executed-source, and canonical Confirmation A authorization
 checks.
+All canonical protocol, authorization, launch, audit, and analysis inputs are
+lexically validated before filesystem I/O and are read and hashed from one
+`O_NOFOLLOW` descriptor, with regular-file and stable-identity checks before
+and after the read. Symlinks, directories, FIFOs, and identity-changing races
+fail closed. In particular, analysis accepts only the exact lexical sealed
+properties path, not a resolving or symlink alias.
 
 ## Cohort and matrix
 
-The cohort is the source audit's disjoint `guided_b` split. It targets 300
-tasks and may proceed with 200--300 tasks only. It must contain at least 30
+The cohort is the source audit's disjoint `guided_b` split. It must contain
+exactly 300 tasks and at least 30
 normalized benchmark families, at least 12 shadow-unrepresented families, and
 at least 50 tasks from at least 10 all-prior-unrepresented families. It is
 source-identity- and problem-hash-disjoint from Confirmation A. No outcome can
@@ -65,19 +88,53 @@ All PDB searches use a 100,000-state budget, gamer ordering off, dynamic
 reordering off, no shadow partition, no prune-only mode, and no batching. CEGAR
 pool generation uses seed 2011, infinite time, and at most 128 refinement
 calls. The cap-aware selector tests 0, 1, 2, 4, ..., 256, and exact values. The
-guided selector uses the sum of terminal incidence over the first 16 completed
-positive-cost blind layers of the cap-aware K=32 reference as its budget.
-Fewer than 16 completed probe layers is `SEARCH_UNSUPPORTED` (exit 34), with
-no fallback.
+guided selector uses the sum of terminal incidence over exactly the first 16
+completed blind layers of the cap-aware K=32 reference on a positive-cost task
+as its budget. The completed initial layer at g=0 is valid and counts toward
+the 16; "positive-cost" constrains operator costs, not the first layer's g
+value. Fewer than 16 completed probe layers is `SEARCH_UNSUPPORTED` (exit 34),
+with no fallback.
 
-There are `9N` cells for sealed cohort size `N`. Lab groups exactly three runs
-per array element, hence exactly `ceil(9N/3)=3N` unthrottled array elements.
+There are exactly 2,700 cells. They are created in a frozen task-major order:
+all nine cells of a task are contiguous, and the cap-aware K=32, guided, and
+matched-work cells form the final three-cell block for that task. Within each
+family, the execution order of these three arms cycles deterministically over
+all three rotations, so each arm occupies each position equally often up to
+one task. The complete run-ID mapping and its SHA-256 digest are frozen and
+checked against every generated `static-properties` file. Lab groups exactly
+three consecutive runs per array element, hence exactly 900 unthrottled array
+elements.
 The Slurm contract is `fat`, normal QoS, one CPU, 26 GiB per CPU, and 01:40:00
 per array element. Planner limits are 1800 seconds and 24,576 MiB. No array
 `%` cap, nice adjustment, requeue, selective outcome retry, or task deletion is
 permitted. Only scheduler interruptions in the frozen recoverable state set
-may be recovered, and every interrupted element must be recovered together in
-the next wave.
+may be recovered. Recovery archives every dynamic artifact and reruns all
+three cells of each interrupted element together, including cells that had
+already finished before the interruption; the run-order protocol and mapping
+digest are repeated in every recovery intent and receipt. This whole-triad
+rule also applies when scheduler accounting marks the element recoverable but
+all three cells appear complete; incomplete-cell intersection is not a
+precondition. Every dynamic name is first inventoried with `lstat`, and any
+symlink or nonregular entry fails before reading. Archived entries bind device,
+inode, mode, size, modification time, and SHA-256 and are installed without
+following or overwriting an archive target under recovery schema v2. The
+complete triad is rescanned
+immediately after archiving and again immediately before `sbatch`. The generated
+job refuses every preexisting dynamic name, including the selector trace, and
+creates both driver streams with exclusive no-follow descriptors. Namespace,
+redirection, and helper failures before a valid child outcome use dedicated
+infrastructure status 70; the blocked three-cell loop exits immediately and
+does not invoke a later arm. Once the run script has launched, its return code
+remains an ordinary recorded planner outcome: it is written to `driver.err`,
+the helper returns success, and subsequent arms retain the frozen outcome
+accounting. The primary launch
+and every recovery pin `/usr/bin/sbatch` and `/usr/bin/sacct` by SHA-256, use a
+controlled `C` environment, pass stable regular job bytes in memory on standard
+input, and use an options-only command with no job-file argument. Their journal
+must reproduce the exact command, unique job, and every intended array index.
+The sealed execution receipt includes detailed actual account, partition, QoS,
+CPU, memory, time-limit, state, exit-code, and job-name rows for every original
+and recovery array element.
 
 ## Selector trace gate
 
@@ -120,6 +177,15 @@ states, and lexicographically smaller pattern. The matched arm must select the
 recomputed reference. Logged feasible, retained, reference, or selected fields
 that disagree with this replay fail certification.
 
+The standalone cap-aware K=32 arm is independently parsed with the certified
+whole-trace cap-selector parser. Its complete normalized pool (pool index,
+source set, pattern, abstract-state count, and state-budget feasibility) must
+equal the pool reconstructed by both selector arms. Its selected pool index,
+source set, pattern, and value cap (with wire value -1 normalized to
+exact/null) must equal their logged reference identity on every complete
+selector pair. The primary plain reference is therefore certified by its
+realized endpoint and pool, not merely by its configuration string.
+
 The matched arm must select its logged reference. A task contributes to the
 matched-work mechanism subset only if the guided selected identity differs
 from that reference. Claims about the effect of the selection decision are
@@ -131,9 +197,14 @@ and nonnegative delta are retained as overhead measurements. The analysis
 revalidates them and reports per-task rows and separate arm summaries. Short
 probes require exact integer coverage zero and planner exit code 34 and have
 probe overhead but no selection overhead; exit 34 is forbidden for a complete
-trace. All overhead results are
-descriptive, excluded from structural trace identity, and do not affect either
-primary contrast or any gate.
+trace. The separately parsed overhead fields are descriptive and excluded
+from structural trace identity and gate definitions. The work itself remains
+part of each arm's total planner time and hence PAR2; the matched-work arm
+tests the selection decision after holding probe and preselection work fixed.
+
+The fetched Confirmation B properties file is itself a sealed input: it must be
+a stable regular file, never a symlink, and its exact bytes and SHA-256 must
+match the fetch receipt before analysis.
 
 ## Primary outcome and gate
 
@@ -169,11 +240,13 @@ deterministic CEGAR, and uncapped exact-width K=32 selection. These six
 comparisons are descriptive and never enter the complete primary gate, which
 remains solely the two contrasts against cap-aware K=32 and matched work.
 
-The matched-only mechanism claim is separately authorized only on tasks where
-the guided selected heuristic differs from the reference and only if the same
+The matched-only mechanism claim is separately authorized only if at least 50
+tasks from at least 10 normalized families remain after restricting to tasks
+where the guided selected heuristic differs from the reference, and only if
+the same
 nonlower-coverage, 0.02 macro-effect, positive bootstrap-lower-bound, and
-positive leave-one-family-out clauses pass on that conditional subset. If no
-selection differs, no mechanism claim is authorized.
+positive leave-one-family-out clauses pass on that conditional subset. A
+smaller subset is reported but cannot authorize the mechanism claim.
 
 ## Publication and recovery
 

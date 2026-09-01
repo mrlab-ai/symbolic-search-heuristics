@@ -9,12 +9,14 @@ import json
 import os
 import re
 import stat
+import subprocess
 from collections import Counter
 from pathlib import Path
 
 import analyze_pdb_terminal_incidence_shadow as OriginalAnalyzer
 import audit_pdb_terminal_incidence_shadow as Legacy
 import exp_pdb_terminal_incidence_confirmation_a as Runner
+import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_a_protocol as P
 
 
@@ -58,7 +60,7 @@ EVAL_PROPERTIES = Path(str(EXPERIMENT_PATH) + "-eval") / "properties"
 RECOVERY_ROOT = ARTIFACT_DIR / "recovery"
 RECOVERY_SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-a-recovery/v1"
+    "pdb-terminal-incidence-confirmation-a-recovery/v2"
 )
 INFRASTRUCTURE_STATES = frozenset({
     "BOOT_FAIL", "NODE_FAIL", "PREEMPTED", "REVOKED",
@@ -68,6 +70,7 @@ ACTIVE_STATES = frozenset({
     "RESIZING", "SUSPENDED",
 })
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+RECOVERY_DYNAMIC_NAMES = frozenset(Runner.DYNAMIC_OUTPUT_NAMES)
 
 
 def _translate_error(err: Exception) -> ExecutionAuditError:
@@ -80,6 +83,7 @@ def _configure_legacy() -> None:
     except Runner.ConfirmationLaunchError as err:
         raise _translate_error(err) from err
     Legacy.P = P
+    Legacy.RECOVERY_DYNAMIC_NAMES = set(RECOVERY_DYNAMIC_NAMES)
     Legacy.EXPERIMENT_PATH = EXPERIMENT_PATH
     Legacy.GRID_DIR = GRID_DIR
     Legacy.EXPECTED_JOB_NAME = EXPECTED_JOB_NAME
@@ -113,15 +117,26 @@ def _configure_legacy() -> None:
     Legacy.RECOVERY_RECEIPT_SCHEMA = RECOVERY_SCHEMA + "/launch"
     Legacy.RECOVERY_INTENT_SCHEMA = RECOVERY_SCHEMA + "/launch/intent"
     Legacy.load_launch_receipt = _legacy_load_launch_receipt
+    Legacy.load_execution_receipt = _legacy_load_execution_receipt
     Legacy._validate_live_sources = _legacy_validate_live_sources
     Legacy.recovery_executions = _legacy_recovery_executions
     Legacy.make_status = _legacy_make_status
+    Legacy.cell_completeness = _legacy_cell_completeness
 
 
 def _legacy_load_launch_receipt() -> dict:
     try:
         return Runner.load_launch_receipt(verify_live=True)[1]
     except Runner.ConfirmationLaunchError as err:
+        raise Legacy.ExecutionAuditError(str(err)) from err
+
+
+def _legacy_load_execution_receipt(
+    *, verify_live: bool = True
+) -> tuple[str, dict]:
+    try:
+        return load_execution_receipt(verify_live=verify_live)
+    except ExecutionAuditError as err:
         raise Legacy.ExecutionAuditError(str(err)) from err
 
 
@@ -160,19 +175,12 @@ def _legacy_validate_live_sources(source_hashes: dict) -> None:
 
 def _canonical_load(path: Path, label: str) -> tuple[bytes, dict]:
     try:
-        info = path.lstat()
-        raw = path.read_bytes()
-        value = json.loads(raw.decode("ascii"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
-        raise ExecutionAuditError("cannot load {}".format(label)) from err
-    if (
-        path.is_symlink()
-        or not stat.S_ISREG(info.st_mode)
-        or not isinstance(value, dict)
-        or raw != P.canonical_json_line(value)
-    ):
-        raise ExecutionAuditError("{} is not canonical".format(label))
-    return raw, value
+        loaded, value = SafeIO.read_canonical_json(
+            Path(path), label=label, canonical_json_line=P.canonical_json_line
+        )
+    except SafeIO.SafeReadError as err:
+        raise ExecutionAuditError(str(err)) from err
+    return loaded.raw, value
 
 
 def _write_pin(path: Path, digest: str, label: str) -> None:
@@ -195,11 +203,114 @@ def _task_cells(array_task: int) -> range:
 
 
 def scheduler_rows(job_id: str, expected_tasks=None) -> list[dict]:
-    _configure_legacy()
+    if not isinstance(job_id, str) or not job_id.isdigit():
+        raise ExecutionAuditError("Slurm job id is invalid")
+    if expected_tasks is None:
+        expected_tasks = set(range(1, EXPECTED_ARRAY_TASKS + 1))
+    else:
+        expected_tasks = set(expected_tasks)
+    if (
+        not expected_tasks
+        or any(
+            type(task) is not int or not 1 <= task <= EXPECTED_ARRAY_TASKS
+            for task in expected_tasks
+        )
+    ):
+        raise ExecutionAuditError("expected Slurm task set is invalid")
     try:
-        return Legacy.scheduler_rows(job_id, expected_tasks)
-    except Legacy.ExecutionAuditError as err:
-        raise _translate_error(err) from err
+        Runner._executable_identity(
+            Runner.SACCT_COMMAND, Runner.SACCT_COMMAND_SHA256, "sacct"
+        )
+        output = subprocess.check_output(
+            [
+                str(Runner.SACCT_COMMAND), "-j", job_id, "-X", "-n", "-P",
+                "-o", "JobID,JobIDRaw,State,ExitCode,NodeList,ElapsedRaw,Partition",
+            ],
+            env=dict(Runner.SUBMISSION_ENVIRONMENT), text=True,
+        )
+    except (OSError, subprocess.CalledProcessError, Runner.ConfirmationLaunchError) as err:
+        raise ExecutionAuditError("cannot query pinned Slurm accounting") from err
+    rows = {}
+    prefix = job_id + "_"
+    for line in output.splitlines():
+        fields = line.split("|")
+        if len(fields) != 7:
+            raise ExecutionAuditError("unexpected sacct row shape")
+        array_id, raw_id, state, exit_code, node, elapsed, partition = fields
+        if not array_id.startswith(prefix) or not array_id[len(prefix):].isdigit():
+            continue
+        task = int(array_id[len(prefix):])
+        state = state.split("+", 1)[0].split()[0]
+        if task in rows or task not in expected_tasks or partition != PARTITION:
+            raise ExecutionAuditError("Slurm accounting task identity changed")
+        rows[task] = {
+            "array_task": task,
+            "job_id_raw": raw_id,
+            "state": state,
+            "exit_code": exit_code,
+            "node": node,
+            "elapsed_raw": elapsed,
+            "partition": partition,
+        }
+    if set(rows) != expected_tasks:
+        raise ExecutionAuditError("Slurm accounting task set is incomplete")
+    return [rows[task] for task in sorted(rows)]
+
+
+def scheduler_contract_rows(
+    job_id: str, job_name: str, scheduler: list[dict], expected_tasks=None
+) -> list[dict]:
+    if expected_tasks is None:
+        expected_tasks = set(range(1, EXPECTED_ARRAY_TASKS + 1))
+    else:
+        expected_tasks = set(expected_tasks)
+    try:
+        Runner._executable_identity(
+            Runner.SACCT_COMMAND, Runner.SACCT_COMMAND_SHA256, "sacct"
+        )
+        output = subprocess.check_output(
+            [
+                str(Runner.SACCT_COMMAND), "-j", job_id, "-X", "-n", "-P",
+                "--format=JobID,Account,Partition,QOS,ReqCPUS,ReqMem,"
+                "Timelimit,State,ExitCode,JobName",
+            ],
+            env=dict(Runner.SUBMISSION_ENVIRONMENT), text=True,
+        )
+    except (OSError, subprocess.CalledProcessError, Runner.ConfirmationLaunchError) as err:
+        raise ExecutionAuditError("cannot query actual resource accounting") from err
+    scheduler_by_task = {row["array_task"]: row for row in scheduler}
+    rows = {}
+    prefix = job_id + "_"
+    for line in output.splitlines():
+        fields = line.split("|")
+        if len(fields) != 10:
+            raise ExecutionAuditError("actual resource row shape changed")
+        (
+            array_id, account, partition, qos, req_cpus, req_mem,
+            time_limit, state, exit_code, actual_name,
+        ) = fields
+        if not array_id.startswith(prefix) or not array_id[len(prefix):].isdigit():
+            continue
+        task = int(array_id[len(prefix):])
+        state = state.split("+", 1)[0].split()[0]
+        if (
+            task in rows or task not in expected_tasks
+            or account != P.ACCOUNT or partition != PARTITION or qos != QOS
+            or req_cpus != "1" or req_mem != SCHEDULER_MEMORY
+            or time_limit != SCHEDULER_TIME_LIMIT or actual_name != job_name
+            or scheduler_by_task.get(task, {}).get("state") != state
+            or scheduler_by_task.get(task, {}).get("exit_code") != exit_code
+        ):
+            raise ExecutionAuditError("actual resource contract changed")
+        rows[task] = {
+            "array_task": task, "account": account, "partition": partition,
+            "qos": qos, "req_cpus": 1, "req_mem": req_mem,
+            "time_limit": time_limit, "state": state,
+            "exit_code": exit_code, "job_name": actual_name,
+        }
+    if set(rows) != expected_tasks:
+        raise ExecutionAuditError("actual resource accounting is incomplete")
+    return [rows[task] for task in sorted(rows)]
 
 
 def _row_class(row: dict) -> str:
@@ -235,13 +346,17 @@ def _validate_archive(wave_dir: Path, plan: list[dict], cells: list[int]) -> Non
     ):
         raise ExecutionAuditError("recovery archive plan is malformed")
     seen = set()
+    expected_targets = set()
     for item in plan:
         if not isinstance(item, dict):
             raise ExecutionAuditError("recovery archive item is malformed")
         run_id = item.get("run_id")
         name = item.get("name")
         if (
-            set(item) != {"run_id", "name", "source", "target", "size", "sha256"}
+            set(item) != {
+                "run_id", "name", "source", "target", "size", "sha256",
+                "identity",
+            }
             or type(run_id) is not int
             or not isinstance(name, str)
         ):
@@ -256,24 +371,69 @@ def _validate_archive(wave_dir: Path, plan: list[dict], cells: list[int]) -> Non
         )
         if any((
             run_id not in cells,
-            name not in Legacy.RECOVERY_DYNAMIC_NAMES,
+            name not in RECOVERY_DYNAMIC_NAMES,
             item.get("source") != expected_source.as_posix(),
             item.get("target") != expected_target.as_posix(),
             not isinstance(item.get("size"), int),
             item.get("size", -1) < 0,
             SHA256_RE.fullmatch(item.get("sha256", "")) is None,
+            not isinstance(item.get("identity"), dict),
+            set(item.get("identity", {})) != {
+                "device", "inode", "mode", "size", "mtime_ns",
+            },
+            any(
+                type(item.get("identity", {}).get(field)) is not int
+                or item["identity"][field] < 0
+                for field in ("device", "inode", "mode", "size", "mtime_ns")
+            ) if isinstance(item.get("identity"), dict) else True,
+            not stat.S_ISREG(item.get("identity", {}).get("mode", 0)),
+            item.get("identity", {}).get("size") != item.get("size"),
             (run_id, name) in seen,
         )):
             raise ExecutionAuditError("recovery archive item changed")
         seen.add((run_id, name))
+        expected_targets.add(expected_target.as_posix())
         target = wave_dir / expected_target
-        if (
-            target.is_symlink()
-            or not target.is_file()
-            or target.stat().st_size != item["size"]
-            or P.sha256_file(target) != item["sha256"]
-        ):
+        try:
+            loaded = SafeIO.read_regular_file(
+                target, label="recovery archive target", root=wave_dir
+            )
+        except SafeIO.SafeReadError as err:
+            raise ExecutionAuditError("recovery archive bytes changed") from err
+        if loaded.sha256 != item["sha256"] or loaded.identity != item["identity"]:
             raise ExecutionAuditError("recovery archive bytes changed")
+    archive_root = wave_dir / "interrupted-cell-files"
+    try:
+        root_info = archive_root.lstat()
+    except FileNotFoundError:
+        if expected_targets:
+            raise ExecutionAuditError("recovery archive tree is incomplete")
+        return
+    except OSError as err:
+        raise ExecutionAuditError("cannot inspect recovery archive tree") from err
+    if not stat.S_ISDIR(root_info.st_mode):
+        raise ExecutionAuditError("recovery archive root is invalid")
+    actual_targets = set()
+    for directory, dirnames, filenames in os.walk(archive_root, followlinks=False):
+        parent = Path(directory)
+        for name in dirnames:
+            try:
+                info = (parent / name).lstat()
+            except OSError as err:
+                raise ExecutionAuditError("recovery archive tree changed") from err
+            if not stat.S_ISDIR(info.st_mode):
+                raise ExecutionAuditError("recovery archive directory is invalid")
+        for name in filenames:
+            path = parent / name
+            try:
+                info = path.lstat()
+            except OSError as err:
+                raise ExecutionAuditError("recovery archive tree changed") from err
+            if not stat.S_ISREG(info.st_mode):
+                raise ExecutionAuditError("recovery archive target is not regular")
+            actual_targets.add(path.relative_to(wave_dir).as_posix())
+    if actual_targets != expected_targets:
+        raise ExecutionAuditError("recovery archive tree changed")
 
 
 def _output_tree(wave_dir: Path, job_id: str, tasks: list[int]) -> dict:
@@ -310,7 +470,7 @@ def _expected_recovery_command(
     name = "pdb-incidence-confirm-a-recovery-{:04d}".format(wave)
     comment = "pdb-incidence-confirm-a-recovery/{}/{}".format(wave, token)
     return ([
-        "sbatch", "--parsable", "--export=NONE", "--no-requeue",
+        str(Runner.SBATCH_COMMAND), "--parsable", "--export=NONE", "--no-requeue",
         "--array={}".format(array_spec),
         "--job-name={}".format(name),
         "--comment={}".format(comment),
@@ -321,9 +481,10 @@ def _expected_recovery_command(
             (wave_dir / "slurm-%A_%a.err").resolve()
         ),
         "--partition=fat", "--qos=normal", "--time=01:40:00",
-        "--mem-per-cpu=26G", "--cpus-per-task=1",
+        "--mem-per-cpu=26G", "--cpus-per-task=1", "--nodes=1", "--ntasks=1",
         "--account={}".format(P.ACCOUNT),
-        str(Runner.JOB_FILE.resolve()),
+        "--chdir={}".format(Runner.GRID_DIR.resolve()),
+        "--open-mode=append", "--mail-type=NONE", "--mail-user=",
     ], comment)
 
 
@@ -331,17 +492,25 @@ def recovery_executions(
     launch: dict, original_rows: list[dict] | None = None
 ) -> list[dict]:
     if original_rows is None:
-        original_rows = Legacy.scheduler_rows(launch["job_id"])
+        original_rows = scheduler_rows(launch["job_id"])
     latest = {row["array_task"]: row for row in original_rows}
-    if not RECOVERY_ROOT.exists():
+    try:
+        recovery_info = RECOVERY_ROOT.lstat()
+    except FileNotFoundError:
         return []
-    if RECOVERY_ROOT.is_symlink() or not RECOVERY_ROOT.is_dir():
+    except OSError as err:
+        raise ExecutionAuditError("cannot inspect recovery root") from err
+    if not stat.S_ISDIR(recovery_info.st_mode):
         raise ExecutionAuditError("recovery root is invalid")
     executions = []
     expected_wave = 1
     for wave_dir in sorted(RECOVERY_ROOT.iterdir()):
         wave = _wave_number(wave_dir)
-        if wave != expected_wave or wave_dir.is_symlink() or not wave_dir.is_dir():
+        try:
+            wave_info = wave_dir.lstat()
+        except OSError as err:
+            raise ExecutionAuditError("cannot inspect recovery wave") from err
+        if wave != expected_wave or not stat.S_ISDIR(wave_info.st_mode):
             raise ExecutionAuditError("recovery wave sequence changed")
         expected_wave += 1
         intent_path = wave_dir / "launch-intent.json"
@@ -379,7 +548,6 @@ def recovery_executions(
             raise ExecutionAuditError("recovery selectively omitted interrupted tasks")
         expected_cells = sorted(
             cell for task in tasks for cell in _task_cells(task)
-            if cell in cells
         )
         if cells != expected_cells:
             raise ExecutionAuditError("recovery cell mapping changed")
@@ -405,6 +573,16 @@ def recovery_executions(
             "cells": EXPECTED_CELLS,
             "recoverable_cells": cells,
             "submission_export": "NONE",
+            "slurm_submission_mode": "stdin",
+            "slurm_stdin_sha256": launch["slurm_stdin_sha256"],
+            "slurm_stdin_bytes": launch["slurm_stdin_bytes"],
+            "slurm_path_argument": False,
+            "submission_journal_contract": "exact sbatch options-only SubmitLine",
+            "sbatch_executable": str(Runner.SBATCH_COMMAND),
+            "sbatch_executable_sha256": Runner.SBATCH_COMMAND_SHA256,
+            "sacct_executable": str(Runner.SACCT_COMMAND),
+            "sacct_executable_sha256": Runner.SACCT_COMMAND_SHA256,
+            "submission_environment": dict(Runner.SUBMISSION_ENVIRONMENT),
             "nice_adjustment": None,
             "requeue": False,
             "submission_token": receipt.get("submission_token"),
@@ -435,7 +613,12 @@ def recovery_executions(
         ):
             raise ExecutionAuditError("recovery launch provenance changed")
         _validate_archive(wave_dir, intent["archive_plan"], cells)
-        rows = Legacy.scheduler_rows(receipt["job_id"], set(tasks))
+        rows = scheduler_rows(receipt["job_id"], set(tasks))
+        contract_rows = scheduler_contract_rows(
+            receipt["job_id"],
+            "pdb-incidence-confirm-a-recovery-{:04d}".format(wave),
+            rows, set(tasks),
+        )
         output_tree = _output_tree(wave_dir, receipt["job_id"], tasks)
         if all(_row_class(row) != "active" for row in rows) and not output_tree["complete"]:
             raise ExecutionAuditError("terminal recovery lacks complete Slurm logs")
@@ -447,6 +630,7 @@ def recovery_executions(
             "receipt_sha256": hashlib.sha256(receipt_raw).hexdigest(),
             "receipt": receipt,
             "scheduler_rows": rows,
+            "scheduler_contract_rows": contract_rows,
             "output_tree": output_tree,
         })
         for row in rows:
@@ -457,6 +641,55 @@ def recovery_executions(
 def _legacy_recovery_executions(launch: dict) -> list[dict]:
     try:
         return recovery_executions(launch)
+    except ExecutionAuditError as err:
+        raise Legacy.ExecutionAuditError(str(err)) from err
+
+
+def _run_directory(run_id: int) -> Path:
+    lower = ((run_id - 1) // 100) * 100 + 1
+    return (
+        EXPERIMENT_PATH /
+        "runs-{:05d}-{:05d}".format(lower, lower + 99) /
+        "{:05d}".format(run_id)
+    )
+
+
+def cell_completeness() -> tuple[dict[str, int], list[int]]:
+    counts = Counter()
+    incomplete = []
+    for run_id in range(1, EXPECTED_CELLS + 1):
+        path = _run_directory(run_id) / "driver.log"
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            state = "missing"
+        except OSError as err:
+            raise ExecutionAuditError("cannot inspect driver completeness") from err
+        else:
+            try:
+                loaded = SafeIO.read_regular_file(
+                    path, label="driver completeness marker",
+                    root=EXPERIMENT_PATH,
+                )
+                lines = loaded.raw.decode("utf-8").splitlines()
+            except (SafeIO.SafeReadError, UnicodeDecodeError) as err:
+                raise ExecutionAuditError(
+                    "driver completeness marker is not a stable regular file"
+                ) from err
+            state = (
+                "complete"
+                if lines and Legacy.DRIVER_TERMINAL_RE.fullmatch(lines[-1])
+                else "interrupted"
+            )
+        counts[state] += 1
+        if state != "complete":
+            incomplete.append(run_id)
+    return dict(counts), incomplete
+
+
+def _legacy_cell_completeness():
+    try:
+        return cell_completeness()
     except ExecutionAuditError as err:
         raise Legacy.ExecutionAuditError(str(err)) from err
 
@@ -474,7 +707,7 @@ def make_status() -> tuple[dict, list[dict], list[dict], dict]:
         property_files != EXPECTED_CELLS,
     )):
         raise ExecutionAuditError("immutable generated inputs changed")
-    rows = Legacy.scheduler_rows(launch["job_id"])
+    rows = scheduler_rows(launch["job_id"])
     recoveries = recovery_executions(launch, rows)
     latest = {row["array_task"]: row for row in rows}
     for execution in recoveries:
@@ -482,8 +715,8 @@ def make_status() -> tuple[dict, list[dict], list[dict], dict]:
             latest[row["array_task"]] = row
     classes = {task: _row_class(row) for task, row in latest.items()}
     try:
-        cell_counts, incomplete = Legacy.cell_completeness()
-    except Legacy.ExecutionAuditError as err:
+        cell_counts, incomplete = cell_completeness()
+    except ExecutionAuditError as err:
         raise _translate_error(err) from err
     incomplete_set = set(incomplete)
     for task, row_class in classes.items():
@@ -519,16 +752,16 @@ def _legacy_make_status():
         raise Legacy.ExecutionAuditError(str(err)) from err
 
 
-def _pin_execution() -> str:
-    if EXECUTION_RECEIPT_PIN.exists() or EXECUTION_RECEIPT_PIN.is_symlink():
-        raise ExecutionAuditError("execution receipt pin already exists")
-    raw, receipt = _canonical_load(EXECUTION_RECEIPT, "execution receipt")
+def _live_execution_value() -> dict:
     launch_sha, launch = Runner.load_launch_receipt(verify_live=True)
     launch_live, rows, recoveries, status = make_status()
     if launch_live != launch:
         raise ExecutionAuditError("launch changed while pinning execution")
+    contract_rows = scheduler_contract_rows(
+        launch["job_id"], launch["job_name"], rows
+    )
     dynamic_hash, dynamic_files = Legacy.dynamic_tree_digest()
-    expected = {
+    value = {
         "schema": EXECUTION_SCHEMA,
         "launch_receipt_sha256": launch_sha,
         "job_id": launch["job_id"],
@@ -537,15 +770,21 @@ def _pin_execution() -> str:
         "scheduler_state_counts": status["scheduler_state_counts"],
         "cell_state_counts": status["cell_state_counts"],
         "scheduler_rows": rows,
+        "scheduler_contract_rows": contract_rows,
         "recovery_executions": recoveries,
         "dynamic_cell_tree_sha256": dynamic_hash,
         "dynamic_cell_files": dynamic_files,
     }
-    if (
-        receipt != expected
-        or not status["scheduler_all_completed"]
-        or status["incomplete_cells"]
-    ):
+    if not status["scheduler_all_completed"] or status["incomplete_cells"]:
+        raise ExecutionAuditError("execution receipt does not seal a complete matrix")
+    return value
+
+
+def _pin_execution() -> str:
+    if EXECUTION_RECEIPT_PIN.exists() or EXECUTION_RECEIPT_PIN.is_symlink():
+        raise ExecutionAuditError("execution receipt pin already exists")
+    raw, receipt = _canonical_load(EXECUTION_RECEIPT, "execution receipt")
+    if receipt != _live_execution_value():
         raise ExecutionAuditError("execution receipt does not seal a complete matrix")
     digest = hashlib.sha256(raw).hexdigest()
     _write_pin(EXECUTION_RECEIPT_PIN, digest, "execution receipt")
@@ -555,28 +794,45 @@ def _pin_execution() -> str:
 def seal_execution() -> str:
     _configure_legacy()
     if not EXECUTION_RECEIPT.exists():
-        try:
-            Legacy.main(["--seal"])
-        except Legacy.ExecutionAuditError as err:
-            raise _translate_error(err) from err
+        Runner._exclusive_json(
+            EXECUTION_RECEIPT, _live_execution_value(), "execution receipt"
+        )
     return _pin_execution()
 
 
 def load_execution_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
     _configure_legacy()
     try:
-        digest, receipt = Legacy.load_execution_receipt(verify_live=verify_live)
-    except Legacy.ExecutionAuditError as err:
-        raise _translate_error(err) from err
-    if verify_live:
-        _, rows, recoveries, status = make_status()
-        if (
-            receipt["scheduler_rows"] != rows
-            or receipt["recovery_executions"] != recoveries
-            or not status["scheduler_all_completed"]
-            or status["incomplete_cells"]
-        ):
-            raise ExecutionAuditError("sealed scheduler/recovery state changed")
+        raw, receipt = _canonical_load(EXECUTION_RECEIPT, "execution receipt")
+        pin = SafeIO.read_regular_file(
+            EXECUTION_RECEIPT_PIN, label="execution receipt pin"
+        ).raw
+    except (OSError, SafeIO.SafeReadError) as err:
+        raise ExecutionAuditError("execution receipt is not pinned") from err
+    digest = hashlib.sha256(raw).hexdigest()
+    launch_sha, launch = Runner.load_launch_receipt(verify_live=verify_live)
+    expected_keys = {
+        "schema", "launch_receipt_sha256", "job_id", "array_throttle",
+        "partition", "scheduler_state_counts", "cell_state_counts",
+        "scheduler_rows", "scheduler_contract_rows", "recovery_executions",
+        "dynamic_cell_tree_sha256", "dynamic_cell_files",
+    }
+    if (
+        pin != (digest + "\n").encode("ascii")
+        or set(receipt) != expected_keys
+        or receipt.get("schema") != EXECUTION_SCHEMA
+        or receipt.get("launch_receipt_sha256") != launch_sha
+        or receipt.get("job_id") != launch["job_id"]
+        or not P._same_exact(receipt.get("array_throttle"), 0)
+        or receipt.get("partition") != PARTITION
+        or receipt.get("cell_state_counts") != {"complete": EXPECTED_CELLS}
+        or SHA256_RE.fullmatch(receipt.get("dynamic_cell_tree_sha256", "")) is None
+        or type(receipt.get("dynamic_cell_files")) is not int
+        or receipt["dynamic_cell_files"] < EXPECTED_CELLS
+    ):
+        raise ExecutionAuditError("execution receipt semantics changed")
+    if verify_live and receipt != _live_execution_value():
+        raise ExecutionAuditError("sealed scheduler/recovery state changed")
     return digest, receipt
 
 
