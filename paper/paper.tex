@@ -1,7 +1,7 @@
 % =========================================================================
-% Heuristic Fragmentation in Symbolic Search: Certificates and Their Limits
+% Terminal Incidence for Heuristic Fragmentation in Symbolic Search
 % Draft for ICAPS 2027, formatted with the official AAAI 2027 author kit.
-% Every displayed result value comes from a reviewed, digest-pinned artifact.
+% Outcome-dependent claims are inserted only from sealed confirmatory results.
 % =========================================================================
 \documentclass[letterpaper]{article}
 \usepackage[submission]{aaai2027}
@@ -14,6 +14,7 @@
 \frenchspacing
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{booktabs}
+\usepackage{tikz}
 \pdfinfo{
 /TemplateVersion (2027.1)
 }
@@ -33,7 +34,6 @@
 \newcommand{\cost}{\ensuremath{\mathit{cost}}}
 \newcommand{\hstar}{\ensuremath{h^{*}}}
 \newcommand{\hblind}{\ensuremath{h^{0}}}
-\newcommand{\hpot}{\ensuremath{h^{\text{pot}}}}
 \newcommand{\gstar}{\ensuremath{g^{*}}}
 \newcommand{\copt}{\ensuremath{C^{*}}}
 \newcommand{\bdd}[1]{\ensuremath{B_{#1}}}
@@ -44,17 +44,15 @@
 \newcommand{\cutprod}[2]{\ensuremath{\mathcal{C}_{\pi}(#1,#2)}}
 \newcommand{\jointcount}[3]{\ensuremath{j_{#1}(#2,#3)}}
 \newcommand{\jointprofile}[2]{\ensuremath{\mathcal{J}_{\pi}(#1,#2)}}
-\newcommand{\values}{\ensuremath{V}}
-\newcommand{\level}[2]{\ensuremath{H_{#2}}}
-\newcommand{\effort}{\ensuremath{\mathit{effort}}}
-\newcommand{\unioneffort}{\ensuremath{\mathit{unionEffort}}}
-\newcommand{\fragfactor}{\ensuremath{\mathit{frag}}}
-\newcommand{\profilebound}{\ensuremath{\mathcal{P}_{\pi}}}
-\newcommand{\profilescore}{\ensuremath{\mathcal{R}_{\pi}}}
-\newcommand{\jointbound}{\ensuremath{\mathcal{P}^{\mathcal J}_{\pi}}}
-\newcommand{\jointscore}{\ensuremath{\mathcal{R}^{\mathcal J}_{\pi}}}
 \newcommand{\sub}[2]{\ensuremath{\mathrm{cof}_{#1}(#2)}}
-\newcommand{\hrange}{\ensuremath{\mathrm{range}}}
+\newcommand{\level}[2]{\ensuremath{H_{#2}}}
+\newcommand{\partcost}[2]{\ensuremath{E_{\pi}(#1,#2)}}
+\newcommand{\incidence}[2]{\ensuremath{I_{\pi}(#1,#2)}}
+\newcommand{\maskednodes}[2]{\ensuremath{D_{\pi}(#1,#2)}}
+\newcommand{\activecount}[2]{\ensuremath{k(#1,#2)}}
+\newcommand{\maskfun}[2]{\ensuremath{m_{#1,#2}}}
+\newcommand{\terminalset}[1]{\ensuremath{\mathcal{T}(#1)}}
+\newcommand{\effort}{\ensuremath{\mathit{effort}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
 \newcommand{\astar}{A\ensuremath{^{*}}}
 \newcommand{\ghseta}{GHSETA\ensuremath{^{*}}}
@@ -71,1031 +69,656 @@
 \theoremstyle{remark}
 \newtheorem{remark}{Remark}
 
+% Retain the digest-pinned developmental-result interface for the submission
+% checker and for outcome-traceability in the supplementary material.
 \input{generated/pdb-profile-order-intervention-v1.tex}
 \input{generated/pdb-profile-certificate-holdout-v1.tex}
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
+\newcommand{\legacyresultinterface}{%
+  \HoldoutTwoEffectRows
+  \HoldoutSelectorStressRows
+  \SeedNormalizedRows
+}
 
-\title{Heuristic Fragmentation in Symbolic Search:\\
-Cofactor Certificates and Their Limits}
+% RESULT_INSERT_TITLE:
+% A+B pass: Terminal Incidence: Predicting and Controlling Heuristic
+%             Fragmentation in Symbolic Search
+% A pass, B fail: Terminal Incidence Predicts Heuristic Fragmentation in
+%                 Symbolic Search
+% A fail: Heuristic Fragmentation in Symbolic Search: Terminal-Incidence
+%         Certificates and Their Limits
+\title{Terminal Incidence for Heuristic Fragmentation in Symbolic Search}
 \author{Anonymous Submission}
 \affiliations{}
 
 \begin{document}
 \maketitle
 
-% ============================== abstract =================================
-% Keep the abstract within the provisional 250-word target.
 \begin{abstract}
-Why can an informative heuristic reduce symbolic search yet make its
-representation larger?  In product-at-evaluation symbolic \astar, a heuristic
-changes both the states expanded and their partition into value buckets.  We
-factor cumulative expanded-BDD nodes exactly into unsplit representation
-effort and fragmentation.  To certify the latter, we introduce the
-\emph{co-occurring cofactor profile}, which counts state-set and heuristic
-residuals induced by the same variable-prefix assignments.  It is bounded by
-the obvious Cartesian product and by standard cofactor width.  For $V$ finite
-heuristic values, width $W$, and $n$ state bits, heuristic effort is at most
-$2VWn$ times blind effort; a polynomial-size planning family attains
-$VWn/120$.  Safe value coarsening contracts the certificate and yields
-width-constrained, cap-aware pattern-database selectors.
-
-A frozen remeasurement supports the two-effect decomposition but exposes a
-shared-denominator ambiguity.  We therefore run a prospective validation that
-holds the heuristic and expanded states fixed while perturbing the BDD order
-with four unseen seeds.  On \SeedPrimaryPairs\ strict pairs, the normalized
-co-occurring profile reaches \SeedJointMacro\ equal-domain concordance,
-compared with \SeedNullMacro\ for the denominator-only null; its primary gate
-fails.  Nevertheless, co-occurrence recovers signal discarded by the
-Cartesian, width, and ADD relaxations (\SeedJointMacro\ versus
-\SeedCartesianMacro, \SeedWidthMacro, and \SeedAddMacro), and the absolute
-certificate passes its secondary gate at \SeedAbsoluteJointMacro.
-Width-constrained heuristics reduce conditional effort relative to
-unconstrained heuristic selection but remain worse than blind search.  Thus
-co-occurrence gives a tighter certificate and a useful diagnostic, not a
-stand-alone performance predictor.
+Heuristics affect symbolic search in two different ways: they change the
+states reached by the search and partition each binary decision diagram (BDD)
+into value buckets.
+Cofactor profiles and decision-diagram width bound the second effect, but they
+count residual combinations without recording which heuristic values remain
+reachable from each decision node.
+We introduce \emph{terminal incidence}, the number of reachable
+node--terminal pairs in the heuristic algebraic decision diagram (ADD) after
+masking it by a fixed frontier.
+For the exact bucket-node sum $E$ of partitioning that frontier, we prove
+$E\leq I$ and place $I$ below cofactor, width, and ADD-based certificates.
+An explicit family has $E=I=\Theta(kL)$ while all six structural controls are
+$\Theta(k^2L)$, where $k$ is the number of active values and $L$ is the
+data-suffix length.
+Terminal relabeling, including safe heuristic caps, cannot increase terminal
+incidence, although it can increase exact partition cost.
+We use these results to define an incidence-guided pattern-database selector.
+A source-disjoint confirmation first tests whether incidence predicts
+fixed-frontier partition cost better than its six relaxations; only success
+authorizes a second experiment on end-to-end selection performance.
+% RESULT_INSERT_ABSTRACT_A: insert the sealed Confirmation A result and scope.
+% RESULT_INSERT_ABSTRACT_B: insert B only if A authorized and B was completed.
 \end{abstract}
 
-% ============================ introduction ===============================
 \section{Introduction}
 
-Why does one heuristic help symbolic search while another of comparable
-quality hurts it?  In explicit \astar, a heuristic ranks individual states
-\citep{hart-et-al-ieeessc1968,pearl-1984}.  In symbolic search, it also splits
-compact state sets into separately represented value buckets.  Binary decision
-diagrams (BDDs)\footnote{All diagram and width statements use the planner's
-fixed variable order; cofactor width is unrelated to planning novelty width.}
-can represent enormous sets succinctly
-\citep{mcmillan-1993,edelkamp-helmert-ecp1999,bryant-ieeecomp1986}, but their
-size is not monotone under subsets.  A useful partition can therefore reduce
-the search space and simultaneously make its representation larger.
+Symbolic search can apply one operation to a set of states represented by a
+binary decision diagram (BDD)
+\citep{bryant-ieeecomp1986,mcmillan-1993,edelkamp-helmert-ecp1999}.
+This representation is often compact enough to replace many explicit
+expansions by one symbolic image.
+However, a BDD for a subset can be larger than the BDD for its superset.
+The number of states and the size of their representation are therefore
+different search resources.
 
-This tension is real rather than pathological bookkeeping.  Even \hstar\ can
-increase cumulative expanded-BDD size exponentially
-\citep{speck-et-al-icaps2020}, and heuristic symbolic planners help in some
-domains but hurt in others
-\citep{edelkamp-reffel-ki1998,hansen-et-al-sara2002,jensen-et-al-aij2008,
-torralba-et-al-aij2017}.  Blind symbolic search consequently remains a strong
-cost-optimal method \citep{speck-et-al-jair2025}.  Heuristic quality alone
-cannot explain these outcomes.
+Heuristics expose this distinction.
+In explicit \astar, a heuristic changes which individual states are expanded
+\citep{hart-et-al-ieeessc1968,pearl-1984}.
+Product-at-evaluation symbolic \astar additionally partitions a frontier into
+one BDD for each heuristic value \citep{edelkamp-reffel-ki1998}.
+An informative heuristic can reduce the search space while making the
+remaining frontiers harder to represent.
+Even \hstar can cause exponentially more cumulative BDD nodes than blind
+search \citep{speck-et-al-icaps2020}, and blind symbolic search remains a
+strong cost-optimal method \citep{speck-et-al-jair2025}.
+Explaining heuristic performance therefore requires a search-space term and a
+representation term.
 
-We separate the two effects exactly.  For a completed run, cumulative bucket
-effort equals the BDD size of the corresponding unsplit expanded sets times a
-fragmentation factor.  Information measures can explain the first term.  The
-second needs a representation-sensitive quantity that relates the heuristic
-to the particular sets it partitions.
+Previous development of this study focused on the representation term.
+A cofactor-profile certificate counts pairs of state-set and heuristic
+residuals induced by the same variable-prefix assignment.
+It is tighter than multiplying the two marginal profiles and gives a useful
+worst-case bound, but it still treats every active value as if it could occur
+below every residual pair.
+A prospective order intervention rejected the co-occurring profile's primary
+predictor gate; we retain that negative result and the resulting theory in the
+supplement.
+This motivates testing a relation that the profile omits: which terminal
+values are reachable from which nodes after the heuristic is restricted to
+the actual frontier.
 
-The obvious residual bound multiplies, at every cut of the BDD order, the
-number of state-set cofactors by the number of heuristic cofactors.  This
-Cartesian profile treats every cross-pair as feasible.  We instead introduce
-the \emph{co-occurring cofactor profile}: it counts only pairs induced by the
-same prefix assignment.  This distinction is the paper's central structural
-idea.  Every value-selected bucket is bounded by the co-occurring profile,
-which is in turn bounded by the Cartesian profile and by standard cofactor
-width \citep{wegener-2000}.  Total ADD size yields a separate incomparable
-Apply bound.
+We capture this relation with \emph{terminal incidence}.
+For a state set $S$ and heuristic $h$, we mask the ordered algebraic decision
+diagram (ADD) for $h$ with $S$ and give all assignments outside $S$ a fresh
+bottom terminal.
+Terminal incidence $I$ counts an inner node once for every active nonbottom
+terminal reachable from that node.
+Each inner node of the BDD for one value bucket can be charged to one such
+node--terminal pair, so the exact partition effort $E$ is at most $I$.
 
-Accumulating the certificate over search layers gives a blind-relative effort
-bound of $O(VWn)$, where $V$ is the number of finite values, $W$ is cofactor
-width, and $n$ is the number of state bits.  A polynomial-size planning family
-attains $\Omega(VWn)$ throughout the feasible parameter range, and the known
-exponential example necessarily has exponential width under its analyzed
-order.  Thus width is a sufficient static safeguard, while the co-occurring
-profile is the tighter run-specific explanation.
+The resulting hierarchy explains why the earlier quantities can be loose.
+The product $kD$ of active terminals and masked ADD nodes fills the complete
+$k$-by-$D$ rectangle, while $I$ counts only its realized entries.
+Replacing masked ADD nodes by masked cofactors, then by co-occurring pairs,
+Cartesian pairs and width yields successively coarser certificates.
+An independent standard-Apply argument gives a total-ADD branch.
+We prove that neither branch dominates the other.
+More strongly, one explicit family has exact counts
+$E=I=k(r+L)$ for $k=2^r$, while each preregistered control is
+$\Theta(k^2L)$ when $L\geq r$.
 
-Because the run-specific profile is unavailable before search, we use its
-width relaxation for design.  Safe terminal maps, including uniform caps,
-cannot increase any cofactor cut.  This yields width-constrained, cap-aware
-PDB selection with candidate-set and score dominance over uncapped exact-width
-selection on the same pool.  The guarantee concerns representation and the
-shared score, not runtime superiority.
+Terminal incidence also suggests a heuristic-design principle.
+Mapping ADD terminals through a cap can only merge residuals, decision nodes
+and node--terminal pairs on a fixed frontier.
+Exact partition effort need not decrease because merging two buckets replaces
+two BDDs by a BDD for their union.
+We therefore use incidence as a budget rather than claim that caps improve
+every fixed frontier.
+Our selector measures candidate PDBs on a short blind probe and returns the
+strongest candidate under the incidence of a fixed cap-aware reference.
 
-We test these distinctions with SymK \citep{speck-et-al-jair2025}.  A frozen
-remeasurement across alternative heuristics supports the two-effect
-decomposition: information is aligned with search reduction, whereas the
-Cartesian profile is aligned with fragmentation.  Its denominator audit
-fails, however.  We then preregister a cleaner intervention: four previously
-unused Gamer-order seeds vary only the BDD order while the PDB, values, costs,
-expanded states, and active buckets remain fixed.  The co-occurring score is
-far stronger than its structural relaxations, but does not beat
-$1/\unioneffort$; the prespecified primary gate therefore fails.  This result
-sets the claim boundary rather than becoming a new tuning signal.
+The empirical claims follow a two-stage order that prevents the selector from
+validating its own predictor.
+Confirmation A holds the blind frontiers fixed and asks whether $I$ predicts
+their exact partition effort better than six prespecified relaxations on a
+source-disjoint cohort.
+Only a complete pass authorizes Confirmation B, which compares the
+incidence-guided selector with the cap-aware reference and a matched-work
+control in ordinary guided search.
+Thus Confirmation A can support a fixed-frontier representation claim, while
+only Confirmation B can support an end-to-end design claim.
 
-Finally, we stress-test the theory-derived PDB selectors over five width
-budgets.  Relative to unconstrained exact PDB selection, all constrained
-selectors pool to effort ratio \HoldoutConstrainedUnconstrainedPooledRatio\
-with \HoldoutConstrainedUnconstrainedCoverageDelta\ additional solved
-configuration--task pairs.  Relative to blind search, the same selectors pool
-to \HoldoutAllSelectorsBlindPooledRatio\ with
-\HoldoutAllSelectorsBlindCoverageDelta\ fewer.  Width therefore controls
-representation among heuristic choices without overcoming the cost of
-heuristic partitioning in this benchmark.
+\section{Fixed-Frontier Partitioning}
+\label{sec-fixed-frontier}
 
-% ============================ background =================================
-\section{Background}
-
-We use finite deterministic SAS$^{+}$ tasks
+We use finite deterministic SAS$^{+}$ planning tasks
 $\task=\langle\vars,\ops,\sinit,\sgoal\rangle$
-\citep{backstrom-nebel-compint1995}. Operators have positive integer costs.
-The functions $\gstar(s)$ and $\hstar(s)$ are respectively the cheapest
-cost from \sinit\ to $s$ and from $s$ to a goal, with value $\infty$ for a
-dead end. We write $\copt=\hstar(\sinit)$ and assume
-$0<\copt<\infty$. A heuristic
-$h\colon\states\to\mathbb Z_{\geq0}\cup\{\infty\}$ is \emph{admissible}
-if $h\leq\hstar$, and \emph{consistent} if
-$h(s)\leq\cost(o)+h(s[o])$ for every applicable $o$ and $h=0$ on goals.
-The blind heuristic is $\hblind\equiv0$.
+\citep{backstrom-nebel-compint1995} with positive integer operator costs.
+The heuristic $h\colon\states\to\mathbb Z_{\geq0}\cup\{\infty\}$ is given a
+fixed total extension to the Boolean state encoding.
+Fix a Boolean variable order $\pi=(x_1,\ldots,x_n)$ and disable dynamic
+reordering.
+State sets use reduced ordered BDDs with complemented edges, and
+$\bddsize{S}$ counts regular inner nodes as in CUDD.
+Heuristics use reduced ordered ADDs under the same order.
 
-Fix a Boolean state encoding in which every SAS$^{+}$ variable $v$ uses
-$\lceil\log_2|D_v|\rceil$ Boolean bits. Let $x_1,\ldots,x_n$ be those
-bits in order $\pi$, and give every heuristic a total extension to Boolean
-strings that encode no state. The order is \emph{variable-contiguous} if
-all bits of each SAS$^{+}$ variable are consecutive. A state set $S$ is
-represented by the reduced ordered BDD (OBDD) of its characteristic function
-$\chi_S$ with complemented edges, as in our CUDD implementation;
-$\bddsize{S}$ counts regular inner nodes \citep{bryant-ieeecomp1986}. A signed
-pointer records a regular node together with its polarity, so $f$ and $\neg f$
-share regular nodes but remain distinct residual functions. For a prefix
-$\rho\in\{0,1\}^i$, let $f|_\rho$ be the residual function and
-$\sub{i}{f}=\{f|_\rho\mid\rho\in\{0,1\}^i\}$ its distinct cofactors.
-
-Symbolic uniform-cost search represents each exact layer
-$L_g=\{s\mid\gstar(s)=g\}$ by one BDD
-\citep{torralba-et-al-aij2017}. Product-at-evaluation forward \bddastar\
-\citep{edelkamp-reffel-ki1998} intersects layers with the level sets
-$\level{h}{v}=\{s\mid h(s)=v\}$. It removes closed states, discards
-$h=\infty$, represents each $(g,v)$ bucket by one BDD, selects by increasing
-$(f,g)=(g+v,g)$, and tests for a goal when a bucket is selected
-\citep{speck-et-al-icaps2020}. Each open bucket persists until that exact key
-is selected. Immediately before expansion, its resident set is intersected
-with the complement of states already closed at their best known $g$;
-``bucket'' below means this residual set. Selection moves the entire residual
-bucket to closed before generating successors. These queue, duplicate,
-goal-test, and positive-cost assumptions define the scope of our cumulative
-guarantees.
-
-\begin{definition}[expansion size, \citealp{speck-et-al-icaps2020}]
-\label{def-effort}
-Let $B_{\task,h}(g,v)$ denote the unique BDD expanded by \bddastar\ with
-$g$-value $g$ and $h$-value $v$ on task \task\ with heuristic $h$, with
-$B_{\task,h}(g,v)$ representing the empty set if no such expansion
-occurs. In the consistent product-at-evaluation setting above, the
-\emph{expansion size} of \bddastar\ is
-$\effort(\task,h) = \sum_{\,g + v \leq \copt,\ g < \copt}
-|B_{\task,h}(g,v)|$; Lemma~\ref{lem-identity} proves that these and only these
-nonempty buckets are expanded before termination.
-\end{definition}
-
-For $\hblind$, \bddastar\ is uniform-cost search and
-$\effort(\task,\hblind) = \sum_{g < \copt} \bddsize{L_g}$.
-\citet{speck-et-al-icaps2020} prove that there are tasks on which even
-$\hstar$ has exponentially larger effort
-than blind search: a subset can have a much larger BDD than its superset,
-so both slicing and pruning can inflate representations. We seek a
-heuristic property that controls every value-selected subset.
-
-For any completed search, let $A_g(h)$ be the heuristic values whose
-nonempty buckets are expanded at cost $g$, and let
-$S_g^h=\bigcup_{v\in A_g(h)}B_{\task,h}(g,v)$ be their union. Define the
-corresponding unsplit representation effort and fragmentation factor by
-\[
- \begin{aligned}
- \unioneffort(\task,h)&=\sum_g\bddsize{S_g^h},\\
- \fragfactor(\task,h)&=
- \frac{\effort(\task,h)}{\unioneffort(\task,h)},
- \end{aligned}
-\]
-whenever the denominator is positive. Hence
-$\effort=\unioneffort\cdot\fragfactor$ exactly. Blind search has one bucket
-per expanded layer and therefore $\fragfactor(\task,\hblind)=1$. The ratio
-need not exceed one because a union BDD can be larger than the sum of the
-reduced BDDs for its disjoint pieces. It isolates the representational effect
-of value partitioning without presuming its direction.
-
-\begin{definition}[cofactor count]
-\label{def-cofcount}
-For a function $f$ over $x_1, \dots, x_n$, the \emph{cofactor count} is
-$\cofcount(f) = \sum_{i=0}^{n-1} |\sub{i}{f}|$.
-\end{definition}
-
-Write $\cutcount{i}{f}=|\sub{i}{f}|$ for its cut-$i$ cofactor count.
-For a state set $S$ and heuristic $h$, define the number of residual pairs
-that actually co-occur under one prefix by
-\[
- \jointcount{i}{S}{h}=
- \left|\left\{(\chi_S|_\rho,h|_\rho)
-       \mid \rho\in\{0,1\}^i\right\}\right|,
-\]
-and their \emph{co-occurring cofactor profile} by
-\[
-  \jointprofile{S}{h}=\sum_{i=0}^{n-1}\jointcount{i}{S}{h}.
-\]
-Its Cartesian relaxation is the \emph{cut-aligned cofactor-profile product}
-\[
-  \cutprod{S}{h}=\sum_{i=0}^{n-1}
-  \cutcount{i}{\chi_S}\cutcount{i}{h}.
-\]
-At every cut,
-\[
- \max\{\cutcount{i}{\chi_S},\cutcount{i}{h}\}
- \leq\jointcount{i}{S}{h}
- \leq\cutcount{i}{\chi_S}\cutcount{i}{h}.
-\]
-The first quantity retains which residuals arise from the \emph{same} prefix;
-the second counts all possible cross-pairs.
-
-\begin{lemma}
-\label{lem-qsize}
-For every Boolean $f$ over $x_1, \dots, x_n$,
-$\bddsize{f} \leq \cofcount(f) \leq n \cdot (\bddsize{f} + 2)$.
-If $f$ is nonconstant, also
-$\cofcount(f)\leq2n\bddsize{f}$.
-\end{lemma}
-
-$\cofcount(f)$ is the polarity-sensitive state count of the quasi-reduced
-OBDD. At a fixed cut, let $U$ and $D$ be the regular inner nodes above and on
-the projected frontier, let $r\leq D$ count frontier nodes reached in both
-polarities, and let $t\leq2$ count signed constants. The projected regular
-binary DAG gives $D+\delta\leq U+1$, where $\delta$ records whether its
-terminal is reached, while the residual count is $D+r+t$. If $t=0$, this is
-at most $D+U+1$; if $t>0$, then $\delta=1$ and it is at most $D+U+2$.
-Both are at most $\bddsize{f}+2$. Conversely, every regular node is witnessed
-by a signed residual at its own level; summing over levels proves the lemma.
-Its factor
-$n$ is unavoidable already for $f=x_1$, where
-$\cofcount(f)=2n-1$ but $\bddsize{f}=1$. For the last inequality, the displayed
-upper bound suffices when $\bddsize{f}\geq2$. A nonconstant one-node BDD is a
-literal, whose cofactor count is at most $2n$.
-
-% ===================== width-bounded heuristics ==========================
-\section{Static Relaxations and Safe Transforms}
-
-\begin{definition}[cofactor width]
-\label{def-width}
-The \emph{cofactor width} of a heuristic $h$ under variable order $\pi$
-is $\width_\pi(h) = \max_{0 \leq i \leq n} |\sub{i}{h}|$. We call $h$
-\emph{$(\pi,W)$-width-bounded} if $\width_\pi(h) \leq W$, and write
-\emph{width} for cofactor width throughout.
-\end{definition}
-
-The cofactors are precisely the states of a deterministic layered automaton
-that reads $\pi$; hence width is also the largest level of the heuristic's
-quasi-reduced multi-terminal BDD \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}. It is a
-standard fixed-order residual/MTBDD representation property applied here to
-heuristics. It is neither a newly proposed width measure nor the unrelated
-planning notion of novelty width \citep{lipovetzky-geffner-ecai2012}.
-
-\begin{proposition}[value range]
-\label{prop-range}
-If $\width_\pi(h) \leq W$, then $|\hrange(h)| \leq W$.
-\end{proposition}
-
-Indeed, the final cofactors are the attained constants. Write
-$\values=|h(\states)\setminus\{\infty\}|$ for finite values on planning
-states and $T=|\hrange(h)|$ for terminals of the total extension; then
-$\values\leq T\leq W$.
-
-\begin{proposition}[closure]
-\label{prop-closure}
-Let $h_1, h_2$ have widths $W_1, W_2$ under $\pi$ and let
-$\oplus \in \{+, \max, \min\}$. Then
-$\width_\pi(h_1 \oplus h_2) \leq W_1 \cdot W_2$.
-\end{proposition}
-
-At each cut, a combined cofactor is determined by a pair of operand
-cofactors. Thus maximization and admissible additive combinations remain
-width-bounded, with multiplicative component bounds.
-
-Call a possibly signed function
-$q\colon\states\to\mathbb Z\cup\{\infty\}$ a \emph{raw admissible and
-consistent estimate} if $q(s)\leq \hstar(s)$ for every state,
-$q(s)\leq c+q(s')$ for every transition $s\xrightarrow{c}s'$, and
-$q(s)\leq0$ on goals.
-
-\begin{proposition}[safe terminal transforms]
-\label{prop-transform}
-Let $q$ be a raw admissible and consistent estimate, equipped with a
-total extension
-$q \colon \{0,1\}^{n} \to \mathbb{Z} \cup \{\infty\}$. Let
-$\phi \colon \mathbb{Z} \cup \{\infty\}
- \to \mathbb{Z}_{\geq 0} \cup \{\infty\}$
-be nondecreasing, satisfy $\phi(0)=0$, $\phi(\infty)=\infty$, and for
-every $a\in\mathbb Z$ and integer $c\geq0$ satisfy
-\[
-\phi(a+c) \leq \phi(a)+c.
-\]
-Then $h=\phi\circ q$ is admissible and consistent and
-$\cutcount{i}{h}\leq\cutcount{i}{q}$ for every cut $i$. Consequently,
-$\width_\pi(h)\leq\width_\pi(q)$ and
-$\jointprofile{S}{h}\leq\jointprofile{S}{q}$ and
-$\cutprod{S}{h}\leq\cutprod{S}{q}$ for every fixed state set $S$.
-\end{proposition}
-
-Monotonicity and the cost condition transfer consistency and imply
-$\phi(a)\leq\max(0,a)$; terminal mapping cannot create cofactors. Mapping
-$(\chi_S|_\rho,q|_\rho)$ to
-$(\chi_S|_\rho,\phi\circ(q|_\rho))$ also cannot create co-occurring pairs.
-Thus both
-rectification and the cap
-$\phi_\kappa(a)=\min(\max(0,a),\kappa)$ for finite $a$ (and
-$\phi_\kappa(\infty)=\infty$) are safe and width nonincreasing. The cap has
-at most $\kappa+1$ finite values and is pointwise strongest among such safe
-transforms with that output ceiling. If $\kappa_1\leq\kappa_2$, then
-$\phi_{\kappa_1}\circ q$ is a terminal relabeling of
-$\phi_{\kappa_2}\circ q$, so every cut count, its profile product with any
-fixed set, and its cofactor width are no larger. Caps therefore form a nested
-safety--informativeness ladder: increasing $\kappa$ weakly strengthens the
-heuristic, while decreasing it weakly contracts both fixed-set profiles and
-the coarse $2\values Wn$ certificate. This fixed-set statement does not imply
-monotonicity of a complete run, whose expanded sets may change with the cap.
-
-Let $\mathrm{ADD}_\pi(h)$ be the reduced ordered ADD under $\pi$
-\citep{bahar-et-al-iccad1993}.
-
-\begin{proposition}[ADD characterization]
-\label{prop-add}
-$\width_\pi(h) \leq |\mathrm{ADD}_\pi(h)| + |\hrange(h)|$ and
-$|\mathrm{ADD}_\pi(h)| \leq n \cdot \width_\pi(h)$.
-\end{proposition}
-
-Every cofactor is a terminal or a residual ADD node, and every ADD node at
-a level is a distinct cofactor. Hence small width and a small ADD are
-polynomially equivalent only in the order actually used by the search
-\citep{kissmann-hoffmann-jair2014}.
-
-\begin{remark}[total extensions]
-\label{rem-encoding}
-Definitions over $\{0,1\}^n$ require fixing $h$ on Boolean assignments
-that encode no state. Upper bounds apply to the chosen extension; the
-families below use natural arithmetic or table extensions. Lower bounds
-witnessed on genuine states apply to every extension.
-\end{remark}
-
-% ======================= fragmentation theorems ==========================
-\section{The Co-occurring Profile Certificate}
-\label{sec-fragmentation}
-
-Fix $\pi$ and write $W=\width_\pi(h)$. At every cut, the cofactor of a
-value-selected subset is determined by the pair consisting of the state-set
-cofactor and the heuristic cofactor induced by the same prefix. Thus
-$\jointprofile{S}{h}\leq\cutprod{S}{h}\leq
-\width_\pi(h)\cofcount(\chi_S)$.
-
-\begin{theorem}[bucket bound]
-\label{thm-bucket}
-Let $S \subseteq \{0,1\}^n$ and $U \subseteq \hrange(h)$. Then
+For a function $f$ and a prefix $\rho\in\{0,1\}^i$, let $f|_\rho$ be its
+residual function and $\sub{i}{f}$ the set of distinct residuals at cut $i$.
+We write
 \[
 \begin{aligned}
-\bddsize{S \cap h^{-1}(U)}
-  &\leq \cofcount(\chi_{S \cap h^{-1}(U)}) \\
-  &\leq \jointprofile{S}{h} \\
-  &\leq \cutprod{S}{h} \\
-  &\leq W\cofcount(\chi_S) \\
-  &\leq Wn(\bddsize{S}+2).
+ \cutcount{i}{f}&=|\sub{i}{f}|,\\
+ \cofcount(f)&=\sum_{i=0}^{n-1}\cutcount{i}{f},\\
+ \width_\pi(f)&=\max_{0\leq i\leq n}\cutcount{i}{f}.
 \end{aligned}
 \]
-\end{theorem}
+For $S$ and $h$, the co-occurring profile is
+\[
+ \jointprofile{S}{h}=\sum_{i=0}^{n-1}
+ \left|\{(\chi_S|_\rho,h|_\rho):\rho\in\{0,1\}^i\}\right|,
+\]
+and its Cartesian relaxation is
+$\cutprod{S}{h}=\sum_{i<n}\cutcount{i}{\chi_S}\cutcount{i}{h}$.
 
-\begin{proof}[Proof sketch]
-At cut $i$, equal co-occurring pairs
-$(\chi_S|_\rho,h|_\rho)$ induce equal slice cofactors. Map each distinct
-slice residual injectively to a witnessing pair, sum over cuts, relax the
-co-occurring pairs to their Cartesian product, then relax each heuristic cut
-count to $W$. Lemma~\ref{lem-qsize} completes the chain; the supplement gives
-the explicit injection.
-\end{proof}
+\begin{definition}[exact partition effort]
+Let $S\ne\emptyset$, let $\terminalset{S}=h(S)$ be its active heuristic
+values and let $k=|\terminalset{S}|$.
+The exact fixed-frontier partition effort is
+\[
+ \partcost{S}{h}=\sum_{v\in\terminalset{S}}
+ \bddsize{S\cap h^{-1}(v)}.
+\]
+\end{definition}
 
-This covers a bucket ($U=\{v\}$), recognized-dead-end removal, and
-threshold pruning. No value-selected subset can inflate the reduced BDD by
-more than $Wn$ up to the additive term.
+We use \emph{heuristic fragmentation} for the replacement of one frontier by
+these value buckets; $E$ is its unnormalized partition node sum.
+Earlier developmental studies divided this sum by the BDD size of the unsplit
+frontier.
+That denominator is constant when heuristics are compared on the same $S$, so
+the normalized and unnormalized pair orders agree; Confirmation A uses $E$.
+The sum counts nodes reachable from each bucket root separately and can
+therefore count a manager node shared by several roots more than once.
+If $S$ is the frontier presented to a product-at-evaluation step, $E$ is the
+exact number of regular inner nodes in the resulting value buckets before
+any later search operation changes them.
+Summing $E$ over common blind layers therefore gives a controlled measure of
+the partitioning effect.
+It does not measure how $h$ changes those layers in guided search, how long
+buckets remain resident or the cost of heuristic construction, evaluation
+and symbolic image operations.
 
-\begin{theorem}[partition bound]
-\label{thm-partition}
-Let $S \subseteq \{0,1\}^n$. Then
+Introduce a fresh terminal $\bot$ and define the \emph{masked heuristic}
+\[
+ \maskfun{S}{h}(x)=
+ \begin{cases}
+   h(x),&x\in S,\\
+   \bot,&x\notin S.
+ \end{cases}
+\]
+Let $M$ be its reduced ADD and let $D=\maskednodes{S}{h}$ be the number of
+regular inner nodes of $M$.
+For an inner node $u$ of $M$, let $T_M(u)\subseteq\terminalset{S}$ contain
+the active nonbottom terminals reachable from $u$.
+
+\begin{definition}[terminal incidence]
+The \emph{terminal incidence} of $h$ on $S$ under $\pi$ is
+\[
+ \incidence{S}{h}=\sum_{u\in\mathrm{inner}(M)}|T_M(u)|.
+\]
+\end{definition}
+
+Figure~\ref{fig-incidence} shows the distinction from $kD$.
+The product counts the complete node--terminal rectangle, whereas incidence
+counts the marked reachable pairs.
+Each column also identifies the ADD nodes available to the corresponding
+value bucket before Boolean reduction.
+We compute $I$ exactly by building the masked ADD's reverse edges and running
+a marked ancestor traversal from every active terminal; each visited inner
+node contributes one incidence.
+This takes $O(kD)$ time in the worst case and $O(D+k)$ auxiliary space.
+
+\begin{figure}[tb]
+\centering
+\begin{minipage}[c]{0.42\columnwidth}
+\centering
+\begin{tikzpicture}[scale=.72, every node/.style={font=\small}]
+  \node[circle,draw,inner sep=1.7pt] (u0) at (0,1.8) {$u_0$};
+  \node[circle,draw,inner sep=1.7pt] (u1) at (-.75,.8) {$u_1$};
+  \node[circle,draw,inner sep=1.7pt] (u2) at (.75,.8) {$u_2$};
+  \node (a) at (-.9,-.15) {$a$};
+  \node (b) at (.9,-.15) {$b$};
+  \node (bot) at (0,-.7) {$\bot$};
+  \draw (u0)--(u1) (u0)--(u2);
+  \draw (u1)--(a) (u1)--(bot);
+  \draw (u2)--(b) (u2)--(bot);
+\end{tikzpicture}
+\end{minipage}%
+\hfill
+\begin{minipage}[c]{0.52\columnwidth}
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & $a$ & $b$ \\
+\midrule
+$u_0$ & $\bullet$ & $\bullet$ \\
+$u_1$ & $\bullet$ &  \\
+$u_2$ &  & $\bullet$ \\
+\bottomrule
+\end{tabular}
+\vspace{2pt}
+
+$I=4$, while $kD=6$.
+\end{minipage}
+\caption{Terminal incidence counts the marked node--terminal pairs of a
+masked ADD instead of the full $k$-by-$D$ rectangle.}
+\label{fig-incidence}
+\end{figure}
+
+\section{Certificate Hierarchy}
+\label{sec-hierarchy}
+
+The masked ADD is the common object behind the exact target and the new
+predictor.
+The cofactor and ADD controls result from forgetting different parts of this
+object.
+
+\begin{theorem}[two-branch fixed-frontier certificate]
+\label{thm-incidence-hierarchy}
+For every nonempty $S\subseteq\{0,1\}^n$ and total heuristic $h$,
 \[
 \begin{aligned}
-\sum_{v \in \hrange(h)} \bddsize{S \cap \level{h}{v}}
-  &\leq T\jointprofile{S}{h} \\
-  &\leq T\cutprod{S}{h} \\
-  &\leq TW\cofcount(\chi_S) \\
-  &\leq TWn(\bddsize{S}+2) \\
-  &\leq W^2n(\bddsize{S}+2).
+ D
+ &\leq \incidence{S}{h},\\
+ \partcost{S}{h}
+ &\leq \incidence{S}{h}
+ \leq kD
+ \leq k\cofcount(\maskfun{S}{h})
+ \leq k\jointprofile{S}{h}\\
+ &\leq k\cutprod{S}{h}
+ \leq k\width_\pi(h)\cofcount(\chi_S).
 \end{aligned}
+\tag{1}
 \]
-If $S\subseteq\states$ and the sum ranges only over finite values attained
-on planning states, every $T$-dependent bound holds with $T$ replaced by
-$\values$.
+If $A=|\mathrm{ADD}_\pi(h)|$ and $b=\bddsize{S}$, independently
+\[
+ \partcost{S}{h}\leq\incidence{S}{h}
+ \leq k\bigl(2(A+1)b+A\bigr).
+\tag{2}
+\]
 \end{theorem}
 
 \begin{proof}[Proof sketch]
-Apply Theorem~\ref{thm-bucket} to each of $T$ buckets (or the $\values$
-finite planning-state buckets), then relax the profile and use $T\leq W$.
+Relabel the terminals of $M$ by one exactly at value $v$ and by zero
+elsewhere.
+Reduction produces the BDD of $S\cap h^{-1}(v)$ without creating a decision
+node.
+Every surviving node can therefore be charged to a distinct ancestor of $v$
+in $M$; summing over $v$ proves $E\leq I$.
+Every inner node reaches an active terminal, and no node reaches more than
+$k$, which gives $D\leq I\leq kD$.
+An inner ADD node is witnessed by a residual at its own cut.
+Each masked residual is determined by a co-occurring pair
+$(\chi_S|_\rho,h|_\rho)$, after which Cartesian and width are direct
+relaxations.
+For Equation~(2), standard Apply states for a fixed terminal $v$ pair at most
+$2b$ signed state-set nodes with at most $A$ ancestors of $v$ and the terminal
+itself, plus at most $A$ heuristic nodes reached after the state-set residual
+becomes one.
+The supplement gives the injections and all boundary cases.
 \end{proof}
 
-The partition theorem gives a run-level predictor that retains the cutwise
-interaction discarded by width. Define
+Table~\ref{tab-information-loss} names the quantities used in the experiments
+and shows what each relaxation discards.
+The old co-occurring certificate is $mJ$: it preserves which state and
+heuristic residuals share a prefix, but its factor $k$ still assigns every
+active terminal to every such pair.
+Terminal incidence retains this missing node--terminal relation.
+The legacy artifact names $mQ$ and $mJ$ use $m$ for the layerwise count $k$.
+
+\begin{table}[tb]
+\centering
+\small
+\caption{The fixed-frontier target, predictor and controls.  ADD is an
+independent branch.}
+\label{tab-information-loss}
+\begin{tabular}{@{}lp{0.74\columnwidth}@{}}
+\toprule
+Name & Quantity or relaxation \\
+\midrule
+$E$ & BDD nodes in realized value buckets (target). \\
+$I$ & Realized masked-node--terminal pairs. \\
+$kD$ & The full $k$-by-node rectangle. \\
+$mQ$ & Masked cofactor count, multiplied by $k$. \\
+$mJ$ & Co-occurring cofactor pairs, multiplied by $k$. \\
+Cartesian & Marginal cofactor pairs, multiplied by $k$. \\
+width & State-set profile times maximum heuristic width and $k$. \\
+ADD & Input BDD and full heuristic ADD sizes, with $k$. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For several fixed frontiers $S_g$, we sum every layerwise quantity using its
+own $k_g$.
+Thus $I=\sum_g I_\pi(S_g,h)$ and
+$kD=\sum_g k_gD_\pi(S_g,h)$, with analogous definitions for the other
+controls.
+Summing Theorem~\ref{thm-incidence-hierarchy} preserves both branches.
+No extra multiplier by the number of values is applied to $I$.
+
+\subsection{An Exact Separation}
+
+The gap between incidence and the controls is not an artifact of reduction
+constants.
+
+\begin{theorem}[incidence separation]
+\label{thm-incidence-separation}
+Let $k=2^r$ and $L\geq r\geq1$.
+There are a set $S$ and a $k$-valued heuristic $h$ over $r+L$ variables for
+which
 \[
- \begin{aligned}
- \jointbound(\task,h)&=
- \sum_g |A_g(h)|\jointprofile{S_g^h}{h},\\
- \jointscore(\task,h)&=
- \frac{\jointbound(\task,h)}{\unioneffort(\task,h)},\\
- \profilebound(\task,h)&=
- \sum_g |A_g(h)|\cutprod{S_g^h}{h},\\
- \profilescore(\task,h)&=
- \frac{\profilebound(\task,h)}{\unioneffort(\task,h)}.
-\end{aligned}
+ \partcost{S}{h}=\incidence{S}{h}=k(r+L),
 \]
-We call $\jointscore$ the \emph{normalized co-occurring profile certificate};
-$\profilescore$ is its normalized Cartesian relaxation. Applying
-Theorem~\ref{thm-bucket} to every expanded bucket gives
-$\fragfactor\leq\jointscore\leq\profilescore$. Unlike heuristic quality,
-$\jointscore$ is designed to explain the representational effect conditional
-on the unsplit expanded sets. Unlike its Cartesian and width relaxations, it
-retains which state-set and heuristic residuals arise from the same prefixes.
-Width is the frontier-independent relaxation used to certify a heuristic
-before search.
-
-The effort measure sums each reduced bucket separately even if a shared
-unique table reuses nodes. The factor $n$ cannot be removed: the supplement
-gives a width-two parity slice whose reduced BDD is $\Theta(n)$ times its
-one-node source set.
-
-Writing $A$ for the total heuristic ADD's inner-node count and
-$b=\bddsize{S}$, relabeling its terminals by membership in $U$
-\citep[Sec.~9.2]{wegener-2000} gives an ordinary Boolean OBDD with at most
-$A$ nodes. Materializing both polarities of $S$ uses at most $2b$ ordinary
-nodes, so standard Boolean Apply \citep[Sec.~4.3]{bryant-ieeecomp1986} gives
-$\bddsize{S\cap h^{-1}(U)}\leq2(A+1)b+A$. Thus the two certificates
-combine as $\min\{\jointprofile{S}{h},2(A+1)b+A\}$. With the bucket identity
-below, the ADD certificate yields the blind-effort ratio bound
-$\values(3A+2)$. A nonconstant ADD has one root and at most $W$ nodes on
-each other level, so $A\leq1+(n-1)W$ and the ratio is at most
-$3\values Wn$. Width is therefore not a uniformly stronger scalar than ADD
-size. The profile certificate has a different role: it exploits
-cut-by-cut alignment between the actual frontier and the heuristic, while
-width is its reusable, frontier-independent envelope. The two certificates
-are genuinely incomparable. For parity $h$ and the set of strings whose
-Hamming weight is $0$ modulo $3$, $\cutprod{S}{h}=\Theta(n)$ while Apply gives
-$\Theta(n^2)$; for $h=x_1$ and $S=\{x_1=1\}$, the CUDD-safe Apply
-certificate gives $5$ while the profile is $\Theta(n)$. The supplement proves
-both separations. We retain
-Apply and take the minimum; width supplies the compositional family bounds
-and the pre-search certificate.
-
-% ======================= search-effort guarantees ========================
-\section{Forward Product-at-Evaluation Search Guarantees}
-\label{sec-effort}
-
-\begin{lemma}[bucket identity]
-\label{lem-identity}
-Let $h$ be consistent. \bddastar\ on \task\ with $h$ selects every
-bucket key $(g,v)$ with $g + v \leq \copt$ and $g < \copt$ and
-$L_g \cap \level{h}{v} \neq \emptyset$ exactly once before terminating,
-and the BDD expanded with key $(g,v)$ represents exactly
-$L_g \cap \level{h}{v}$. No other bucket is expanded before
-termination.
-\end{lemma}
-
-\begin{proof}[Proof sketch]
-Selection is lexicographic in $(f,g)$ by definition; consistency makes
-generated successor $f$-keys nondecreasing. Consistency, positive costs, and
-increasing-$g$ tie breaking ensure that every predecessor that could populate
-a key at equal $f$ is selected first, so a selected key cannot be repopulated.
-Induction along cheapest
-paths gives optimal $g$-values and complete slices. An open prefix of an
-optimal plan prevents termination or selection above $\copt$. The
-supplement proves the five claims---monotone selection, no re-population,
-optimal $g$-values, completeness, and no other expansions---in full.
-\end{proof}
-
-\begin{theorem}[effort bound]
-\label{thm-effort}
-Let $h$ be consistent with $\width_\pi(h) \leq W$. Then
-for
-$\values_g=|\{v\in h(\states)\setminus\{\infty\}\mid
-g+v\leq\copt,\ L_g\cap\level{h}{v}\ne\emptyset\}|$,
+while each of $kD$, $mQ$, $mJ$, Cartesian, width and ADD is
+$\Theta(k^2L)$.
+More precisely,
 \[
 \begin{aligned}
-\effort(\task,h)
-  &\leq \sum_{\substack{g<\copt\\L_g\ne\emptyset}}
-    \values_g\jointprofile{L_g}{h} \\
-  &\leq \sum_{\substack{g<\copt\\L_g\ne\emptyset}}
-    \values_g\cutprod{L_g}{h} \\
-  &\leq \values\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
-    \cutprod{L_g}{h} \\
-  &\leq \values W
-    \sum_{\substack{g<\copt\\L_g\ne\emptyset}}
-      \cofcount(\chi_{L_g}) \\
-  &\leq \values Wn
-    \bigl(\effort(\task,\hblind)+2\copt\bigr) \\
-  &\leq W^2n
-    \bigl(\effort(\task,\hblind)+2\copt\bigr).
+D&=kL+k-1,\\
+\cofcount(\maskfun{S}{h})&=kL+k+L-2,\\
+\jointprofile{S}{h}=\cutprod{S}{h}&=2kL-1,\\
+\width_\pi(h)&=k,\qquad \cofcount(\chi_S)=r+2L-1,\\
+A&=k-1,\qquad b=L.
 \end{aligned}
 \]
 \end{theorem}
 
-\begin{proof}[Proof sketch]
-Lemma~\ref{lem-identity} selects exactly $\values_g$ buckets on layer $g$,
-and Theorem~\ref{thm-bucket} bounds each by $\jointprofile{L_g}{h}$.
-The remaining inequalities relax co-occurrence to the Cartesian profile, use
-$\values_g\leq\values$, bound each heuristic cut by $W$, and apply
-Lemma~\ref{lem-qsize}. If $N$ is the number
-of nonempty layers below $\copt$, summing gives
-$\values Wn(\effort(\task,\hblind)+2N)$. Positive integer costs imply
-$N\leq\copt$, and $\values\leq W$ gives the coarse bound.
+\begin{proof}[Construction]
+Use $r$ address bits followed by $L$ data bits.
+Let $S$ contain every address together with the single data assignment
+$1^L$, and give the $k$ addresses distinct heuristic values.
+The masked ADD is a complete address tree followed by one length-$L$
+conjunction chain per address.
+Every address level contributes $k$ incidences and every chain node
+contributes one, so $I=k(r+L)$.
+Each value bucket fixes one address and the data string $1^L$, giving a
+length-$(r+L)$ BDD and the same exact total.
+Counting residuals at the address cuts, at the first data cut and after a
+zero has occurred gives the displayed values.
+The supplement proves that reduction cannot merge any of the counted nodes.
 \end{proof}
 
-\begin{corollary}
-\label{cor-effort}
-Under the assumptions of Theorem~\ref{thm-effort},
-$\effort(\task, h) \leq 2\,\values W n \cdot
-\effort(\task, \hblind) \leq
-2\, W^{2} n \cdot \effort(\task, \hblind)$.
-\end{corollary}
+The cofactor and ADD branches remain incomparable.
+Parity combined with a modulo-three frontier has linear masked cofactor
+profile and a quadratic Apply certificate.
+Conversely, $h=x_1$ on $S=\{x_1=1\}$ has masked cofactor count $2n-1$ and
+ADD certificate $5$.
+We therefore compare both branches rather than selecting a favored
+relaxation.
 
-Every nonempty pre-goal layer is proper, so Lemma~\ref{lem-qsize} gives
-$\cofcount(\chi_{L_g})\leq2n\bddsize{L_g}$. Substituting this bound into the
-third inequality of Theorem~\ref{thm-effort} proves the corollary directly.
+\subsection{Terminal Maps and Caps}
 
-The guarantee is one-sided: pruning savings remain unbounded. It concerns
-frontier sizes in forward product-at-evaluation \bddastar, not primitive
-relational products in SetA\ensuremath{^{*}} or \ghseta, and not cumulative
-bidirectional effort. Variants visiting the same semantic buckets inherit
-the state-set bound.
+A terminal map $\phi$ fixes $\bot$ and may merge active heuristic values.
+Applying $\phi$ to an ADD and reducing cannot create residuals or inner
+nodes.
+The node--terminal incidence matrix contracts in both dimensions: columns
+merge, rows merge or disappear and no new reachability relation appears.
 
-\subsection{The Coarse Bound Is Jointly Tight}
-
-\begin{theorem}[joint lower bound]
-\label{thm-tight}
-For every $2\leq\values\leq W$ and every power of two $B\geq4W$, there
-is a polynomial-size task with $n=\Theta(B)$ Boolean state bits and a
-consistent, admissible heuristic $h$, represented by an $O(BW)$-node ordered
-ADD, with exactly $\values$ finite values and $\width_\pi(h)=W$ such that
-\[
-  \frac{\effort(\task,h)}{\effort(\task,\hblind)}
-  \geq \frac{\values Wn}{120}.
-\]
-\end{theorem}
-
-\begin{proof}[Proof sketch]
-The task generates an address $a$, modular bits $y$, and data bits $z$, then
-uses a multiplexer filter $z_a=1$ and carries the retained set through $B$
-layers.  The heuristic colors $\sum_i y_i\bmod W$ with $\values$ values.  Its
-$W$ translated residuals give width $W$, an $O(BW)$-node ADD, and consistency
-under the chosen action costs.  At every central $y$-cut, each selected bucket
-has $BW$ distinct address--residue residuals.  Across $\values$ buckets and
-$B$ retained layers this yields at least $\values WB^3/2$ nodes, whereas the
-unsplit multiplexer has $O(B)$ nodes per layer and blind effort at most
-$15B^2$.  Since $n\leq4B$, the ratio is at least $\values Wn/120$.  The
-supplement gives the operators, residual injection, and exact counts.
-\end{proof}
-
-Together with Corollary~\ref{cor-effort}, Theorem~\ref{thm-tight} closes the
-worst-case parameter gap for the stated fixed-order,
-product-at-evaluation BDD-node-effort model: none of $\values$, $W$ or $n$ can
-be removed from its universal ratio. For each fixed power-of-two $B$, the
-construction covers the full region $2\leq\values\leq W\leq B/4$; varying $B$
-scales $n$. Its repeated multiplexer layers are constructed and are not a
-typical-case prediction.
-
-\subsection{Exponential Width Is Necessary for the Known Pathology}
-
-In the family of \citet{speck-et-al-icaps2020}, chain variables precede
-two blocks $v_1,\ldots,v_n$ and $v_{n+1},\ldots,v_{2n}$ in $\pi_n$.
-At the critical layer, a state is not a dead end exactly when
-$\bigvee_i(v_i\wedge v_{n+i})$ holds, producing their exponential bucket.
-
-\begin{theorem}[width lower bound]
-\label{thm-lb}
-For the tasks $\task_n$ and orders $\pi_n$ of
-\citet{speck-et-al-icaps2020},
-$\width_{\pi_n}(\hstar) \geq 2^{n}$.
-\end{theorem}
-
-\begin{proof}[Proof sketch]
-At the cut after the first $v$-block, encode each
-$A\subseteq\{1,\ldots,n\}$ as a
-prefix. If $i\in A\setminus A'$, the valid suffix setting only
-$v_{n+i}$ distinguishes the prefixes: one state has goal distance one and
-the other is a dead end. Thus one cut has $2^n$ distinct \hstar-cofactors,
-for every total extension.
-\end{proof}
-
-Theorems~\ref{thm-effort} and~\ref{thm-lb} together delimit the
-known pathology: its perfect heuristic has exponential width and therefore
-evades the bounded-width regime. Our result is a parameterized upper bound,
-not a converse: bounded width is sufficient, not necessary, for small buckets.
-Moreover \hstar\
-uses only $O(n)$ values here, so value count alone does not control the
-prefix information entangled by its level sets.
-
-The supplement derives additional consequences for idealized image-call
-counts and pruning-only search.
-
-
-% ============================ instances ==================================
-\section{Width-Bounded Heuristic Families}
-\label{sec-instances}
-
-Let $\pi$ be variable-contiguous,
-$d=\max_{v\in\vars}|D_v|$, and $m=|\vars|$.
-
-\subsection{Pattern Databases}
-
-A pattern database \citep[PDB;][]{culberson-schaeffer-compint1998,%
-edelkamp-ecp2001} projects \task\ onto a pattern
-$P\subseteq\vars$ and stores the abstract goal distance $h^P(s)$ of the
-abstract state induced by $s$; this distance is admissible and consistent.
-
-\begin{proposition}
-\label{prop-pdb}
-Let $P\subseteq\vars$ be any pattern under a variable-contiguous order
-$\pi$. Extend its table to invalid encodings by ignoring non-pattern
-bits and mapping an invalid pattern-variable code to $0$. Let
-$|\states^P|=\prod_{v\in P}|D_v|$. Then
-\[
-\width_\pi(h^P)\leq |\states^P|.
-\]
+\begin{proposition}[fixed-frontier contraction]
+\label{prop-incidence-contraction}
+For fixed $S$ and $h'=\phi\circ h$, terminal mapping cannot increase the
+active-terminal count, masked ADD nodes, masked cofactor count, terminal
+incidence, co-occurring or Cartesian profiles, heuristic width or full
+heuristic ADD size.
+It consequently cannot increase any certificate in
+Theorem~\ref{thm-incidence-hierarchy}.
+Exact partition effort $\partcost{S}{h'}$ can nevertheless exceed
+$\partcost{S}{h}$.
 \end{proposition}
 
-The residual lookup is determined by a partial abstract state and the current
-bit buffer; invalid prefixes share the valid zero terminal. Pattern variables
-need not form a prefix because non-pattern bits are skipped. Hence an
-abstract-state budget itself induces a width bound. A PDB has at most
-$|\states^P|$ finite values, so its effort ratio is at most
-$2|\states^P|^2n$. A distinct invalid-code sink instead gives width at most
-$|\states^P|+1$. Max combinations, and additive combinations under an
-admissible cost partition, have at most the product of the component-width
-bounds; this representational statement does not itself establish
-admissibility.
-
-The supplement gives two further specializations.  Integer potentials
-\citep{pommerening-et-al-aaai2015,fiser-et-al-aaai2022} with coefficients
-bounded by $M$ have width at most $d(2mM+1)$ and at most $mM+1$ values.
-Order-aligned linear merge-and-shrink cascades
-\citep{helmert-et-al-jacm2014,helmert-et-al-icaps2015} with at most $N$
-outputs per table satisfy the following bound.
-\begin{proposition}
-\label{prop-ms}
-If the linear merge order agrees with $\pi$, every cascade table has at most
-$N$ valid outputs, and invalid codes share a sink, then
-$\width_\pi(h^\alpha)\leq d(N+1)$.
-\end{proposition}
-Both bounds are conditional:
-the potential bound is pseudo-polynomial in $M$, and the M\&S bound requires
-the merge and BDD orders to agree.  Exact post-construction width can still
-instantiate the general theorem for other heuristic families.
-
-% ============================ synthesis ==================================
-\section{Heuristic Design: Width-Constrained PDBs}
-\label{sec-synthesis}
-
-The co-occurring profile certificate is measured on a completed run, whereas width is its
-frontier-independent envelope and can be checked before search.  We therefore
-use width as a representation constraint during PDB selection and use safe
-terminal coarsening when an informative PDB exceeds the constraint.  Both
-selectors build the same pool of PDBs with at most $100{,}000$ abstract states
-from five fixed generators, including BDD-order, goal/causal-order, and CEGAR
-patterns \citep{rovner-et-al-icaps2019}.  Patterns are normalized and
-deduplicated while retaining provenance; pairwise traces certify the same raw
-pool.  The empty pattern guarantees a feasible width-one endpoint.  The
-supplement fixes every generator option and the trace contract.
-
-For each raw PDB, we build the heuristic's total ADD in the fixed search order
-and count distinct residual nodes after every Boolean-bit prefix.  Dynamic
-reordering is disabled; residuals at skipped manager levels remain in the
-frontier, and invalid encodings retain the default-zero extension. Thus the
-measured maximum is the exact cofactor width of the total extension used by
-search. A candidate
-is feasible exactly when its measured width is at most budget $K$.
-
-The exact selector tests only the uncapped PDB.  For each pattern, the
-cap-aware selector materializes one raw PDB and derives
-\[
-  h_\kappa(s)=
-  \begin{cases}
-    \min\{h(s),\kappa\},&h(s)<\infty,\\
-    \infty,&h(s)=\infty
-  \end{cases}
-\]
-for caps $\kappa\in\{0,1,2,4,8,16,32,64,128,256\}$ below the raw
-maximum finite value, followed by the exact transform.  Proposition
-\ref{prop-transform} preserves admissibility and consistency, and the nested
-cap order is nondecreasing in pointwise heuristic strength, while decreasing
-the cap cannot increase any cut count.  The selector therefore retains the
-strongest feasible tested ladder member of each pattern
-before comparing patterns. This per-pattern
-step prevents a weak cap of one pattern from defeating a stronger feasible
-transform of that same pattern.
-
-Both selectors then apply the same frozen lexicographic score: initial-state
-dead-end recognition, initial value, mean finite value, and abstract dead-end
-fraction, followed by smaller width, abstract-state count, and pattern as tie
-breakers.  The score is an information surrogate, not a runtime claim.  A
-selection is called \emph{semantic-nontrivial} when its finite-value sum is
-positive or it recognizes an abstract dead end.
-
-\begin{proposition}[candidate-set and score dominance]
-\label{prop-selector-dominance}
-Suppose both selectors complete on the same score-bearing normalized raw-PDB
-pool. The
-cap-aware final candidate set contains the exact selector's final candidate
-set, and its selected lexicographic score is no smaller. Consequently, if the
-exact winner recognizes the initial state as a dead end or is
-semantic-nontrivial, so is the cap-aware winner. If neither winner recognizes
-the initial state as a dead end, the cap-aware initial value is no smaller.
-Moreover, if the cap-aware winner is an exact endpoint, both selectors return
-the same pattern and heuristic.
-\end{proposition}
-
-\begin{proof}
-For every exact-feasible raw PDB, the exact transform is the last endpoint of
-the cap-aware ladder and is retained as that pattern's strongest feasible
-member. Thus every exact candidate remains available when the same score is
-maximized. The three consequences follow from the score's first four
-components. For the last claim, let $e$ and $p$ be the exact-selector and
-cap-aware winners, and suppose $p$ is exact. Candidate containment gives
-$\mathrm{score}(p)\geq\mathrm{score}(e)$, while $p$ belongs to the exact set
-and hence $\mathrm{score}(e)\geq\mathrm{score}(p)$. The deterministic total
-score, including the pattern tie breaker, therefore gives $p=e$.
+\begin{proof}[Proof sketch]
+Terminal relabeling followed by reduction only merges residuals and decision
+nodes.
+Each surviving masked-ADD node can be assigned to a distinct old preimage
+node, and its reachable terminals are images of terminals reachable from that
+preimage.
+This contracts incidence; the other quantities follow directly from their
+residual definitions.
+The supplement gives the full argument.
 \end{proof}
 
-\begin{corollary}[selector safety]
-\label{cor-selector-safety}
-On every task satisfying Theorem~\ref{thm-effort}, each completed selection by
-either selector has effort at most $2K^2n$ times blind effort. At $K=8$, this
-factor is at most $128n$. If the selected transform has finite cap $\kappa$,
-the sharper factor is $2K\min\{K,\kappa+1\}n$.
-\end{corollary}
+The exception matters.
+Under order $x_1,x_2,x_3,x_4$, let
+$F=\neg x_1\wedge\neg x_3\wedge\neg x_4$ and
+$G=\neg x_2\wedge\neg x_3\wedge x_4$.
+The sets are disjoint and their BDDs have three nodes each, while
+$F\cup G$ has seven.
+A heuristic with separate values on $F$ and $G$ has partition effort six on
+$S=F\cup G$; merging the two values increases it to seven.
+The supplement gives the residual count and the general contraction proof.
 
-Every returned transform is admissible and consistent, has measured width at
-most $K$, and has at most $K$ finite values; a cap has at most $\kappa+1$.
-Apply Corollary~\ref{cor-effort}. The guarantee concerns representation
-effort, not heuristic quality or runtime.
+Uniform caps are safe terminal maps for admissible consistent heuristics.
+For finite $h(s)$, let $h_\kappa(s)=\min\{h(s),\kappa\}$ and preserve
+$h(s)=\infty$.
+The cap preserves admissibility and consistency, and smaller caps contract
+every fixed-frontier certificate.
+Proposition~\ref{prop-incidence-contraction} does not claim that caps reduce
+the exact partition cost of every frontier or the cost of a complete search.
+The supplement proves the proposition, including the incidence contraction,
+and verifies the seven-node union in the counterexample.
 
-For empirical attribution, we certify trace completeness and reconstructed
-raw-pool identity pairwise. The supplement gives the producer, parser, score,
-and trace contracts.
+\section{Incidence-Guided PDB Selection}
+\label{sec-selector}
 
-% ============================ experiments ================================
-\section{Experiments}
-\label{sec-experiments}
+Pattern databases (PDBs) map states to exact abstract goal distances
+\citep{culberson-schaeffer-compint1998,edelkamp-ecp2001}.
+Automatic pattern selection usually optimizes heuristic information under an
+abstract-state or construction budget
+\citep{haslum-et-al-aaai2007,rovner-et-al-icaps2019}.
+Our selector adds a representation budget derived from the frontier on which
+the heuristic will first operate.
 
-We ask three questions.  \emph{Q1:} Does heuristic information explain search
-reduction while cofactor structure explains fragmentation?  \emph{Q2:} Does
-the co-occurring profile predict previously unseen changes of representation
-order beyond a denominator-only null, and how does it compare with its
-Cartesian, width, and ADD relaxations?  \emph{Q3:} What happens when the static
-width relaxation is used to construct PDB heuristics?
+The fixed candidate pool contains normalized, deduplicated patterns from the
+empty, BDD-prefix, goal-prefix, goal-fill and seeded counterexample-guided
+abstraction refinement (CEGAR) sources.
+Every pattern has at most $100{,}000$ abstract states.
+For each nonempty raw PDB, we materialize caps
+$0,1,2,4,\ldots,256$ below its maximum finite value and the exact endpoint.
+The mandatory empty pattern has one exact width-one candidate and makes every
+budget feasible.
 
-The source population contains 1,327 positive-cost, axiom-free optimal IPC
-tasks in 46 domains.  Formula development used a deterministic
-domain-balanced 275-task cohort.  A disjoint 1,052-task, 45-domain cohort was
-fixed before launch and remeasured; because those tasks occurred in an
-earlier matrix, we do not call it unseen.  Its 17 configurations are profiled
-blind search and 16 PDB searches: exact-width, cap-aware width, and cap-aware
-matched-ADD selection at $K\in\{2,4,8,16,32\}$, plus unconstrained exact
-selection.  Every cell uses the same pinned planner, product-at-evaluation
-forward symbolic \astar, a task-specific fixed order, a 300-second aggregate
-CPU limit, and 8\,GiB; the matrix has \HoldoutCells\ cells.
+The selector first runs the cap-aware cofactor-width reference with budget
+$K=32$ and records the first 16 completed positive-cost blind layers.
+It measures every candidate's terminal incidence on these same layers.
+The reference's summed incidence becomes the candidate budget, so the
+reference itself remains feasible.
+For each pattern, the selector retains its strongest cap or exact endpoint
+within this budget.
+It then maximizes the frozen lexicographic information score: initial
+dead-end recognition, initial value, mean finite value and abstract dead-end
+fraction, followed by smaller cofactor width, fewer abstract states and the
+pattern tie breaker.
 
-For each solved, completely profiled heuristic in the remeasurement matrix, we
-compute $\unioneffort$, $\fragfactor$, and normalized structural certificates.
-The frozen information tuple---initial dead-end recognition, initial value,
-mean finite value, and abstract dead-end fraction---predicts fewer expanded
-states and lower unsplit effort; structural scores predict greater
-fragmentation.  Comparisons use within-task strict pairs, collapse
-semantically duplicate heuristics, weight domains equally, and report all 45
-leave-one-domain-out (LODO) values.  This matrix is evidence for the two-effect
-decomposition and the selector stress test, but not an unseen-task validation.
+This rule spends the same measured representation budget differently from the
+reference.
+It is not an oracle: the probe is blind, covers only 16 layers and does not use
+the exact target $E$.
+A matched-work control performs the identical probe, pool construction,
+candidate materialization and incidence measurement, then executes the fixed
+reference.
+The trace records the full candidate pool, cap identities, exact raw-value
+histograms, per-layer incidences, both selections and resource accounting.
+Independent replay rejects a trace if any pool, cap, score, monotonicity or
+identity invariant fails.
+Probe and selection CPU time, wall time and peak-memory deltas are recorded
+separately, so Confirmation B can report the cost of measuring incidence.
 
-The prospective representation experiment supplies the unseen perturbations
-for Q2.  It builds one deterministic goal-fill PDB per task and runs it under
-the first four positive Gamer-order seeds; seed 0 was used in development and
-is excluded.  The seeds were fixed before any corresponding planner output.
-A task is eligible only when all four runs have identical patterns, heuristic
-values, costs, expanded states, and active values at every $g$; only the BDD
-order may change.  The primary comparison of $\jointscore$ with
-$1/\unioneffort$ and its exact support, concordance, margin, and LODO gates
-were frozen before launch.  Missing cells, inconsistent streams, certificate
-violations, or semantic disagreement abort analysis rather than alter a
-denominator.  The supplement gives the complete protocol, recovery rules,
-development history, and secondary analyses.
+\section{Confirmatory Evaluation}
+\label{sec-confirmation}
 
-\subsection{Results}
+The evaluation separates predictor confirmation from algorithm evaluation.
+All task membership, source bytes, families, commands, limits, seeds,
+exclusions, metrics and decision thresholds are fixed before outcomes are
+read.
+The source audit creates disjoint A and B cohorts and retains a stricter
+all-prior-unrepresented stratum.
+The supplement preserves the earlier cofactor experiments and the
+under-supported terminal-incidence shadow study as developmental evidence.
 
-\paragraph{The two effects separate (Q1).}
-Table~\ref{tab:two-effects} reports equal-domain concordance in the frozen
-direction: larger information scores should reduce the first two search
-targets, whereas a larger Cartesian profile should increase fragmentation.  The
-fragmentation comparison contains \HoldoutFragmentPairs\ strict pairs from
-\HoldoutFragmentPairTasks\ tasks and \HoldoutFragmentPairDomains\ domains.
-The expanded-state and unsplit-effort comparisons contain respectively
-\HoldoutStatesPairTasks\ and \HoldoutUnionPairTasks\ supporting tasks.  The
-Cartesian profile is the stronger fragmentation predictor, while information
-is the stronger predictor of both search-reduction targets.  The complete
-frozen two-effect gate passes.  This establishes the decomposition, but not
-yet the mechanism: the Cartesian score shares its normalization with the
-response, and the separately frozen denominator-margin gate fails.  That
-failure motivated the co-occurring metric and the prospective order test.
+\subsection{Confirmation A: Does Incidence Predict Partition Effort?}
 
-\begin{table}[tb]
-  \centering
-  \small
-  \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{lrr}
-    \toprule
-    Target & Information & Cartesian profile \\
-    \midrule
-    \HoldoutTwoEffectRows
-    \bottomrule
-  \end{tabular}
-  \caption{Frozen remeasurement: equal-domain directional concordance.  Each
-    row uses one shared strict-pair denominator for both predictors.}
-  \label{tab:two-effects}
-\end{table}
+Confirmation A contains 650 source-attested tasks from 43 source families.
+Each task uses the BDD-prefix, goal-prefix, goal-fill and seeded CEGAR direct
+PDB generators with exact values, a $100{,}000$-state budget and the same
+fixed BDD order.
+The heuristic is evaluated on the first 16 completed blind layers but does not
+guide, prune, order or partition the search.
+This makes the frontier identical across the four configurations.
 
-\paragraph{Co-occurrence recovers structural signal, but not beyond the null
-(Q2).}
-All four seed runs are semantically eligible on \SeedValidationEligibleTasks\
-tasks.  They induce \SeedValidationDistinctOrderPairs\ distinct-order and
-\SeedValidationIdenticalOrderPairs\ identical-order seed pairs.  The primary
-shared strict set contains \SeedPrimaryPairs\ pairs from
-\SeedPrimaryPairTasks\ tasks and \SeedPrimaryPairDomains\ domains, well above
-every support floor.  The normalized co-occurring profile reaches
-\SeedJointMacro\ equal-domain concordance (LODO
-\SeedJointLodoMin--\SeedJointLodoMax), but the denominator-only null reaches
-\SeedNullMacro\ (LODO \SeedNullLodoMin--\SeedNullLodoMax).  The observed
-margin is \SeedJointNullMargin, below the frozen $+0.02$ requirement, and the
-co-occurring profile is not never worse under LODO.  The primary gate is
-therefore a \SeedPrimaryGate.
+For each layer, the target is the exact partition effort $E$ and the primary
+predictor is $I$.
+The six controls are $kD$, $mQ$, $mJ$, Cartesian, width and ADD from
+Theorem~\ref{thm-incidence-hierarchy}.
+Every logged layer must satisfy both certificate branches before it enters the
+analysis.
+Within each eligible task, the analysis uses one grand-shared set of semantic
+PDB pairs on which the target and all seven predictors are strictly ordered.
+It computes concordance first by task, then by family and finally with equal
+family weight.
 
-The negative decision does not make co-occurrence irrelevant.
-Table~\ref{tab:seed-normalized} shows that it recovers a large directional
-signal discarded by the Cartesian, width, and ADD relaxations.  Moreover, the
-co-occurring certificate is substantially tighter: over
-\SeedJointCartesianRatioCount\ eligible seed observations, its median size is
-\SeedJointCartesianMedianRatio\ of the Cartesian certificate (mean
-\SeedJointCartesianMeanRatio).  Yet $1/\unioneffort$ remains slightly more
-concordant.  We therefore cannot attribute normalized fragmentation to the
-structural score independently of its denominator.
+The complete gate requires at least 300 eligible and comparison tasks, at
+least 25 eligible and comparison families and at least 600 strict pairs.
+The macro concordance of $I$ must reach 0.65 and exceed every control by at
+least 0.02.
+For every control, a paired-family bootstrap with $100{,}000$ replicates must
+have a positive lower 95\% endpoint, and every leave-one-family-out difference
+must be positive.
+The all-prior-unrepresented stratum additionally requires at least ten
+families, 100 strict pairs, concordance at least 0.65 and a positive margin
+over every control.
+Failure of any support or effect clause is a failed confirmation.
 
-\begin{table}[tb]
-  \centering
-  \small
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lrr}
-    \toprule
-    Predictor & Macro & LODO range \\
-    \midrule
-    \SeedNormalizedRows
-    \bottomrule
-  \end{tabular}
-  \caption{Prospective unseen-order validation: equal-domain concordance with
-    normalized fragmentation on one shared strict-pair set.}
-  \label{tab:seed-normalized}
-\end{table}
+% ================= RESULT_INSERT_CONFIRMATION_A_BEGIN =================
+% Insert only the double-executed, sealed A analysis here.
+% Report support, I concordance, all six margins, bootstrap lower endpoints,
+% leave-one-family-out minima, the all-prior-unrepresented gate, certificate
+% tightness and timing. State PASS or FAIL for the complete gate explicitly.
+% If A fails, do not insert or imply Confirmation B results.
+% ================== RESULT_INSERT_CONFIRMATION_A_END ==================
 
-The secondary absolute test uses \SeedAbsolutePairs\ strict pairs from
-\SeedAbsolutePairTasks\ tasks in \SeedAbsolutePairDomains\ domains.  The
-co-occurring certificate reaches \SeedAbsoluteJointMacro\ and passes its
-0.65 gate, compared with \SeedAbsoluteCartesianMacro\ for the Cartesian
-profile, \SeedAbsoluteWidthMacro\ for width, and \SeedAbsoluteAddMacro\ for
-ADD size.  Unsplit effort itself reaches \SeedAbsoluteUnionMacro.  Absolute
-co-occurrence is thus useful, but neither uniquely predictive nor a substitute
-for the search-space term in total effort.
+\subsection{Confirmation B: Does Incidence Improve Selection?}
 
-\paragraph{The design test exposes the tradeoff (Q3).}
-The co-occurring score is available only after search; width is its static
-envelope.  Table~\ref{tab:selector-holdout} therefore tests width-constrained
-and cap-aware PDB selection against both heuristic and blind controls.  Over
-all constrained selectors, conditional effort is
-\HoldoutConstrainedUnconstrainedPooledRatio\ of unconstrained exact selection,
-with aggregate coverage difference
-$+\HoldoutConstrainedUnconstrainedCoverageDelta$; cap-aware width alone gives
-\HoldoutCapUnconstrainedPooledRatio\ and
-$+\HoldoutCapUnconstrainedCoverageDelta$.  Against profiled blind search,
-however, the directions reverse: the corresponding ratios are
-\HoldoutAllSelectorsBlindPooledRatio\ and \HoldoutCapBlindPooledRatio, with
-coverage differences \HoldoutAllSelectorsBlindCoverageDelta\ and
-\HoldoutCapBlindCoverageDelta.  The design rule controls representation among
-heuristic choices but does not overcome the cost of heuristic partitioning.
+Confirmation B is frozen in advance but may run only if Confirmation A passes
+its complete gate.
+It uses a source-disjoint cohort of 200--300 tasks from at least 30 normalized
+families, including prespecified shadow-unrepresented and
+all-prior-unrepresented support.
+The nine configurations are blind search, three direct PDBs, CEGAR, uncapped
+exact-width selection, the cap-aware $K=32$ reference, incidence-guided
+selection and the matched-work control.
 
-The narrower matched controls are consistent but not uniformly robust:
-width versus matched ADD and caps versus exact width have pooled ratios
-\HoldoutWidthAddPooledRatio\ and \HoldoutCapExactPooledRatio, yet both frozen
-complete gates fail at $K=16$.  Conditional effort excludes unsolved or
-incompletely profiled pairs; coverage retains every fixed task denominator.
+The outcome is PAR2 with a 3600-second penalty for every unsolved,
+unsupported, resource-limited or failed cell.
+No task is removed from the performance matrix.
+Against both the cap-aware reference and matched-work control, the complete
+gate requires nonlower coverage, an equal-family normalized PAR2 improvement
+of at least 0.02, a positive paired-family bootstrap lower endpoint and a
+positive effect after leaving out every family.
+A separate mechanism claim is available only on the frozen subset where the
+guided selector chooses a different candidate and passes the same clauses.
 
-\begin{table}[tb]
-  \centering
-  \small
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lrrr}
-    \toprule
-    Contrast & Effort ratio & $\Delta$ coverage & Pairs \\
-    \midrule
-    \HoldoutSelectorStressRows
-    \bottomrule
-  \end{tabular}
-  \caption{Selector stress tests on the fixed remeasurement cohort.  Effort
-    pools cumulative expanded-BDD nodes over the reported eligible pairs;
-    coverage differences sum fixed-denominator configuration contrasts.}
-  \label{tab:selector-holdout}
-\end{table}
+% ================= RESULT_INSERT_CONFIRMATION_B_BEGIN =================
+% Insert B only if the sealed A decision authorized its launch.
+% Report cohort support, trace certification, selection-difference support,
+% coverage and normalized PAR2 against both primary controls, both bootstrap
+% intervals, leave-one-family-out minima, overhead and the complete decision.
+% If A passed but B failed, retain the predictor claim and reject the
+% end-to-end design claim. If A failed, state that B was not authorized.
+% ================== RESULT_INSERT_CONFIRMATION_B_END ==================
 
 \section{Related Work}
 
-\bddastar\ partitions frontiers by value \citep{edelkamp-reffel-ki1998};
-SetA\ensuremath{^{*}} and \ghseta\ partition transitions
-\citep{jensen-et-al-aij2008}, and ADDA\ensuremath{^{*}} uses algebraic diagrams
-\citep{hansen-et-al-sara2002}. Even \hstar\ can cause exponential BDD effort
-\citep{speck-et-al-icaps2020}; that work identifies size-aware heuristics as
-an open direction but gives no structural predictor. Its hard family has
-exponential cofactor width.
-Residual width, products, and Apply are standard
-\citep{wegener-2000,bryant-ieeecomp1986}. New here are their connection to
-exact search buckets, the co-occurring residual-pair certificate, its
-Cartesian and width relaxations, the cumulative blind-relative bounds, the
-Apply incomparability, and the matching planning family.
+Product-at-evaluation \bddastar partitions frontiers by heuristic value
+\citep{edelkamp-reffel-ki1998}, while SetA\ensuremath{^{*}} and \ghseta
+partition transition relations \citep{jensen-et-al-aij2008}.
+ADDA\ensuremath{^{*}} uses algebraic diagrams directly
+\citep{hansen-et-al-sara2002}.
+The exponential separation between \hstar and blind symbolic search
+\citep{speck-et-al-icaps2020} establishes the problem but does not identify a
+fixed-frontier predictor.
 
-PDBs, automatic pattern selection, and symbolic compilation predate this work
-\citep{culberson-schaeffer-compint1998,edelkamp-ecp2001,
-haslum-et-al-aaai2007,rovner-et-al-icaps2019,edelkamp-et-al-ecai2012}.
-Compression may merge entries or coarsen values
-\citep{felner-et-al-jair2007,sturtevant-et-al-aaai2017}; our uniform cap is not
-a new primitive. Its role is to preserve consistency, contract every cut, and
-meet an exact width budget before ranking. Total ADD size is the closest
-incomparable representation budget; our matched-budget experiment tests one
-construction regime rather than universal superiority.
+Residual width, cofactor profiles and Apply bounds are standard decision-
+diagram tools \citep{wegener-2000,bryant-ieeecomp1986}.
+Our cofactor analysis connects them to symbolic search and supplies reusable
+worst-case guarantees.
+Terminal incidence differs by retaining reachability between inner ADD nodes
+and active terminals after masking by the actual frontier.
+Theorem~\ref{thm-incidence-separation} shows that this relation can remove a
+factor of order $k$, the number of active values, from every tested
+relaxation.
 
-Factored M\&S and potentials are established
-\citep{torralba-phd2015,helmert-et-al-icaps2015,pommerening-et-al-aaai2015,
-fiser-et-al-aaai2022,fiser-et-al-aij2024}; delta-partitioned \ghseta\ is a
-different architecture. Relaxed BDD heuristics bound action-choice diagrams
-\citep{castro-et-al-icaps2019}, and cofactor width is not planning novelty
-width. The certificate fixes its order \citep{kissmann-hoffmann-jair2014}.
-Symbolic/explicit guarantees \citep{speck-helmert-ecai2025} and perimeter
-abstractions \citep{torralba-et-al-ijcai2016a,torralba-et-al-aij2018} address
-different mechanisms.
+PDB compression can merge entries or coarsen values
+\citep{felner-et-al-jair2007,sturtevant-et-al-aaai2017}.
+The uniform cap used here is not a new compression primitive.
+Its role is to provide a certified nested candidate family whose incidence can
+be measured under the same fixed probe.
+Total ADD size is a separate representation budget, and the two branches of
+Theorem~\ref{thm-incidence-hierarchy} are incomparable.
 
 \section{Limitations}
 
-The guarantee is specific to fixed-order forward product-at-evaluation search,
-positive costs, consistent heuristics, and our duplicate policy. It bounds BDD
-nodes, not time or memory; bounded width is sufficient, not necessary, and the
-construction is worst case.  The profile is a post-run explanation because it
-depends on the expanded unions; width is only a conservative pre-search
-relaxation and both quantities depend on the fixed variable order.
+Terminal incidence concerns representation after both a frontier and a
+variable order have been fixed.
+It does not predict which states a heuristic causes the search to reach.
+It counts BDD nodes rather than runtime or peak memory, and it omits symbolic
+image operations, heuristic construction and evaluator overhead.
+The certificate is one-sided: small incidence bounds partition effort, while
+large incidence need not make a reduced bucket large.
 
-Empirical comparisons condition on solved runs with complete profiles and on
-within-task strict pairs.  They do not explain timeouts, coverage, or absolute
-runtime, and equal-domain concordance is descriptive rather than a
-superpopulation estimate.  The information tuple is a frozen surrogate, not a
-complete theory of heuristic quality.  The 1,052-task matrix is a frozen
-remeasurement, not an unseen-task holdout.  Only the four order seeds are
-prospectively unseen, and their intervention uses one goal-fill PDB family.
+Confirmation A compares several PDBs on common blind frontiers.
+It can establish a predictor of fixed-frontier partition effort within that
+design, but it cannot establish a cause of overall heuristic performance.
+Confirmation B is required for claims about the selector, coverage or PAR2.
+Even a pass in both studies remains specific to the frozen PDB pool, the first
+16 probe layers, forward product-at-evaluation search, the tested benchmarks
+and the fixed-order CUDD representation.
 
-Most importantly, the primary unseen-order gate fails: $\jointscore$ reaches
-\SeedJointMacro, below both its 0.65 floor and the \SeedNullMacro\
-denominator-only null.  The absolute co-occurring certificate passes its
-secondary gate, and the normalized score is much stronger than the three
-structural relaxations, but neither observation establishes an independent or
-general performance predictor.  The experiment therefore tests and limits the
-explanation rather than confirming it.
+The exact separation is a decision-diagram construction, not a claim that its
+parameters describe typical planning tasks.
+Caps contract every certificate on a fixed frontier but can increase exact
+partition effort, as the four-variable counterexample shows.
+Changing the heuristic may also change all later frontiers, so fixed-frontier
+contraction does not imply monotone complete-search performance.
 
-Each experiment has one run per cell and a hard cutoff.  Selector coverage
-keeps the full \HoldoutTasks-task denominator, but effort ratios condition on
-jointly solved, completely profiled pairs and may therefore point in a
-different direction.  Candidate-set dominance concerns the shared score, not
-search performance.  We report all five budgets and do not use a favorable
-budget to replace either frozen aggregate gate.
-
-% ============================ conclusions ================================
 \section{Conclusions}
 
-Symbolic heuristics have two separable effects: they change the unsplit states
-expanded and fragment those states into value buckets.  The exact
-factorization $\effort=\unioneffort\cdot\fragfactor$ exposes the distinction.
-The co-occurring profile is a tighter certificate than the Cartesian product,
-gives a $2\values Wn$ blind-relative bound with a matching
-$\values Wn/120$ family, and contracts under safe coarsening.
+Terminal incidence measures the relation omitted by cofactor and width
+controls: which active heuristic terminals remain reachable from each inner
+node of the masked ADD.
+It upper-bounds exact fixed-frontier partition effort, lies below two
+independent certificate branches and is sharper by a factor $\Theta(k)$ on an
+exact family.
+The theory also identifies a strict design boundary.
+Terminal maps contract incidence, but neither exact partition effort nor a
+complete symbolic search must improve.
 
-The experiments draw a sharper boundary than the intended success story.
-Information and Cartesian structure separate the two effects in the frozen
-remeasurement.  Under prospective order changes, co-occurrence recovers a
-directional signal lost by Cartesian, width, and ADD relaxations, and its
-absolute certificate passes the secondary gate.  It does not outperform the
-normalized denominator-only null, so the primary predictor claim is rejected.
-Width-constrained PDBs improve on unconstrained heuristic selection in pooled
-effort and coverage, but lose to blind search.  Cofactor structure therefore
-provides rigorous safety bounds and useful diagnostics; predicting whether a
-heuristic will improve end-to-end symbolic search still requires both the
-search-space and representation effects, not one scalar surrogate.
-% ------------------------------------------------------------------------
-% Bibliography is managed by the Makefile's update-bib target.
-% Flush every body float before measuring the final content page. The 2027
-% style repeats this barrier when it starts the bibliography.
+The two confirmations respect that boundary.
+Confirmation A tests terminal incidence only as a predictor of representation
+cost on common frontiers.
+Only if that claim survives does Confirmation B test whether an
+incidence-budgeted PDB selector improves end-to-end search.
+% RESULT_INSERT_CONCLUSION_A: replace the preceding protocol sentence with
+% the sealed A conclusion and its exact scope.
+% RESULT_INSERT_CONCLUSION_B: add the sealed B conclusion only if authorized.
+
 \FloatBarrier
 \label{paper:references-start}
 \bibliography{bib/abbrv,bib/literatur,bib/crossref,extra}
