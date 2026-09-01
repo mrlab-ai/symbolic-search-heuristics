@@ -90,7 +90,8 @@ results, and expand the related-work comparison.
 \section{Terminal Incidence on a Fixed Frontier}
 \label{sec:supp-incidence}
 
-Fix Boolean variables $x_1,\ldots,x_n$ in order $\pi$.
+Fix Boolean variables $x_1,\ldots,x_n$ in order $\pi$, and let $\chi_S$ denote
+the characteristic function of $S$.
 For a function $f$ and a prefix assignment $\rho\in\{0,1\}^i$, let
 $f|_\rho$ be the residual function and let
 $\sub{i}{f}=\{f|_\rho:\rho\in\{0,1\}^i\}$.
@@ -172,11 +173,13 @@ Relabel terminal $v$ of $M$ by one and every other terminal, including
 $\bot$, by zero.
 The resulting ordered Boolean diagram represents
 $S\cap h^{-1}(v)$.
+Each relabeled source residual reduces to a signed BDD pointer; charge it to
+the pointer's regular node whenever that pointer is nonterminal.
 Reduction removes nodes whose children agree, merges isomorphic nodes and
 uses complemented pointers to share complementary residuals, but it does not
 create a decision node with no source node in $M$.
 Partition the source decision nodes by the regular BDD node, if any, to which
-their relabeled residual reduces.
+their relabeled residual is charged.
 Choose one source node for every regular node of the reduced bucket BDD.
 The chosen nodes are distinct because the source classes are disjoint.
 Moreover, a chosen source node reaches $v$: otherwise every terminal below it
@@ -500,7 +503,7 @@ Use order $x_1,x_2,x_3,x_4$ and let
 The sets are disjoint because they require opposite values of $x_4$.
 Their BDDs are three-node chains on $(x_1,x_3,x_4)$ and
 $(x_2,x_3,x_4)$, respectively.
-Let $S=F\cup G$ and give $F$ and $G$ distinct heuristic values.
+Let $S=F\cup G$, assign heuristic value one on $F$ and value two on $G$.
 Then $\partcost{S}{h}=3+3=6$.
 
 To count the BDD for the union, branch first on $x_1$.
@@ -513,8 +516,8 @@ The residuals $x_4$ and $\neg x_4$ share one regular $x_4$ node through
 complemented edges.
 Together with the root, the union BDD therefore has
 $1+2+3+1=7$ regular inner nodes.
-Merging the two heuristic terminals produces the single bucket $S$ and
-increases exact partition effort from six to seven.
+The uniform cap $\kappa=1$ merges the two heuristic terminals, produces the
+single bucket $S$ and increases exact partition effort from six to seven.
 \end{proof}
 
 Uniform caps are a special case of Proposition
@@ -607,24 +610,30 @@ These labels depend only on source identity, never on planner behavior.
 Within every supported family, SHA-256 ranks derived from fixed role strings
 determine the split.
 The audit first reserves the B base cohort, draws exactly 650 A tasks by
-lexicographic-family round robin, and only then tops B up to 300 tasks, with a
-maximum of 12 B tasks per family.
+lexicographic-family round robin, and only then draws exactly 300 B tasks, with
+a maximum of 12 B tasks per family.
 The A and B records are disjoint in canonical identity and problem hash.
-A is authorized only with exactly 650 tasks and its frozen family-support
-clauses.
-B may contain 200--300 tasks but requires at least 30 families, at least 12
+A is authorized only with exactly 650 tasks, at least 28 source families, at
+least 12 shadow-unrepresented families, and at least 100 tasks from ten
+all-prior-unrepresented families.
+B is authorized only with exactly 300 tasks, at least 30 families, at least 12
 shadow-unrepresented families, and at least 50 tasks from ten
 all-prior-unrepresented families.
 
-Two outcome-blind resource amendments preceded the final source scan.
+Three outcome-blind resource amendments precede the pending source scan.
 The first scan requested 26~GiB and had out-of-memory shards.
 The second reran all shards with 256~GiB and a 2,700-second translation limit,
 but still had timeouts and out-of-memory shards.
-The final campaign therefore reruns every one of the 820 two-task shards from
-scratch with 512~GiB and a 7,200-second per-task translation limit; no shard
-from either failed campaign may be reused.
-It can be sealed only if all shards finish successfully and their source,
-environment and scheduler manifests verify.
+The third reran all shards with 512~GiB and a 7,200-second per-task translation
+limit, but compute-node temporary-space exhaustion, out-of-memory conditions
+and producer timeouts prevent it from being sealed.
+The prospective campaign v4 therefore reruns every one of the 820 two-task
+shards from scratch with project-backed temporary storage, 1,024~GiB and a
+14,400-second per-task translation limit within an 08:20:00 Slurm limit; no
+earlier shard may be reused.
+Campaign v4 is pending rather than evidence: neither cohort exists for a
+confirmation launch unless all original v4 shards finish successfully and its
+source, environment and scheduler manifests verify.
 
 \subsection{Confirmation A Measurement and Analysis}
 
@@ -638,8 +647,8 @@ The Boolean order is the untranslated Fast Downward encoding order
 The PDB heuristic is instrumented on the blind search but cannot guide,
 prune, order or partition it.
 
-The retained horizon is the first 16 completed non-goal blind layers in
-increasing $g$ order.
+The retained horizon contains up to the first 16 completed non-goal blind
+layers in increasing $g$ order.
 If a blind solution occurs earlier, a task remains eligible only when all four
 configurations solve at the same cost, expose complete measurements and have
 the identical pre-goal layer sequence.
@@ -657,15 +666,27 @@ Duplicate identities must have identical target and predictor measurements
 and are collapsed.
 Within a task, the analyzer considers every unordered pair of distinct
 semantic observations.
-The grand-shared strict set retains a pair only when $E$ and all seven
-predictors are unequal.
-For predictor $P$, the task concordance is
+The primary, target-strict set $\mathcal P_t$ retains a pair $(a,b)$ exactly
+when $E(a)\ne E(b)$, independently of predictor ties.
+For predictor $P$, define
 \[
- \frac{\#\{\text{retained pairs on which $P$ and $E$ have the same sign}\}}
- {\#\{\text{retained pairs}\}}.
+ c_P(a,b)=
+ \begin{cases}
+  1,&\operatorname{sgn}(P(a)-P(b))=\operatorname{sgn}(E(a)-E(b)),\\
+  \tfrac12,&P(a)=P(b),\\
+  0,&\text{otherwise}.
+ \end{cases}
 \]
+The task concordance is the mean of $c_P$ over $\mathcal P_t$.
+It gives every predictor the same target-defined denominator and treats a tie
+as half-correct rather than deleting it.
+A task contributes to comparison support exactly when $\mathcal P_t$ is
+nonempty; target ties never enter a predictor's score.
 Task concordances are averaged within normalized family and then equally
 across families.
+As a non-gating sensitivity, the analyzer repeats the comparison on the
+all-strict subset where $E$ and all seven predictors are unequal; there ties
+are absent and concordance is the ordinary fraction of matching signs.
 The analyzer also checks that normalizing $E$ by the common unsplit-frontier
 node sum leaves every pair orientation unchanged and that the inverse
 denominator is tied.
@@ -673,9 +694,16 @@ denominator is tied.
 Every paired-family interval resamples the frozen families with replacement
 100,000 times using seed 20260901 and uses the nearest-rank 2.5 and 97.5
 percentiles.
+This finite-cohort reweighting measures stability to family composition within
+the frozen cohort; it is not a confidence statement about a population of
+unseen benchmark families.
 Leave-one-family-out values repeat the equal-family macro average after
 removing each family in turn.
 All support and effect clauses in the main paper are conjunctive.
+The all-prior-unrepresented gate requires at least 50 comparison tasks in ten
+families and 100 target-strict pairs, in addition to the source floors above.
+It uses the same 0.65 concordance, 0.02 margins, paired-family reweighting and
+leave-one-family-out clauses as the primary gate.
 The analysis is run twice from fresh loads of the sealed matrix; publication
 requires byte-identical canonical outputs.
 
@@ -692,8 +720,19 @@ Both incidence arms must have structurally identical probe, candidate-pool,
 preselection and reference traces after timing and memory fields are removed.
 The parser independently reconstructs all capped statistics and replays the
 selection rule.
-A probe with fewer than 16 completed positive-cost layers is unsupported and
-has no fallback; the task nevertheless remains in the performance matrix.
+A separate parser normalizes the standalone cap-aware $K=32$ run's complete
+pattern pool and selected identity.
+These data must equal the reference pool and identity independently
+reconstructed from both the guided and matched traces; disagreement
+invalidates the task rather than redefining the reference.
+Pool equality covers index, sources, pattern, abstract-state count and
+state-budget feasibility; selected-identity equality covers index, sources,
+pattern and the cap, with the exact endpoint normalized to null.
+A probe with fewer than 16 completed blind layers on a positive-cost task is
+unsupported and has no fallback; the task nevertheless remains in the
+performance matrix.
+The completed initial layer at $g=0$ counts toward the 16; ``positive-cost''
+refers to operator costs, not to the layer's $g$ value.
 
 For task $t$ and reference $R$, the normalized improvement is
 \[
@@ -709,20 +748,39 @@ The task effects are averaged within normalized family and then equally over
 families.
 The paired-family bootstrap uses 100,000 resamples, seed 20260902 and the same
 nearest-rank endpoints as A.
+As in A, this is a finite-cohort family-reweighting stability analysis, not a
+population confidence statement about unseen families.
 The complete gate applies separately against the cap-aware reference and the
 matched-work control; every task appears in both contrasts.
 The mechanism subset is fixed solely by a certified difference between the
-guided and reference selected identities and must pass the same clauses.
+guided and reference selected identities.
+It must contain at least 50 tasks from ten families and pass the same coverage,
+effect, bootstrap-reweighting and leave-one-family-out clauses against the
+matched-work control.
 
 Both campaigns run on the execution cluster's \texttt{fat} partition with normal QoS,
 one CPU and 26~GiB requested per cell group.
 The planner limit is 1,800 seconds and 24,576~MiB per cell; three cells run
 sequentially in each 01:40:00 array element, without an array throttle, nice
 adjustment or automatic requeue.
+For B, all nine cells of each task are contiguous, and its cap-aware $K=32$,
+incidence-guided and matched-work runs form the final task-blocked three-run
+array element.
+Within each family, a deterministic cyclic schedule balances which of the
+three configurations runs first, second and third; the complete task-to-order
+mapping and its digest are frozen and revalidated through build, launch, audit
+and recovery.  The 2,700 cells therefore occupy 900 unthrottled array
+elements.
 Only prespecified scheduler interruptions permit recovery; timeouts,
 out-of-memory conditions and algorithm failures are never selectively rerun.
+Any permitted B recovery reruns the entire interrupted three-cell element,
+including a cell that had already completed.
 The B trace reports probe and selection CPU time, wall time and peak-memory
-delta separately, but these measurements do not affect a gate.
+delta separately, but these measurements are descriptive and do not affect a
+gate.
+The guided--matched contrast controls for this probe work because both arms pay
+it, whereas the guided--standalone-reference contrast includes it in total
+planner time.
 % RESULT_INSERT_CONFIRMATORY_HARDWARE: report the allocated processor model
 % and final execution-receipt identifiers with the sealed A/B results.
 
@@ -735,7 +793,7 @@ Its co-occurring profile is the $mJ$ relaxation in
 Theorem~\ref{thm:supp-incidence-hierarchy}.
 These results remain useful as frontier-independent safeguards and as
 guarantees for complete forward product-at-evaluation search, but they are not
-presented as the strongest fixed-frontier predictor.
+presented as the strongest fixed-frontier ordinal predictor.
 
 \section{Search Setup and Bucket Identity}
 

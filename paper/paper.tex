@@ -95,9 +95,9 @@
 \maketitle
 
 \begin{abstract}
-Heuristics affect symbolic search in two different ways: they change the
-states reached by the search and partition each binary decision diagram (BDD)
-into value buckets.
+In product-at-evaluation symbolic search, heuristics have two coupled effects:
+they change the states reached by the search and partition each binary decision
+diagram (BDD) into value buckets.
 Cofactor profiles and decision-diagram width bound the second effect, but they
 count residual combinations without recording which heuristic values remain
 reachable from each decision node.
@@ -112,8 +112,8 @@ data-suffix length.
 Terminal relabeling, including safe heuristic caps, cannot increase terminal
 incidence, although it can increase exact partition cost.
 We use these results to define an incidence-guided pattern-database selector.
-A source-disjoint confirmation first tests whether incidence predicts
-fixed-frontier partition cost better than its six relaxations; only success
+A source-disjoint confirmation first tests whether incidence ranks exact
+fixed-frontier partition effort better than its six relaxations; only success
 authorizes a second experiment on end-to-end selection performance.
 % RESULT_INSERT_ABSTRACT_A: insert the sealed Confirmation A result and scope.
 % RESULT_INSERT_ABSTRACT_B: insert B only if A authorized and B was completed.
@@ -140,8 +140,8 @@ remaining frontiers harder to represent.
 Even \hstar can cause exponentially more cumulative BDD nodes than blind
 search \citep{speck-et-al-icaps2020}, and blind symbolic search remains a
 strong cost-optimal method \citep{speck-et-al-jair2025}.
-Explaining heuristic performance therefore requires a search-space term and a
-representation term.
+Explaining heuristic performance therefore requires separating at least a
+search-space term and a representation term.
 
 Previous development of this study focused on the representation term.
 A cofactor-profile certificate counts pairs of state-set and heuristic
@@ -184,13 +184,13 @@ two BDDs by a BDD for their union.
 We therefore use incidence as a budget rather than claim that caps improve
 every fixed frontier.
 Our selector measures candidate PDBs on a short blind probe and returns the
-strongest candidate under the incidence of a fixed cap-aware reference.
+highest-scoring candidate under the incidence of a fixed cap-aware reference.
 
 The empirical claims follow a two-stage order that prevents the selector from
 validating its own predictor.
-Confirmation A holds the blind frontiers fixed and asks whether $I$ predicts
-their exact partition effort better than six prespecified relaxations on a
-source-disjoint cohort.
+Confirmation A holds the blind frontiers fixed and asks whether $I$ ranks
+alternative PDBs by their exact partition effort better than six prespecified
+relaxations on a source-disjoint cohort.
 Only a complete pass authorizes Confirmation B, which compares the
 incidence-guided selector with the cap-aware reference and a matched-work
 control in ordinary guided search.
@@ -211,6 +211,7 @@ State sets use reduced ordered BDDs with complemented edges, and
 $\bddsize{S}$ counts regular inner nodes as in CUDD.
 Heuristics use reduced ordered ADDs under the same order.
 
+Let $\chi_S$ denote the characteristic function of $S$.
 For a function $f$ and a prefix $\rho\in\{0,1\}^i$, let $f|_\rho$ be its
 residual function and $\sub{i}{f}$ the set of distinct residuals at cut $i$.
 We write
@@ -413,6 +414,12 @@ $kD=\sum_g k_gD_\pi(S_g,h)$, with analogous definitions for the other
 controls.
 Summing Theorem~\ref{thm-incidence-hierarchy} preserves both branches.
 No extra multiplier by the number of values is applied to $I$.
+The inequalities compare certificates for one heuristic; they do not order
+two heuristics by exact partition effort.
+In particular, $\incidence{S}{h_1}<\incidence{S}{h_2}$ and
+$\partcost{S}{h_i}\leq\incidence{S}{h_i}$ imply no order between
+$\partcost{S}{h_1}$ and $\partcost{S}{h_2}$.
+Confirmation A tests this separate ordinal question empirically.
 
 \subsection{An Exact Separation}
 
@@ -501,8 +508,8 @@ $F=\neg x_1\wedge\neg x_3\wedge\neg x_4$ and
 $G=\neg x_2\wedge\neg x_3\wedge x_4$.
 The sets are disjoint and their BDDs have three nodes each, while
 $F\cup G$ has seven.
-A heuristic with separate values on $F$ and $G$ has partition effort six on
-$S=F\cup G$; merging the two values increases it to seven.
+A heuristic with value one on $F$ and value two on $G$ has partition effort
+six on $S=F\cup G$; applying the uniform cap $\kappa=1$ increases it to seven.
 The supplement gives the residual count and the general contraction proof.
 
 Uniform caps are safe terminal maps for admissible consistent heuristics.
@@ -535,9 +542,10 @@ $0,1,2,4,\ldots,256$ below its maximum finite value and the exact endpoint.
 The mandatory empty pattern has one exact width-one candidate and makes every
 budget feasible.
 
-The selector first runs the cap-aware cofactor-width reference with budget
-$K=32$ and records the first 16 completed positive-cost blind layers.
-It measures every candidate's terminal incidence on these same layers.
+The selector first records exactly the first 16 completed blind layers on a
+positive-cost task.
+It identifies the cap-aware cofactor-width reference with budget $K=32$ and
+measures every candidate's terminal incidence on these same layers.
 The reference's summed incidence becomes the candidate budget, so the
 reference itself remains feasible.
 For each pattern, the selector retains its strongest cap or exact endpoint
@@ -547,10 +555,31 @@ dead-end recognition, initial value, mean finite value and abstract dead-end
 fraction, followed by smaller cofactor width, fewer abstract states and the
 pattern tie breaker.
 
+\begin{proposition}[probe-budget safety]
+Let fixed probe frontiers $S_1,\ldots,S_\ell$ and a finite candidate pool
+containing the reference $h_R$ be given, and set
+$B=\sum_g\incidence{S_g}{h_R}$.
+The incidence-budgeted selection is feasible, and every returned candidate
+$\hat h$ satisfies $\sum_g\partcost{S_g}{\hat h}\leq B$.
+Every bottom-preserving terminal map of $\hat h$ also satisfies the incidence
+budget.
+\end{proposition}
+
+\begin{proof}
+The reference is feasible by the definition of $B$.
+Theorem~\ref{thm-incidence-hierarchy}, summed over the probe, gives
+$\sum_g\partcost{S_g}{\hat h}
+ \leq\sum_g\incidence{S_g}{\hat h}\leq B$;
+Proposition~\ref{prop-incidence-contraction} gives the final claim.
+\end{proof}
+
 This rule spends the same measured representation budget differently from the
 reference.
-It is not an oracle: the probe is blind, covers only 16 layers and does not use
-the exact target $E$.
+The proposition is an absolute safety bound, not an ordinal guarantee that a
+lower-incidence candidate has lower exact effort than another candidate.
+The selector is not an oracle: its probe consists only of the first 16
+completed blind layers on a positive-cost task and does not use the exact
+target $E$.
 A matched-work control performs the identical probe, pool construction,
 candidate materialization and incidence measurement, then executes the fixed
 reference.
@@ -559,29 +588,37 @@ histograms, per-layer incidences, both selections and resource accounting.
 Independent replay rejects a trace if any pool, cap, score, monotonicity or
 identity invariant fails.
 Probe and selection CPU time, wall time and peak-memory deltas are recorded
-separately, so Confirmation B can report the cost of measuring incidence.
+separately as descriptive phase accounting.
+The matched-work control pays the same probe and selection work, while the
+comparison with the standalone reference retains that work in end-to-end
+planner time.
 
 \section{Confirmatory Evaluation}
 \label{sec-confirmation}
 
-The evaluation separates predictor confirmation from algorithm evaluation.
-All task membership, source bytes, families, commands, limits, seeds,
+The evaluation separates ordinal-predictor confirmation from algorithm
+evaluation.
+All source-selection rules, family mappings, commands, limits, seeds,
 exclusions, metrics and decision thresholds are fixed before outcomes are
-read.
-The source audit creates disjoint A and B cohorts and retains a stricter
-all-prior-unrepresented stratum.
+read; task membership and source bytes must be sealed before either
+confirmation freezes.
+The pending source audit will create disjoint A and B cohorts and retain a
+stricter all-prior-unrepresented stratum if its complete prospective campaign
+seals successfully.
 The supplement preserves the earlier cofactor experiments and the
 under-supported terminal-incidence shadow study as developmental evidence.
 
-\subsection{Confirmation A: Does Incidence Predict Partition Effort?}
+\subsection{Confirmation A: Does Incidence Rank Partition Effort?}
 
-Confirmation A contains 650 source-attested tasks from 43 source families.
+Confirmation A is frozen to require exactly 650 source-attested tasks from at
+least 28 source families.
 Each task uses the BDD-prefix, goal-prefix, goal-fill and seeded CEGAR direct
 PDB generators with exact values, a $100{,}000$-state budget and the same
 fixed BDD order.
-The heuristic is evaluated on the first 16 completed blind layers but does not
-guide, prune, order or partition the search.
-This makes the frontier identical across the four configurations.
+The heuristic is evaluated on up to the first 16 completed non-goal blind
+layers in increasing $g$ order but does not guide, prune, order or partition
+the search.  A task solved earlier contributes its common complete pre-goal
+horizon.  This makes the frontier identical across the four configurations.
 
 For each layer, the target is the exact partition effort $E$ and the primary
 predictor is $I$.
@@ -589,28 +626,35 @@ The six controls are $kD$, $mQ$, $mJ$, Cartesian, width and ADD from
 Theorem~\ref{thm-incidence-hierarchy}.
 Every logged layer must satisfy both certificate branches before it enters the
 analysis.
-Within each eligible task, the analysis uses one grand-shared set of semantic
-PDB pairs on which the target and all seven predictors are strictly ordered.
-It computes concordance first by task, then by family and finally with equal
+Within each eligible task, the primary analysis retains every semantic-PDB
+pair on which $E$ is strictly ordered.
+For each predictor, a concordant pair scores one, a predictor tie scores one
+half and a discordant pair scores zero.
+These task concordances are averaged first within family and then with equal
 family weight.
+The former grand-shared set on which $E$ and all predictors are strictly
+ordered is retained as a non-gating sensitivity analysis.
 
 The complete gate requires at least 300 eligible and comparison tasks, at
-least 25 eligible and comparison families and at least 600 strict pairs.
+least 25 eligible and comparison families and at least 600 target-strict
+pairs.
 The macro concordance of $I$ must reach 0.65 and exceed every control by at
 least 0.02.
-For every control, a paired-family bootstrap with $100{,}000$ replicates must
-have a positive lower 95\% endpoint, and every leave-one-family-out difference
-must be positive.
-The all-prior-unrepresented stratum additionally requires at least ten
-families, 100 strict pairs, concordance at least 0.65 and a positive margin
-over every control.
+For every control, the lower endpoint of the 95\% paired-family bootstrap
+reweighting interval with $100{,}000$ replicates must be positive, and every
+leave-one-family-out difference must be positive.
+The all-prior-unrepresented stratum additionally requires at least 100 source
+tasks in ten source families, 50 comparison tasks in ten comparison families
+and 100 target-strict pairs, and it must pass the same concordance, margin,
+bootstrap and leave-one-family-out clauses.
 Failure of any support or effect clause is a failed confirmation.
 
 % ================= RESULT_INSERT_CONFIRMATION_A_BEGIN =================
 % Insert only the double-executed, sealed A analysis here.
-% Report support, I concordance, all six margins, bootstrap lower endpoints,
-% leave-one-family-out minima, the all-prior-unrepresented gate, certificate
-% tightness and timing. State PASS or FAIL for the complete gate explicitly.
+% Report target-strict support, I concordance, all six margins, bootstrap lower
+% endpoints, leave-one-family-out minima, the robust all-prior-unrepresented
+% gate, all-strict sensitivity, certificate tightness and timing. State PASS or
+% FAIL for the complete gate explicitly.
 % If A fails, do not insert or imply Confirmation B results.
 % ================== RESULT_INSERT_CONFIRMATION_A_END ==================
 
@@ -618,28 +662,37 @@ Failure of any support or effect clause is a failed confirmation.
 
 Confirmation B is frozen in advance but may run only if Confirmation A passes
 its complete gate.
-It uses a source-disjoint cohort of 200--300 tasks from at least 30 normalized
-families, including prespecified shadow-unrepresented and
+It requires a source-disjoint cohort of exactly 300 tasks from at least 30
+normalized families, including prespecified shadow-unrepresented and
 all-prior-unrepresented support.
 The nine configurations are blind search, three direct PDBs, CEGAR, uncapped
 exact-width selection, the cap-aware $K=32$ reference, incidence-guided
 selection and the matched-work control.
+The cap-aware reference, incidence-guided and matched-work final-search runs
+are task-blocked with a deterministic family-balanced cyclic execution order.
+The standalone reference's complete normalized pattern pool and selected
+identity must match the reference independently reconstructed from both
+selector traces.
 
 The outcome is PAR2 with a 3600-second penalty for every unsolved,
 unsupported, resource-limited or failed cell.
 No task is removed from the performance matrix.
 Against both the cap-aware reference and matched-work control, the complete
 gate requires nonlower coverage, an equal-family normalized PAR2 improvement
-of at least 0.02, a positive paired-family bootstrap lower endpoint and a
-positive effect after leaving out every family.
-A separate mechanism claim is available only on the frozen subset where the
-guided selector chooses a different candidate and passes the same clauses.
+of at least 0.02, a positive lower endpoint of the 95\% paired-family bootstrap
+reweighting interval and a positive effect after leaving out every family.
+A separate matched-work mechanism claim is available only on the frozen subset
+where the guided selector chooses a different candidate, where at least 50
+tasks from ten families support the contrast, and where the same clauses pass
+against the matched-work control.
 
 % ================= RESULT_INSERT_CONFIRMATION_B_BEGIN =================
 % Insert B only if the sealed A decision authorized its launch.
 % Report cohort support, trace certification, selection-difference support,
 % coverage and normalized PAR2 against both primary controls, both bootstrap
-% intervals, leave-one-family-out minima, overhead and the complete decision.
+% reweighting intervals, leave-one-family-out minima, task-block and reference
+% identity certification, mechanism support, overhead and the complete
+% decision.
 % If A passed but B failed, retain the predictor claim and reject the
 % end-to-end design claim. If A failed, state that B was not authorized.
 % ================== RESULT_INSERT_CONFIRMATION_B_END ==================
@@ -653,7 +706,7 @@ ADDA\ensuremath{^{*}} uses algebraic diagrams directly
 \citep{hansen-et-al-sara2002}.
 The exponential separation between \hstar and blind symbolic search
 \citep{speck-et-al-icaps2020} establishes the problem but does not identify a
-fixed-frontier predictor.
+fixed-frontier ordinal predictor.
 
 Residual width, cofactor profiles and Apply bounds are standard decision-
 diagram tools \citep{wegener-2000,bryant-ieeecomp1986}.
@@ -681,15 +734,17 @@ It does not predict which states a heuristic causes the search to reach.
 It counts BDD nodes rather than runtime or peak memory, and it omits symbolic
 image operations, heuristic construction and evaluator overhead.
 The certificate is one-sided: small incidence bounds partition effort, while
-large incidence need not make a reduced bucket large.
+large incidence need not make a reduced bucket large or determine the ordinal
+ranking of two heuristics.
 
 Confirmation A compares several PDBs on common blind frontiers.
-It can establish a predictor of fixed-frontier partition effort within that
-design, but it cannot establish a cause of overall heuristic performance.
+It can establish an ordinal predictor of fixed-frontier partition effort within
+that design, but it cannot establish a cause of overall heuristic performance.
 Confirmation B is required for claims about the selector, coverage or PAR2.
 Even a pass in both studies remains specific to the frozen PDB pool, the first
-16 probe layers, forward product-at-evaluation search, the tested benchmarks
-and the fixed-order CUDD representation.
+16 completed blind probe layers on positive-cost tasks, forward
+product-at-evaluation search, the tested benchmarks and the fixed-order CUDD
+representation.
 
 The exact separation is a decision-diagram construction, not a claim that its
 parameters describe typical planning tasks.
@@ -711,8 +766,8 @@ Terminal maps contract incidence, but neither exact partition effort nor a
 complete symbolic search must improve.
 
 The two confirmations respect that boundary.
-Confirmation A tests terminal incidence only as a predictor of representation
-cost on common frontiers.
+Confirmation A tests terminal incidence only as an ordinal predictor of exact
+partition effort on common frontiers.
 Only if that claim survives does Confirmation B test whether an
 incidence-budgeted PDB selector improves end-to-end search.
 % RESULT_INSERT_CONCLUSION_A: replace the preceding protocol sentence with
