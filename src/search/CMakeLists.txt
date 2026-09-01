@@ -1037,6 +1037,7 @@ create_fast_downward_library(
         symbolic/sym_utils
         symbolic/sym_variables
         symbolic/wbh_add_stats
+        symbolic/wbh_incidence_selector
         symbolic/wbh_ms_levels
         symbolic/wbh_pdb_levels
         symbolic/wbh_potential_levels

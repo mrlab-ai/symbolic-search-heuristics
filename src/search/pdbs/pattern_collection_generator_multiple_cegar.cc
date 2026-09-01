@@ -12,7 +12,8 @@ using namespace std;
 namespace pdbs {
 PatternCollectionGeneratorMultipleCegar::
     PatternCollectionGeneratorMultipleCegar(
-        bool use_wildcard_plans, int max_pdb_size, int max_collection_size,
+        bool use_wildcard_plans, int max_refinements, int max_pdb_size,
+        int max_collection_size,
         double pattern_generation_max_time, double total_max_time,
         double stagnation_limit, double blacklist_trigger_percentage,
         bool enable_blacklist_on_stagnation, int random_seed,
@@ -21,7 +22,8 @@ PatternCollectionGeneratorMultipleCegar::
           max_pdb_size, max_collection_size, pattern_generation_max_time,
           total_max_time, stagnation_limit, blacklist_trigger_percentage,
           enable_blacklist_on_stagnation, random_seed, verbosity),
-      use_wildcard_plans(use_wildcard_plans) {
+      use_wildcard_plans(use_wildcard_plans),
+      max_refinements(max_refinements) {
 }
 
 string PatternCollectionGeneratorMultipleCegar::id() const {
@@ -35,8 +37,8 @@ PatternInformation PatternCollectionGeneratorMultipleCegar::compute_pattern(
     unordered_set<int> &&blacklisted_variables) {
     utils::LogProxy silent_log = utils::get_silent_log();
     return generate_pattern_with_cegar(
-        max_pdb_size, max_time, use_wildcard_plans, silent_log, rng, task, goal,
-        move(blacklisted_variables));
+        max_pdb_size, max_time, max_refinements, use_wildcard_plans, silent_log,
+        rng, task, goal, move(blacklisted_variables));
 }
 
 class PatternCollectionGeneratorMultipleCegarFeature
@@ -56,6 +58,10 @@ public:
             "the algorithms.");
 
         add_cegar_wildcard_option_to_feature(*this);
+        add_option<int>(
+            "max_refinements",
+            "maximum number of CEGAR refinements per generated pattern",
+            "infinity", plugins::Bounds("0", "infinity"));
         add_multiple_options_to_feature(*this);
 
         add_cegar_implementation_notes_to_feature(*this);
@@ -67,6 +73,7 @@ public:
         return plugins::make_shared_from_arg_tuples<
             PatternCollectionGeneratorMultipleCegar>(
             get_cegar_wildcard_arguments_from_options(opts),
+            opts.get<int>("max_refinements"),
             get_multiple_arguments_from_options(opts));
     }
 };

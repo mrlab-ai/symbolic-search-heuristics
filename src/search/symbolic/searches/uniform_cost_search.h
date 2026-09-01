@@ -31,6 +31,7 @@ namespace symbolic {
 class SymController;
 class ClosedList;
 class WbhPruner;
+class WbhIncidenceProbe;
 
 class UniformCostSearch : public SymSearch {
 protected:
@@ -41,6 +42,11 @@ protected:
     // the duplicate filtering. Null (the default) leaves blind search
     // untouched.
     std::shared_ptr<WbhPruner> wbh_pruner;
+
+    // Non-owning observer for the prospective selector's common blind probe.
+    // When set before init(), this search is detached: it never reads or
+    // mutates the parent engine's bounds, solutions, or goal cuts.
+    WbhIncidenceProbe *wbh_detached_probe = nullptr;
 
     Estimation step_estimation;
 
@@ -126,6 +132,8 @@ public:
     void set_wbh_pruner(const std::shared_ptr<WbhPruner> &pruner) {
         wbh_pruner = pruner;
     }
+
+    void set_wbh_detached_probe(WbhIncidenceProbe *probe);
 
     void filterDuplicates(Bucket &bucket);
 

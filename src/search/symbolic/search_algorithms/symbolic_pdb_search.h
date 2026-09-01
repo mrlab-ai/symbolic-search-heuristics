@@ -4,6 +4,7 @@
 #include "symbolic_search.h"
 
 #include <memory>
+#include <string>
 
 namespace symbolic {
 class HeuristicFwSearch;
@@ -22,14 +23,17 @@ class SymbolicPdbForwardSearch : public SymbolicSearch {
     const PdbPatternSelection pattern_selection;
     const double cegar_max_time;
     const int cegar_seed;
+    const int cegar_max_refinements;
     const int cofactor_width_budget;
     const int total_add_node_budget;
     const int value_cap;
     const bool select_value_cap;
     const bool dynamic_reordering;
+    const bool gamer_ordering;
     const bool shadow_partition;
     const bool prune_only;
     const int batch_f_window;
+    const std::string incidence_selector_log;
 
     std::shared_ptr<PdbLevelSets> level_sets;
 

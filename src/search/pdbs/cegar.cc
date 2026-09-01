@@ -82,6 +82,7 @@ class CEGAR {
     const int max_pdb_size;
     const int max_collection_size;
     const double max_time;
+    const int max_refinements;
     const bool use_wildcard_plans;
     utils::LogProxy &log;
     shared_ptr<utils::RandomNumberGenerator> rng;
@@ -147,6 +148,7 @@ class CEGAR {
 public:
     CEGAR(
         int max_pdb_size, int max_collection_size, double max_time,
+        int max_refinements,
         bool use_wildcard_plans, utils::LogProxy &log,
         const shared_ptr<utils::RandomNumberGenerator> &rng,
         const shared_ptr<AbstractTask> &task, const vector<FactPair> &goals,
@@ -157,6 +159,7 @@ public:
 
 CEGAR::CEGAR(
     int max_pdb_size, int max_collection_size, double max_time,
+    int max_refinements,
     bool use_wildcard_plans, utils::LogProxy &log,
     const shared_ptr<utils::RandomNumberGenerator> &rng,
     const shared_ptr<AbstractTask> &task, const vector<FactPair> &goals,
@@ -164,6 +167,7 @@ CEGAR::CEGAR(
     : max_pdb_size(max_pdb_size),
       max_collection_size(max_collection_size),
       max_time(max_time),
+      max_refinements(max_refinements),
       use_wildcard_plans(use_wildcard_plans),
       log(log),
       rng(rng),
@@ -569,6 +573,7 @@ PatternCollectionInformation CEGAR::compute_pattern_collection() {
         log << "max pdb size: " << max_pdb_size << endl;
         log << "max collection size: " << max_collection_size << endl;
         log << "max time: " << max_time << endl;
+        log << "max refinements: " << max_refinements << endl;
         log << "wildcard plans: " << use_wildcard_plans << endl;
         log << "goal variables: ";
         for (const FactPair &goal : this->goals) {
@@ -592,6 +597,8 @@ PatternCollectionInformation CEGAR::compute_pattern_collection() {
     State concrete_init = task_proxy.get_initial_state();
     concrete_init.unpack();
     int concrete_solution_index = -1;
+    int refinements = 0;
+    bool refinement_limit_reached = false;
     while (!time_limit_reached(timer)) {
         if (log.is_at_least_verbose()) {
             log << "iteration #" << iteration << endl;
@@ -623,7 +630,20 @@ PatternCollectionInformation CEGAR::compute_pattern_collection() {
             break;
         }
 
+        // Always detect a concrete solution, decisive unsolvability, or an
+        // empty flaw list before enforcing the deterministic refinement cap.
+        // In particular, max_refinements=0 still returns a decisive initial
+        // singleton PDB instead of hiding the proof behind the limit.
+        if (refinements >= max_refinements) {
+            refinement_limit_reached = true;
+            if (log.is_at_least_normal()) {
+                log << "CEGAR refinement limit reached" << endl;
+            }
+            break;
+        }
+
         refine(flaws);
+        ++refinements;
         ++iteration;
 
         if (log.is_at_least_verbose()) {
@@ -660,6 +680,10 @@ PatternCollectionInformation CEGAR::compute_pattern_collection() {
     pattern_collection_information.set_pdbs(pdbs);
 
     if (log.is_at_least_normal()) {
+        log << "CEGAR refinement summary: configured=" << max_refinements
+            << ", actual=" << refinements
+            << ", reached="
+            << (refinement_limit_reached ? "true" : "false") << endl;
         log << "CEGAR number of iterations: " << iteration << endl;
         dump_pattern_collection_generation_statistics(
             "CEGAR", timer.get_elapsed_time(), pattern_collection_information,
@@ -671,25 +695,29 @@ PatternCollectionInformation CEGAR::compute_pattern_collection() {
 
 PatternCollectionInformation generate_pattern_collection_with_cegar(
     int max_pdb_size, int max_collection_size, double max_time,
+    int max_refinements,
     bool use_wildcard_plans, utils::LogProxy &log,
     const shared_ptr<utils::RandomNumberGenerator> &rng,
     const shared_ptr<AbstractTask> &task, const vector<FactPair> &goals,
     unordered_set<int> &&blacklisted_variables, bool exit_on_unsolvable) {
     CEGAR cegar(
-        max_pdb_size, max_collection_size, max_time, use_wildcard_plans, log,
-        rng, task, goals, move(blacklisted_variables), exit_on_unsolvable);
+        max_pdb_size, max_collection_size, max_time, max_refinements,
+        use_wildcard_plans, log, rng, task, goals,
+        move(blacklisted_variables), exit_on_unsolvable);
     return cegar.compute_pattern_collection();
 }
 
 PatternInformation generate_pattern_with_cegar(
-    int max_pdb_size, double max_time, bool use_wildcard_plans,
+    int max_pdb_size, double max_time, int max_refinements,
+    bool use_wildcard_plans,
     utils::LogProxy &log, const shared_ptr<utils::RandomNumberGenerator> &rng,
     const shared_ptr<AbstractTask> &task, const FactPair &goal,
     unordered_set<int> &&blacklisted_variables, bool exit_on_unsolvable) {
     vector<FactPair> goals = {goal};
     CEGAR cegar(
-        max_pdb_size, max_pdb_size, max_time, use_wildcard_plans, log, rng,
-        task, goals, move(blacklisted_variables), exit_on_unsolvable);
+        max_pdb_size, max_pdb_size, max_time, max_refinements,
+        use_wildcard_plans, log, rng, task, goals,
+        move(blacklisted_variables), exit_on_unsolvable);
     PatternCollectionInformation collection_info =
         cegar.compute_pattern_collection();
     shared_ptr<PatternCollection> new_patterns = collection_info.get_patterns();

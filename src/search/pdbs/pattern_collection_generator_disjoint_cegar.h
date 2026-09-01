@@ -17,6 +17,7 @@ class PatternCollectionGeneratorDisjointCegar
     const int max_pdb_size;
     const int max_collection_size;
     const double max_time;
+    const int max_refinements;
     const bool use_wildcard_plans;
     std::shared_ptr<utils::RandomNumberGenerator> rng;
 
@@ -26,7 +27,8 @@ class PatternCollectionGeneratorDisjointCegar
 public:
     PatternCollectionGeneratorDisjointCegar(
         int max_pdb_size, int max_collection_size, double max_time,
-        bool use_wildcard_plans, int random_seed, utils::Verbosity verbosity);
+        int max_refinements, bool use_wildcard_plans, int random_seed,
+        utils::Verbosity verbosity);
 };
 }
 

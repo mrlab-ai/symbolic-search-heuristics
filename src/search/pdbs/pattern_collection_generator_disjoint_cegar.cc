@@ -13,11 +13,13 @@ namespace pdbs {
 PatternCollectionGeneratorDisjointCegar::
     PatternCollectionGeneratorDisjointCegar(
         int max_pdb_size, int max_collection_size, double max_time,
-        bool use_wildcard_plans, int random_seed, utils::Verbosity verbosity)
+        int max_refinements, bool use_wildcard_plans, int random_seed,
+        utils::Verbosity verbosity)
     : PatternCollectionGenerator(verbosity),
       max_pdb_size(max_pdb_size),
       max_collection_size(max_collection_size),
       max_time(max_time),
+      max_refinements(max_refinements),
       use_wildcard_plans(use_wildcard_plans),
       rng(utils::get_rng(random_seed)) {
 }
@@ -34,8 +36,8 @@ PatternCollectionGeneratorDisjointCegar::compute_patterns(
     vector<FactPair> goals = get_goals_in_random_order(task_proxy, *rng);
 
     return generate_pattern_collection_with_cegar(
-        max_pdb_size, max_collection_size, max_time, use_wildcard_plans, log,
-        rng, task, move(goals));
+        max_pdb_size, max_collection_size, max_time, max_refinements,
+        use_wildcard_plans, log, rng, task, move(goals));
 }
 
 class PatternCollectionGeneratorDisjointCegarFeature
@@ -72,6 +74,12 @@ public:
             "(ignored for computing the initial collection consisting of a "
             "singleton pattern for each goal variable)",
             "infinity", plugins::Bounds("0.0", "infinity"));
+        add_option<int>(
+            "max_refinements",
+            "maximum number of calls to the CEGAR refinement operation; "
+            "solution, unsolvability, and empty-flaw detection are checked "
+            "before enforcing the limit",
+            "infinity", plugins::Bounds("0", "infinity"));
         add_cegar_wildcard_option_to_feature(*this);
         utils::add_rng_options_to_feature(*this);
         add_generator_options_to_feature(*this);
@@ -85,6 +93,7 @@ public:
             PatternCollectionGeneratorDisjointCegar>(
             opts.get<int>("max_pdb_size"), opts.get<int>("max_collection_size"),
             opts.get<double>("max_time"),
+            opts.get<int>("max_refinements"),
             get_cegar_wildcard_arguments_from_options(opts),
             utils::get_rng_arguments_from_options(opts),
             get_generator_arguments_from_options(opts));

@@ -40,6 +40,7 @@ namespace pdbs {
 */
 extern PatternCollectionInformation generate_pattern_collection_with_cegar(
     int max_pdb_size, int max_collection_size, double max_time,
+    int max_refinements,
     bool use_wildcard_plans, utils::LogProxy &log,
     const std::shared_ptr<utils::RandomNumberGenerator> &rng,
     const std::shared_ptr<AbstractTask> &task,
@@ -54,7 +55,8 @@ extern PatternCollectionInformation generate_pattern_collection_with_cegar(
   pattern instead of a pattern collection.
 */
 extern PatternInformation generate_pattern_with_cegar(
-    int max_pdb_size, double max_time, bool use_wildcard_plans,
+    int max_pdb_size, double max_time, int max_refinements,
+    bool use_wildcard_plans,
     utils::LogProxy &log,
     const std::shared_ptr<utils::RandomNumberGenerator> &rng,
     const std::shared_ptr<AbstractTask> &task, const FactPair &goal,

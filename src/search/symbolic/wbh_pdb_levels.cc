@@ -1,6 +1,7 @@
 #include "wbh_pdb_levels.h"
 
 #include "wbh_add_stats.h"
+#include "wbh_incidence_selector.h"
 #include "wbh_stats.h"
 
 #include "../pdbs/pattern_database.h"
@@ -13,6 +14,7 @@
 #include "../utils/system.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -38,6 +40,12 @@ const char *const CAPPED_ADD_SELECTOR_PROTOCOL =
     "fixed_pool_total_add_value_cap_v1";
 const char *const ADD_CAP_GRID_SELECTOR_PROTOCOL =
     "fixed_pool_total_add_cap_grid_v1";
+const char *const INCIDENCE_SELECTOR_PROTOCOL =
+    "terminal_incidence_fixed_pool_v1";
+const char *const INCIDENCE_SELECTOR_SCORE =
+    "strongest_incidence_feasible_cap_then_"
+    "init_dead_init_h_mean_dead_fraction_width_states_pattern_v1";
+const int INCIDENCE_REFERENCE_WIDTH_BUDGET = 32;
 
 struct CandidateSpec {
     vector<int> pattern;
@@ -53,6 +61,7 @@ struct MaterializedCandidate {
     shared_ptr<pdbs::PatternDatabase> pdb;
     map<int, BDD> level_sets;
     BDD dead_ends;
+    ADD h_add;
     AddStats add_stats;
     int abstract_states = 0;
     bool initial_dead_end = false;
@@ -77,7 +86,7 @@ struct MaterializedCandidate {
     int raw_initial_value_count = 0;
 
     explicit MaterializedCandidate(SymVariables *vars)
-        : dead_ends(vars->zeroBDD()) {
+        : dead_ends(vars->zeroBDD()), h_add(vars->constant(0)) {
     }
 };
 
@@ -123,6 +132,89 @@ vector<int> budgeted_pattern(
     return normalized_pattern(move(result));
 }
 
+vector<CandidateSpec> build_fixed_candidate_pool(
+    SymVariables *vars, const shared_ptr<AbstractTask> &task,
+    const TaskProxy &task_proxy, int state_budget, double cegar_max_time,
+    int cegar_seed, int cegar_max_refinements, bool cap_grid) {
+    vector<CandidateSpec> specs;
+    map<vector<int>, size_t> spec_by_pattern;
+    auto add_spec = [&](const string &source, vector<int> candidate_pattern,
+                        shared_ptr<pdbs::PatternDatabase> pdb = nullptr) {
+        if (cap_grid) {
+            // Domain-one variables carry no information. Removing them is
+            // semantics preserving and, together with the PDB state bound,
+            // bounds every logged pattern independently of task syntax.
+            candidate_pattern.erase(
+                remove_if(
+                    candidate_pattern.begin(), candidate_pattern.end(),
+                    [&](int var) {
+                        return task_proxy.get_variables()[var].get_domain_size()
+                               == 1;
+                    }),
+                candidate_pattern.end());
+        }
+        candidate_pattern = normalized_pattern(move(candidate_pattern));
+        int64_t states = abstract_state_count(task_proxy, candidate_pattern);
+        if (states > numeric_limits<int>::max()) {
+            ABORT(
+                "PDB fixed-pool candidate exceeds the projection index "
+                "range.");
+        }
+        auto [it, inserted] =
+            spec_by_pattern.emplace(candidate_pattern, specs.size());
+        if (inserted) {
+            specs.push_back(
+                {move(candidate_pattern), {source}, static_cast<int>(states),
+                 states <= state_budget, move(pdb)});
+        } else {
+            CandidateSpec &existing = specs[it->second];
+            existing.sources.push_back(source);
+            if (pdb && !existing.pdb) {
+                existing.pdb = move(pdb);
+            }
+        }
+    };
+
+    // Insertion order is part of both fixed-pool selector protocols.
+    add_spec("empty", {});
+    add_spec(
+        "bdd_prefix",
+        budgeted_pattern(
+            task_proxy, vars->get_var_order(), state_budget,
+            /*skip_oversized=*/false));
+
+    vector<int> goal_order;
+    variable_order_finder::VariableOrderFinder order(
+        task_proxy, variable_order_finder::GOAL_CG_LEVEL);
+    while (!order.done()) {
+        goal_order.push_back(order.next());
+    }
+    add_spec(
+        "goal_prefix",
+        budgeted_pattern(
+            task_proxy, goal_order, state_budget,
+            /*skip_oversized=*/false));
+    add_spec(
+        "goal_fill",
+        budgeted_pattern(
+            task_proxy, goal_order, state_budget,
+            /*skip_oversized=*/true));
+
+    if (task_proxy.get_goals().size() > 0) {
+        pdbs::PatternGeneratorCEGAR generator(
+            state_budget, cegar_max_time, cegar_max_refinements,
+            /*use_wildcard_plans=*/true, cegar_seed,
+            utils::Verbosity::NORMAL, /*exit_on_unsolvable=*/false);
+        pdbs::PatternInformation info = generator.generate(task);
+        vector<int> cegar_pattern = info.get_pattern();
+        shared_ptr<pdbs::PatternDatabase> cegar_pdb = info.get_pdb();
+        add_spec("cegar", move(cegar_pattern), move(cegar_pdb));
+    } else {
+        add_spec("cegar", {});
+    }
+    return specs;
+}
+
 void compute_candidate_add_stats(
     SymVariables *vars, MaterializedCandidate &candidate) {
     // Score the exact same total ADD that the winning heuristic reports.
@@ -137,6 +229,7 @@ void compute_candidate_add_stats(
         h_add = candidate.dead_ends.Add().Ite(
             vars->constant(infinity_marker), h_add);
     }
+    candidate.h_add = h_add;
     candidate.add_stats = compute_add_stats(
         vars, h_add, static_cast<int>(candidate.level_sets.size()));
 }
@@ -197,7 +290,9 @@ unique_ptr<MaterializedCandidate> materialize_raw_candidate(
     candidate->raw_cofactor_width = candidate->add_stats.cofactor_width;
     candidate->raw_width_upper_bound = candidate->add_stats.width_upper_bound;
     candidate->raw_num_values = static_cast<int>(candidate->level_sets.size());
-    candidate->raw_max_finite_value = candidate->level_sets.rbegin()->first;
+    candidate->raw_max_finite_value = candidate->level_sets.empty()
+                                          ? 0
+                                          : candidate->level_sets.rbegin()->first;
     candidate->raw_finite_sum = candidate->finite_sum;
     candidate->raw_finite_count = candidate->finite_count;
     candidate->raw_dead_count = candidate->dead_count;
@@ -439,6 +534,17 @@ void append_int_array(ostringstream &out, const vector<int> &values) {
     out << "]";
 }
 
+void append_long_array(ostringstream &out, const vector<long> &values) {
+    out << "[";
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            out << ",";
+        }
+        out << values[i];
+    }
+    out << "]";
+}
+
 
 void log_selector_record(
     const string &kind, const CandidateSpec &spec,
@@ -591,12 +697,373 @@ bool PdbLevelSets::uses_total_add_node_budget() const {
 PdbLevelSets::PdbLevelSets(
     SymVariables *vars, const shared_ptr<AbstractTask> &task, int state_budget,
     PdbPatternSelection pattern_selection, bool legacy_goal_directed,
-    double cegar_max_time, int cegar_seed, int cofactor_width_budget,
-    int total_add_node_budget, int value_cap, bool select_value_cap)
+    double cegar_max_time, int cegar_seed, int cegar_max_refinements,
+    int cofactor_width_budget, int total_add_node_budget, int value_cap,
+    bool select_value_cap, const WbhIncidenceProbe *incidence_probe,
+    WbhIncidenceTrace *incidence_trace)
     : vars(vars), cofactor_width_budget(cofactor_width_budget),
       total_add_node_budget(total_add_node_budget), value_cap(value_cap),
       select_value_cap(select_value_cap) {
     TaskProxy task_proxy(*task);
+
+    const bool incidence_guided =
+        pattern_selection == PdbPatternSelection::TERMINAL_INCIDENCE_GUIDED;
+    const bool incidence_matched =
+        pattern_selection ==
+        PdbPatternSelection::TERMINAL_INCIDENCE_MATCHED_CONTROL;
+    if (incidence_guided || incidence_matched) {
+        if (!incidence_probe || !incidence_trace ||
+            !incidence_probe->complete() ||
+            incidence_probe->get_target_layers() != 16 ||
+            incidence_probe->get_layers().size() != 16) {
+            ABORT(
+                "Terminal-incidence selection requires one complete frozen "
+                "16-layer blind probe and a dedicated trace.");
+        }
+        Cudd_ReorderingType reordering_method;
+        if (vars->getCudd()->ReorderingStatus(&reordering_method)) {
+            ABORT(
+                "Terminal-incidence selection received a dynamically "
+                "reordered manager after validation.");
+        }
+
+        utils::Timer selection_cpu_timer;
+        const auto selection_wall_start = chrono::steady_clock::now();
+        const int selection_peak_before = utils::get_peak_memory_in_kb();
+
+        vector<CandidateSpec> specs = build_fixed_candidate_pool(
+            vars, task, task_proxy, state_budget, cegar_max_time, cegar_seed,
+            cegar_max_refinements, /*cap_grid=*/true);
+
+        ostringstream pool_canonical;
+        for (size_t i = 0; i < specs.size(); ++i) {
+            const CandidateSpec &spec = specs[i];
+            pool_canonical << i << "|sources=";
+            for (size_t j = 0; j < spec.sources.size(); ++j) {
+                if (j) {
+                    pool_canonical << ",";
+                }
+                pool_canonical << spec.sources[j];
+            }
+            pool_canonical << "|pattern=";
+            for (size_t j = 0; j < spec.pattern.size(); ++j) {
+                if (j) {
+                    pool_canonical << ",";
+                }
+                pool_canonical << spec.pattern[j];
+            }
+            pool_canonical << "|abstract_states=" << spec.abstract_states
+                           << "|within_state_budget="
+                           << (spec.within_state_budget ? 1 : 0) << "\n";
+        }
+        pool_sha256 = wbh_sha256_hex(pool_canonical.str());
+        ostringstream pool_event;
+        pool_event << "{\"event\":\"pool\",\"protocol\":\""
+                   << INCIDENCE_SELECTOR_PROTOCOL
+                   << "\",\"state_budget\":" << state_budget
+                   << ",\"pool_sha256\":\"" << pool_sha256
+                   << "\",\"patterns\":[";
+        for (size_t i = 0; i < specs.size(); ++i) {
+            if (i) {
+                pool_event << ",";
+            }
+            const CandidateSpec &spec = specs[i];
+            pool_event << "{\"pattern_index\":" << i << ",\"sources\":";
+            append_string_array(pool_event, spec.sources);
+            pool_event << ",\"pattern\":";
+            append_int_array(pool_event, spec.pattern);
+            pool_event << ",\"abstract_states\":" << spec.abstract_states
+                       << ",\"within_state_budget\":"
+                       << (spec.within_state_budget ? "true" : "false")
+                       << "}";
+        }
+        pool_event << "]}";
+        incidence_trace->write_event(pool_event.str());
+
+        struct IncidenceVariant {
+            size_t pattern_index;
+            int value_cap;
+            unique_ptr<MaterializedCandidate> candidate;
+            WbhIncidenceMeasurement incidence;
+            bool reference_feasible;
+            bool incidence_feasible = false;
+            bool retained_for_pattern = false;
+        };
+        vector<vector<IncidenceVariant>> variants(specs.size());
+        for (size_t pattern_index = 0; pattern_index < specs.size();
+             ++pattern_index) {
+            CandidateSpec &spec = specs[pattern_index];
+            if (!spec.within_state_budget) {
+                spec.pdb.reset();
+                continue;
+            }
+            unique_ptr<MaterializedCandidate> raw =
+                materialize_raw_candidate(vars, task_proxy, spec);
+            if (!raw->raw_initial_dead_end) {
+                raw->raw_initial_value_count =
+                    raw->finite_value_counts.at(raw->raw_initial_h);
+            }
+            raw->raw_value_histogram =
+                encode_raw_value_histogram(raw->finite_value_counts);
+            vector<int> caps = distinct_cap_grid(*raw);
+            for (int cap : caps) {
+                unique_ptr<MaterializedCandidate> candidate;
+                if (cap < 0) {
+                    candidate = move(raw);
+                } else {
+                    candidate = cap_candidate(vars, *raw, cap);
+                }
+                WbhIncidenceMeasurement measurement =
+                    measure_terminal_incidence(
+                        vars, incidence_probe->get_layers(), candidate->h_add);
+                const bool reference_feasible =
+                    candidate->add_stats.cofactor_width <=
+                    INCIDENCE_REFERENCE_WIDTH_BUDGET;
+                variants[pattern_index].push_back(
+                    {pattern_index, cap, move(candidate), move(measurement),
+                     reference_feasible});
+            }
+            spec.pdb.reset();
+        }
+
+        IncidenceVariant *reference = nullptr;
+        for (vector<IncidenceVariant> &pattern_variants : variants) {
+            IncidenceVariant *representative = nullptr;
+            for (IncidenceVariant &variant : pattern_variants) {
+                if (variant.reference_feasible) {
+                    representative = &variant;
+                }
+            }
+            if (representative) {
+                if (!reference ||
+                    candidate_is_better(
+                        *representative->candidate, *reference->candidate)) {
+                    reference = representative;
+                }
+            }
+        }
+        if (!reference) {
+            ABORT(
+                "The K=32 cap-aware reference has no feasible candidate; "
+                "the mandatory empty-pattern invariant failed.");
+        }
+        terminal_incidence_budget = reference->incidence.total;
+        if (terminal_incidence_budget < 0) {
+            ABORT("The terminal-incidence reference budget is invalid.");
+        }
+
+        IncidenceVariant *guided = nullptr;
+        for (vector<IncidenceVariant> &pattern_variants : variants) {
+            IncidenceVariant *representative = nullptr;
+            for (IncidenceVariant &variant : pattern_variants) {
+                variant.incidence_feasible =
+                    variant.incidence.total <= terminal_incidence_budget;
+                if (variant.incidence_feasible) {
+                    representative = &variant;
+                }
+            }
+            if (representative) {
+                representative->retained_for_pattern = true;
+                if (!guided ||
+                    candidate_is_better(
+                        *representative->candidate, *guided->candidate)) {
+                    guided = representative;
+                }
+            }
+        }
+        if (!reference->incidence_feasible ||
+            reference->incidence.total != terminal_incidence_budget ||
+            !guided) {
+            ABORT(
+                "Terminal-incidence selection failed its reference-feasibility "
+                "invariant; no fallback is permitted.");
+        }
+
+        ostringstream preselection_canonical;
+        for (const vector<IncidenceVariant> &pattern_variants : variants) {
+            for (const IncidenceVariant &variant : pattern_variants) {
+                const MaterializedCandidate &candidate = *variant.candidate;
+                preselection_canonical
+                    << variant.pattern_index << "|cap=";
+                if (variant.value_cap < 0) {
+                    preselection_canonical << "exact";
+                } else {
+                    preselection_canonical << variant.value_cap;
+                }
+                preselection_canonical
+                    << "|initial_dead_end=" << candidate.initial_dead_end
+                    << "|initial_h=";
+                if (candidate.initial_dead_end) {
+                    preselection_canonical << "null";
+                } else {
+                    preselection_canonical << candidate.initial_h;
+                }
+                preselection_canonical
+                    << "|finite_sum=" << candidate.finite_sum
+                    << "|finite_count=" << candidate.finite_count
+                    << "|dead_count=" << candidate.dead_count
+                    << "|cofactor_width="
+                    << candidate.add_stats.cofactor_width
+                    << "|width_upper_bound="
+                    << candidate.add_stats.width_upper_bound
+                    << "|incidence=";
+                for (size_t i = 0; i < variant.incidence.by_layer.size(); ++i) {
+                    if (i) {
+                        preselection_canonical << ",";
+                    }
+                    preselection_canonical << variant.incidence.by_layer[i];
+                }
+                preselection_canonical
+                    << "|incidence_total=" << variant.incidence.total
+                    << "|reference_feasible=" << variant.reference_feasible
+                    << "\n";
+            }
+        }
+        preselection_sha256 =
+            wbh_sha256_hex(preselection_canonical.str());
+
+        auto log_variant = [&](const IncidenceVariant &variant) {
+            const CandidateSpec &spec = specs[variant.pattern_index];
+            const MaterializedCandidate &candidate = *variant.candidate;
+            ostringstream out;
+            out << "{\"event\":\"candidate\",\"protocol\":\""
+                << INCIDENCE_SELECTOR_PROTOCOL
+                << "\",\"score_version\":\"" << INCIDENCE_SELECTOR_SCORE
+                << "\",\"pattern_index\":" << variant.pattern_index
+                << ",\"sources\":";
+            append_string_array(out, spec.sources);
+            out << ",\"pattern\":";
+            append_int_array(out, spec.pattern);
+            out << ",\"abstract_states\":" << candidate.abstract_states
+                << ",\"value_cap\":";
+            if (variant.value_cap < 0) {
+                out << "null";
+            } else {
+                out << variant.value_cap;
+            }
+            out << ",\"initial_dead_end\":"
+                << (candidate.initial_dead_end ? "true" : "false")
+                << ",\"initial_h\":";
+            if (candidate.initial_dead_end) {
+                out << "null";
+            } else {
+                out << candidate.initial_h;
+            }
+            out << ",\"finite_sum\":" << candidate.finite_sum
+                << ",\"finite_count\":" << candidate.finite_count
+                << ",\"dead_count\":" << candidate.dead_count
+                << ",\"cofactor_width\":"
+                << candidate.add_stats.cofactor_width
+                << ",\"width_upper_bound\":"
+                << candidate.add_stats.width_upper_bound
+                << ",\"terminal_incidence_by_layer\":";
+            append_long_array(out, variant.incidence.by_layer);
+            out << ",\"terminal_incidence\":" << variant.incidence.total
+                << ",\"reference_feasible\":"
+                << (variant.reference_feasible ? "true" : "false")
+                << ",\"incidence_feasible\":"
+                << (variant.incidence_feasible ? "true" : "false")
+                << ",\"retained_for_pattern\":"
+                << (variant.retained_for_pattern ? "true" : "false")
+                << "}";
+            incidence_trace->write_event(out.str());
+        };
+        for (const vector<IncidenceVariant> &pattern_variants : variants) {
+            for (const IncidenceVariant &variant : pattern_variants) {
+                log_variant(variant);
+            }
+        }
+        ostringstream preselection_event;
+        preselection_event
+            << "{\"event\":\"preselection\",\"pool_sha256\":\""
+            << pool_sha256 << "\",\"preselection_sha256\":\""
+            << preselection_sha256 << "\",\"candidate_count\":";
+        size_t variant_count = 0;
+        for (const auto &pattern_variants : variants) {
+            variant_count += pattern_variants.size();
+        }
+        preselection_event << variant_count << "}";
+        incidence_trace->write_event(preselection_event.str());
+
+        auto append_identity = [&](ostringstream &out,
+                                   const IncidenceVariant &variant,
+                                   const string &prefix) {
+            const CandidateSpec &spec = specs[variant.pattern_index];
+            out << "\"" << prefix << "pattern_index\":"
+                << variant.pattern_index << ",\"" << prefix
+                << "sources\":";
+            append_string_array(out, spec.sources);
+            out << ",\"" << prefix << "pattern\":";
+            append_int_array(out, spec.pattern);
+            out << ",\"" << prefix << "value_cap\":";
+            if (variant.value_cap < 0) {
+                out << "null";
+            } else {
+                out << variant.value_cap;
+            }
+            out << ",\"" << prefix << "terminal_incidence\":"
+                << variant.incidence.total;
+        };
+        ostringstream reference_event;
+        reference_event << "{\"event\":\"reference\",\"pool_sha256\":\""
+                        << pool_sha256
+                        << "\",\"preselection_sha256\":\""
+                        << preselection_sha256 << "\",";
+        append_identity(reference_event, *reference, "reference_");
+        reference_event << ",\"reference_cofactor_width_budget\":"
+                        << INCIDENCE_REFERENCE_WIDTH_BUDGET
+                        << ",\"incidence_budget\":"
+                        << terminal_incidence_budget << "}";
+        incidence_trace->write_event(reference_event.str());
+
+        IncidenceVariant *selected = incidence_matched ? reference : guided;
+        selected_terminal_incidence = selected->incidence.total;
+        ostringstream selected_event;
+        selected_event << "{\"event\":\"selected\",\"decision_mode\":\""
+                       << (incidence_matched ? "matched_control" : "guided")
+                       << "\",\"pool_sha256\":\"" << pool_sha256
+                       << "\",\"preselection_sha256\":\""
+                       << preselection_sha256 << "\",";
+        append_identity(selected_event, *selected, "selected_");
+        selected_event << ",\"incidence_budget\":"
+                       << terminal_incidence_budget << "}";
+        incidence_trace->write_event(selected_event.str());
+
+        MaterializedCandidate &winner = *selected->candidate;
+        pattern = winner.pattern;
+        selected_source = winner.sources.front();
+        num_abstract_states = winner.abstract_states;
+        selected_initial_dead_end = winner.initial_dead_end;
+        this->value_cap = winner.value_cap;
+        level_sets = move(winner.level_sets);
+        dead_ends = winner.dead_ends;
+        h_add = winner.h_add;
+        add_stats = move(winner.add_stats);
+        selection_name = incidence_matched
+                             ? "terminal_incidence_matched_control"
+                             : "terminal_incidence_guided";
+
+        pdbs::Projection selected_projection(task_proxy, pattern);
+        verify_against_pdb(
+            task_proxy, *winner.pdb, selected_projection, 200);
+
+        const double selection_cpu_seconds = selection_cpu_timer();
+        const double selection_wall_seconds = chrono::duration<double>(
+                                                  chrono::steady_clock::now() -
+                                                  selection_wall_start)
+                                                  .count();
+        const int selection_peak_after = utils::get_peak_memory_in_kb();
+        ostringstream accounting_event;
+        accounting_event
+            << "{\"event\":\"selection_accounting\",\"cpu_seconds\":"
+            << selection_cpu_seconds << ",\"wall_seconds\":"
+            << selection_wall_seconds << ",\"peak_memory_before_kb\":"
+            << selection_peak_before << ",\"peak_memory_after_kb\":"
+            << selection_peak_after << ",\"peak_memory_delta_kb\":"
+            << max(0, selection_peak_after - selection_peak_before) << "}";
+        incidence_trace->write_event(accounting_event.str());
+        return;
+    }
 
     if (pattern_selection == PdbPatternSelection::EXACT_WIDTH_FILTER) {
         Cudd_ReorderingType reordering_method;
@@ -609,91 +1076,9 @@ PdbLevelSets::PdbLevelSets(
             utils::exit_with(utils::ExitCode::SEARCH_INPUT_ERROR);
         }
 
-        vector<CandidateSpec> specs;
-        map<vector<int>, size_t> spec_by_pattern;
-        auto add_spec = [&](const string &source, vector<int> candidate_pattern,
-                            shared_ptr<pdbs::PatternDatabase> pdb = nullptr) {
-            if (select_value_cap) {
-                // Domain-one variables carry no information. Removing them is
-                // semantics preserving and, together with the 100k state
-                // bound, limits every cap-grid logged pattern to 16 entries.
-                // Leave fixed_pool_v1 byte-for-byte behavior unchanged.
-                candidate_pattern.erase(
-                    remove_if(
-                        candidate_pattern.begin(), candidate_pattern.end(),
-                        [&](int var) {
-                            return task_proxy.get_variables()[var]
-                                       .get_domain_size()
-                                   == 1;
-                        }),
-                    candidate_pattern.end());
-            }
-            candidate_pattern = normalized_pattern(move(candidate_pattern));
-            int64_t states =
-                abstract_state_count(task_proxy, candidate_pattern);
-            if (states > numeric_limits<int>::max()) {
-                ABORT(
-                    "PDB width-selector candidate exceeds the projection "
-                    "index range.");
-            }
-            auto [it, inserted] = spec_by_pattern.emplace(
-                candidate_pattern, specs.size());
-            if (inserted) {
-                specs.push_back(
-                    {move(candidate_pattern), {source},
-                     static_cast<int>(states), states <= state_budget,
-                     move(pdb)});
-            } else {
-                CandidateSpec &existing = specs[it->second];
-                existing.sources.push_back(source);
-                if (pdb && !existing.pdb) {
-                    existing.pdb = move(pdb);
-                }
-            }
-        };
-
-        // The pool and its insertion order are part of the selector protocol.
-        // The empty pattern guarantees a feasible exact-width-1 candidate.
-        add_spec("empty", {});
-        add_spec(
-            "bdd_prefix",
-            budgeted_pattern(
-                task_proxy, vars->get_var_order(), state_budget,
-                /*skip_oversized=*/false));
-
-        vector<int> goal_order;
-        variable_order_finder::VariableOrderFinder order(
-            task_proxy, variable_order_finder::GOAL_CG_LEVEL);
-        while (!order.done()) {
-            goal_order.push_back(order.next());
-        }
-        add_spec(
-            "goal_prefix",
-            budgeted_pattern(
-                task_proxy, goal_order, state_budget,
-                /*skip_oversized=*/false));
-        add_spec(
-            "goal_fill",
-            budgeted_pattern(
-                task_proxy, goal_order, state_budget,
-                /*skip_oversized=*/true));
-
-        if (task_proxy.get_goals().size() > 0) {
-            pdbs::PatternGeneratorCEGAR generator(
-                state_budget, cegar_max_time, /*use_wildcard_plans=*/true,
-                cegar_seed, utils::Verbosity::NORMAL,
-                /*exit_on_unsolvable=*/false);
-            pdbs::PatternInformation info = generator.generate(task);
-            // Copy the PatternInformation-owned pattern and retain its cached
-            // PDB so the selector never recomputes the CEGAR abstraction.
-            vector<int> cegar_pattern = info.get_pattern();
-            shared_ptr<pdbs::PatternDatabase> cegar_pdb = info.get_pdb();
-            add_spec("cegar", move(cegar_pattern), move(cegar_pdb));
-        } else {
-            // CEGAR assumes a first goal. For a goal-free task its exact
-            // candidate is empty and deduplication records that provenance.
-            add_spec("cegar", {});
-        }
+        vector<CandidateSpec> specs = build_fixed_candidate_pool(
+            vars, task, task_proxy, state_budget, cegar_max_time, cegar_seed,
+            cegar_max_refinements, select_value_cap);
 
         unique_ptr<MaterializedCandidate> winner;
         for (CandidateSpec &spec : specs) {
@@ -800,6 +1185,7 @@ PdbLevelSets::PdbLevelSets(
         this->value_cap = winner->value_cap;
         level_sets = move(winner->level_sets);
         dead_ends = winner->dead_ends;
+        h_add = winner->h_add;
         add_stats = move(winner->add_stats);
         if (uses_total_add_node_budget()) {
             selection_name = select_value_cap
@@ -864,14 +1250,17 @@ PdbLevelSets::PdbLevelSets(
         break;
     case PdbPatternSelection::EXACT_WIDTH_FILTER:
         ABORT("Unreachable exact-width-filter selector branch.");
+    case PdbPatternSelection::TERMINAL_INCIDENCE_GUIDED:
+    case PdbPatternSelection::TERMINAL_INCIDENCE_MATCHED_CONTROL:
+        ABORT("Unreachable terminal-incidence selector branch.");
     }
 
     shared_ptr<pdbs::PatternDatabase> pdb;
     vector<int> variable_order;
     if (use_cegar && task_proxy.get_goals().size() > 0) {
         pdbs::PatternGeneratorCEGAR generator(
-            state_budget, cegar_max_time, /*use_wildcard_plans=*/true,
-            cegar_seed, utils::Verbosity::NORMAL,
+            state_budget, cegar_max_time, cegar_max_refinements,
+            /*use_wildcard_plans=*/true, cegar_seed, utils::Verbosity::NORMAL,
             /*exit_on_unsolvable=*/false);
         pdbs::PatternInformation info = generator.generate(task);
         pattern = info.get_pattern();

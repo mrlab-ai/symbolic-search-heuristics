@@ -20,6 +20,8 @@ class Projection;
 
 namespace symbolic {
 class WbhStats;
+class WbhIncidenceProbe;
+class WbhIncidenceTrace;
 
 enum class PdbPatternSelection {
     LEGACY,
@@ -28,6 +30,8 @@ enum class PdbPatternSelection {
     GOAL_FILL,
     CEGAR,
     EXACT_WIDTH_FILTER,
+    TERMINAL_INCIDENCE_GUIDED,
+    TERMINAL_INCIDENCE_MATCHED_CONTROL,
 };
 
 /*
@@ -65,6 +69,10 @@ class PdbLevelSets {
     int value_cap;
     bool select_value_cap;
     bool selected_initial_dead_end = false;
+    long selected_terminal_incidence = -1;
+    long terminal_incidence_budget = -1;
+    std::string pool_sha256;
+    std::string preselection_sha256;
 
     // Independent check that BDD level-set membership agrees with explicit PDB
     // lookups on sampled abstract states (PR4 acceptance).
@@ -77,8 +85,10 @@ public:
         SymVariables *vars, const std::shared_ptr<AbstractTask> &task,
         int state_budget, PdbPatternSelection pattern_selection,
         bool legacy_goal_directed, double cegar_max_time, int cegar_seed,
-        int cofactor_width_budget, int total_add_node_budget, int value_cap,
-        bool select_value_cap);
+        int cegar_max_refinements, int cofactor_width_budget,
+        int total_add_node_budget, int value_cap, bool select_value_cap,
+        const WbhIncidenceProbe *incidence_probe = nullptr,
+        WbhIncidenceTrace *incidence_trace = nullptr);
 
     const std::map<int, BDD> &get_level_sets() const {
         return level_sets;
@@ -123,6 +133,32 @@ public:
                selection_name == "exact_width_cap_filter" ||
                selection_name == "exact_add_filter" ||
                selection_name == "exact_add_cap_filter";
+    }
+
+    bool uses_terminal_incidence_selector() const {
+        return selection_name == "terminal_incidence_guided" ||
+               selection_name == "terminal_incidence_matched_control";
+    }
+
+    bool uses_candidate_pool() const {
+        return uses_exact_width_filter() ||
+               uses_terminal_incidence_selector();
+    }
+
+    long get_selected_terminal_incidence() const {
+        return selected_terminal_incidence;
+    }
+
+    long get_terminal_incidence_budget() const {
+        return terminal_incidence_budget;
+    }
+
+    const std::string &get_pool_sha256() const {
+        return pool_sha256;
+    }
+
+    const std::string &get_preselection_sha256() const {
+        return preselection_sha256;
     }
 
     bool selected_initial_is_dead_end() const {

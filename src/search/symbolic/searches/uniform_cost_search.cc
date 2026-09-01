@@ -4,6 +4,7 @@
 #include "../frontier.h"
 #include "../sym_utils.h"
 #include "../wbh_profile.h"
+#include "../wbh_incidence_selector.h"
 #include "../wbh_pruner.h"
 #include "../wbh_stats.h"
 
@@ -32,6 +33,15 @@ UniformCostSearch::UniformCostSearch(
       step_estimation(0, 0, false),
       closed(make_shared<ClosedList>()),
       lastStepCost(true) {
+}
+
+void UniformCostSearch::set_wbh_detached_probe(WbhIncidenceProbe *probe) {
+    if (!probe || mgr || sym_params.stats || sym_params.profile || wbh_pruner) {
+        ABORT(
+            "Detached WBH probe must be configured before init with all "
+            "other instrumentation and pruning disabled.");
+    }
+    wbh_detached_probe = probe;
 }
 
 bool UniformCostSearch::init(
@@ -63,8 +73,10 @@ bool UniformCostSearch::init(
 
     prepareBucket();
 
-    engine->setLowerBound(getF());
-    engine->setMinG(getG());
+    if (!wbh_detached_probe) {
+        engine->setLowerBound(getF());
+        engine->setMinG(getG());
+    }
 
     return true;
 }
@@ -91,13 +103,17 @@ bool UniformCostSearch::provable_no_more_plans() {
 bool UniformCostSearch::prepareBucket() {
     if (!frontier.bucketReady()) {
         if (provable_no_more_plans()) {
-            engine->setLowerBound(numeric_limits<int>::max());
+            if (!wbh_detached_probe) {
+                engine->setLowerBound(numeric_limits<int>::max());
+            }
             return true;
         }
         open_list.pop(frontier);
         last_g_cost = frontier.g();
         assert(!frontier.empty() || frontier.g() == numeric_limits<int>::max());
-        checkFrontierCut(frontier.bucket(), frontier.g());
+        if (!wbh_detached_probe) {
+            checkFrontierCut(frontier.bucket(), frontier.g());
+        }
 
         filterFrontier();
 
@@ -108,11 +124,13 @@ bool UniformCostSearch::prepareBucket() {
                 closed->insert(frontier.g(), states);
             }
         }
-        engine->setLowerBound(getF());
-        engine->setMinG(getG());
+        if (!wbh_detached_probe) {
+            engine->setLowerBound(getF());
+            engine->setMinG(getG());
+        }
     }
 
-    if (engine->solved()) {
+    if (!wbh_detached_probe && engine->solved()) {
         return true; // If it has been solved, return
     }
 
@@ -150,7 +168,7 @@ void UniformCostSearch::stepImage(int maxTime, int maxNodes) {
         return;
     }
 
-    if (engine->solved()) {
+    if (!wbh_detached_probe && engine->solved()) {
         return; // Skip image if we are done
     }
 
@@ -182,10 +200,17 @@ void UniformCostSearch::stepImage(int maxTime, int maxNodes) {
         sym_params.profile->prepare_blind_layer(
             wbh_g, mgr->getVars(), frontier.prepared_bucket());
     }
+    if (wbh_detached_probe) {
+        wbh_detached_probe->prepare_layer(
+            wbh_g, frontier.prepared_bucket());
+    }
     utils::Timer wbh_image_timer;
     ResultExpansion res_expansion = frontier.expand(maxTime, maxNodes, fw);
     if (sym_params.profile && fw) {
         sym_params.profile->finish_blind_layer(res_expansion.ok);
+    }
+    if (wbh_detached_probe) {
+        wbh_detached_probe->finish_layer(res_expansion.ok);
     }
     if (wbh_log_this) {
         double image_time = wbh_image_timer();
@@ -208,7 +233,9 @@ void UniformCostSearch::stepImage(int maxTime, int maxNodes) {
                 int cost = frontier.g() + pairCostBDDs.first;
                 mgr->merge_bucket(pairCostBDDs.second);
 
-                checkFrontierCut(pairCostBDDs.second, cost);
+                if (!wbh_detached_probe) {
+                    checkFrontierCut(pairCostBDDs.second, cost);
+                }
 
                 for (auto &bdd : pairCostBDDs.second) {
                     if (!bdd.IsZero()) {
@@ -224,7 +251,9 @@ void UniformCostSearch::stepImage(int maxTime, int maxNodes) {
         prepareBucket();
     }
 
-    engine->setLowerBound(getG() + mgr->get_min_transition_cost());
+    if (!wbh_detached_probe) {
+        engine->setLowerBound(getG() + mgr->get_min_transition_cost());
+    }
     step_estimation.set_data(step_timer(), stepNodes, !res_expansion.ok);
 }
 }
