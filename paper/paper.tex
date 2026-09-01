@@ -81,10 +81,10 @@
 }
 
 % RESULT_INSERT_TITLE:
-% A+B pass: Terminal Incidence: Predicting and Controlling Heuristic
+% A+metric-choice pass, with or without B: Terminal Incidence: From
+%             Partition-Effort Prediction to Heuristic Selection
+% A pass, metric-choice fail: Terminal Incidence Predicts Heuristic
 %             Fragmentation in Symbolic Search
-% A pass, B fail: Terminal Incidence Predicts Heuristic Fragmentation in
-%                 Symbolic Search
 % A fail: Heuristic Fragmentation in Symbolic Search: Terminal-Incidence
 %         Certificates and Their Limits
 \title{Terminal Incidence for Heuristic Fragmentation in Symbolic Search}
@@ -105,17 +105,21 @@ We introduce \emph{terminal incidence}, the number of reachable
 node--terminal pairs in the heuristic algebraic decision diagram (ADD) after
 masking it by a fixed frontier.
 For the exact bucket-node sum $E$ of partitioning that frontier, we prove
-$E\leq I$ and place $I$ below cofactor, width, and ADD-based certificates.
-An explicit family has $E=I=\Theta(kL)$ while all six structural controls are
+$E\leq I$ and place $I$ below cofactor-, width- and Apply-based certificates.
+An explicit family has $E=I=\Theta(kL)$ while all six certificate baselines are
 $\Theta(k^2L)$, where $k$ is the number of active values and $L$ is the
 data-suffix length.
 Terminal relabeling, including safe heuristic caps, cannot increase terminal
 incidence, although it can increase exact partition cost.
 We use these results to define an incidence-guided pattern-database selector.
 A source-disjoint confirmation first tests whether incidence ranks exact
-fixed-frontier partition effort better than its six relaxations; only success
-authorizes a second experiment on end-to-end selection performance.
+fixed-frontier partition effort better than masked ADD size and six
+certificate relaxations; only success authorizes two end-to-end tests,
+including a controlled comparison with the otherwise identical selector
+guided by the co-occurring-profile metric $mJ$.
 % RESULT_INSERT_ABSTRACT_A: insert the sealed Confirmation A result and scope.
+% RESULT_INSERT_ABSTRACT_METRIC: insert the direct metric-choice result only if
+% A authorized it and the campaign sealed.
 % RESULT_INSERT_ABSTRACT_B: insert B only if A authorized and B was completed.
 \end{abstract}
 
@@ -144,14 +148,18 @@ Explaining heuristic performance therefore requires separating at least a
 search-space term and a representation term.
 
 Previous development of this study focused on the representation term.
-A cofactor-profile certificate counts pairs of state-set and heuristic
-residuals induced by the same variable-prefix assignment.
+The co-occurring-profile certificate, denoted $mJ$ below, counts pairs of
+state-set and heuristic residuals induced by the same variable-prefix
+assignment and multiplies them by the number of active values.
 It is tighter than multiplying the two marginal profiles and gives a useful
 worst-case bound, but it still treats every active value as if it could occur
 below every residual pair.
 A prospective order intervention rejected the co-occurring profile's primary
 predictor gate; we retain that negative result and the resulting theory in the
 supplement.
+We preselected $mJ$ for the later direct contrast because it is terminal
+incidence's developmental structural predecessor; the choice predates
+Confirmation A and does not treat $mJ$ as a field-wide consensus metric.
 This motivates testing a relation that the profile omits: which terminal
 values are reachable from which nodes after the heuristic is restricted to
 the actual frontier.
@@ -173,7 +181,7 @@ Cartesian pairs and width yields successively coarser certificates.
 An independent standard-Apply argument gives a total-ADD branch.
 We prove that neither branch dominates the other.
 More strongly, one explicit family has exact counts
-$E=I=k(r+L)$ for $k=2^r$, while each preregistered control is
+$E=I=k(r+L)$ for $k=2^r$, while each preregistered certificate baseline is
 $\Theta(k^2L)$ when $L\geq r$.
 
 Terminal incidence also suggests a heuristic-design principle.
@@ -186,16 +194,22 @@ every fixed frontier.
 Our selector measures candidate PDBs on a short blind probe and returns the
 highest-scoring candidate under the incidence of a fixed cap-aware reference.
 
-The empirical claims follow a two-stage order that prevents the selector from
+The empirical claims follow a staged order that prevents the selector from
 validating its own predictor.
 Confirmation A holds the blind frontiers fixed and asks whether $I$ ranks
-alternative PDBs by their exact partition effort better than six prespecified
-relaxations on a source-disjoint cohort.
-Only a complete pass authorizes Confirmation B, which compares the
-incidence-guided selector with the cap-aware reference and a matched-work
-control in ordinary guided search.
-Thus Confirmation A can support a fixed-frontier representation claim, while
-only Confirmation B can support an end-to-end design claim.
+alternative PDBs by their exact partition effort better than masked ADD size
+$D$ and six prespecified certificate relaxations on a source-disjoint cohort.
+Only a complete pass authorizes end-to-end experiments on a disjoint cohort.
+The direct metric-choice experiment changes only whether $I$ or $mJ$ sets the
+budget and selected pointer; Confirmation B compares the incidence-guided
+selector with the cap-aware reference, a matched-work control and existing
+alternatives in ordinary guided search.
+Both end-to-end experiments use the same B cohort, which is source-disjoint
+from A but not independent between those two studies.
+Thus Confirmation A can support a fixed-frontier representation claim, the
+direct contrast can isolate the downstream effect of the metric-controlled
+selection rule within the frozen candidate pool, and Confirmation B can
+support the broader design claim.
 
 \section{Fixed-Frontier Partitioning}
 \label{sec-fixed-frontier}
@@ -225,10 +239,12 @@ We write
 For $S$ and $h$, the co-occurring profile is
 \[
  \jointprofile{S}{h}=\sum_{i=0}^{n-1}
- \left|\{(\chi_S|_\rho,h|_\rho):\rho\in\{0,1\}^i\}\right|,
+ \left|\{(\chi_S|_\rho,h|_\rho):\rho\in\{0,1\}^i\}\right|.
 \]
-and its Cartesian relaxation is
-$\cutprod{S}{h}=\sum_{i<n}\cutcount{i}{\chi_S}\cutcount{i}{h}$.
+Its Cartesian relaxation is
+\[
+ \cutprod{S}{h}=\sum_{i<n}\cutcount{i}{\chi_S}\cutcount{i}{h}.
+\]
 
 \begin{definition}[exact partition effort]
 Let $S\ne\emptyset$, let $\terminalset{S}=h(S)$ be its active heuristic
@@ -329,8 +345,8 @@ masked ADD instead of the full $k$-by-$D$ rectangle.}
 
 The masked ADD is the common object behind the exact target and the new
 predictor.
-The cofactor and ADD controls result from forgetting different parts of this
-object.
+The cofactor and Apply certificate baselines result from forgetting different
+parts of this object.
 
 \begin{theorem}[two-branch fixed-frontier certificate]
 \label{thm-incidence-hierarchy}
@@ -377,6 +393,12 @@ becomes one.
 The supplement gives the injections and all boundary cases.
 \end{proof}
 
+The relation $D\leq I$ does not make masked ADD size a certificate for $E$:
+it implies neither $E\leq D$ nor a guaranteed ordinal $E$--$D$ order across
+heuristics.
+We include $D$ as a non-certificate baseline to test whether node--terminal
+reachability improves on masked ADD size alone.
+
 Table~\ref{tab-information-loss} names the quantities used in the experiments
 and shows what each relaxation discards.
 The old co-occurring certificate is $mJ$: it preserves which state and
@@ -384,12 +406,14 @@ heuristic residuals share a prefix, but its factor $k$ still assigns every
 active terminal to every such pair.
 Terminal incidence retains this missing node--terminal relation.
 The legacy artifact names $mQ$ and $mJ$ use $m$ for the layerwise count $k$.
+The legacy artifact key ADD denotes the standard-Apply certificate in
+Equation~(2), not masked ADD size $D$ or total ADD size alone.
 
+\FloatBarrier
 \begin{table}[tb]
 \centering
 \small
-\caption{The fixed-frontier target, predictor and controls.  ADD is an
-independent branch.}
+\caption{The fixed-frontier target, predictor and seven baselines.}
 \label{tab-information-loss}
 \begin{tabular}{@{}lp{0.74\columnwidth}@{}}
 \toprule
@@ -397,12 +421,13 @@ Name & Quantity or relaxation \\
 \midrule
 $E$ & BDD nodes in realized value buckets (target). \\
 $I$ & Realized masked-node--terminal pairs. \\
+$D$ & Masked ADD inner nodes (non-certificate baseline). \\
 $kD$ & The full $k$-by-node rectangle. \\
 $mQ$ & Masked cofactor count, multiplied by $k$. \\
 $mJ$ & Co-occurring cofactor pairs, multiplied by $k$. \\
 Cartesian & Marginal cofactor pairs, multiplied by $k$. \\
 width & State-set profile times maximum heuristic width and $k$. \\
-ADD & Input BDD and full heuristic ADD sizes, with $k$. \\
+Apply & Standard-Apply bound from input BDD and full heuristic ADD sizes. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -411,7 +436,8 @@ For several fixed frontiers $S_g$, we sum every layerwise quantity using its
 own $k_g$.
 Thus $I=\sum_g I_\pi(S_g,h)$ and
 $kD=\sum_g k_gD_\pi(S_g,h)$, with analogous definitions for the other
-controls.
+certificate baselines and $D=\sum_gD_\pi(S_g,h)$ for the non-certificate
+baseline.
 Summing Theorem~\ref{thm-incidence-hierarchy} preserves both branches.
 No extra multiplier by the number of values is applied to $I$.
 The inequalities compare certificates for one heuristic; they do not order
@@ -420,11 +446,23 @@ In particular, $\incidence{S}{h_1}<\incidence{S}{h_2}$ and
 $\partcost{S}{h_i}\leq\incidence{S}{h_i}$ imply no order between
 $\partcost{S}{h_1}$ and $\partcost{S}{h_2}$.
 Confirmation A tests this separate ordinal question empirically.
+The missing relation matters even for exact PDBs.
+On one seven-bit task, the complete blind layer at $g=3$ is a fixed frontier
+on which two PDBs have
+$(E,I)=(10,10)$ and $(11,11)$, while all six registered certificate baselines
+tie:
+the values for $kD$, $mQ$, $mJ$, Cartesian, width and Apply are respectively
+$12,60,81,81,117$ and $33$ for both PDBs.
+Masked ADD size also ties at $D=4$.
+Thus, among the eight ordering predictors, only incidence recovers the strict
+partition-effort order in this example.
+This existential witness does not make incidence a universally correct
+ordinal predictor; the supplement gives the task and every diagram count.
 
 \subsection{An Exact Separation}
 
-The gap between incidence and the controls is not an artifact of reduction
-constants.
+The gap between incidence and the certificate baselines is not an artifact of
+reduction constants.
 
 \begin{theorem}[incidence separation]
 \label{thm-incidence-separation}
@@ -434,7 +472,8 @@ which
 \[
  \partcost{S}{h}=\incidence{S}{h}=k(r+L),
 \]
-while each of $kD$, $mQ$, $mJ$, Cartesian, width and ADD is
+while each of the certificate baselines $kD$, $mQ$, $mJ$, Cartesian, width
+and ADD is
 $\Theta(k^2L)$.
 More precisely,
 \[
@@ -533,9 +572,9 @@ abstract-state or construction budget
 Our selector adds a representation budget derived from the frontier on which
 the heuristic will first operate.
 
-The fixed candidate pool contains normalized, deduplicated patterns from the
-empty, BDD-prefix, goal-prefix, goal-fill and seeded counterexample-guided
-abstraction refinement (CEGAR) sources.
+The fixed candidate pool contains the empty pattern and normalized,
+deduplicated patterns from the BDD-prefix, goal-prefix, goal-fill and seeded
+counterexample-guided abstraction refinement (CEGAR) sources.
 Every pattern has at most $100{,}000$ abstract states.
 For each nonempty raw PDB, we materialize caps
 $0,1,2,4,\ldots,256$ below its maximum finite value and the exact endpoint.
@@ -553,7 +592,7 @@ within this budget.
 It then maximizes the frozen lexicographic information score: initial
 dead-end recognition, initial value, mean finite value and abstract dead-end
 fraction, followed by smaller cofactor width, fewer abstract states and the
-pattern tie breaker.
+deterministic pattern tie-breaker.
 
 \begin{proposition}[probe-budget safety]
 Let fixed probe frontiers $S_1,\ldots,S_\ell$ and a finite candidate pool
@@ -575,11 +614,19 @@ Proposition~\ref{prop-incidence-contraction} gives the final claim.
 
 This rule spends the same measured representation budget differently from the
 reference.
-The proposition is an absolute safety bound, not an ordinal guarantee that a
-lower-incidence candidate has lower exact effort than another candidate.
+The proposition is an absolute probe partition-effort bound, not an ordinal
+guarantee that a lower-incidence candidate has lower exact effort than another
+candidate.
 The selector is not an oracle: its probe consists only of the first 16
 completed blind layers on a positive-cost task and does not use the exact
 target $E$.
+In our implementation, evaluating $E$ online would add a reduced-bucket
+computation for each active value of every candidate on every probe layer.
+More importantly, $E$-feasibility is not closed under terminal maps: a further
+cap can increase exact partition effort.  In contrast,
+Proposition~\ref{prop-incidence-contraction} guarantees that every
+bottom-preserving terminal map of an incidence-feasible candidate remains
+within the incidence budget.
 A matched-work control performs the identical probe, pool construction,
 candidate materialization and incidence measurement, then executes the fixed
 reference.
@@ -589,9 +636,22 @@ Independent replay rejects a trace if any pool, cap, score, monotonicity or
 identity invariant fails.
 Probe and selection CPU time, wall time and peak-memory deltas are recorded
 separately as descriptive phase accounting.
-The matched-work control pays the same probe and selection work, while the
+The matched-work control matches the registered probe and candidate-measurement
+work counts, while the
 comparison with the standalone reference retains that work in end-to-end
 planner time.
+
+For a direct test of the metric, we also define a symmetric $mJ$-guided
+selector.
+On complete probes, all three arms measure both $I$ and $mJ$ on the same probe
+and materialize the same candidates.
+The incidence and $mJ$ arms derive separate budgets from the same standalone
+$K=32$ reference, retain the strongest feasible cap of each pattern under
+their respective metric and apply the same information score.
+The matched arm has the same registered structural work counts and executes the
+$K=32$ reference.
+The only mode-specific choice is which precomputed winner becomes the final
+heuristic; the two winners may coincide.
 
 \section{Confirmatory Evaluation}
 \label{sec-confirmation}
@@ -602,6 +662,11 @@ All source-selection rules, family mappings, commands, limits, seeds,
 exclusions, metrics and decision thresholds are fixed before outcomes are
 read; task membership and source bytes must be sealed before either
 confirmation freezes.
+Here source-disjoint means that A and B share neither a task identity
+(benchmark directory and problem name) nor a SHA-256 hash of the problem-file
+bytes; it does not require disjoint benchmark families.  The separately
+reported all-prior-unrepresented stratum tests families absent from every
+developmental experiment, not families withheld between A and B.
 The pending source audit will create disjoint A and B cohorts and retain a
 stricter all-prior-unrepresented stratum if its complete prospective campaign
 seals successfully.
@@ -622,8 +687,11 @@ horizon.  This makes the frontier identical across the four configurations.
 
 For each layer, the target is the exact partition effort $E$ and the primary
 predictor is $I$.
-The six controls are $kD$, $mQ$, $mJ$, Cartesian, width and ADD from
+The gating non-certificate baseline is masked ADD size $D$.
+The six certificate baselines are $kD$, $mQ$, $mJ$, Cartesian, width and the
+standard-Apply quantity stored under the legacy key ADD in
 Theorem~\ref{thm-incidence-hierarchy}.
+Together with $I$, these form eight ordering predictors.
 Every logged layer must satisfy both certificate branches before it enters the
 analysis.
 Within each eligible task, the primary analysis retains every semantic-PDB
@@ -632,15 +700,16 @@ For each predictor, a concordant pair scores one, a predictor tie scores one
 half and a discordant pair scores zero.
 These task concordances are averaged first within family and then with equal
 family weight.
-The former grand-shared set on which $E$ and all predictors are strictly
+The former grand-shared set on which $E$ and all eight predictors are strictly
 ordered is retained as a non-gating sensitivity analysis.
 
 The complete gate requires at least 300 eligible and comparison tasks, at
 least 25 eligible and comparison families and at least 600 target-strict
 pairs.
-The macro concordance of $I$ must reach 0.65 and exceed every control by at
+The macro concordance of $I$ must reach 0.65 and exceed every baseline by at
 least 0.02.
-For every control, the lower endpoint of the 95\% paired-family bootstrap
+For each of the seven baselines, the lower endpoint of the 95\% paired-family
+bootstrap
 reweighting interval with $100{,}000$ replicates must be positive, and every
 leave-one-family-out difference must be positive.
 The all-prior-unrepresented stratum additionally requires at least 100 source
@@ -651,12 +720,66 @@ Failure of any support or effect clause is a failed confirmation.
 
 % ================= RESULT_INSERT_CONFIRMATION_A_BEGIN =================
 % Insert only the double-executed, sealed A analysis here.
-% Report target-strict support, I concordance, all six margins, bootstrap lower
+% Report target-strict support, I concordance, all seven margins, bootstrap lower
 % endpoints, leave-one-family-out minima, the robust all-prior-unrepresented
 % gate, all-strict sensitivity, certificate tightness and timing. State PASS or
 % FAIL for the complete gate explicitly.
 % If A fails, do not insert or imply Confirmation B results.
 % ================== RESULT_INSERT_CONFIRMATION_A_END ==================
+
+\subsection{Direct Test: Does the Metric Change Performance?}
+
+This campaign is authorized only if Confirmation A passes.
+It uses the frozen 300-task Confirmation B cohort, but executes fresh runs in
+three task-blocked arms: incidence-guided, $mJ$-guided and matched $K=32$.
+Within each family, arm order rotates deterministically by task.
+On complete probes, every arm reconstructs both metrics, budgets, winners and
+the complete candidate trace; normalized structural certificates must be
+identical apart from timing, memory and the final-selection event.
+If the blind state space yields fewer than 16 layers, all three arms must
+instead expose the same certified three-event short-probe trace, exit
+\texttt{SEARCH\_UNSUPPORTED} (34), record coverage zero and perform no
+candidate selection or fallback.
+Such a symmetric short triad remains in both full 300-task contrasts as
+PAR2 3600 in every arm and supplies no metric winner; any asymmetric status or
+short-trace mismatch invalidates the campaign.
+
+The primary contrast is incidence-guided minus $mJ$-guided.
+PAR2 is total planner time for a solved run, which is at most 1800 seconds,
+and 3600 seconds for every unsolved certified cell.
+It passes only with nonlower coverage, an equal-family normalized PAR2
+improvement of at least 0.02, a strictly positive lower endpoint of the 95\%
+paired-family bootstrap interval and a positive effect after leaving out every
+family.
+The same clauses must hold on the prespecified subset of complete probes where
+the two reconstructed winners differ, with at least 50 tasks from ten
+families.
+This subset is defined only by certified selector structure and is blind to
+search coverage and runtime.
+Incidence-guided versus matched $K=32$ is secondary and cannot change the
+primary decision.
+
+A fixed non-gating mechanism panel uses only the certified selector trace. It
+reports complete/short support, winner uptake among complete probes, cap-only
+versus pattern changes.
+It also reports own-budget utilization and binding, cross-metric feasibility
+and retention, the frozen selection-score relation and its first decisive
+criterion, candidate-work counts, per-arm probe and selection overhead and
+paired differences in the sum of recorded probe and selection CPU/wall times.
+Complete triads
+contribute selector structure once per task; short triads contribute only
+support and probe overhead. Because this trace contains neither exact $E$ nor
+a final-search bucket trajectory, the panel cannot establish fragmentation
+mediation and cannot affect the registered decision.
+
+% ================= RESULT_INSERT_METRIC_CHOICE_BEGIN =================
+% Insert only the double-executed, sealed direct metric-choice analysis here.
+% Report full and short-probe counts, differing-winner support, coverage,
+% equal-family normalized
+% PAR2, bootstrap lower endpoint, leave-one-family-out minimum, structural
+% identity checks, the complete fixed mechanism panel, the secondary
+% matched-K=32 contrast and PASS/FAIL.
+% ================== RESULT_INSERT_METRIC_CHOICE_END ==================
 
 \subsection{Confirmation B: Does Incidence Improve Selection?}
 
@@ -689,7 +812,7 @@ against the matched-work control.
 % ================= RESULT_INSERT_CONFIRMATION_B_BEGIN =================
 % Insert B only if the sealed A decision authorized its launch.
 % Report cohort support, trace certification, selection-difference support,
-% coverage and normalized PAR2 against both primary controls, both bootstrap
+% coverage and normalized PAR2 against both primary comparators, both bootstrap
 % reweighting intervals, leave-one-family-out minima, task-block and reference
 % identity certification, mechanism support, overhead and the complete
 % decision.
@@ -712,8 +835,12 @@ Residual width, cofactor profiles and Apply bounds are standard decision-
 diagram tools \citep{wegener-2000,bryant-ieeecomp1986}.
 Our cofactor analysis connects them to symbolic search and supplies reusable
 worst-case guarantees.
-Terminal incidence differs by retaining reachability between inner ADD nodes
-and active terminals after masking by the actual frontier.
+The relation between one multi-terminal ADD and a forest of BDDs for its
+values is also classical \citep{bahar-et-al-iccad1993}.
+Terminal incidence is a node-local refinement of that relation for a
+frontier-masked ADD: it records which active value terminals remain reachable
+from each inner node.
+We do not claim the basic ADD-versus-BDD-forest relation as new.
 Theorem~\ref{thm-incidence-separation} shows that this relation can remove a
 factor of order $k$, the number of active values, from every tested
 relaxation.
@@ -731,8 +858,9 @@ Theorem~\ref{thm-incidence-hierarchy} are incomparable.
 Terminal incidence concerns representation after both a frontier and a
 variable order have been fixed.
 It does not predict which states a heuristic causes the search to reach.
-It counts BDD nodes rather than runtime or peak memory, and it omits symbolic
-image operations, heuristic construction and evaluator overhead.
+Its target is BDD-node partition effort rather than runtime or peak memory,
+and it omits symbolic image operations, heuristic construction and evaluator
+overhead.
 The certificate is one-sided: small incidence bounds partition effort, while
 large incidence need not make a reduced bucket large or determine the ordinal
 ranking of two heuristics.
@@ -740,9 +868,16 @@ ranking of two heuristics.
 Confirmation A compares several PDBs on common blind frontiers.
 It can establish an ordinal predictor of fixed-frontier partition effort within
 that design, but it cannot establish a cause of overall heuristic performance.
-Confirmation B is required for claims about the selector, coverage or PAR2.
-Even a pass in both studies remains specific to the frozen PDB pool, the first
-16 completed blind probe layers on positive-cost tasks, forward
+The direct metric-choice campaign changes only which precomputed winner
+becomes the final heuristic, but reuses Confirmation B's task cohort and is
+therefore not an independent task holdout from that broader evaluation.
+The direct campaign supports only the $I$-versus-$mJ$ selection-rule contrast
+and its secondary matched-$K=32$ comparison.
+Confirmation B separately supports the broader comparison with the cap-aware
+reference and alternative methods.
+Even if Confirmation A, the direct campaign and Confirmation B all pass, the
+conclusions remain specific to the frozen PDB pool, the first 16 completed
+blind probe layers on positive-cost tasks, forward
 product-at-evaluation search, the tested benchmarks and the fixed-order CUDD
 representation.
 
@@ -756,7 +891,7 @@ contraction does not imply monotone complete-search performance.
 \section{Conclusions}
 
 Terminal incidence measures the relation omitted by cofactor and width
-controls: which active heuristic terminals remain reachable from each inner
+baselines: which active heuristic terminals remain reachable from each inner
 node of the masked ADD.
 It upper-bounds exact fixed-frontier partition effort, lies below two
 independent certificate branches and is sharper by a factor $\Theta(k)$ on an
@@ -765,13 +900,16 @@ The theory also identifies a strict design boundary.
 Terminal maps contract incidence, but neither exact partition effort nor a
 complete symbolic search must improve.
 
-The two confirmations respect that boundary.
+The staged experiments respect that boundary.
 Confirmation A tests terminal incidence only as an ordinal predictor of exact
 partition effort on common frontiers.
-Only if that claim survives does Confirmation B test whether an
-incidence-budgeted PDB selector improves end-to-end search.
+Only if that claim survives do fresh guided runs test whether choosing with
+incidence rather than $mJ$ improves search, and whether the
+incidence-budgeted selector improves over the reference and alternatives.
 % RESULT_INSERT_CONCLUSION_A: replace the preceding protocol sentence with
 % the sealed A conclusion and its exact scope.
+% RESULT_INSERT_CONCLUSION_METRIC: add the metric-choice conclusion only if
+% authorized and sealed.
 % RESULT_INSERT_CONCLUSION_B: add the sealed B conclusion only if authorized.
 
 \FloatBarrier

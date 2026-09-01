@@ -135,10 +135,19 @@ REVIEW_BUNDLE_FILENAMES = (
     "supplement.pdf",
 )
 
+OUTCOME_CONTINGENT_TITLES = (
+    "Terminal Incidence: From Partition-Effort Prediction to Heuristic Selection",
+    "Terminal Incidence Predicts Heuristic Fragmentation in Symbolic Search",
+    (
+        "Heuristic Fragmentation in Symbolic Search: "
+        "Terminal-Incidence Certificates and Their Limits"
+    ),
+)
+SUPPLEMENT_TITLE_SUFFIX = "Supplementary Material"
+
 REVIEW_DOCUMENT_MARKERS = {
     "paper.pdf": {
         "required": (
-            "Heuristic Fragmentation in Symbolic Search",
             "Anonymous submission",
             "Abstract",
         ),
@@ -146,7 +155,6 @@ REVIEW_DOCUMENT_MARKERS = {
     },
     "supplement.pdf": {
         "required": (
-            "Heuristic Fragmentation in Symbolic Search",
             "Supplementary Material",
             "Anonymous for review",
             "Guide.",
@@ -291,11 +299,34 @@ FORBIDDEN_CONTENT = (
         re.compile(r"\bpreliminary\s+results?\b", re.IGNORECASE),
     ),
     (
+        "pending source audit or scan",
+        re.compile(r"\bpending\s+source\s+(?:audit|scan)\b", re.IGNORECASE),
+    ),
+    (
+        "prospective V5 source audit",
+        re.compile(
+            r"\bv5\s+(?:therefore\s+)?reruns\b"
+            r"|\bunless\s+v5\s+completes\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
         "overstated structural-value blindness",
         re.compile(
             r"\bbefore\s+any\s+(?:P6\s+)?structural\s+values?\b",
             re.IGNORECASE,
         ),
+    ),
+)
+
+UNRESOLVED_RAW_SOURCE = (
+    (
+        "V5 source-audit result insertion marker",
+        re.compile(r"RESULT_INSERT_SOURCE_AUDIT_V5(?:_[A-Z0-9_]+)?"),
+    ),
+    (
+        "result insertion marker",
+        re.compile(r"RESULT_INSERT_(?!SOURCE_AUDIT_V5(?:_|\b))[A-Z0-9_]+"),
     ),
 )
 
@@ -581,6 +612,40 @@ def _strip_tex_comments(text: str) -> str:
     return "".join(stripped)
 
 
+TITLE_COMMAND = re.compile(r"\\title\s*\{([^{}]*)\}", re.DOTALL)
+
+
+def _normalize_source_title(value: str) -> str:
+    return " ".join(value.replace(r"\\", " ").split())
+
+
+def _extract_source_title(name: str, text: str) -> str:
+    active = _strip_tex_comments(text)
+    matches = list(TITLE_COMMAND.finditer(active))
+    if len(matches) != 1:
+        raise SubmissionReadinessError(
+            f"{name} must contain exactly one simple active title command"
+        )
+    return _normalize_source_title(matches[0].group(1))
+
+
+def _validate_source_title_contract(main_text: str, supplement_text: str) -> str:
+    main_title = _extract_source_title("paper.tex", main_text)
+    if main_title not in OUTCOME_CONTINGENT_TITLES:
+        raise SubmissionReadinessError(
+            "paper.tex title must be one of the three reviewed outcome-contingent "
+            "titles"
+        )
+    supplement_title = _extract_source_title("supplement.tex", supplement_text)
+    expected_supplement_title = f"{main_title}: {SUPPLEMENT_TITLE_SUFFIX}"
+    if supplement_title != expected_supplement_title:
+        raise SubmissionReadinessError(
+            "supplement.tex title must exactly match the main title before its "
+            "supplementary-material suffix"
+        )
+    return main_title
+
+
 def _validate_review_bundle_names(paths) -> None:
     names = [path.name for path in paths]
     if len(names) != len(set(names)):
@@ -839,7 +904,40 @@ def _extract_action_targets(pdf_name: str, action_markup: str) -> str:
     return "\n".join(parser.targets)
 
 
-def _validate_review_document_identity(pdf_name: str, first_page_text: str) -> None:
+def _normalize_rendered_title_text(value: str) -> str:
+    return " ".join(value.split()).replace("- ", "-")
+
+
+def _extract_rendered_title(pdf_name: str, first_page_text: str) -> str:
+    normalized = _normalize_rendered_title_text(first_page_text).casefold()
+    matches = []
+    for title in OUTCOME_CONTINGENT_TITLES:
+        rendered = title
+        if pdf_name == "supplement.pdf":
+            rendered = f"{title}: {SUPPLEMENT_TITLE_SUFFIX}"
+        needle = _normalize_rendered_title_text(rendered).casefold()
+        if re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", normalized):
+            matches.append(title)
+    if len(matches) != 1:
+        raise SubmissionReadinessError(
+            f"{pdf_name} lacks one unambiguous reviewed outcome-contingent title"
+        )
+    return matches[0]
+
+
+def _validate_review_title_pair(titles) -> None:
+    if set(titles) != set(REVIEW_BUNDLE_FILENAMES):
+        raise SubmissionReadinessError(
+            "review bundle title comparison requires both canonical PDFs"
+        )
+    if titles["paper.pdf"] != titles["supplement.pdf"]:
+        raise SubmissionReadinessError(
+            "review bundle main and supplement titles do not match"
+        )
+
+
+def _validate_review_document_identity(pdf_name: str, first_page_text: str) -> str:
+    title = _extract_rendered_title(pdf_name, first_page_text)
     contract = REVIEW_DOCUMENT_MARKERS[pdf_name]
     normalized = " ".join(first_page_text.split()).casefold()
     for token in contract["required"]:
@@ -854,6 +952,7 @@ def _validate_review_document_identity(pdf_name: str, first_page_text: str) -> N
             raise SubmissionReadinessError(
                 f"{pdf_name} has the wrong first-page document identity"
             )
+    return title
 
 
 def _validate_review_pdf_surfaces(
@@ -865,7 +964,7 @@ def _validate_review_pdf_surfaces(
     first_page_text: str,
     action_markup: str,
     javascript: str,
-) -> None:
+) -> str:
     if not raw.startswith(b"%PDF-"):
         raise SubmissionReadinessError(f"{pdf_name} lacks a PDF header")
 
@@ -882,7 +981,7 @@ def _validate_review_pdf_surfaces(
         raise SubmissionReadinessError(f"{pdf_name} contains document JavaScript")
     if re.search(rb"/Outlines\b", raw):
         raise SubmissionReadinessError(f"{pdf_name} contains PDF bookmarks")
-    _validate_review_document_identity(pdf_name, first_page_text)
+    title = _validate_review_document_identity(pdf_name, first_page_text)
     normalized_visible_text = _normalized_visible_text(extracted_text)
     for description, pattern in FORBIDDEN_CONTENT:
         if pattern.search(normalized_visible_text):
@@ -923,6 +1022,7 @@ def _validate_review_pdf_surfaces(
         raise SubmissionReadinessError(
             f"{pdf_name} contains an embedded link or PDF action"
         )
+    return title
 
 
 def _validate_attachment_inventory(pdf_name: str, inventory: str) -> None:
@@ -994,11 +1094,21 @@ def audit_review_bundle(path_values) -> None:
     _validate_review_bundle_paths(paths)
     # Independently enforce the official preamble and source boundary even
     # when the bundle-only action is invoked without the full result gate.
+    main_text = _read_stable_regular(MAIN, label="main paper source")
+    supplement_text = _read_stable_regular(
+        SUPPLEMENT, label="supplement source"
+    )
     _validate_source(
         "paper.tex",
-        _read_stable_regular(MAIN, label="main paper source"),
+        main_text,
         REQUIRED_MAIN,
     )
+    _validate_source(
+        "supplement.tex",
+        supplement_text,
+        REQUIRED_SUPPLEMENT,
+    )
+    source_title = _validate_source_title_contract(main_text, supplement_text)
     _validate_author_kit_files()
     pdfinfo = shutil.which("pdfinfo")
     pdftotext = shutil.which("pdftotext")
@@ -1012,6 +1122,7 @@ def audit_review_bundle(path_values) -> None:
         )
 
     digests = {}
+    rendered_titles = {}
     for path in sorted(paths, key=lambda item: item.name):
         label = path.name
         before = _read_stable_regular_bytes(
@@ -1081,7 +1192,7 @@ def audit_review_bundle(path_values) -> None:
             raise SubmissionReadinessError(
                 f"{label} changed while external PDF checks were running"
             )
-        _validate_review_pdf_surfaces(
+        rendered_titles[label] = _validate_review_pdf_surfaces(
             label,
             before,
             document_info,
@@ -1090,6 +1201,11 @@ def audit_review_bundle(path_values) -> None:
             first_page_text,
             action_markup,
             javascript,
+        )
+    _validate_review_title_pair(rendered_titles)
+    if rendered_titles["paper.pdf"] != source_title:
+        raise SubmissionReadinessError(
+            "review bundle title does not match the reviewed source title"
         )
 
 
@@ -1125,6 +1241,13 @@ def _validate_source(name: str, text: str, required) -> None:
         match = pattern.search(active)
         if match:
             line = active.count("\n", 0, match.start()) + 1
+            raise SubmissionReadinessError(
+                f"{name}:{line}: unresolved submission marker ({description})"
+            )
+    for description, pattern in UNRESOLVED_RAW_SOURCE:
+        match = pattern.search(text)
+        if match:
+            line = text.count("\n", 0, match.start()) + 1
             raise SubmissionReadinessError(
                 f"{name}:{line}: unresolved submission marker ({description})"
             )
@@ -1221,6 +1344,7 @@ def validate(
 ) -> None:
     _validate_source("paper.tex", main_text, REQUIRED_MAIN)
     _validate_source("supplement.tex", supplement_text, REQUIRED_SUPPLEMENT)
+    _validate_source_title_contract(main_text, supplement_text)
     _validate_source("cap-study.tex", cap_study_text, REQUIRED_CAP_STUDY)
     _validate_manifest(
         manifest_text,
@@ -1283,8 +1407,10 @@ def _review_bundle_self_test():
     # visible scholarly text; anonymity is enforced through PDF metadata and
     # direct infrastructure/provenance scans, not by suppressing citations.
     safe_text = "SymK builds on prior work by Jendrik Seipp.\n"
+    safe_title = OUTCOME_CONTINGENT_TITLES[0]
     safe_first_page = (
-        "Heuristic Fragmentation in Symbolic Search: Cofactor Certificates and Their Limits\n"
+        safe_title
+        + "\n"
         "Anonymous submission\nAbstract\n"
     )
     safe_action_markup = "<html><body>anonymous paper</body></html>"
@@ -1309,7 +1435,47 @@ def _review_bundle_self_test():
     )
     _validate_font_inventory(REVIEW_BUNDLE_FILENAMES[0], safe_fonts)
 
+    for title in OUTCOME_CONTINGENT_TITLES:
+        paper_title = _validate_review_document_identity(
+            "paper.pdf",
+            f"{title}\nAnonymous submission\nAbstract\n",
+        )
+        supplement_title = _validate_review_document_identity(
+            "supplement.pdf",
+            (
+                f"{title}: {SUPPLEMENT_TITLE_SUFFIX}\n"
+                "Anonymous for review\nGuide.\n"
+            ),
+        )
+        _validate_review_title_pair(
+            {"paper.pdf": paper_title, "supplement.pdf": supplement_title}
+        )
+
     rejected = 0
+    for bad_first_page in (
+        "Unreviewed Terminal Metric Title\nAnonymous submission\nAbstract\n",
+        (
+            "Terminal Incidence for Heuristic Fragmentation in Symbolic Search\n"
+            "Anonymous submission\nAbstract\n"
+        ),
+    ):
+        try:
+            _validate_review_document_identity("paper.pdf", bad_first_page)
+        except SubmissionReadinessError:
+            rejected += 1
+        else:
+            raise AssertionError("unreviewed outcome title was accepted")
+    try:
+        _validate_review_title_pair(
+            {
+                "paper.pdf": OUTCOME_CONTINGENT_TITLES[0],
+                "supplement.pdf": OUTCOME_CONTINGENT_TITLES[1],
+            }
+        )
+    except SubmissionReadinessError:
+        rejected += 1
+    else:
+        raise AssertionError("mismatched review-bundle titles were accepted")
     bad_name_sets = (
         [ROOT / REVIEW_BUNDLE_FILENAMES[0]],
         [ROOT / REVIEW_BUNDLE_FILENAMES[0]] * 2,
@@ -1676,6 +1842,11 @@ def _review_bundle_self_test():
 
 def self_test():
     _validate_author_kit_files()
+    fixture_title = OUTCOME_CONTINGENT_TITLES[0]
+    main_title_command = f"\\title{{{fixture_title}}}"
+    supplement_title_command = (
+        f"\\title{{{fixture_title}:\\\\\n{SUPPLEMENT_TITLE_SUFFIX}}}"
+    )
     reference_tail = (
         "\\FloatBarrier\n"
         + REFERENCES_START_LABEL
@@ -1684,10 +1855,17 @@ def self_test():
     )
     main = (
         "\n".join(REQUIRED_MAIN)
+        + "\n"
+        + main_title_command
         + "\nfinal census accepted\n"
         + reference_tail
     )
-    supplement = "\n".join(REQUIRED_SUPPLEMENT) + "\nfinal census accepted\n"
+    supplement = (
+        "\n".join(REQUIRED_SUPPLEMENT)
+        + "\n"
+        + supplement_title_command
+        + "\nfinal census accepted\n"
+    )
     cap_study = "\n".join(REQUIRED_CAP_STUDY) + "\nfinal tables accepted\n"
     generated = "\\newcommand{\\CapFixtureValue}{1}\n"
     generated_sha = hashlib.sha256(generated.encode("utf-8")).hexdigest()
@@ -1716,6 +1894,24 @@ def self_test():
 
     base = (main, supplement, cap_study, manifest, generated)
     validate_fixture(base)
+    for title in OUTCOME_CONTINGENT_TITLES:
+        validate_fixture(
+            (
+                main.replace(
+                    main_title_command,
+                    f"\\title{{{title}}}",
+                    1,
+                ),
+                supplement.replace(
+                    supplement_title_command,
+                    f"\\title{{{title}:\\\\\n{SUPPLEMENT_TITLE_SUFFIX}}}",
+                    1,
+                ),
+                cap_study,
+                manifest,
+                generated,
+            )
+        )
     # The kit expressly permits tabcolsep adjustment for otherwise oversized
     # tables, so the general setlength ban must not reject that exception.
     validate_fixture(
@@ -1733,10 +1929,63 @@ def self_test():
     )
     rejected = 0
     mutations = [
+        (
+            main.replace(
+                main_title_command,
+                r"\title{Terminal Incidence for Heuristic Fragmentation in Symbolic Search}",
+                1,
+            ),
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main,
+            supplement.replace(
+                supplement_title_command,
+                (
+                    f"\\title{{{OUTCOME_CONTINGENT_TITLES[1]}:\\\\\n"
+                    f"{SUPPLEMENT_TITLE_SUFFIX}}}"
+                ),
+                1,
+            ),
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main.replace(main_title_command, "", 1),
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main + main_title_command + "\n",
+            supplement,
+            cap_study,
+            manifest,
+            generated,
+        ),
         (main + "RESULT PLACEHOLDER\n", supplement, cap_study, manifest, generated),
         (main + "synthetic results\n", supplement, cap_study, manifest, generated),
         (main + "pending P6\n", supplement, cap_study, manifest, generated),
         (main + "preliminary results\n", supplement, cap_study, manifest, generated),
+        (
+            main,
+            supplement + "% RESULT_INSERT_SOURCE_AUDIT_V5_BEGIN\n",
+            cap_study,
+            manifest,
+            generated,
+        ),
+        (
+            main,
+            supplement + "Campaign v5 therefore reruns all shards.\n",
+            cap_study,
+            manifest,
+            generated,
+        ),
         (
             main + "before any structural value was inspected\n",
             supplement,

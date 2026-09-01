@@ -305,12 +305,13 @@ The run-level target and predictors used in the confirmatory study are
 \begin{array}{@{}rcl@{\qquad}rcl@{}}
 E&=&\displaystyle\sum_{g\in G}\partcost{S_g}{h},
 &I&=&\displaystyle\sum_{g\in G}\incidence{S_g}{h},\\[3pt]
-kD&=&\displaystyle\sum_{g\in G}k_gD_g,
-&mQ&=&\displaystyle\sum_{g\in G}k_g\cofcount(m_g),\\[3pt]
-mJ&=&\displaystyle\sum_{g\in G}k_g\jointprofile{S_g}{h},
-&C&=&\displaystyle\sum_{g\in G}k_g\cutprod{S_g}{h},\\[3pt]
-W&=&\displaystyle\sum_{g\in G}k_g\width_\pi(h)\cofcount(\chi_{S_g}),
-&A_{\mathrm{Apply}}&=&\displaystyle\sum_{g\in G}
+D&=&\displaystyle\sum_{g\in G}D_g,
+&kD&=&\displaystyle\sum_{g\in G}k_gD_g,\\[3pt]
+mQ&=&\displaystyle\sum_{g\in G}k_g\cofcount(m_g),
+&mJ&=&\displaystyle\sum_{g\in G}k_g\jointprofile{S_g}{h},\\[3pt]
+C&=&\displaystyle\sum_{g\in G}k_g\cutprod{S_g}{h},
+&W&=&\displaystyle\sum_{g\in G}k_g\width_\pi(h)\cofcount(\chi_{S_g}),\\[3pt]
+A_{\mathrm{Apply}}&=&\displaystyle\sum_{g\in G}
 k_g\bigl(2(A+1)\bddsize{S_g}+A\bigr).
 \end{array}
 \]
@@ -323,6 +324,91 @@ Summing the nonnegative layerwise inequalities gives
 The definition of $I$ already sums over terminals through
 Equation~\ref{eq:supp-terminal-incidence}; multiplying it by $k_g$ again would
 double-count the value partition.
+Masked ADD size $D$ is a non-certificate ordering baseline.
+The relation $D\leq I$ does not imply $E\leq D$, and it supplies no guaranteed
+$E$--$D$ order across two heuristics.
+
+\subsection{An Ordinal Separation for Exact PDBs}
+
+The certificate inequalities do not imply an order between two heuristics.
+The next example isolates the node--terminal relation: every registered
+relaxation ties, while incidence recovers a strict exact order.
+
+\begin{example}[PDB ordinal separation]
+\label{ex:supp-pdb-ordinal-separation}
+Consider Boolean variables $z,a_1,a_2,a_3,b_1,b_2,b_3$.
+Initially $z=0$ and all six $a$- and $b$-variables are one.
+The partial goal is $z=0$ and $a_1=b_1=b_2=0$; variables
+$a_2,a_3,b_3$ are unconstrained.
+For every assignment
+$\sigma\in\{0,1\}^{\{a_1,a_2,a_3,b_1,b_2,b_3\}}$, one initialization
+operator has precondition $z=0$, cost 3 and the effect $z:=1$ together with
+$(a_1,a_2,a_3,b_1,b_2,b_3):=\sigma$.
+These are 64 distinct operators.
+The following six distance-defining operators have the additional precondition
+$z=1$, and every unmentioned variable is unchanged:
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Remaining precondition & Effect & Cost\\
+\midrule
+$a_1=1$ & $a_1:=0$ & 2\\
+$a_1=1,a_2=0$ & $a_1:=0$ & 1\\
+$a_1=1,a_3=0$ & $a_1:=0$ & 1\\
+$b_1=1$ & $b_1:=0,b_2:=0$ & 1\\
+$b_2=1$ & $b_2:=0$ & 2\\
+$b_2=1,b_3=0$ & $b_2:=0$ & 1\\
+\bottomrule
+\end{tabular}
+\end{center}
+Finally, a finish operator with precondition
+$z=1,a_1=b_1=b_2=0$ sets $z:=0$ at cost 1.
+
+The only actions applicable initially are the 64 cost-3 initialization
+operators.
+Their successors are exactly all assignments with $z=1$, so
+$S=\{z=1\}$ is the complete non-goal blind layer at $g=3$.
+The finish operator reaches a goal at cost 4, and no goal is reachable earlier.
+The exact PDBs for $P_A=\{a_1,a_2,a_3\}$ and
+$P_B=\{b_1,b_2,b_3\}$, written in lexicographic abstract-state order, are
+\[
+ h_A=(0,0,0,0,1,1,1,2),
+ \qquad
+ h_B=(0,0,1,2,1,1,1,1).
+\]
+Projecting away $z$ leaves the six distance-defining transitions unchanged.
+The initialization operators cost 3 and therefore cannot improve displayed
+distances of at most 2; the finish operator and operators on the other pattern
+project to positive-cost self-loops.
+
+Use order $(z,a_1,b_1,b_2,a_2,a_3,b_3)$ on this blind frontier.
+Before masking by $S$, both heuristic ADDs have three inner nodes.
+For $h_A$, their active-terminal reach-set sizes are $(3,2,2)$; for $h_B$
+they are $(3,3,2)$.
+Masking adds one leading $z$ node with three reachable active terminals.
+Consequently $D_A=D_B=4$, while $I_A=10$ and $I_B=11$.
+
+The three value-bucket BDDs have sizes $(2,4,4)$ for $h_A$ and $(3,4,4)$
+for $h_B$ under complemented edges.
+Hence $(E_A,I_A)=(10,10)$ and $(E_B,I_B)=(11,11)$.
+Nevertheless, both masked ADDs have cofactor sum 20, both co-occurring and
+Cartesian profiles sum to 27, both heuristic widths are three,
+$\cofcount(\chi_S)=13$, and $\bddsize{S}=1$.
+With three active values and three inner nodes in each unmasked heuristic ADD,
+all six certificate baselines therefore tie:
+\[
+ (kD,mQ,mJ,C,W,A_{\mathrm{Apply}})
+ =(12,60,81,81,117,33).
+\]
+Among the eight ordering predictors, only incidence distinguishes the two
+exact partition efforts.
+\end{example}
+
+The example is an ordinal separation, not a universal correctness result for
+incidence.
+It shows that the node--terminal relation discarded by every registered
+certificate relaxation can be decisive on an actual blind layer even when
+their aggregate values all agree.
 
 \subsection{Exact Separation from All Relaxations}
 
@@ -427,7 +513,7 @@ The BDD for $S$ is the length-$L$ conjunction chain, so $b=L$.
 Its cofactor counts are one at the $r+1$ cuts through the complete address
 prefix and two at each of the remaining $L-1$ cuts, giving
 $\cofcount(\chi_S)=r+2L-1$.
-Substitution yields the six controls
+Substitution yields the six certificate baselines
 \[
 \begin{array}{@{}rcl@{\qquad}rcl@{}}
 kD&=&k(kL+k-1),
@@ -570,7 +656,8 @@ separations.
 \end{proof}
 
 The examples compare valid upper bounds, not the exact target.
-They justify retaining the ADD control alongside the cofactor branch in the
+They justify retaining the ADD certificate baseline alongside the cofactor
+branch in the
 confirmatory analysis.
 
 \section{Frozen Confirmatory Protocols}
@@ -580,6 +667,8 @@ This section defines the terms abbreviated in the main paper and records the
 outcome-independent execution and analysis contract.
 Confirmation A and Confirmation B use disjoint cohorts selected before any
 planner outcome is read.
+The direct metric-choice campaign executes fresh runs on the B cohort; it is
+therefore an intervention on the selector rule, not a third task holdout.
 The B launch additionally requires a pinned receipt showing that two fresh
 executions of the A analyzer produced byte-identical outputs and that A passed
 its complete gate.
@@ -620,20 +709,29 @@ B is authorized only with exactly 300 tasks, at least 30 families, at least 12
 shadow-unrepresented families, and at least 50 tasks from ten
 all-prior-unrepresented families.
 
-Three outcome-blind resource amendments precede the pending source scan.
+% ================= RESULT_INSERT_SOURCE_AUDIT_V5_BEGIN =================
+% Replace this prospective V5 account with the sealed audit outcome, exact A/B
+% cohort support and source/environment/scheduler verification status.
+Campaign v5 is the fourth outcome-blind resource amendment after the original
+scan.
 The first scan requested 26~GiB and had out-of-memory shards.
 The second reran all shards with 256~GiB and a 2,700-second translation limit,
 but still had timeouts and out-of-memory shards.
 The third reran all shards with 512~GiB and a 7,200-second per-task translation
 limit, but compute-node temporary-space exhaustion, out-of-memory conditions
-and producer timeouts prevent it from being sealed.
-The prospective campaign v4 therefore reruns every one of the 820 two-task
-shards from scratch with project-backed temporary storage, 1,024~GiB and a
-14,400-second per-task translation limit within an 08:20:00 Slurm limit; no
-earlier shard may be reused.
-Campaign v4 is pending rather than evidence: neither cohort exists for a
-confirmation launch unless all original v4 shards finish successfully and its
-source, environment and scheduler manifests verify.
+and producer timeouts prevented it from being sealed.
+Campaign v4 reran every one of the 820 two-task shards from scratch with
+project-backed temporary storage, 1,024~GiB and a 14,400-second per-candidate
+translation limit within an 08:20:00 Slurm limit. It ended naturally with 801
+scheduler-completed array elements, ten classified translator timeouts and
+nine classified out-of-memory failures, so it also cannot be sealed. Campaign
+v5 therefore reruns all 820 shards again, reuses no earlier shard, requests
+2~TiB and allows
+28,800 seconds per candidate within a 16:40:00 Slurm limit. These resource
+changes are outcome-blind. Neither cohort exists for a
+confirmation launch unless v5 completes and all source, environment and
+scheduler manifests verify.
+% ================== RESULT_INSERT_SOURCE_AUDIT_V5_END ==================
 
 \subsection{Confirmation A Measurement and Analysis}
 
@@ -658,6 +756,18 @@ cofactor profile must agree across configurations.
 A missing or failed PDB construction supplies no observation; a provenance,
 schema, frontier-identity or certificate inconsistency invalidates the
 campaign instead of silently excluding the cell.
+
+For every observation, the target is $E$ and the eight ordering predictors
+are $I$, $D$, $kD$, $mQ$, $mJ$, Cartesian, width and ADD.
+Masked ADD size $D$ is a gating non-certificate baseline; the other six
+baselines satisfy the two certificate branches above.
+The legacy artifact key ADD denotes $A_{\mathrm{Apply}}$, the standard-Apply
+bound, rather than masked ADD size or total ADD size alone.
+This baseline and all seven associated margins are fixed before any
+Confirmation A outcome exists. The amendment is motivated by $D\leq I$; no
+Confirmation A comparison of $D$ with $E$ was available or inspected.
+The primary gate therefore contains seven margins from $I$, one against each
+baseline.
 
 A \emph{semantic PDB observation} is identified by the exact pattern, value
 cap and audited heuristic signature (cofactor sequence, ADD-node count and
@@ -685,7 +795,7 @@ nonempty; target ties never enter a predictor's score.
 Task concordances are averaged within normalized family and then equally
 across families.
 As a non-gating sensitivity, the analyzer repeats the comparison on the
-all-strict subset where $E$ and all seven predictors are unequal; there ties
+all-strict subset where $E$ and all eight predictors are unequal; there ties
 are absent and concordance is the ordinary fraction of matching signs.
 The analyzer also checks that normalizing $E$ by the common unsplit-frontier
 node sum leaves every pair orientation unchanged and that the inverse
@@ -702,10 +812,125 @@ removing each family in turn.
 All support and effect clauses in the main paper are conjunctive.
 The all-prior-unrepresented gate requires at least 50 comparison tasks in ten
 families and 100 target-strict pairs, in addition to the source floors above.
-It uses the same 0.65 concordance, 0.02 margins, paired-family reweighting and
+It uses the same 0.65 concordance, seven 0.02 margins, paired-family reweighting and
 leave-one-family-out clauses as the primary gate.
 The analysis is run twice from fresh loads of the sealed matrix; publication
 requires byte-identical canonical outputs.
+
+\subsection{Direct Metric-Choice Measurement and Analysis}
+
+This campaign may freeze only after Confirmation A passes its complete gate
+and Confirmation B's exact 300-task parse, fetch and fetched-properties chain
+is sealed.
+An outcome-redacted standalone producer reconstructs the cap-aware $K=32$
+pool and selected identity for every B task from that exact chain.
+The direct freeze reopens the live sealed-B verifier, rebuilds those records
+from the fetched properties and checks every path and hash; benchmark outcomes
+are not admitted into its resource or selector design.
+It contains one task-blocked triad per B task: incidence-guided,
+$mJ$-guided and matched $K=32$, for 900 fresh planner cells.
+Within each family, the three execution positions rotate cyclically by task.
+The task mapping, source-audit-v5 provenance, planner revision, executable and
+preprocessor hashes, search strings, options, limits and trace schemas are
+bound before launch.
+
+On complete probes, all arms record the same 16 completed blind layers,
+construct the same normalized pattern pool and cap grid, and compute both
+terminal incidence and the masked joint-residual score
+$mJ=\sum_g k_g\jointprofile{S_g}{h}$ for every candidate.
+The $I$ and $mJ$ selectors derive separate budgets from the same independently
+reconstructed cap-aware $K=32$ reference, retain the strongest feasible cap
+for each pattern under the respective budget and apply the same frozen
+information score.
+The matched arm performs both measurements and selections but executes the
+$K=32$ reference.
+The only mode-specific choice is which precomputed winner becomes the final
+heuristic; the two winners may coincide.
+
+If the blind state space yields fewer than 16 layers, all three arms must
+instead expose the same certified three-event trace containing only the schema,
+variable order and incomplete probe.
+Each arm exits \texttt{SEARCH\_UNSUPPORTED} (34), records coverage zero and
+performs no candidate selection or fallback.
+The audit replays each short trace and requires identical status, structure,
+hash and completed-layer count across the triad; any complete-only winner,
+reference or selection field invalidates it.
+A symmetric short triad is a valid terminal campaign outcome and remains in
+both full 300-task contrasts as PAR2 3600 in every arm.
+It supplies no metric winner.
+
+For complete probes, the trace supplies a canonical breadth-first masked-ADD
+DAG for every candidate and layer.
+The parser independently reconstructs incidence by reverse traversal from
+active semantic terminals and reconstructs $mJ$ from the distinct
+state-BDD/heuristic-ADD residual pairs at every nonterminal cut.
+It also checks both budgets, retained-cap flags, winners, cap-refinement
+monotonicity, projection and product bounds, semantic dead-end handling and
+the complete candidate-pool identity.
+After timing, memory and the final-selection event are removed, the three
+normalized structural traces must be identical.
+
+For task $t$, the primary normalized improvement is
+\[
+ \delta_{mJ}(t)=
+ \frac{\operatorname{PAR2}_{mJ\text{-guided}}(t)
+       -\operatorname{PAR2}_{I\text{-guided}}(t)}{3600}.
+\]
+A solved certified cell contributes total planner time in $[0,1800]$ seconds;
+every unsolved certified cell contributes 3600 seconds.
+Thus each symmetric short triad contributes zero to both full-cohort task
+contrasts rather than being deleted.
+Task effects are averaged first with equal weight within normalized family and
+then with equal weight across families.
+The primary decision requires nonlower incidence-guided coverage, an
+equal-family mean of at least 0.02, a strictly positive lower endpoint of the
+100,000-replicate paired-family bootstrap interval and a positive
+leave-one-family-out value for every family.
+All four clauses must also hold on the subset of complete probes defined solely
+by unequal reconstructed $I$ and $mJ$ winners, with at least 50 tasks from ten
+families.
+This subset depends only on certified selector structure and is blind to
+search coverage, runtime and all other search outcomes.
+The incidence-guided versus matched-$K=32$ contrast is secondary.
+It cannot rescue a failed direct metric decision.
+The bootstrap uses nearest-rank endpoints and seeds 20260903, 20260904 and
+20260905 for the full, differing-winner and secondary contrasts,
+respectively.
+These are finite-cohort family-reweighting stability intervals, not population
+confidence intervals for unseen families.
+
+Before launch, a non-gating mechanism panel is fixed over the certified trace.
+Each complete triad contributes selector structure once per task: whether the
+two winners and reference differ; whether each change alters only the cap or
+the pattern; own-budget utilization and binding; cross-metric feasibility and
+retention; higher, tied or lower rank under the complete frozen selection score
+and its first decisive criterion; all registered structural work counts; and
+per-arm probe/selection CPU, wall time and peak memory. Paired differences in
+the sum of recorded probe and selection CPU/wall times compare incidence-guided
+with $mJ$-guided and matched $K=32$. Each symmetric short
+triad contributes only support, completed layers and per-arm probe overhead;
+no winner, budget or selection overhead is imputed. The main paper always
+reports support, I-versus-$mJ$ uptake among complete probes and the
+cap-versus-pattern split, the frozen
+score relation on differing winners, own-budget utilization and binding, and
+paired recorded-time differences. Complete selected-candidate source-set, cap
+and pattern-size histograms are always published in the supplement or artifact.
+The panel is descriptive and cannot change either gate. Because the trace
+contains neither exact partition effort $E$ nor a final-search bucket
+trajectory, it tests the selection mechanism but cannot establish
+fragmentation mediation.
+
+Scheduler time and memory are not chosen from benchmark outcomes.
+A fixed three-task purpose-built calibration publishes only completed probe
+layers and selector CPU, wall-time and peak-memory measurements.
+The subsequent freeze reconstructs conservative resource floors from that
+redacted receipt and the three sequential planner limits.
+The array is exactly 300 unthrottled one-CPU task triads on the
+\texttt{fat} partition with normal QoS and no automatic requeue.
+Execution sealing first requires all triads to be terminal-complete and all
+structural output markers to exist.
+Parsing and audit then certify the traces; only after that may fetching and
+the deterministic double-run analysis proceed.
 
 \subsection{Confirmation B Measurement and Analysis}
 
@@ -758,8 +983,8 @@ It must contain at least 50 tasks from ten families and pass the same coverage,
 effect, bootstrap-reweighting and leave-one-family-out clauses against the
 matched-work control.
 
-Both campaigns run on the execution cluster's \texttt{fat} partition with normal QoS,
-one CPU and 26~GiB requested per cell group.
+Confirmations A and B run on the execution cluster's \texttt{fat} partition
+with normal QoS, one CPU and 26~GiB requested per cell group.
 The planner limit is 1,800 seconds and 24,576~MiB per cell; three cells run
 sequentially in each 01:40:00 array element, without an array throttle, nice
 adjustment or automatic requeue.
@@ -782,7 +1007,8 @@ The guided--matched contrast controls for this probe work because both arms pay
 it, whereas the guided--standalone-reference contrast includes it in total
 planner time.
 % RESULT_INSERT_CONFIRMATORY_HARDWARE: report the allocated processor model
-% and final execution-receipt identifiers with the sealed A/B results.
+% and final execution-receipt identifiers with the sealed A/B results; report
+% the direct campaign's calibration-frozen scheduler resources separately.
 
 \section{Legacy Search and Cofactor Theory}
 \label{sec:supp-legacy-theory}
@@ -1915,10 +2141,11 @@ It did not authorize the guided experiment.
 
 Conditional on the achieved support, terminal incidence had equal-family
 concordance $0.9515$ with exact partition effort.
-The controls reached $0.8480$ for $kD$, $0.8480$ for $mQ$, $0.8930$ for
+The certificate baselines reached $0.8480$ for $kD$, $0.8480$ for $mQ$,
+$0.8930$ for
 $mJ$, $0.8366$ for Cartesian, $0.8349$ for width and $0.8215$ for ADD.
 Terminal incidence passed every prespecified effect-size, paired-bootstrap and
-leave-one-family-out clause against all six controls.
+leave-one-family-out clause against all six certificate baselines.
 These conditional results motivated the larger source audit and Confirmation
 A, but they do not constitute confirmation because support was part of the
 frozen gate.
@@ -2405,6 +2632,13 @@ heuristic changes into transition-relation partitions
 algebraically \citep{hansen-et-al-sara2002}. The exponential separation of
 \citet{speck-et-al-icaps2020} shows that even \hstar\ can be harmful under the
 BDD-node effort measure.
+The classical ADD representation already relates one multi-terminal diagram
+to a forest of Boolean diagrams, one for each value
+\citep{bahar-et-al-iccad1993}.
+We do not claim that relation as new.
+Terminal incidence refines it node by node after masking the ADD by the actual
+frontier: for each inner node, it retains exactly which active value terminals
+remain reachable.
 The legacy cofactor analysis gives a sufficient parameterized
 representation-effort certificate for product-at-evaluation forward search,
 and its exact-width selector operationalizes that condition.
