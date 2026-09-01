@@ -900,6 +900,11 @@ def _observation(record, task, label, frontier):
             raise TerminalIncidenceAnalysisError(
                 "layer g={} violates the certificate chain".format(g)
             )
+        if incidence > add:
+            raise TerminalIncidenceAnalysisError(
+                "layer g={} terminal incidence exceeds the ADD apply "
+                "certificate".format(g)
+            )
         if effort > add:
             raise TerminalIncidenceAnalysisError(
                 "layer g={} exceeds the ADD apply certificate".format(g)

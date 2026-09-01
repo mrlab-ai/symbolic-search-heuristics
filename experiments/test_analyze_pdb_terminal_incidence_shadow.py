@@ -296,6 +296,35 @@ class TerminalIncidenceAnalysisTest(unittest.TestCase):
             matrix, tasks, _ = Analysis.validate_matrix(records, expected_tasks=1)
             Analysis.primary_observations(matrix, tasks)
 
+    def test_terminal_incidence_must_satisfy_add_apply_bound(self):
+        records = self.solved_matrix()
+        for record in records:
+            for layer in record["wbh_profile_layer_profiles"]:
+                layer.update({
+                    "cofactor_counts": [1, 14, 2],
+                    "cofactor_counts_sha256": Analysis._sha([1, 14, 2]),
+                    "joint_cofactor_counts": [1, 14, 2],
+                    "joint_cofactor_counts_sha256": Analysis._sha(
+                        [1, 14, 2]
+                    ),
+                    "masked_add_nodes": 14,
+                    "masked_cofactor_counts": [1, 14, 2],
+                    "masked_cofactor_sum": 15,
+                    "terminal_incidence": 14,
+                })
+            record["wbh_profile_done"].update({
+                "masked_add_effort": 28,
+                "terminal_incidence_effort": 28,
+            })
+        with self.assertRaisesRegex(
+            Analysis.TerminalIncidenceAnalysisError,
+            "terminal incidence exceeds the ADD apply certificate",
+        ):
+            matrix, tasks, _ = Analysis.validate_matrix(
+                records, expected_tasks=1
+            )
+            Analysis.primary_observations(matrix, tasks)
+
     def test_incomplete_primary_stream_excludes_whole_task(self):
         records = self.solved_matrix()
         records[0]["wbh_profile_complete"] = False
