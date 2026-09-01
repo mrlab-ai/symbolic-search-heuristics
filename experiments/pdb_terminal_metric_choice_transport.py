@@ -8,6 +8,7 @@ import ctypes
 import os
 import shlex
 import stat
+import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -511,6 +512,79 @@ def open_verified_executable(
     finally:
         if descriptor is not None and not success:
             os.close(descriptor)
+
+
+def run_pinned_executable(
+    path: Path, expected_sha256: str, arguments: list[str], *,
+    environment: dict[str, str], input_bytes: bytes | None = None,
+    cwd: Path | None = None, label: str,
+):
+    """Execute exact verified bytes with a minimal explicit environment."""
+    if (
+        not isinstance(arguments, list)
+        or any(not isinstance(argument, str) for argument in arguments)
+        or not isinstance(environment, dict)
+        or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in environment.items()
+        )
+        or (input_bytes is not None and not isinstance(input_bytes, bytes))
+    ):
+        raise TransportError("{} invocation changed".format(label))
+    executable_fd = open_verified_executable(
+        path, expected_path=path, expected_sha256=expected_sha256, label=label,
+    )
+    try:
+        return subprocess.run(
+            [str(path), *arguments],
+            input=input_bytes,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            cwd=cwd,
+            env=dict(environment),
+            pass_fds=(executable_fd,),
+            executable="/proc/self/fd/{}".format(executable_fd),
+        )
+    except (OSError, subprocess.SubprocessError) as err:
+        raise TransportError("{} invocation failed".format(label)) from err
+    finally:
+        os.close(executable_fd)
+
+
+def submit_pinned_stdin(
+    path: Path, expected_sha256: str, options: list[str], raw: bytes, *,
+    environment: dict[str, str], cwd: Path, label: str,
+) -> str:
+    """Submit immutable in-memory job bytes without a script path argument."""
+    if (
+        not isinstance(raw, bytes) or not raw
+        or not isinstance(options, list)
+        or any(
+            not isinstance(option, str) or not option.startswith("--")
+            for option in options
+        )
+        or options.count("--parsable") != 1
+        or options.count("--export=NONE") != 1
+        or options.count("--no-requeue") != 1
+        or any(
+            option.startswith("--export") and option != "--export=NONE"
+            for option in options
+        )
+    ):
+        raise TransportError("{} options-only submission changed".format(label))
+    completed = run_pinned_executable(
+        path, expected_sha256, options, environment=environment,
+        input_bytes=raw, cwd=cwd, label=label,
+    )
+    try:
+        output = completed.stdout.decode("ascii").strip()
+    except (AttributeError, UnicodeDecodeError) as err:
+        raise TransportError("{} returned non-ASCII output".format(label)) from err
+    job_id = output.split(";", 1)[0]
+    if not job_id.isdigit():
+        raise TransportError("{} returned an invalid job id".format(label))
+    return job_id
 
 
 def _rename_exchange(parent_fd: int, left: str, right: str) -> None:

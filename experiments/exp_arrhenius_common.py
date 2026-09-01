@@ -1645,7 +1645,7 @@ def require_clean_committed_revision(
 ) -> None:
     """Require a clean protocol HEAD descending from the pinned planner."""
     head = require_revision_ancestor_of_head(revision)
-    dirty = jj_revision.working_copy_diff_summary(REPO)
+    dirty = jj_revision.live_working_copy_diff_summary(REPO)
     if dirty:
         raise RuntimeError(
             "prospective build/start requires a clean tracked worktree; got:\n{}".

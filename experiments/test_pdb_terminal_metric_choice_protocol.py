@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 
 import pdb_terminal_metric_choice_calibration as Calibration
 import pdb_terminal_metric_choice_protocol as P
@@ -30,10 +32,24 @@ def fake_tasks():
 
 def fake_snapshot():
     tasks = fake_tasks()
+    tasks_sha = P.cohort_digest(tasks)
+    planner = fake_planner()
+    base_source_files = P.BASE_B_EXPERIMENT_SOURCE_FILES
+    v5_tracked = {relative: "4" * 64 for relative in P.V5_SCOPED_FILES}
+    v5_tracked[P.V5_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()] = (
+        "1" * 64
+    )
+    v5_tracked[P.V5_SLURM_PATH.relative_to(P.REPO).as_posix()] = "3" * 64
     return {
         "schema": P.BASE_SNAPSHOT_SCHEMA,
-        "base_b_freeze_path": "experiments/fake-base-b.json",
+        "base_b_freeze_path": P.BASE_B_FREEZE_PATH.relative_to(P.REPO).as_posix(),
         "base_b_freeze_sha256": "1" * 64,
+        "base_b_freeze_repository_revision": "1" * 40,
+        "base_b_experiment_source_sha256": {
+            relative: v5_tracked.get(relative, SHA)
+            for relative in base_source_files
+        },
+        "base_b_planner": P.planner_identity(planner),
         "benchmark_revision": "2" * 40,
         "confirmation_a_authorization": {
             "guided_study_authorized": True,
@@ -42,28 +58,48 @@ def fake_snapshot():
             "second_output_sha256": "5" * 64,
             "input_properties_sha256": "6" * 64,
             "fetch_receipt_sha256": "7" * 64,
-            "receipt_path": P._lazy_base_protocol().CONFIRMATION_A_RECEIPT_PATH.relative_to(
+            "receipt_schema": "synthetic-confirmation-a-receipt/v1",
+            "analysis_protocol": "synthetic-confirmation-a-analysis/v1",
+            "benchmark_revision": "2" * 40,
+            "cost_attestation_sha256": "8" * 64,
+            "source_audit_launch_receipt_sha256": "9" * 64,
+            "source_audit_execution_receipt_sha256": "a" * 64,
+            "receipt_path": P.BASE_A_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            "receipt_pin_path": P.BASE_A_RECEIPT_PIN_PATH.relative_to(
                 P.REPO
             ).as_posix(),
-            "receipt_pin_path": P._lazy_base_protocol().CONFIRMATION_A_RECEIPT_PIN_PATH.relative_to(
+            "first_output_path": P.BASE_A_FIRST_OUTPUT_PATH.relative_to(
                 P.REPO
             ).as_posix(),
-            "first_output_path": P._lazy_base_protocol().CONFIRMATION_A_FIRST_OUTPUT_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "second_output_path": P._lazy_base_protocol().CONFIRMATION_A_SECOND_OUTPUT_PATH.relative_to(
+            "second_output_path": P.BASE_A_SECOND_OUTPUT_PATH.relative_to(
                 P.REPO
             ).as_posix(),
             "confirmation_a_cohort_manifest_sha256": "f" * 64,
+            "planner_identity": P.planner_identity(planner),
         },
-        "source_audit_v4": {
-            "campaign": "v4", "attestation_sha256": "8" * 64,
-            "launch_receipt_sha256": "9" * 64,
+        "source_audit_v5": {
+            "campaign": "v5",
+            "attestation_path": P.V5_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
+            "execution_receipt_path": P.V5_EXECUTION_RECEIPT_PATH.relative_to(
+                P.REPO
+            ).as_posix(),
+            "launch_receipt_path": P.V5_LAUNCH_RECEIPT_PATH.relative_to(
+                P.REPO
+            ).as_posix(),
+            "launch_intent_path": P.V5_INTENT_PATH.relative_to(P.REPO).as_posix(),
+            "attestation_sha256": "8" * 64,
             "execution_receipt_sha256": "a" * 64,
-            "code_manifest_sha256": "b" * 64,
-            "repository_commit_id": "c" * 40,
-            "output_tree_sha256": "d" * 64,
+            "launch_receipt_sha256": "9" * 64,
+            "launch_intent_sha256": "b" * 64,
+            "cohort_manifest_sha256": tasks_sha,
+            "confirmation_a_cohort_manifest_sha256": "f" * 64,
+            "attestation_records_sha256": "d" * 64,
             "translator_source_sha256": "e" * 64,
+            "job_id": "12345", "code_manifest_sha256": "1" * 64,
+            "repository_commit_id": "3" * 40,
+            "original_output_tree_sha256": "2" * 64,
+            "slurm_script_sha256": "3" * 64,
+            "tracked_file_sha256": v5_tracked,
         },
         "confirmation_a_cohort": {
             "role": "confirmation-a", "full_tasks_sha256": "f" * 64,
@@ -82,7 +118,7 @@ def fake_snapshot():
         },
         "cohort": {
             "role": "source-disjoint-universal-confirmation-b",
-            "tasks": tasks, "tasks_sha256": P.cohort_digest(tasks),
+            "tasks": tasks, "tasks_sha256": tasks_sha,
             "task_name_sha256": P.task_name_digest(tasks),
         },
     }
@@ -111,7 +147,7 @@ def fake_calibration(planner=None):
 def fake_planner():
     return {
         "schema": P.PLANNER_MANIFEST_SCHEMA,
-        "revision": P.REQUIRED_SELECTOR_COMMIT,
+        "revision": P.REQUIRED_PLANNER_REVISION,
         "selector_base_revision": P.REQUIRED_SELECTOR_COMMIT,
         "cache_name": "dual-selector-ccc93bed",
         "downward_sha256": "1" * 64,
@@ -184,8 +220,24 @@ def fake_standalone(snapshot=None):
                 "strongest-K32-feasible-cap-per-pattern-then-score-v1"
             ),
         },
+        "sealed_b_input": fake_standalone_source_binding(),
         "records": records,
         "records_sha256": hashlib.sha256(P.canonical_json(records)).hexdigest(),
+    }
+
+
+def fake_standalone_source_binding():
+    return {
+        "parse_receipt_path": P.BASE_B_PARSE_RECEIPT_PATH.relative_to(
+            P.REPO
+        ).as_posix(),
+        "parse_receipt_sha256": "5" * 64,
+        "fetch_receipt_path": P.BASE_B_FETCH_RECEIPT_PATH.relative_to(
+            P.REPO
+        ).as_posix(),
+        "fetch_receipt_sha256": "6" * 64,
+        "properties_path": P.BASE_B_PROPERTIES_PATH.relative_to(P.REPO).as_posix(),
+        "properties_sha256": "7" * 64,
     }
 
 
@@ -194,6 +246,7 @@ def fake_freeze():
     calibration = fake_calibration()
     standalone = fake_standalone(snapshot)
     return P.build_freeze(
+        freeze_repository_revision="4" * 40,
         base_snapshot=snapshot, calibration_receipt=calibration,
         calibration_receipt_path=P.CALIBRATION_RECEIPT_PATH.relative_to(
             P.REPO
@@ -245,11 +298,112 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "does not authorize"):
             P.validate_base_snapshot(snapshot)
 
+    def test_snapshot_requires_exact_confirmation_b_source_closure(self):
+        snapshot = fake_snapshot()
+        base_sources = snapshot["base_b_experiment_source_sha256"]
+        self.assertEqual(
+            set(base_sources),
+            set(P.BASE_B_EXPERIMENT_SOURCE_FILES),
+        )
+        base_sources.pop(next(iter(base_sources)))
+        with self.assertRaisesRegex(P.ProtocolError, "source closure"):
+            P.validate_base_snapshot(snapshot)
+
+    def test_snapshot_authorized_import_guards_static_b_source_contract(self):
+        drifted = SimpleNamespace(
+            EXPERIMENT_SOURCE_FILES=P.BASE_B_EXPERIMENT_SOURCE_FILES[:-1]
+        )
+        with mock.patch.object(
+            P, "_lazy_base_protocol", return_value=drifted
+        ), self.assertRaisesRegex(P.ProtocolError, "contract drifted"):
+            P.snapshot_sealed_b(fake_calibration())
+
+    def test_six_field_planner_identity_is_exactly_shared(self):
+        mutations = {
+            "revision": "0" * 40,
+            "cache_name": "different-cache",
+            "build_options": ["different-build"],
+            "downward_sha256": "0" * 64,
+            "preprocess_sha256": "0" * 64,
+            "tree_manifest_sha256": "0" * 64,
+        }
+        for field, value in mutations.items():
+            snapshot = fake_snapshot()
+            snapshot["base_b_planner"][field] = value
+            with self.subTest(field=field), self.assertRaises(P.ProtocolError):
+                P.validate_base_snapshot(snapshot)
+        planner = fake_planner()
+        planner["revision"] = "0" * 40
+        with self.assertRaisesRegex(P.ProtocolError, "planner manifest"):
+            P.validate_planner_manifest(planner)
+
+    def test_v5_paths_scope_and_authorization_links_are_exact(self):
+        path_fields = (
+            "attestation_path", "execution_receipt_path",
+            "launch_receipt_path", "launch_intent_path",
+        )
+        for field in path_fields:
+            snapshot = fake_snapshot()
+            snapshot["source_audit_v5"][field] = "experiments/elsewhere.json"
+            with self.subTest(path=field), self.assertRaises(P.ProtocolError):
+                P.validate_base_snapshot(snapshot)
+        link_fields = (
+            "attestation_sha256", "launch_receipt_sha256",
+            "execution_receipt_sha256", "confirmation_a_cohort_manifest_sha256",
+            "cohort_manifest_sha256",
+        )
+        for field in link_fields:
+            snapshot = fake_snapshot()
+            snapshot["source_audit_v5"][field] = "0" * 64
+            with self.subTest(link=field), self.assertRaises(P.ProtocolError):
+                P.validate_base_snapshot(snapshot)
+        snapshot = fake_snapshot()
+        snapshot["source_audit_v5"]["tracked_file_sha256"].pop(
+            P.V5_SCOPED_FILES[0]
+        )
+        with self.assertRaisesRegex(P.ProtocolError, "tracked source"):
+            P.validate_base_snapshot(snapshot)
+
+    def test_standalone_sealed_b_paths_are_exact(self):
+        evidence = fake_standalone()
+        for field in (
+            "parse_receipt_path", "fetch_receipt_path", "properties_path",
+        ):
+            mutated = copy.deepcopy(evidence)
+            mutated["sealed_b_input"][field] = "experiments/elsewhere"
+            with self.subTest(field=field), self.assertRaises(P.ProtocolError):
+                P.validate_standalone_evidence(
+                    mutated, fake_snapshot(), fake_planner()
+                )
+
+    def test_freeze_repository_revision_is_mandatory(self):
+        freeze = fake_freeze()
+        del freeze["freeze_repository_revision"]
+        with self.assertRaises(P.ProtocolError):
+            P.validate_freeze(freeze, verify_live_sources=False)
+
     def test_scheduler_resources_are_post_calibration_and_cover_triads(self):
-        P.validate_frozen_resources("01:30:00", "24G")
+        recommendation = fake_calibration()["resource_recommendation"]
+        P.validate_frozen_resources("01:30:00", "24G", recommendation)
         for time_limit, memory in (("01:29:59", "26G"), ("01:40:00", "23G")):
             with self.assertRaises(P.ProtocolError):
-                P.validate_frozen_resources(time_limit, memory)
+                P.validate_frozen_resources(time_limit, memory, recommendation)
+
+        high = {
+            "minimum_selector_wall_seconds": 2000,
+            "minimum_selector_peak_delta_kb": 30 * 1024 * 1024,
+        }
+        with self.assertRaises(P.ProtocolError):
+            P.validate_frozen_resources("01:40:00", "26G", high)
+        P.validate_frozen_resources("01:40:00", "30G", high)
+
+    def test_calibration_recommendation_is_exactly_reconstructed(self):
+        receipt = fake_calibration()
+        receipt["resource_recommendation"][
+            "minimum_selector_wall_seconds"
+        ] += 1
+        with self.assertRaisesRegex(P.ProtocolError, "recommendation changed"):
+            P.validate_calibration_receipt(receipt)
 
     def test_calibration_rejects_outcome_identity(self):
         receipt = fake_calibration()

@@ -22,6 +22,17 @@ class RecoveryError(RuntimeError):
     pass
 
 
+# Linux UAPI constants.  CPython exposes these when its build headers contain
+# them, but the frozen Python 3.12.13 environment omits the fcntl names even
+# though the Arrhenius kernel implements memfd sealing.
+F_ADD_SEALS = getattr(fcntl, "F_ADD_SEALS", 1033)
+F_GET_SEALS = getattr(fcntl, "F_GET_SEALS", 1034)
+F_SEAL_SEAL = getattr(fcntl, "F_SEAL_SEAL", 0x0001)
+F_SEAL_SHRINK = getattr(fcntl, "F_SEAL_SHRINK", 0x0002)
+F_SEAL_GROW = getattr(fcntl, "F_SEAL_GROW", 0x0004)
+F_SEAL_WRITE = getattr(fcntl, "F_SEAL_WRITE", 0x0008)
+
+
 JOURNAL_SCHEMA = P.FREEZE_SCHEMA + "/scheduler-recovery-journal/v1"
 SCHEDULER_SNAPSHOT_SCHEMA = P.FREEZE_SCHEMA + "/scheduler-array-snapshot/v1"
 RESCAN_SCHEMA = P.FREEZE_SCHEMA + "/post-archive-rescan/v1"
@@ -44,6 +55,13 @@ INTERRUPTED = "infrastructure_interrupted"
 ACTIVE = "active"
 SEMANTIC_FAILURE = "semantic_failure"
 STATES = {COMPLETE, INTERRUPTED, ACTIVE, SEMANTIC_FAILURE}
+INFRASTRUCTURE_STATES = {
+    "BOOT_FAIL", "NODE_FAIL", "PREEMPTED", "REVOKED",
+}
+ACTIVE_SCHEDULER_STATES = {
+    "PENDING", "RUNNING", "COMPLETING", "CONFIGURING", "REQUEUED",
+    "RESIZING", "SUSPENDED", "STAGE_OUT",
+}
 
 
 def _sha(value) -> str:
@@ -255,13 +273,16 @@ def validate_scheduler_snapshot(
     snapshot: dict, freeze: dict, freeze_sha256: str,
 ) -> None:
     if not isinstance(snapshot, dict) or set(snapshot) != {
-        "schema", "freeze_sha256", "run_cell_mapping_sha256",
-        "scheduler_contract", "entries", "entries_sha256",
+        "schema", "freeze_sha256", "primary_launch_receipt_sha256",
+        "run_cell_mapping_sha256", "scheduler_contract", "scheduler_rows",
+        "scheduler_contract_rows", "entries", "entries_sha256",
     } or snapshot.get("schema") != SCHEDULER_SNAPSHOT_SCHEMA or (
         snapshot.get("freeze_sha256") != freeze_sha256
     ) or snapshot.get("run_cell_mapping_sha256") != freeze["design"][
         "run_cell_mapping_sha256"
-    ]:
+    ] or P.SHA256_RE.fullmatch(
+        snapshot.get("primary_launch_receipt_sha256", "")
+    ) is None:
         raise RecoveryError("scheduler snapshot header changed")
     try:
         Transport.validate_scheduler_contract(
@@ -270,11 +291,16 @@ def validate_scheduler_snapshot(
     except Transport.TransportError as err:
         raise RecoveryError(str(err)) from err
     entries = snapshot.get("entries")
-    if not isinstance(entries, list) or len(entries) != P.EXPECTED_ARRAY_TASKS or (
-        snapshot.get("entries_sha256") != _sha(entries)
-    ):
+    scheduler_rows = snapshot.get("scheduler_rows")
+    contract_rows = snapshot.get("scheduler_contract_rows")
+    if any(
+        not isinstance(value, list) or len(value) != P.EXPECTED_ARRAY_TASKS
+        for value in (entries, scheduler_rows, contract_rows)
+    ) or snapshot.get("entries_sha256") != _sha(entries):
         raise RecoveryError("scheduler snapshot accounting changed")
-    for task, entry in enumerate(entries, 1):
+    for task, (entry, scheduler, contract) in enumerate(zip(
+        entries, scheduler_rows, contract_rows
+    ), 1):
         if not isinstance(entry, dict) or set(entry) != {
             "array_task", "attempt", "job_id", "state", "started_cells",
             "completed_cells",
@@ -289,6 +315,47 @@ def validate_scheduler_snapshot(
             entry["state"] not in STATES,
         )):
             raise RecoveryError("scheduler array-task identity changed")
+        if (
+            not isinstance(scheduler, dict)
+            or set(scheduler) != {
+                "array_task", "job_id_raw", "state", "exit_code", "node",
+                "elapsed_raw", "partition",
+            }
+            or type(scheduler.get("array_task")) is not int
+            or scheduler["array_task"] != task
+            or re.fullmatch(
+                re.escape(entry["job_id"]) + r"_[0-9]+",
+                scheduler.get("job_id_raw", ""),
+            ) is None
+            or not isinstance(scheduler.get("state"), str)
+            or not scheduler["state"]
+            or not isinstance(scheduler.get("exit_code"), str)
+            or not scheduler["exit_code"]
+            or not isinstance(scheduler.get("node"), str)
+            or type(scheduler.get("elapsed_raw")) is not int
+            or scheduler["elapsed_raw"] < 0
+            or scheduler.get("partition") != "fat"
+            or not isinstance(contract, dict)
+            or set(contract) != {
+                "array_task", "account", "partition", "qos", "req_cpus",
+                "req_mem", "time_limit", "state", "exit_code", "job_name",
+            }
+            or type(contract.get("array_task")) is not int
+            or contract["array_task"] != task
+            or contract.get("account") != P.ACCOUNT
+            or contract.get("partition") != "fat"
+            or contract.get("qos") != "normal"
+            or type(contract.get("req_cpus")) is not int
+            or contract["req_cpus"] != 1
+            or contract.get("req_mem") != freeze["design"]["scheduler_memory"]
+            or contract.get("time_limit")
+            != freeze["design"]["scheduler_time_limit"]
+            or contract.get("state") != scheduler["state"]
+            or contract.get("exit_code") != scheduler["exit_code"]
+            or not isinstance(contract.get("job_name"), str)
+            or not contract["job_name"]
+        ):
+            raise RecoveryError("scheduler snapshot resource row changed")
         _exact_cells(entry["started_cells"], triad, "scheduler started")
         _exact_cells(entry["completed_cells"], triad, "scheduler completed")
         if not set(entry["completed_cells"]) <= set(entry["started_cells"]):
@@ -297,6 +364,19 @@ def validate_scheduler_snapshot(
             entry["started_cells"] != triad or entry["completed_cells"] != triad
         ):
             raise RecoveryError("scheduler complete triad accounting changed")
+        if scheduler["state"] == "COMPLETED" and scheduler["exit_code"] == "0:0":
+            expected_state = (
+                COMPLETE if entry["completed_cells"] == triad
+                else SEMANTIC_FAILURE
+            )
+        elif scheduler["state"] in INFRASTRUCTURE_STATES:
+            expected_state = INTERRUPTED
+        elif scheduler["state"] in ACTIVE_SCHEDULER_STATES:
+            expected_state = ACTIVE
+        else:
+            expected_state = SEMANTIC_FAILURE
+        if entry["state"] != expected_state:
+            raise RecoveryError("scheduler snapshot classification changed")
 
 
 def _run_directory(experiment_root: Path, cell: int) -> Path:
@@ -397,10 +477,6 @@ def _submit_pinned(options: list[str], raw: bytes) -> str:
     required_constants = (
         "MFD_ALLOW_SEALING", "MFD_CLOEXEC",
     )
-    seal_constants = (
-        "F_ADD_SEALS", "F_GET_SEALS", "F_SEAL_WRITE", "F_SEAL_GROW",
-        "F_SEAL_SHRINK", "F_SEAL_SEAL",
-    )
     if (
         not isinstance(raw, bytes)
         or not isinstance(options, list)
@@ -412,12 +488,13 @@ def _submit_pinned(options: list[str], raw: bytes) -> str:
         )
         or not hasattr(os, "memfd_create")
         or any(not hasattr(os, name) for name in required_constants)
-        or any(not hasattr(fcntl, name) for name in seal_constants)
+        or (F_ADD_SEALS, F_GET_SEALS) != (1033, 1034)
+        or (F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_GROW, F_SEAL_WRITE)
+        != (0x0001, 0x0002, 0x0004, 0x0008)
     ):
         raise RecoveryError("sealed Slurm submission contract is unavailable")
     required_seals = (
-        fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK
-        | fcntl.F_SEAL_SEAL
+        F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL
     )
     descriptor = os.memfd_create(
         "metric-choice-recovery", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
@@ -430,8 +507,8 @@ def _submit_pinned(options: list[str], raw: bytes) -> str:
             if written <= 0:
                 raise RecoveryError("cannot pin recovery job bytes")
             view = view[written:]
-        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, required_seals)
-        if fcntl.fcntl(descriptor, fcntl.F_GET_SEALS) != required_seals:
+        fcntl.fcntl(descriptor, F_ADD_SEALS, required_seals)
+        if fcntl.fcntl(descriptor, F_GET_SEALS) != required_seals:
             raise RecoveryError("recovery job memfd seal set changed")
         os.lseek(descriptor, 0, os.SEEK_SET)
         blocks = []
@@ -482,7 +559,7 @@ def coordinate_recovery(
     experiment_root: Path, archive_root: Path, receipt_root: Path,
     job_file: Path | None = None, expected_job_file: Path | None = None,
     job_name: str = "pdb-terminal-metric-choice-recovery",
-    submitter=_submit_pinned,
+    submitter=None,
 ) -> dict:
     """Archive, rescan, and submit interrupted whole triads in one checked flow."""
     validate_scheduler_snapshot(scheduler_snapshot, freeze, freeze_sha256)
@@ -630,15 +707,13 @@ def main(argv=None) -> None:
     args = parser.parse_args(argv)
     if not args.submit:
         parser.error("recovery requires explicit --submit")
-    freeze = P.load_authorized_freeze(P.FREEZE_PATH)
-    freeze_sha = P.sha256_file(P.FREEZE_PATH, expected_path=P.FREEZE_PATH)
-    snapshot = _load_exact(SCHEDULER_SNAPSHOT_PATH, "scheduler array snapshot")
-    result = coordinate_recovery(
-        snapshot, freeze, freeze_sha,
-        experiment_root=EXPERIMENT_ROOT, archive_root=ARCHIVE_ROOT,
-        receipt_root=P.ARTIFACT_DIR,
-        job_file=RECOVERY_JOB_PATH, expected_job_file=RECOVERY_JOB_PATH,
+    # The execution coordinator is the only production entry point because it
+    # writes the tokenized intent before submission and can reconcile a crash.
+    import pdb_terminal_metric_choice_execution as Execution
+    base = __import__("pdb_terminal_metric_choice_runner").configure_lab_transport(
+        P.FREEZE_PATH
     )
+    result = Execution.launch_recovery(base)
     print(json.dumps(
         result,
         sort_keys=True, separators=(",", ":"),

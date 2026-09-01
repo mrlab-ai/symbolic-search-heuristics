@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import math
 import os
 import stat
 import subprocess
@@ -20,6 +19,7 @@ from pathlib import Path
 import pdb_terminal_metric_choice_parser as Trace
 import pdb_terminal_metric_choice_protocol as P
 import pdb_terminal_metric_choice_io as CampaignIO
+import pdb_terminal_metric_choice_planner_manifest as PlannerManifest
 
 
 class CalibrationError(RuntimeError):
@@ -110,10 +110,6 @@ def build_receipt(observations: list[dict], planner_manifest: dict) -> dict:
     observations = sorted(
         observations, key=lambda row: (row["task_id"], P.MODES.index(row["mode"]))
     )
-    selector_wall = max(row["selection_wall_seconds"] for row in observations)
-    selector_memory = max(
-        row["selection_peak_memory_delta_kb"] for row in observations
-    )
     receipt = {
         "schema": P.CALIBRATION_SCHEMA,
         "development_task_manifest_sha256": development_manifest_sha256(),
@@ -130,10 +126,9 @@ def build_receipt(observations: list[dict], planner_manifest: dict) -> dict:
             P.canonical_json(observations)
         ).hexdigest(),
         "all_traces_complete": True,
-        "resource_recommendation": {
-            "minimum_selector_wall_seconds": math.ceil(selector_wall * 2),
-            "minimum_selector_peak_delta_kb": math.ceil(selector_memory * 2),
-        },
+        "resource_recommendation": P.calibration_resource_recommendation(
+            observations
+        ),
     }
     P.validate_calibration_receipt(receipt)
     return receipt
@@ -169,16 +164,24 @@ def _refuse_late_calibration() -> None:
 
 def _validate_live_planner(manifest: dict) -> Path:
     P.validate_planner_manifest(manifest)
-    driver = P.REPO / manifest["driver_path"]
-    downward = P.REPO / manifest["downward_path"]
-    preprocess = P.REPO / manifest["preprocess_path"]
+    try:
+        derived = PlannerManifest.verify_manifest()
+    except PlannerManifest.PlannerManifestError as err:
+        raise CalibrationError("exact planner cache cannot be verified") from err
+    if P.canonical_json(manifest) != P.canonical_json(derived):
+        raise CalibrationError("calibration planner manifest changed")
+    cache = PlannerManifest.REVISION_CACHE / manifest["cache_name"]
+    driver = cache / manifest["driver_path"]
+    downward = cache / manifest["downward_path"]
+    preprocess = cache / manifest["preprocess_path"]
     for path, field, label in (
         (driver, "driver_sha256", "calibration driver"),
         (downward, "downward_sha256", "calibration downward"),
         (preprocess, "preprocess_sha256", "calibration preprocess"),
     ):
         if P.sha256_file(
-            path, expected_path=path, root=P.REPO, label=label
+            path, expected_path=path, root=PlannerManifest.REVISION_CACHE,
+            label=label,
         ) != manifest[field]:
             raise CalibrationError("{} differs from planner manifest".format(label))
     return driver

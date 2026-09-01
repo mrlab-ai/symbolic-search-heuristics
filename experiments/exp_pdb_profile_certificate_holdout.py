@@ -920,6 +920,66 @@ def make_experiment(cohort, cached):
     return experiment
 
 
+def prepare_start_job() -> Path:
+    """Render the single Slurm start job without submitting it.
+
+    Lab's Slurm environment normally combines rendering and submission in
+    ``run_steps``.  The confirmation campaigns deliberately submit the exact
+    validated bytes themselves, so they need a separate, outcome-free render
+    step after the experiment directory has been built and sealed.
+    """
+    P.validate_protocol_without_archive()
+    require_lab_8()
+    cohort = P.load_cohort(COHORT_ARCHIVE)
+    if VALIDATE_MATCHED_BUDGET_PROVENANCE:
+        P.Source.validate_matched_budget_provenance(MATCH_ARCHIVE)
+    if BENCHMARK_SOURCE_VALIDATOR is None:
+        raise LaunchError("benchmark source validator is not configured")
+    BENCHMARK_SOURCE_VALIDATOR(cohort)
+    require_pins()
+    cached = cached_revision(require_hashes=True)
+    _validate_build_receipt(cached)
+
+    grid_dir = Path(str(EXPERIMENT_PATH) + "-grid-steps")
+    eval_dir = Path(str(EXPERIMENT_PATH) + "-eval")
+    if any(path.exists() or path.is_symlink() for path in (
+        grid_dir, eval_dir, _launch_intent_path(), LAUNCH_RECEIPT,
+    )):
+        raise LaunchError(
+            "job-render or launch artifacts already exist; refusing overwrite"
+        )
+    if not Path(EXPERIMENT_PATH).is_dir():
+        raise LaunchError("sealed experiment directory is absent")
+
+    experiment = make_experiment(cohort, cached)
+    # FastDownwardExperiment.build(write_to_disk=False) materializes the
+    # in-memory runs needed by Lab's job renderer without changing the sealed
+    # experiment directory.
+    experiment.build(write_to_disk=False)
+    from lab.steps import get_step
+
+    step = get_step(experiment.steps, "start")
+    environment = experiment.environment
+    environment.job_dir = grid_dir
+    job_name = environment._get_job_name(step)
+    if job_name != EXPECTED_JOB_NAME:
+        raise LaunchError("rendered start-job name changed")
+    content = environment._get_job(step, is_last=True)
+    if not isinstance(content, str) or not content:
+        raise LaunchError("rendered start-job content is invalid")
+
+    try:
+        grid_dir.mkdir(mode=0o700)
+        job_file = grid_dir / job_name
+        with job_file.open("x", encoding="utf-8", newline="") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except (FileExistsError, OSError) as err:
+        raise LaunchError("cannot create the exclusive rendered start job") from err
+    return job_file
+
+
 def self_test() -> None:
     P.validate_protocol_without_archive()
     expected_grouping = (

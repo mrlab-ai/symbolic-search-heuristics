@@ -2,8 +2,7 @@
 """Materialize the frozen 300 unthrottled task-major execution triads.
 
 This module produces and validates the complete runner manifest.  Submission
-is deliberately delegated to the audited Lab transport; no import or command
-in this file submits work.
+is delegated to the campaign execution coordinator and never to Lab directly.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ class RunnerError(RuntimeError):
 RUNNER_SCHEMA = P.FREEZE_SCHEMA + "/runner-manifest"
 EXPERIMENT_PATH = P.SCRIPT_DIR / "data" / "pdb_terminal_metric_choice"
 GRID_DIR = Path(str(EXPERIMENT_PATH) + "-grid-steps")
-EVAL_PROPERTIES = Path(str(EXPERIMENT_PATH) + "-eval") / "properties.json"
+EVAL_PROPERTIES = Path(str(EXPERIMENT_PATH) + "-eval") / "properties"
 PARTITION = "fat"
 QOS = "normal"
 BENCHMARKS = Path(
@@ -38,7 +37,11 @@ REVISION_CACHE = P.SCRIPT_DIR / "data" / "revision-cache"
 ARTIFACT_DIR = P.SCRIPT_DIR / "artifacts" / "pdb-terminal-metric-choice"
 BUILD_RECEIPT = ARTIFACT_DIR / "build-receipt-v1.json"
 LAUNCH_RECEIPT = ARTIFACT_DIR / "launch-receipt-v1.json"
+LAUNCH_INTENT = ARTIFACT_DIR / "launch-intent-v1.json"
+LAUNCH_RECEIPT_PIN = ARTIFACT_DIR / "launch-receipt-v1.sha256"
 LAUNCH_SCHEMA = P.FREEZE_SCHEMA + "/launch"
+EXECUTION_RECEIPT = ARTIFACT_DIR / "execution-receipt-v1.json"
+EXECUTION_RECEIPT_PIN = ARTIFACT_DIR / "execution-receipt-v1.sha256"
 PRE_PARSE_RECEIPT = ARTIFACT_DIR / "pre-parse-receipt-v1.json"
 POST_PARSE_RECEIPT = ARTIFACT_DIR / "post-parse-receipt-v1.json"
 POST_FETCH_RECEIPT = ARTIFACT_DIR / "post-fetch-receipt-v1.json"
@@ -181,11 +184,20 @@ def _write_receipt(path: Path, value: dict, label: str) -> None:
         raise RunnerError(str(err)) from err
 
 
-def _pre_parse(freeze_sha256: str) -> None:
+def _pre_parse(freeze_sha256: str, base) -> None:
+    import pdb_terminal_metric_choice_execution as Execution
+
+    try:
+        execution_sha, _ = Execution.load_execution_receipt(
+            base, verify_live=True
+        )
+    except Execution.ExecutionError as err:
+        raise RunnerError("campaign execution is not sealed") from err
     current = _trace_manifest()
     value = {
         "schema": RUNNER_SCHEMA + "/pre-parse",
         "freeze_sha256": freeze_sha256,
+        "execution_receipt_sha256": execution_sha,
         "trace_manifest": current,
     }
     try:
@@ -199,11 +211,17 @@ def _pre_parse(freeze_sha256: str) -> None:
 
 def _post_parse(freeze_sha256: str) -> None:
     pre = _read_receipt(PRE_PARSE_RECEIPT, "pre-parse receipt")
-    if pre != {
-        "schema": RUNNER_SCHEMA + "/pre-parse",
-        "freeze_sha256": freeze_sha256,
-        "trace_manifest": _trace_manifest(),
-    }:
+    if (
+        set(pre) != {
+            "schema", "freeze_sha256", "execution_receipt_sha256",
+            "trace_manifest",
+        }
+        or pre.get("schema") != RUNNER_SCHEMA + "/pre-parse"
+        or pre.get("freeze_sha256") != freeze_sha256
+        or P.SHA256_RE.fullmatch(pre.get("execution_receipt_sha256", ""))
+        is None
+        or pre.get("trace_manifest") != _trace_manifest()
+    ):
         raise RunnerError("selector traces changed during parsing")
     value = {
         "schema": RUNNER_SCHEMA + "/post-parse",
@@ -212,24 +230,45 @@ def _post_parse(freeze_sha256: str) -> None:
             PRE_PARSE_RECEIPT, expected_path=PRE_PARSE_RECEIPT,
             label="pre-parse receipt",
         ),
+        "execution_receipt_sha256": pre["execution_receipt_sha256"],
         "trace_manifest": pre["trace_manifest"],
         "run_properties_manifest": _run_properties_manifest(),
     }
     _write_receipt(POST_PARSE_RECEIPT, value, "post-parse receipt")
 
 
-def _pre_fetch(freeze_sha256: str) -> None:
+def _pre_fetch(freeze_sha256: str, base) -> None:
+    import pdb_terminal_metric_choice_execution as Execution
+
     post = _read_receipt(POST_PARSE_RECEIPT, "post-parse receipt")
-    if post.get("freeze_sha256") != freeze_sha256 or post.get(
-        "trace_manifest"
-    ) != _trace_manifest():
+    try:
+        execution_sha, _ = Execution.load_execution_receipt(
+            base, verify_live=True
+        )
+    except Execution.ExecutionError as err:
+        raise RunnerError("campaign execution is not sealed") from err
+    if (
+        set(post) != {
+            "schema", "freeze_sha256", "pre_parse_receipt_sha256",
+            "execution_receipt_sha256", "trace_manifest",
+            "run_properties_manifest",
+        }
+        or post.get("schema") != RUNNER_SCHEMA + "/post-parse"
+        or post.get("freeze_sha256") != freeze_sha256
+        or post.get("pre_parse_receipt_sha256") != P.sha256_file(
+            PRE_PARSE_RECEIPT, expected_path=PRE_PARSE_RECEIPT,
+            label="pre-parse receipt",
+        )
+        or post.get("execution_receipt_sha256") != execution_sha
+        or post.get("trace_manifest") != _trace_manifest()
+    ):
         raise RunnerError("parsed campaign inputs changed before fetch")
     if post.get("run_properties_manifest") != _run_properties_manifest():
         raise RunnerError("parsed run properties changed before fetch")
 
 
-def _post_fetch(freeze_sha256: str) -> None:
-    _pre_fetch(freeze_sha256)
+def _post_fetch(freeze_sha256: str, base) -> None:
+    _pre_fetch(freeze_sha256, base)
     post = _read_receipt(POST_PARSE_RECEIPT, "post-parse receipt")
     try:
         properties = CampaignIO.read_regular_exact(
@@ -245,6 +284,7 @@ def _post_fetch(freeze_sha256: str) -> None:
             POST_PARSE_RECEIPT, expected_path=POST_PARSE_RECEIPT,
             label="post-parse receipt",
         ),
+        "execution_receipt_sha256": post["execution_receipt_sha256"],
         "run_properties_manifest": post["run_properties_manifest"],
         "fetched_properties_sha256": properties.sha256,
         "trace_manifest": post["trace_manifest"],
@@ -252,7 +292,9 @@ def _post_fetch(freeze_sha256: str) -> None:
     _write_receipt(POST_FETCH_RECEIPT, value, "post-fetch receipt")
 
 
-def load_fetched_properties(freeze_sha256: str):
+def load_fetched_properties(
+    freeze_sha256: str, execution_receipt_sha256: str | None = None,
+):
     receipt = _read_receipt(POST_FETCH_RECEIPT, "post-fetch receipt")
     try:
         loaded = CampaignIO.read_regular_exact(
@@ -261,9 +303,31 @@ def load_fetched_properties(freeze_sha256: str):
         )
     except CampaignIO.CampaignIOError as err:
         raise RunnerError(str(err)) from err
-    if receipt.get("schema") != RUNNER_SCHEMA + "/post-fetch" or (
-        receipt.get("freeze_sha256") != freeze_sha256
-    ) or receipt.get("fetched_properties_sha256") != loaded.sha256:
+    if (
+        set(receipt) != {
+            "schema", "freeze_sha256", "post_parse_receipt_sha256",
+            "execution_receipt_sha256", "run_properties_manifest",
+            "fetched_properties_sha256", "trace_manifest",
+        }
+        or receipt.get("schema") != RUNNER_SCHEMA + "/post-fetch"
+        or receipt.get("freeze_sha256") != freeze_sha256
+        or receipt.get("post_parse_receipt_sha256") != P.sha256_file(
+            POST_PARSE_RECEIPT, expected_path=POST_PARSE_RECEIPT,
+            label="post-parse receipt",
+        )
+        or P.SHA256_RE.fullmatch(
+            receipt.get("execution_receipt_sha256", "")
+        ) is None
+        or (
+            execution_receipt_sha256 is not None
+            and receipt.get("execution_receipt_sha256")
+            != execution_receipt_sha256
+        )
+        or receipt.get("run_properties_manifest")
+        != _run_properties_manifest()
+        or receipt.get("trace_manifest") != _trace_manifest()
+        or receipt.get("fetched_properties_sha256") != loaded.sha256
+    ):
         raise RunnerError("fetched campaign properties differ from their seal")
     try:
         return json.loads(loaded.raw.decode("utf-8"))
@@ -413,24 +477,56 @@ def validate_manifest(manifest: dict, freeze: dict, freeze_sha256: str) -> None:
         raise RunnerError("runner provenance binding changed")
 
 
+V5_PROVENANCE_PROPERTY_FIELDS = (
+    "source_audit_v5_campaign",
+    "source_audit_v5_attestation_path",
+    "source_audit_v5_attestation_sha256",
+    "source_audit_v5_launch_intent_path",
+    "source_audit_v5_launch_intent_sha256",
+    "source_audit_v5_launch_receipt_path",
+    "source_audit_v5_launch_receipt_sha256",
+    "source_audit_v5_execution_receipt_path",
+    "source_audit_v5_execution_receipt_sha256",
+    "source_audit_v5_cohort_manifest_sha256",
+    "source_audit_v5_confirmation_a_cohort_manifest_sha256",
+    "source_audit_v5_attestation_records_sha256",
+    "source_audit_v5_code_manifest_sha256",
+    "source_audit_v5_repository_commit_id",
+    "source_audit_v5_job_id",
+    "source_audit_v5_output_tree_sha256",
+    "source_audit_v5_slurm_script_sha256",
+    "source_audit_v5_translator_source_sha256",
+    "source_audit_v5_tracked_manifest_sha256",
+    "source_audit_v5_provenance_sha256",
+)
+
+
 def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
+    base = freeze["base_confirmation_b"]
+    source = base["source_audit_v5"]
+    standalone_source = freeze["standalone_k32"]["sealed_b_input"]
     return {
         "campaign_freeze_sha256": freeze_sha256,
-        "base_b_freeze_sha256": freeze["base_confirmation_b"][
-            "base_b_freeze_sha256"
+        "campaign_freeze_repository_revision": freeze[
+            "freeze_repository_revision"
         ],
-        "confirmation_a_authorization_receipt_sha256": freeze[
-            "base_confirmation_b"
-        ]["confirmation_a_authorization"]["receipt_sha256"],
-        "source_audit_v4_attestation_sha256": freeze["base_confirmation_b"][
-            "source_audit_v4"
-        ]["attestation_sha256"],
-        "cohort_manifest_sha256": freeze["base_confirmation_b"]["cohort"][
-            "tasks_sha256"
+        "base_b_freeze_sha256": base["base_b_freeze_sha256"],
+        "base_b_freeze_repository_revision": base[
+            "base_b_freeze_repository_revision"
         ],
+        "base_b_experiment_source_manifest_sha256": hashlib.sha256(
+            P.canonical_json(base["base_b_experiment_source_sha256"])
+        ).hexdigest(),
+        "confirmation_a_authorization_receipt_sha256": base[
+            "confirmation_a_authorization"
+        ]["receipt_sha256"],
+        "cohort_manifest_sha256": base["cohort"]["tasks_sha256"],
         "planner_revision": freeze["planner"]["revision"],
         "planner_cache_name": freeze["planner"]["cache_name"],
         "PLANNER_CACHE_NAME": freeze["planner"]["cache_name"],
+        "planner_manifest_sha256": hashlib.sha256(
+            P.canonical_json_line(freeze["planner"])
+        ).hexdigest(),
         "planner_downward_sha256": freeze["planner"]["downward_sha256"],
         "planner_preprocess_sha256": freeze["planner"]["preprocess_sha256"],
         "planner_tree_manifest_sha256": freeze["planner"][
@@ -453,24 +549,63 @@ def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
         "standalone_k32_evidence_sha256": freeze["standalone_k32"][
             "evidence_sha256"
         ],
-        "source_audit_v4_launch_receipt_sha256": freeze[
-            "base_confirmation_b"
-        ]["source_audit_v4"]["launch_receipt_sha256"],
-        "source_audit_v4_execution_receipt_sha256": freeze[
-            "base_confirmation_b"
-        ]["source_audit_v4"]["execution_receipt_sha256"],
-        "source_audit_v4_code_manifest_sha256": freeze[
-            "base_confirmation_b"
-        ]["source_audit_v4"]["code_manifest_sha256"],
-        "source_audit_v4_repository_commit_id": freeze[
-            "base_confirmation_b"
-        ]["source_audit_v4"]["repository_commit_id"],
-        "source_audit_v4_output_tree_sha256": freeze[
-            "base_confirmation_b"
-        ]["source_audit_v4"]["output_tree_sha256"],
-        "source_audit_v4_translator_source_sha256": freeze[
-            "base_confirmation_b"
-        ]["source_audit_v4"]["translator_source_sha256"],
+        "standalone_b_parse_receipt_sha256": standalone_source[
+            "parse_receipt_sha256"
+        ],
+        "standalone_b_fetch_receipt_sha256": standalone_source[
+            "fetch_receipt_sha256"
+        ],
+        "standalone_b_properties_sha256": standalone_source[
+            "properties_sha256"
+        ],
+        "source_audit_v5_campaign": source["campaign"],
+        "source_audit_v5_attestation_path": source["attestation_path"],
+        "source_audit_v5_attestation_sha256": source["attestation_sha256"],
+        "source_audit_v5_launch_intent_path": source["launch_intent_path"],
+        "source_audit_v5_launch_intent_sha256": source[
+            "launch_intent_sha256"
+        ],
+        "source_audit_v5_launch_receipt_path": source["launch_receipt_path"],
+        "source_audit_v5_launch_receipt_sha256": source[
+            "launch_receipt_sha256"
+        ],
+        "source_audit_v5_execution_receipt_path": source[
+            "execution_receipt_path"
+        ],
+        "source_audit_v5_execution_receipt_sha256": source[
+            "execution_receipt_sha256"
+        ],
+        "source_audit_v5_cohort_manifest_sha256": source[
+            "cohort_manifest_sha256"
+        ],
+        "source_audit_v5_confirmation_a_cohort_manifest_sha256": source[
+            "confirmation_a_cohort_manifest_sha256"
+        ],
+        "source_audit_v5_attestation_records_sha256": source[
+            "attestation_records_sha256"
+        ],
+        "source_audit_v5_code_manifest_sha256": source[
+            "code_manifest_sha256"
+        ],
+        "source_audit_v5_repository_commit_id": source[
+            "repository_commit_id"
+        ],
+        "source_audit_v5_job_id": source["job_id"],
+        "source_audit_v5_output_tree_sha256": source[
+            "original_output_tree_sha256"
+        ],
+        "source_audit_v5_slurm_script_sha256": source[
+            "slurm_script_sha256"
+        ],
+        "source_audit_v5_translator_source_sha256": source[
+            "translator_source_sha256"
+        ],
+        "source_audit_v5_tracked_manifest_sha256": hashlib.sha256(
+            P.canonical_json(source["tracked_file_sha256"])
+        ).hexdigest(),
+        "source_audit_v5_provenance_sha256": hashlib.sha256(
+            P.canonical_json(source)
+        ).hexdigest(),
         "campaign_source_manifest_sha256": hashlib.sha256(P.canonical_json(
             freeze["experiment_source_sha256"]
         )).hexdigest(),
@@ -520,8 +655,12 @@ def _source_names(freeze: dict, freeze_path: Path) -> tuple[str, ...]:
     except ValueError as err:
         raise RunnerError("campaign freeze is outside experiments") from err
     for path_value in (
+        P.PLANNER_MANIFEST_PATH.relative_to(P.REPO).as_posix(),
+        freeze["base_confirmation_b"]["base_b_freeze_path"],
         freeze["calibration"]["receipt_path"],
         freeze["standalone_k32"]["evidence_path"],
+        freeze["standalone_k32"]["sealed_b_input"]["parse_receipt_path"],
+        freeze["standalone_k32"]["sealed_b_input"]["fetch_receipt_path"],
     ):
         path = Path(path_value)
         if path.parts[:1] != ("experiments",):
@@ -570,6 +709,7 @@ def configure_lab_transport(freeze_path: Path = P.FREEZE_PATH):
         OPTION_MATRIX_SHA256=freeze["design"]["option_matrix_sha256"],
         PROTOCOL_SHA256=freeze["design"]["protocol_sha256"],
         REQUIRED_LAB_VERSION=P.REQUIRED_LAB_VERSION,
+        REQUIRED_PYTHON_VERSION=P.REQUIRED_PYTHON_VERSION,
         PROTOCOL=P.PROTOCOL,
         ANALYSIS_PROTOCOL=P.ANALYSIS_PROTOCOL,
         COHORT_ROLE="source-disjoint-universal-confirmation-b",
@@ -646,10 +786,10 @@ def configure_lab_transport(freeze_path: Path = P.FREEZE_PATH):
         "frozen_design": freeze["design"],
         "frozen_source_manifest": freeze["experiment_source_sha256"],
     }
-    Base.PRE_PARSE_VALIDATOR = lambda: _pre_parse(freeze_sha)
+    Base.PRE_PARSE_VALIDATOR = lambda: _pre_parse(freeze_sha, Base)
     Base.POST_PARSE_SEALER = lambda: _post_parse(freeze_sha)
-    Base.PRE_FETCH_VALIDATOR = lambda: _pre_fetch(freeze_sha)
-    Base.POST_FETCH_SEALER = lambda: _post_fetch(freeze_sha)
+    Base.PRE_FETCH_VALIDATOR = lambda: _pre_fetch(freeze_sha, Base)
+    Base.POST_FETCH_SEALER = lambda: _post_fetch(freeze_sha, Base)
     inherited_prepare = Base._prepare_launch_materials
 
     def hardened_prepare(job_file, cached):
@@ -679,6 +819,54 @@ def main(argv=None) -> None:
         print(json.dumps(manifest, sort_keys=True, separators=(",", ":")))
         return
     base = configure_lab_transport(freeze_path)
+    if remaining == ["start"]:
+        parser.error(
+            "Lab start is disabled; use prepare-job followed by launch"
+        )
+    commands = {
+        "prepare-job", "launch", "recover-launch", "status", "snapshot",
+        "recover", "recover-reconcile", "seal",
+    }
+    if remaining and remaining[0] in commands:
+        if len(remaining) != 1:
+            parser.error("campaign coordinator commands take no extra arguments")
+        import pdb_terminal_metric_choice_execution as Execution
+
+        command = remaining[0]
+        if command == "prepare-job":
+            path = base.prepare_start_job()
+            expected = GRID_DIR / EXPECTED_JOB_NAME
+            if path != expected:
+                raise RunnerError("rendered primary job path changed")
+            _, digest = Execution.validate_primary_job(
+                P.load_authorized_freeze(P.FREEZE_PATH)
+            )
+            result = {
+                "job_file": str(path), "job_file_sha256": digest,
+                "submitted": False,
+            }
+        elif command == "launch":
+            result = Execution.launch_primary(base)
+        elif command == "recover-launch":
+            result = Execution.recover_primary_launch(base)
+        elif command == "status":
+            result = Execution.status(base)
+        elif command == "snapshot":
+            result = {
+                "scheduler_snapshot_sha256": (
+                    Execution.publish_primary_snapshot(base)
+                )
+            }
+        elif command == "recover":
+            result = Execution.launch_recovery(base)
+        elif command == "recover-reconcile":
+            result = Execution.recover_recovery_launch(base)
+        else:
+            result = {
+                "execution_receipt_sha256": Execution.seal_execution(base)
+            }
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
     return base.main(remaining)
 
 

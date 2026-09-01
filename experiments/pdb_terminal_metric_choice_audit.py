@@ -78,7 +78,7 @@ def audit_records(
 ) -> dict:
     P.validate_freeze(freeze, verify_live_sources=False)
     P.validate_standalone_evidence(
-        standalone, freeze["base_confirmation_b"]
+        standalone, freeze["base_confirmation_b"], freeze["planner"]
     )
     if not isinstance(records, list) or len(records) != P.CELL_COUNT:
         raise AuditError("campaign does not contain exactly 900 cells")

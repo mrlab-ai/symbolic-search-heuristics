@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 import pdb_terminal_metric_choice_audit as Audit
+import pdb_terminal_metric_choice_execution as Coordinator
 import pdb_terminal_metric_choice_protocol as P
 import pdb_terminal_metric_choice_recovery as Recovery
 import pdb_terminal_metric_choice_runner as Runner
@@ -25,6 +26,15 @@ import pdb_terminal_metric_choice_parser as Trace
 
 
 FREEZE_SHA = "f" * 64
+
+
+class LabPathContractTest(unittest.TestCase):
+    def test_fetched_properties_use_lab_810_filename(self):
+        self.assertEqual(Runner.EVAL_PROPERTIES.name, "properties")
+        self.assertEqual(
+            Runner.EVAL_PROPERTIES.parent,
+            Path(str(Runner.EXPERIMENT_PATH) + "-eval"),
+        )
 
 
 def _identity(pattern_index, incidence, mj):
@@ -68,8 +78,8 @@ def fake_records(*, differing_tasks=100):
                 "--build", "release_no_lp",
             ],
             "build_options": ["release_no_lp"],
-            "local_revision": P.REQUIRED_SELECTOR_COMMIT,
-            "global_revision": P.REQUIRED_SELECTOR_COMMIT,
+            "local_revision": P.REQUIRED_PLANNER_REVISION,
+            "global_revision": P.REQUIRED_PLANNER_REVISION,
             "dual_selector_trace_schema": P.DUAL_TRACE_SCHEMA,
             "dual_selector_trace_certified": True,
             "dual_selector_trace_status": "complete",
@@ -152,9 +162,13 @@ def fake_journal(freeze, *, task=None, state=Recovery.INTERRUPTED):
 
 def fake_scheduler_snapshot(freeze, *, task=None, started=None, completed=None):
     entries = []
+    scheduler_rows = []
+    scheduler_contract_rows = []
     for array_task in range(1, 301):
         triad = list(P.triad_cells(array_task))
         if array_task == task:
+            scheduler_state = "NODE_FAIL"
+            exit_code = "0:0"
             entry = {
                 "array_task": array_task, "attempt": 2, "job_id": "42",
                 "state": Recovery.INTERRUPTED,
@@ -162,19 +176,45 @@ def fake_scheduler_snapshot(freeze, *, task=None, started=None, completed=None):
                 "completed_cells": list(completed if completed is not None else []),
             }
         else:
+            scheduler_state = "COMPLETED"
+            exit_code = "0:0"
             entry = {
                 "array_task": array_task, "attempt": 1, "job_id": "42",
                 "state": Recovery.COMPLETE, "started_cells": triad,
                 "completed_cells": triad,
             }
         entries.append(entry)
+        scheduler_rows.append({
+            "array_task": array_task,
+            "job_id_raw": "42_{}".format(array_task),
+            "state": scheduler_state,
+            "exit_code": exit_code,
+            "node": "synthetic-node",
+            "elapsed_raw": 1,
+            "partition": "fat",
+        })
+        scheduler_contract_rows.append({
+            "array_task": array_task,
+            "account": P.ACCOUNT,
+            "partition": "fat",
+            "qos": "normal",
+            "req_cpus": 1,
+            "req_mem": freeze["design"]["scheduler_memory"],
+            "time_limit": freeze["design"]["scheduler_time_limit"],
+            "state": scheduler_state,
+            "exit_code": exit_code,
+            "job_name": Runner.EXPECTED_JOB_NAME,
+        })
     return {
         "schema": Recovery.SCHEDULER_SNAPSHOT_SCHEMA,
         "freeze_sha256": FREEZE_SHA,
+        "primary_launch_receipt_sha256": "a" * 64,
         "run_cell_mapping_sha256": freeze["design"]["run_cell_mapping_sha256"],
         "scheduler_contract": Runner.build_manifest(
             freeze, FREEZE_SHA
         )["transport"],
+        "scheduler_rows": scheduler_rows,
+        "scheduler_contract_rows": scheduler_contract_rows,
         "entries": entries,
         "entries_sha256": hashlib.sha256(P.canonical_json(entries)).hexdigest(),
     }
@@ -203,8 +243,147 @@ def make_recovery_job(path: Path, freeze: dict, array_spec: str):
     return raw
 
 
+def fake_tree_manifest(paths):
+    rows = [
+        {"path": path, "sha256": "d" * 64, "size": 1}
+        for path in sorted(paths)
+    ]
+    payload = b"".join(
+        row["path"].encode("ascii") + b"\0"
+        + bytes.fromhex(row["sha256"])
+        for row in rows
+    )
+    return {
+        "files": rows, "file_count": len(rows),
+        "tree_sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def fake_execution_receipt(freeze):
+    rows = []
+    contracts = []
+    entries = []
+    for task in range(1, P.EXPECTED_ARRAY_TASKS + 1):
+        triad = list(P.triad_cells(task))
+        rows.append({
+            "array_task": task, "job_id_raw": "42_{}".format(task),
+            "state": "COMPLETED", "exit_code": "0:0",
+            "node": "synthetic-node", "elapsed_raw": 1,
+            "partition": "fat",
+        })
+        contracts.append({
+            "array_task": task, "account": P.ACCOUNT, "partition": "fat",
+            "qos": "normal", "req_cpus": 1,
+            "req_mem": freeze["design"]["scheduler_memory"],
+            "time_limit": freeze["design"]["scheduler_time_limit"],
+            "state": "COMPLETED", "exit_code": "0:0",
+            "job_name": Runner.EXPECTED_JOB_NAME,
+        })
+        entries.append({
+            "array_task": task, "attempt": 1, "job_id": "42",
+            "state": Recovery.COMPLETE, "started_cells": triad,
+            "completed_cells": triad,
+        })
+    dynamic = []
+    for cell in range(1, P.CELL_COUNT + 1):
+        relative = Coordinator._run_directory(cell).relative_to(
+            Runner.EXPERIMENT_PATH
+        )
+        dynamic.extend(
+            (relative / name).as_posix()
+            for name in ("driver.err", "driver.log", P.SELECTOR_TRACE)
+        )
+    return {
+        "schema": Coordinator.EXECUTION_SCHEMA,
+        "freeze_sha256": FREEZE_SHA,
+        "primary_launch_receipt_sha256": "a" * 64,
+        "primary_job_id": "42",
+        "primary_scheduler_rows": rows,
+        "primary_scheduler_contract_rows": contracts,
+        "recovery_launch_receipt_sha256": None,
+        "recovery_job_id": None,
+        "recovery_source_snapshot_sha256": None,
+        "recovery_scheduler_rows": [],
+        "recovery_scheduler_contract_rows": [],
+        "effective_entries": entries,
+        "effective_entries_sha256": hashlib.sha256(
+            P.canonical_json(entries)
+        ).hexdigest(),
+        "state_counts": {Recovery.COMPLETE: P.EXPECTED_ARRAY_TASKS},
+        "complete_cells": P.CELL_COUNT,
+        "started_cells": P.CELL_COUNT,
+        "scheduler_contract": Transport.scheduler_contract(freeze, P.ACCOUNT),
+        "dynamic_cell_manifest": fake_tree_manifest(dynamic),
+        "primary_log_manifest": fake_tree_manifest(["slurm.err", "slurm.log"]),
+        "recovery_log_manifest": None,
+    }
+
+
 class ExecutionTest(unittest.TestCase):
     MAPPING_SHA = "e" * 64
+
+    def test_launch_requires_all_ancestors_and_full_committed_closure(self):
+        freeze = fake_freeze()
+        commit = "9" * 40
+        bindings = {"experiments/synthetic": FREEZE_SHA}
+        with mock.patch.object(
+            Coordinator.JJ, "require_ancestor"
+        ) as ancestor, mock.patch.object(
+            Coordinator.Freeze, "_launch_closure_bindings",
+            return_value=bindings,
+        ) as build_closure, mock.patch.object(
+            Coordinator.Freeze, "_attest_repository_closure",
+        ) as attest:
+            Coordinator._validate_repository_commit(
+                freeze, commit, FREEZE_SHA
+            )
+        self.assertEqual(
+            [call.args[1] for call in ancestor.call_args_list],
+            list(Coordinator._required_launch_ancestors(freeze)),
+        )
+        build_closure.assert_called_once_with(freeze, FREEZE_SHA)
+        attest.assert_called_once_with(commit, bindings)
+        with mock.patch.object(
+            Coordinator.JJ, "require_ancestor"
+        ), mock.patch.object(
+            Coordinator.Freeze, "_launch_closure_bindings",
+            return_value=bindings,
+        ), mock.patch.object(
+            Coordinator.Freeze, "_attest_repository_closure",
+            side_effect=Coordinator.Freeze.FreezeError("mismatch"),
+        ), self.assertRaisesRegex(Coordinator.ExecutionError, "closure changed"):
+            Coordinator._validate_repository_commit(freeze, commit, FREEZE_SHA)
+
+    def test_launch_uses_live_snapshot_and_rejects_dirty_working_copy(self):
+        freeze = fake_freeze()
+        commit = "9" * 40
+        with mock.patch.object(
+            Coordinator.JJ, "working_copy_diff_summary", return_value=""
+        ) as stale_summary, mock.patch.object(
+            Coordinator.JJ, "live_working_copy_diff_summary", return_value=""
+        ) as live_summary, mock.patch.object(
+            Coordinator.JJ, "parent_commit", return_value=commit,
+        ), mock.patch.object(
+            Coordinator, "_validate_repository_commit"
+        ) as validate:
+            self.assertEqual(
+                Coordinator._clean_repository_commit(freeze, FREEZE_SHA), commit
+            )
+        stale_summary.assert_not_called()
+        live_summary.assert_called_once_with(P.REPO)
+        validate.assert_called_once_with(freeze, commit, FREEZE_SHA)
+        with mock.patch.object(
+            Coordinator.JJ, "working_copy_diff_summary", return_value=""
+        ) as stale_summary, mock.patch.object(
+            Coordinator.JJ, "live_working_copy_diff_summary", return_value="M source"
+        ), mock.patch.object(
+            Coordinator.JJ, "parent_commit"
+        ) as parent, self.assertRaisesRegex(
+            Coordinator.ExecutionError, "clean working copy"
+        ):
+            Coordinator._clean_repository_commit(freeze, FREEZE_SHA)
+        stale_summary.assert_not_called()
+        parent.assert_not_called()
 
     def test_runner_is_exact_unthrottled_triads(self):
         freeze = fake_freeze()
@@ -483,10 +662,10 @@ class ExecutionTest(unittest.TestCase):
                     os.pread(executable_fd, len(executable_bytes) + 1, 0),
                     executable_bytes,
                 )
-                seals = fcntl.fcntl(job_fd, fcntl.F_GET_SEALS)
+                seals = fcntl.fcntl(job_fd, Recovery.F_GET_SEALS)
                 required = (
-                    fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW
-                    | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
+                    Recovery.F_SEAL_WRITE | Recovery.F_SEAL_GROW
+                    | Recovery.F_SEAL_SHRINK | Recovery.F_SEAL_SEAL
                 )
                 self.assertEqual(seals, required)
                 with self.assertRaises(OSError) as error:
@@ -508,6 +687,127 @@ class ExecutionTest(unittest.TestCase):
                 Recovery._submit_pinned(
                     ["--export=NONE", "--export=ALL"], raw
                 )
+
+    def test_options_only_stdin_submission_uses_verified_executable_bytes(self):
+        raw = b"#!/bin/bash\ntrue\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = root / "sbatch"
+            executable_raw = b"synthetic exact sbatch\n"
+            executable.write_bytes(executable_raw)
+            executable.chmod(0o755)
+            executable_sha = hashlib.sha256(executable_raw).hexdigest()
+            options = ["--parsable", "--export=NONE", "--no-requeue"]
+
+            def inspect(command, **kwargs):
+                self.assertEqual(command, [str(executable), *options])
+                self.assertEqual(kwargs["input"], raw)
+                self.assertEqual(kwargs["cwd"], root)
+                self.assertEqual(kwargs["env"], Coordinator.SUBMISSION_ENVIRONMENT)
+                self.assertEqual(len(kwargs["pass_fds"]), 1)
+                descriptor = kwargs["pass_fds"][0]
+                self.assertEqual(
+                    kwargs["executable"], "/proc/self/fd/{}".format(descriptor)
+                )
+                self.assertEqual(
+                    os.pread(descriptor, len(executable_raw) + 1, 0),
+                    executable_raw,
+                )
+                self.assertNotIn("/proc/self/fd", " ".join(command))
+                return mock.Mock(stdout=b"789;synthetic\n", stderr=b"")
+
+            with mock.patch.object(
+                Transport.subprocess, "run", side_effect=inspect
+            ) as child:
+                job_id = Transport.submit_pinned_stdin(
+                    executable, executable_sha, options, raw,
+                    environment=Coordinator.SUBMISSION_ENVIRONMENT,
+                    cwd=root, label="synthetic sbatch",
+                )
+            self.assertEqual(job_id, "789")
+            child.assert_called_once()
+            with self.assertRaisesRegex(Transport.TransportError, "options-only"):
+                Transport.submit_pinned_stdin(
+                    executable, executable_sha,
+                    [*options, str(root / "mutable-job")], raw,
+                    environment=Coordinator.SUBMISSION_ENVIRONMENT,
+                    cwd=root, label="synthetic sbatch",
+                )
+
+    def test_exact_submission_journal_reconciliation(self):
+        materials = {
+            "recorded_utc": "2026-09-01T12:00:00+00:00",
+            "job_name": "synthetic-primary",
+            "submission_comment": "metric/synthetic-token",
+            "submission_token": "synthetic-token",
+            "submit_command": [
+                str(Coordinator.SBATCH_EXECUTABLE), "--parsable",
+                "--export=NONE", "--no-requeue",
+            ],
+        }
+        command = " ".join(materials["submit_command"])
+        journal = "\n".join((
+            "42|synthetic-primary|metric/synthetic-token|{}".format(command),
+            "42_1|synthetic-primary||",
+            "42_2|synthetic-primary||",
+        ))
+        with mock.patch.object(Coordinator, "_pinned_sacct", return_value=journal):
+            self.assertEqual(
+                Coordinator._journal_job_ids(materials, {1, 2}), ["42"]
+            )
+        with mock.patch.object(Coordinator, "_pinned_sacct", return_value=""):
+            self.assertEqual(Coordinator._journal_job_ids(materials, {1, 2}), [])
+        ambiguous = journal + "\n43_1|synthetic-primary||"
+        with mock.patch.object(
+            Coordinator, "_pinned_sacct", return_value=ambiguous
+        ), self.assertRaises(Coordinator.ExecutionError):
+            Coordinator._journal_job_ids(materials, {1, 2})
+
+    def test_scheduler_classification_is_fail_closed(self):
+        triad = list(P.triad_cells(1))
+        complete = {"array_task": 1, "state": "COMPLETED", "exit_code": "0:0"}
+        self.assertEqual(
+            Coordinator._classify(complete, triad, triad), Recovery.COMPLETE
+        )
+        self.assertEqual(
+            Coordinator._classify(complete, triad, triad[:2]),
+            Recovery.SEMANTIC_FAILURE,
+        )
+        for state, expected in (
+            ("NODE_FAIL", Recovery.INTERRUPTED),
+            ("RUNNING", Recovery.ACTIVE),
+            ("TIMEOUT", Recovery.SEMANTIC_FAILURE),
+            ("FAILED", Recovery.SEMANTIC_FAILURE),
+        ):
+            row = {"array_task": 1, "state": state, "exit_code": "1:0"}
+            self.assertEqual(Coordinator._classify(row, triad, triad), expected)
+
+    def test_execution_receipt_requires_complete_structural_matrix(self):
+        freeze = fake_freeze()
+        receipt = fake_execution_receipt(freeze)
+        Coordinator._validate_execution_value(
+            receipt, freeze, FREEZE_SHA, "a" * 64
+        )
+        broken = copy.deepcopy(receipt)
+        broken["effective_entries"][0]["completed_cells"].pop()
+        broken["effective_entries_sha256"] = hashlib.sha256(
+            P.canonical_json(broken["effective_entries"])
+        ).hexdigest()
+        with self.assertRaisesRegex(
+            Coordinator.ExecutionError, "effective execution entry"
+        ):
+            Coordinator._validate_execution_value(
+                broken, freeze, FREEZE_SHA, "a" * 64
+            )
+        broken = copy.deepcopy(receipt)
+        broken["primary_scheduler_rows"][0]["state"] = "TIMEOUT"
+        broken["primary_scheduler_contract_rows"][0]["state"] = "TIMEOUT"
+        with self.assertRaisesRegex(
+            Coordinator.ExecutionError, "terminal-complete"
+        ):
+            Coordinator._validate_execution_value(
+                broken, freeze, FREEZE_SHA, "a" * 64
+            )
 
 
 if __name__ == "__main__":

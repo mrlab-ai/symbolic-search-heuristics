@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import os
 import tempfile
 import threading
@@ -12,15 +13,328 @@ from unittest import mock
 
 import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_metric_choice_io as CampaignIO
+import pdb_terminal_metric_choice_freeze as Freeze
 import pdb_terminal_metric_choice_protocol as P
 import pdb_terminal_metric_choice_runner as Runner
 import pdb_terminal_metric_choice_transport as Transport
 from test_pdb_terminal_metric_choice_protocol import (
-    fake_calibration, fake_freeze, fake_snapshot, fake_standalone,
+    fake_calibration, fake_freeze, fake_planner, fake_snapshot,
+    fake_standalone, fake_standalone_source_binding,
 )
 
 
 class HardeningTest(unittest.TestCase):
+    @staticmethod
+    def closure_ready_freeze():
+        freeze = fake_freeze()
+        v5 = freeze["base_confirmation_b"]["source_audit_v5"]
+        v5["tracked_file_sha256"][
+            P.V5_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()
+        ] = v5["code_manifest_sha256"]
+        v5["tracked_file_sha256"][
+            P.V5_SLURM_PATH.relative_to(P.REPO).as_posix()
+        ] = v5["slurm_script_sha256"]
+        return freeze
+
+    def test_repository_closure_covers_b_properties_and_live_a_v5(self):
+        freeze = self.closure_ready_freeze()
+        bindings = Freeze._launch_closure_bindings(freeze, "f" * 64)
+        expected = {
+            P.FREEZE_PATH.relative_to(P.REPO).as_posix(),
+            P.BASE_B_PROPERTIES_PATH.relative_to(P.REPO).as_posix(),
+            P.BASE_B_PARSE_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            P.BASE_B_FETCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            Freeze.BASE_B_PARSE_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
+            Freeze.BASE_B_FETCH_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
+            P.BASE_A_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            P.BASE_A_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
+            P.BASE_A_FIRST_OUTPUT_PATH.relative_to(P.REPO).as_posix(),
+            P.BASE_A_SECOND_OUTPUT_PATH.relative_to(P.REPO).as_posix(),
+            Freeze.BASE_A_FETCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            Freeze.BASE_A_FETCH_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
+            Freeze.BASE_A_PROPERTIES_PATH.relative_to(P.REPO).as_posix(),
+            P.V5_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
+            P.V5_INTENT_PATH.relative_to(P.REPO).as_posix(),
+            P.V5_LAUNCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            P.V5_EXECUTION_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            P.V5_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix(),
+            P.V5_SLURM_PATH.relative_to(P.REPO).as_posix(),
+            *P.V5_SCOPED_FILES,
+            *P.SOURCE_FILES,
+            *freeze["base_confirmation_b"][
+                "base_b_experiment_source_sha256"
+            ],
+        }
+        self.assertTrue(expected <= set(bindings))
+        self.assertEqual(
+            bindings[P.BASE_B_PROPERTIES_PATH.relative_to(P.REPO).as_posix()],
+            freeze["standalone_k32"]["sealed_b_input"]["properties_sha256"],
+        )
+        broken = copy.deepcopy(freeze)
+        broken["experiment_source_sha256"].pop(next(iter(P.SOURCE_FILES)))
+        with self.assertRaisesRegex(Freeze.FreezeError, "source closure"):
+            Freeze._launch_closure_bindings(broken, "f" * 64)
+
+    def test_b_only_source_live_match_still_requires_matching_parent_blob(self):
+        freeze = self.closure_ready_freeze()
+        base_sources = freeze["base_confirmation_b"][
+            "base_b_experiment_source_sha256"
+        ]
+        b_only = sorted(
+            set(base_sources) - set(P.SOURCE_FILES) - set(P.V5_SCOPED_FILES)
+        )[0]
+        raw = b"synthetic B-only committed dependency\n"
+        digest = hashlib.sha256(raw).hexdigest()
+        base_sources[b_only] = digest
+        bindings = Freeze._launch_closure_bindings(freeze, "f" * 64)
+        self.assertEqual(bindings[b_only], digest)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / b_only
+            path.parent.mkdir(parents=True)
+            path.write_bytes(raw)
+            with mock.patch.object(Freeze.P, "REPO", root), mock.patch.object(
+                Freeze.JJ, "tracked_file_sha256", return_value="0" * 64,
+            ), self.assertRaisesRegex(Freeze.FreezeError, "differs"):
+                Freeze._attest_repository_closure(
+                    "9" * 40, {b_only: digest}
+                )
+
+    def test_live_jj_cleanliness_query_has_exact_non_ignored_command(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            (root / ".jj").mkdir()
+            completed = mock.Mock(stdout=b"")
+            with mock.patch.object(
+                Freeze.JJ, "_verify_jj_identity"
+            ) as verify, mock.patch.object(
+                Freeze.JJ.subprocess, "run", return_value=completed
+            ) as run:
+                self.assertEqual(
+                    Freeze.JJ.live_working_copy_diff_summary(root), ""
+                )
+            self.assertEqual(verify.call_count, 2)
+            self.assertEqual(run.call_args.args[0], [
+                str(Freeze.JJ.JJ_EXECUTABLE), "--no-pager", "-R", str(root),
+                "diff", "--summary", "-r", "@",
+            ])
+            self.assertNotIn("--ignore-working-copy", run.call_args.args[0])
+            self.assertEqual(run.call_args.kwargs["cwd"], root)
+            self.assertTrue(run.call_args.kwargs["check"])
+
+    def test_freeze_uses_live_snapshot_and_rejects_dirty_working_copy(self):
+        revision = "9" * 40
+        with mock.patch.object(
+            Freeze.JJ, "working_copy_diff_summary", return_value=""
+        ) as stale_summary, mock.patch.object(
+            Freeze.JJ, "live_working_copy_diff_summary", return_value="M source"
+        ), mock.patch.object(
+            Freeze.JJ, "parent_commit"
+        ) as parent, self.assertRaisesRegex(Freeze.FreezeError, "clean empty"):
+            Freeze._require_clean_parent(revision)
+        stale_summary.assert_not_called()
+        parent.assert_not_called()
+
+    def test_stale_cleanliness_cannot_hide_modified_missing_or_untracked_file(self):
+        revision = "9" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "experiments" / "relevant.json"
+            path.parent.mkdir()
+            path.write_bytes(b"original\n")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            bindings = {"experiments/relevant.json": digest}
+            with mock.patch.object(Freeze.P, "REPO", root), mock.patch.object(
+                Freeze.JJ, "working_copy_diff_summary", return_value=""
+            ) as stale_summary, mock.patch.object(
+                Freeze.JJ, "tracked_file_sha256", return_value=digest
+            ):
+                Freeze._attest_repository_closure(revision, bindings)
+            stale_summary.assert_not_called()
+
+            path.write_bytes(b"modified despite stale clean summary\n")
+            with mock.patch.object(Freeze.P, "REPO", root), mock.patch.object(
+                Freeze.JJ, "working_copy_diff_summary", return_value=""
+            ) as stale_summary, mock.patch.object(
+                Freeze.JJ, "tracked_file_sha256", return_value=digest
+            ), self.assertRaisesRegex(Freeze.FreezeError, "changed before"):
+                Freeze._attest_repository_closure(revision, bindings)
+            stale_summary.assert_not_called()
+
+            path.write_bytes(b"original\n")
+            with mock.patch.object(Freeze.P, "REPO", root), mock.patch.object(
+                Freeze.JJ, "tracked_file_sha256",
+                side_effect=Freeze.JJ.JjCacheError("untracked"),
+            ), self.assertRaisesRegex(Freeze.FreezeError, "not committed"):
+                Freeze._attest_repository_closure(revision, bindings)
+
+            path.unlink()
+            with mock.patch.object(Freeze.P, "REPO", root), mock.patch.object(
+                Freeze.JJ, "tracked_file_sha256", return_value=digest,
+            ), self.assertRaisesRegex(Freeze.FreezeError, "missing or unsafe"):
+                Freeze._attest_repository_closure(revision, bindings)
+
+    def test_repository_closure_rechecks_live_bytes_after_jj_query(self):
+        revision = "9" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = root / "experiments" / "raced.json"
+            path.parent.mkdir()
+            path.write_bytes(b"original\n")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+
+            def race(*unused):
+                path.write_bytes(b"changed during jj query\n")
+                return digest
+
+            with mock.patch.object(Freeze.P, "REPO", root), mock.patch.object(
+                Freeze.JJ, "tracked_file_sha256", side_effect=race,
+            ), self.assertRaisesRegex(Freeze.FreezeError, "changed during"):
+                Freeze._attest_repository_closure(
+                    revision, {"experiments/raced.json": digest}
+                )
+
+    def test_freeze_second_pass_gates_precede_exclusive_publication(self):
+        revision = "9" * 40
+        calibration = fake_calibration()
+        planner = copy.deepcopy(calibration["planner"])
+        snapshot = fake_snapshot()
+        standalone = fake_standalone(snapshot)
+        source_hashes = {relative: "a" * 64 for relative in P.SOURCE_FILES}
+        closure = {"experiments/bound-input": "b" * 64}
+        built = {"synthetic": "freeze"}
+
+        def exercise(second_pass_failure=None):
+            events = []
+            counts = {
+                "clean": 0, "ancestors": 0, "rebuild": 0, "closure": 0,
+            }
+
+            def gate(name, result=None):
+                def checked(*args, **kwargs):
+                    counts[name] += 1
+                    events.append(name)
+                    if counts[name] == 2 and second_pass_failure == name:
+                        raise Freeze.FreezeError(
+                            "synthetic second-pass {} failure".format(name)
+                        )
+                    return result
+                return checked
+
+            def write(*args, **kwargs):
+                events.append("write")
+                return "d" * 64
+
+            with mock.patch.object(
+                Freeze, "_require_clean_parent", side_effect=gate("clean", revision)
+            ) as clean, mock.patch.object(
+                P, "load_canonical", side_effect=[
+                    (P.canonical_json_line(calibration), calibration),
+                    (P.canonical_json_line(planner), planner),
+                    (P.canonical_json_line(standalone), standalone),
+                ],
+            ), mock.patch.object(
+                P, "validate_calibration_receipt"
+            ), mock.patch.object(
+                P, "validate_planner_manifest"
+            ), mock.patch.object(
+                P, "snapshot_sealed_b", return_value=snapshot,
+            ), mock.patch.object(
+                P, "validate_standalone_evidence"
+            ), mock.patch.object(
+                Freeze, "_rebuild_standalone", side_effect=gate("rebuild")
+            ) as rebuild, mock.patch.object(
+                Freeze, "_require_ancestors", side_effect=gate("ancestors")
+            ) as ancestors, mock.patch.object(
+                Freeze, "_source_hashes", return_value=source_hashes,
+            ), mock.patch.object(
+                Freeze, "_freeze_closure_bindings", return_value=closure,
+            ), mock.patch.object(
+                Freeze, "_attest_repository_closure", side_effect=gate("closure")
+            ) as attest, mock.patch.object(
+                P, "build_freeze", return_value=built,
+            ), mock.patch.object(
+                P, "validate_freeze"
+            ), mock.patch.object(
+                Freeze, "_write_exclusive", side_effect=write,
+            ) as exclusive:
+                arguments = (
+                    P.CALIBRATION_RECEIPT_PATH, P.PLANNER_MANIFEST_PATH,
+                    P.STANDALONE_K32_PATH, P.FREEZE_PATH,
+                    "01:00:00", "24G", revision,
+                )
+                if second_pass_failure is None:
+                    result = Freeze.freeze(*arguments)
+                else:
+                    with self.assertRaisesRegex(
+                        Freeze.FreezeError,
+                        "synthetic second-pass {} failure".format(
+                            second_pass_failure
+                        ),
+                    ):
+                        Freeze.freeze(*arguments)
+                    result = None
+            return (
+                result, events, counts, clean, ancestors, rebuild, attest,
+                exclusive,
+            )
+
+        for failure in ("clean", "ancestors", "rebuild", "closure"):
+            with self.subTest(second_pass_failure=failure):
+                result = exercise(failure)
+                self.assertIsNone(result[0])
+                result[-1].assert_not_called()
+                self.assertNotIn("write", result[1])
+
+        result, events, counts, clean, ancestors, rebuild, attest, exclusive = (
+            exercise()
+        )
+        self.assertEqual(result, (built, "d" * 64))
+        self.assertEqual(
+            counts,
+            {"clean": 2, "ancestors": 2, "rebuild": 2, "closure": 2},
+        )
+        self.assertEqual(
+            [clean.call_count, ancestors.call_count,
+             rebuild.call_count, attest.call_count],
+            [2, 2, 2, 2],
+        )
+        exclusive.assert_called_once_with(P.FREEZE_PATH, built)
+        self.assertEqual(events[-1], "write")
+
+    def test_freeze_requires_planner_b_and_v5_ancestors_in_exact_order(self):
+        snapshot = fake_snapshot()
+        revision = "d" * 40
+        snapshot["base_b_freeze_repository_revision"] = "b" * 40
+        snapshot["source_audit_v5"]["repository_commit_id"] = "c" * 40
+        with mock.patch.object(Freeze.JJ, "require_ancestor") as require:
+            Freeze._require_ancestors(snapshot, revision)
+        self.assertEqual(require.call_args_list, [
+            mock.call(P.REPO, P.REQUIRED_PLANNER_REVISION, revision),
+            mock.call(P.REPO, "b" * 40, revision),
+            mock.call(P.REPO, "c" * 40, revision),
+        ])
+
+    def test_freeze_rebuild_rejects_fabricated_standalone_with_real_hashes(self):
+        snapshot = fake_snapshot()
+        planner = fake_planner()
+        rebuilt = fake_standalone(snapshot)
+        fabricated = copy.deepcopy(rebuilt)
+        fabricated["records"].reverse()
+        fabricated["records_sha256"] = __import__("hashlib").sha256(
+            P.canonical_json(fabricated["records"])
+        ).hexdigest()
+        P.validate_standalone_evidence(fabricated, snapshot, planner)
+        with mock.patch(
+            "pdb_terminal_metric_choice_standalone.sealed_b_records",
+            return_value=([], fake_standalone_source_binding()),
+        ), mock.patch(
+            "pdb_terminal_metric_choice_standalone.build_evidence",
+            return_value=rebuilt,
+        ):
+            with self.assertRaisesRegex(Freeze.FreezeError, "does not rebuild"):
+                Freeze._rebuild_standalone(fabricated, snapshot, planner)
+
     def test_safe_reader_rejects_symlink_directory_fifo_and_alias(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -116,6 +430,9 @@ class HardeningTest(unittest.TestCase):
             else:
                 mutated[section]["tasks_sha256"] = P.cohort_digest(
                     mutated[section]["tasks"]
+                )
+                mutated["source_audit_v5"]["cohort_manifest_sha256"] = (
+                    mutated[section]["tasks_sha256"]
                 )
             with self.subTest(section=section):
                 with self.assertRaisesRegex(P.ProtocolError, "overlaps"):

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Read-only Jujutsu source export and Lab-compatible revision caching.
 
-Every repository query uses ``jj --ignore-working-copy``.  In particular,
-this module never invokes Git in a Jujutsu workspace and never creates or
-forgets a Jujutsu workspace.  Export is deliberately slower than ``git
-archive``: each tracked file is read from the pinned commit object, so the
-live working tree and concurrent edits cannot leak into the cache.
+Immutable repository queries use ``jj --ignore-working-copy``.  The sole
+exception is :func:`live_working_copy_diff_summary`, which deliberately lets
+Jujutsu snapshot current filesystem bytes before a freeze or launch
+cleanliness decision.  This module never invokes Git in a Jujutsu workspace
+and never creates or forgets a Jujutsu workspace.  Export is deliberately
+slower than ``git archive``: each tracked file is read from the pinned commit
+object, so the live working tree and concurrent edits cannot leak into the
+cache.
 """
 
 from __future__ import annotations
@@ -164,6 +167,45 @@ def working_copy_diff_summary(repo: Path) -> str:
         return raw.decode("utf-8").strip()
     except UnicodeDecodeError as err:
         raise JjCacheError("Jujutsu returned a non-UTF-8 change summary") from err
+
+
+def live_working_copy_diff_summary(repo: Path) -> str:
+    """Snapshot the live working copy and return the tracked change summary.
+
+    This is the sole query in this module that intentionally does not pass
+    ``--ignore-working-copy``.  Freeze/launch gates need Jujutsu to snapshot
+    current filesystem bytes before deciding that the ``@`` commit is empty;
+    all immutable commit/tree queries continue through :func:`_run_jj`.
+    """
+    repo = Path(repo).resolve()
+    if not repo.is_dir() or not (repo / ".jj").is_dir():
+        raise JjCacheError("{} is not a Jujutsu workspace root".format(repo))
+    _verify_jj_identity()
+    command = [
+        str(JJ_EXECUTABLE), "--no-pager", "-R", str(repo),
+        "diff", "--summary", "-r", "@",
+    ]
+    try:
+        completed = subprocess.run(
+            command, check=True, cwd=repo,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError) as err:
+        detail = getattr(err, "stderr", b"")
+        if isinstance(detail, bytes):
+            detail = detail.decode("utf-8", "replace").strip()
+        raise JjCacheError(
+            "live Jujutsu working-copy snapshot failed: {}".format(
+                detail or err
+            )
+        ) from err
+    _verify_jj_identity()
+    try:
+        return completed.stdout.decode("utf-8").strip()
+    except UnicodeDecodeError as err:
+        raise JjCacheError(
+            "Jujutsu returned a non-UTF-8 live change summary"
+        ) from err
 
 
 def file_is_tracked_at(repo: Path, revision: str, relative: str) -> bool:

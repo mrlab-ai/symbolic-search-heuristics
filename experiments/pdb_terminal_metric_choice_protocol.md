@@ -19,29 +19,55 @@ launcher.
    and peak-memory measurements. It cannot contain selected identities,
    winners, references, coverage, exit codes, search times, plan costs, or
    other search outcomes.
+
+   The manifest is derived reproducibly from exact planner revision
+   `8148f798f13059ee881ad2471bd20cdd61d2ec18` and its attested revision-cache
+   entry. Create it once with
+   `python3 experiments/pdb_terminal_metric_choice_planner_manifest.py produce`.
+   This command uses exclusive creation and never replaces an existing file.
+   Recheck the fixed artifact without rewriting it with the same command and
+   action `verify`; verification independently re-derives the revision,
+   selector ancestry, driver, binaries, source tree, options, searches, and
+   trace-schema binding.
+   Calibration verifies and executes the driver and binaries inside that
+   manifest's exact revision-cache directory, never the mutable working-tree
+   build, under the pinned Python 3.12.13 environment.
 2. Only after the calibration receipt is sealed, obtain canonical standalone
    K=32 evidence for every sealed Confirmation B task. The producer binding
-   repeats the exact planner/options/binary/tree manifest. Each record logs
+   repeats the exact planner/options/binary/tree manifest and the exact
+   Confirmation B parse-receipt, fetch-receipt, and fetched-properties paths
+   and hashes. The producer checks the parse-to-fetch-to-properties chain and
+   rebuilds each record from the live, sealed B properties. Each record logs
    normalized pool and K=32 representative score certificates so the
    reference is reconstructed, rather than accepted as an arbitrary pool
-   member. It contains no search outcomes.
+   member. It contains no search outcomes. This standalone step is the first
+   campaign step permitted to open the sealed Confirmation B verifier.
 3. Choose `--scheduler-time` and `--scheduler-memory` using only the redacted
    calibration receipt, then run `pdb_terminal_metric_choice_freeze.py` with
-   those explicit values. This is the first campaign step
-   allowed to open the sealed Confirmation B verifier. It fails unless
+   those explicit values. The freeze independently reopens and revalidates the
+   sealed Confirmation B verifier. It fails unless
    Confirmation A authorized the guided study, B is still the exact sealed
-   300-task cohort, source-audit v4 provenance validates, calibration completed,
+   300-task cohort, source-audit V5 provenance validates, calibration completed,
    and every source, planner, option, task, K=32 record, and receipt hash binds.
+   The freeze must be made from a clean working copy whose parent is recorded
+   as the freeze source revision; all campaign sources and bound inputs must be
+   tracked with the same bytes at that revision. The planner revision, sealed-B
+   freeze revision, and V5 producer revision must all be its ancestors. The
+   freeze rebuilds the complete standalone evidence from the live B properties
+   both before validation and immediately before exclusive publication.
    Campaign resources are absent from source defaults and are frozen only by
    this post-calibration operation; the freeze rejects values too small to
-   cover three sequential planner limits or one planner memory limit.
+   cover three sequential planner limits or one planner memory limit. It also
+   reconstructs the doubled maximum selector wall time and peak-memory delta
+   from the nine redacted observations and rejects resources below the larger
+   of those calibration floors and the planner-limit floors.
 
 Every campaign input/output uses one exact lexical sealed path. Readers walk
 every component below a trusted root through retained directory descriptors
 with `O_DIRECTORY | O_NOFOLLOW`, open the leaf relative to its retained parent,
 and revalidate all ancestor, leaf-descriptor, and leaf-entry identities after
 same-descriptor reading and hashing. Calibration is completely
-loaded and validated before the freeze code opens any A/B/v4 evidence. Its
+loaded and validated before the freeze code opens any A/B/V5 evidence. Its
 generated IDs and domain/problem hashes are then checked against both sealed
 A and B cohorts. No outcome may be inspected before the freeze exists.
 
@@ -52,6 +78,29 @@ The three modes are:
 - `terminal_dual_incidence_guided`
 - `terminal_dual_mj_guided`
 - `terminal_dual_matched_control`
+
+After the freeze and its source closure are sealed, the only permitted launch
+sequence is:
+
+```
+experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py build
+experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py prepare-job
+experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py launch
+experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py status
+```
+
+The launch likewise requires a clean working copy. Its commit must descend
+from the exact planner, sealed-B freeze, V5 producer, and recorded freeze source
+revisions, and the campaign-freeze bytes tracked in that commit must match the
+live freeze exactly.
+
+`prepare-job` renders but does not submit. `launch` writes an exclusive
+tokenized intent, then passes the exact validated job bytes on standard input
+to the byte-pinned `/usr/bin/sbatch`; its recorded command is options-only and
+contains no mutable script path. The receipt and SHA-256 pin are exclusive.
+If the launcher stops after writing its intent, `recover-launch` may only
+reconcile that token against the byte-pinned `sacct` journal; ambiguity or no
+exact journal match fails closed and never triggers a second submission.
 
 There are exactly 900 cells: one three-mode triad for each of the exact 300 B
 tasks. Array task `t` owns run cells `3t-2`, `3t-1`, and `3t`. Within each
@@ -69,7 +118,32 @@ only possible inside this coordinator, using the exact validated recovery
 array and pinned in-memory job bytes. Every interrupted triad is replayed as
 all three cells, including an interrupted triad whose three cells had all
 completed. Zero interruption is an explicit no-submit result. Active or
-semantic-failure triads block recovery.
+semantic-failure triads block recovery. For infrastructure interruption, first
+run `snapshot`, then `recover`. A stopped recovery submission is reconciled
+with `recover-reconcile`. The protocol permits exactly one recovery wave;
+interruption of that recovery, an incomplete recovery triad, or an interruption
+before a recoverable launch intent exists fails closed rather than starting an
+ambiguous additional wave.
+
+Only when `status` reports 300 terminal-complete triads and all 900 structural
+cell markers may `seal` publish the execution receipt and pin. The seal binds
+the exact primary and optional recovery launch receipts, scheduler resource
+rows, effective-attempt matrix, all dynamic run files, and Slurm logs. Parsing
+and fetching are rejected until this receipt revalidates against live launch
+and scheduler evidence. Every run carries the full V5 source provenance,
+including all four canonical artifact paths, cohort and attestation-record
+cross-links, producer/job/output/Slurm/translator hashes and a digest of the
+complete V5 provenance object. The double-run analyzer copies that closure,
+the freeze and B-freeze revisions, standalone B receipt/property hashes and
+the campaign execution-receipt path/hash into both outputs and its receipt.
+The post-seal sequence is:
+
+```
+experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py seal
+experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py parse
+experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py fetch
+experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_analyzer.py
+```
 
 All arms use the same 16 completed blind probe layers; fixed candidate pool;
 cap grid; materialization; terminal-incidence measurements; joint-residual

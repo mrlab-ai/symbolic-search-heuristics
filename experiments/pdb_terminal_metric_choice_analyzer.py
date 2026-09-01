@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import os
 import random
 from collections import defaultdict
 from fractions import Fraction
@@ -19,6 +21,14 @@ import pdb_terminal_metric_choice_runner as Runner
 
 class AnalysisError(RuntimeError):
     pass
+
+
+ANALYSIS_SCHEMA = P.FREEZE_SCHEMA + "/analysis"
+RECEIPT_SCHEMA = ANALYSIS_SCHEMA + "/double-execution"
+DEFAULT_OUTPUT = P.ARTIFACT_DIR / "analysis-v1.json"
+DEFAULT_REPEAT_OUTPUT = P.ARTIFACT_DIR / "analysis-v1-repeat.json"
+DEFAULT_RECEIPT = P.ARTIFACT_DIR / "analysis-execution-receipt-v1.json"
+DEFAULT_RECEIPT_PIN = P.ARTIFACT_DIR / "analysis-execution-receipt-v1.sha256"
 
 
 def _fraction(value: Fraction | None):
@@ -205,7 +215,7 @@ def analyze(
     secondary["affects_primary_gate"] = False
     passed = audit["certified"] and primary["pass"] and subset["pass"]
     return {
-        "schema": P.FREEZE_SCHEMA + "/analysis",
+        "schema": ANALYSIS_SCHEMA,
         "analysis_protocol": P.ANALYSIS_PROTOCOL,
         "audit": audit,
         "primary_i_vs_mj": primary,
@@ -215,20 +225,200 @@ def analyze(
     }
 
 
+def _exclusive_bytes(path: Path, raw: bytes, label: str) -> str:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except FileExistsError as err:
+        raise AnalysisError("{} already exists".format(label)) from err
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _load_inputs() -> tuple[list[dict], dict, str, dict, str, str, str, str]:
+    import pdb_terminal_metric_choice_execution as Execution
+
+    freeze_path = P.FREEZE_PATH
+    freeze = P.load_authorized_freeze(freeze_path)
+    standalone = P.load_bound_standalone(freeze)
+    freeze_sha = P.sha256_file(
+        freeze_path, expected_path=P.FREEZE_PATH, label="campaign freeze"
+    )
+    try:
+        execution_sha, _ = Execution.load_execution_receipt(verify_live=False)
+    except Execution.ExecutionError as err:
+        raise AnalysisError("cannot load sealed campaign execution") from err
+    try:
+        payload = Runner.load_fetched_properties(freeze_sha, execution_sha)
+    except Runner.RunnerError as err:
+        raise AnalysisError("cannot load exact campaign properties") from err
+    records = Audit.records_from_payload(payload)
+    properties_sha = P.sha256_file(
+        Runner.EVAL_PROPERTIES, expected_path=Runner.EVAL_PROPERTIES,
+        label="fetched campaign properties",
+    )
+    fetch_sha = P.sha256_file(
+        Runner.POST_FETCH_RECEIPT, expected_path=Runner.POST_FETCH_RECEIPT,
+        label="post-fetch receipt",
+    )
+    execution_path = Execution.EXECUTION_RECEIPT.relative_to(P.REPO).as_posix()
+    return (
+        records, freeze, freeze_sha, standalone, properties_sha, fetch_sha,
+        execution_path, execution_sha,
+    )
+
+
+ANALYSIS_PROVENANCE_FIELDS = (
+    "campaign_freeze_sha256", "campaign_freeze_repository_revision",
+    "base_b_freeze_sha256", "base_b_freeze_repository_revision",
+    "base_b_experiment_source_manifest_sha256",
+    "planner_revision", "planner_manifest_sha256",
+    "standalone_k32_evidence_sha256", "standalone_k32_records_sha256",
+    "standalone_b_parse_receipt_sha256",
+    "standalone_b_fetch_receipt_sha256", "standalone_b_properties_sha256",
+) + Runner.V5_PROVENANCE_PROPERTY_FIELDS
+
+
+def _analysis_provenance(freeze: dict, freeze_sha256: str) -> dict:
+    properties = Runner.build_manifest_properties(freeze, freeze_sha256)
+    return {field: properties[field] for field in ANALYSIS_PROVENANCE_FIELDS}
+
+
+def run_twice(
+    output: Path = DEFAULT_OUTPUT,
+    repeat_output: Path = DEFAULT_REPEAT_OUTPUT,
+    receipt_path: Path = DEFAULT_RECEIPT,
+    receipt_pin: Path = DEFAULT_RECEIPT_PIN,
+    *, bootstrap_replicates: int | None = None,
+) -> dict:
+    paths = tuple(map(Path, (output, repeat_output, receipt_path, receipt_pin)))
+    if len({str(path.absolute()) for path in paths}) != len(paths) or any(
+        path.exists() or path.is_symlink() for path in paths
+    ):
+        raise AnalysisError("analysis output namespace is not fresh")
+    first_inputs = _load_inputs()
+    (
+        records, freeze, freeze_sha, standalone, properties_sha, fetch_sha,
+        execution_path, execution_sha,
+    ) = first_inputs
+    first = analyze(
+        records, freeze, freeze_sha, standalone,
+        bootstrap_replicates=bootstrap_replicates,
+    )
+    first["input"] = {
+        "freeze_sha256": freeze_sha,
+        "frozen_provenance": _analysis_provenance(freeze, freeze_sha),
+        "fetched_properties_sha256": properties_sha,
+        "post_fetch_receipt_sha256": fetch_sha,
+        "execution_receipt_path": execution_path,
+        "execution_receipt_sha256": execution_sha,
+    }
+    first_raw = P.canonical_json_line(first)
+
+    second_inputs = _load_inputs()
+    (
+        records_two, freeze_two, freeze_sha_two, standalone_two,
+        properties_sha_two, fetch_sha_two, execution_path_two,
+        execution_sha_two,
+    ) = second_inputs
+    if (
+        P.canonical_json(freeze_two) != P.canonical_json(freeze)
+        or P.canonical_json(standalone_two) != P.canonical_json(standalone)
+        or (
+            freeze_sha_two, properties_sha_two, fetch_sha_two,
+            execution_path_two, execution_sha_two,
+        ) != (
+            freeze_sha, properties_sha, fetch_sha, execution_path,
+            execution_sha,
+        )
+    ):
+        raise AnalysisError("analysis input changed between executions")
+    second = analyze(
+        records_two, freeze_two, freeze_sha_two, standalone_two,
+        bootstrap_replicates=bootstrap_replicates,
+    )
+    second["input"] = dict(first["input"])
+    second_raw = P.canonical_json_line(second)
+    if first_raw != second_raw:
+        raise AnalysisError("two analyses are not byte-identical")
+
+    first_sha = _exclusive_bytes(output, first_raw, "primary analysis output")
+    second_sha = _exclusive_bytes(
+        repeat_output, second_raw, "repeat analysis output"
+    )
+    try:
+        first_readback = CampaignIO.read_regular_exact(
+            output, expected=output, label="primary analysis output"
+        )
+        second_readback = CampaignIO.read_regular_exact(
+            repeat_output, expected=repeat_output,
+            label="repeat analysis output",
+        )
+    except CampaignIO.CampaignIOError as err:
+        raise AnalysisError("cannot verify published analyses") from err
+    if (
+        first_sha != second_sha
+        or first_readback.sha256 != first_sha
+        or second_readback.sha256 != second_sha
+        or first_readback.raw != second_readback.raw
+    ):
+        raise AnalysisError("published analyses differ")
+    receipt = {
+        "schema": RECEIPT_SCHEMA,
+        "analysis_protocol": P.ANALYSIS_PROTOCOL,
+        "freeze_sha256": freeze_sha,
+        "frozen_provenance": _analysis_provenance(freeze, freeze_sha),
+        "fetched_properties_sha256": properties_sha,
+        "post_fetch_receipt_sha256": fetch_sha,
+        "execution_receipt_path": execution_path,
+        "execution_receipt_sha256": execution_sha,
+        "bootstrap_replicates": (
+            P.BOOTSTRAP_REPLICATES
+            if bootstrap_replicates is None else bootstrap_replicates
+        ),
+        "bootstrap_seed": P.BOOTSTRAP_SEED,
+        "first_output": str(Path(output).absolute()),
+        "second_output": str(Path(repeat_output).absolute()),
+        "first_output_sha256": first_sha,
+        "second_output_sha256": second_sha,
+        "outputs_byte_identical": True,
+        "primary_gate_passed": first["pass"],
+    }
+    receipt_raw = P.canonical_json_line(receipt)
+    receipt_sha = _exclusive_bytes(
+        receipt_path, receipt_raw, "analysis execution receipt"
+    )
+    _exclusive_bytes(
+        receipt_pin, (receipt_sha + "\n").encode("ascii"),
+        "analysis execution receipt pin",
+    )
+    try:
+        receipt_readback = CampaignIO.read_regular_exact(
+            receipt_path, expected=receipt_path,
+            label="analysis execution receipt",
+        )
+        pin_readback = CampaignIO.read_regular_exact(
+            receipt_pin, expected=receipt_pin,
+            label="analysis execution receipt pin",
+        )
+    except CampaignIO.CampaignIOError as err:
+        raise AnalysisError("cannot verify published analysis receipt") from err
+    if (
+        receipt_readback.sha256 != receipt_sha
+        or receipt_readback.raw != receipt_raw
+        or pin_readback.raw != (receipt_sha + "\n").encode("ascii")
+    ):
+        raise AnalysisError("published analysis receipt changed")
+    return {**receipt, "analysis_receipt_sha256": receipt_sha}
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser()
     args = parser.parse_args(argv)
     del args
-    freeze_path = P.FREEZE_PATH
-    freeze = P.load_authorized_freeze(freeze_path)
-    standalone = P.load_bound_standalone(freeze)
-    freeze_sha = P.sha256_file(freeze_path, expected_path=P.FREEZE_PATH)
-    try:
-        payload = Runner.load_fetched_properties(freeze_sha)
-    except Runner.RunnerError as err:
-        raise AnalysisError("cannot load exact campaign properties") from err
-    records = Audit.records_from_payload(payload)
-    result = analyze(records, freeze, freeze_sha, standalone)
+    result = run_twice()
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 
 

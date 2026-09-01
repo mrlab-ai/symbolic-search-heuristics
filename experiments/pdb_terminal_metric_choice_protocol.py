@@ -35,6 +35,41 @@ FREEZE_PATH = ARTIFACT_DIR / "freeze-v1.json"
 CALIBRATION_RECEIPT_PATH = ARTIFACT_DIR / "calibration-receipt-v1.json"
 PLANNER_MANIFEST_PATH = ARTIFACT_DIR / "planner-manifest-v1.json"
 STANDALONE_K32_PATH = ARTIFACT_DIR / "standalone-k32-v1.json"
+BASE_CONFIRMATION_ARTIFACT_DIR = (
+    SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation"
+)
+BASE_A_ARTIFACT_DIR = BASE_CONFIRMATION_ARTIFACT_DIR / "confirmation-a"
+BASE_A_RECEIPT_PATH = BASE_A_ARTIFACT_DIR / "analysis-execution-receipt-v2.json"
+BASE_A_RECEIPT_PIN_PATH = BASE_A_ARTIFACT_DIR / "analysis-execution-receipt-v2.sha256"
+BASE_A_FIRST_OUTPUT_PATH = BASE_A_ARTIFACT_DIR / "analysis-v2.json"
+BASE_A_SECOND_OUTPUT_PATH = BASE_A_ARTIFACT_DIR / "analysis-v2-repeat.json"
+BASE_B_FREEZE_PATH = BASE_CONFIRMATION_ARTIFACT_DIR / "confirmation-b-freeze-v1.json"
+BASE_B_ARTIFACT_DIR = BASE_CONFIRMATION_ARTIFACT_DIR / "confirmation-b"
+BASE_B_PARSE_RECEIPT_PATH = BASE_B_ARTIFACT_DIR / "parse-receipt-v1.json"
+BASE_B_FETCH_RECEIPT_PATH = BASE_B_ARTIFACT_DIR / "fetch-receipt-v1.json"
+BASE_B_PROPERTIES_PATH = (
+    SCRIPT_DIR / "data" / "exp_pdb_terminal_incidence_confirmation_b-eval" /
+    "properties"
+)
+V5_ATTESTATION_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v5.json"
+)
+V5_ARTIFACT_DIR = (
+    SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation-v5"
+)
+V5_INTENT_PATH = V5_ARTIFACT_DIR / "source-audit-launch-intent-v5.json"
+V5_LAUNCH_RECEIPT_PATH = (
+    V5_ARTIFACT_DIR / "source-audit-launch-receipt-v5.json"
+)
+V5_EXECUTION_RECEIPT_PATH = (
+    V5_ARTIFACT_DIR / "source-audit-execution-receipt-v5.json"
+)
+V5_CODE_MANIFEST_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v5_code.sha256"
+)
+V5_SLURM_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_scan_v5.slurm"
+)
 CALIBRATION_DRIVER_PATH = REPO / "fast-downward.py"
 FREEZE_SCHEMA = (
     "symbolic-search-heuristics/pdb-terminal-metric-choice-freeze/v1"
@@ -49,6 +84,7 @@ STANDALONE_SCHEMA = (
 PLANNER_MANIFEST_SCHEMA = FREEZE_SCHEMA + "/planner-manifest"
 PROTOCOL = "pdb-terminal-metric-choice-measurement-v1"
 ANALYSIS_PROTOCOL = "pdb-terminal-metric-choice-analysis-v1"
+REQUIRED_PLANNER_REVISION = "8148f798f13059ee881ad2471bd20cdd61d2ec18"
 REQUIRED_SELECTOR_COMMIT = "ccc93bed78d4aa864c2e27d68d80461c1c20807c"
 DUAL_TRACE_SCHEMA = (
     "symbolic-search-heuristics/terminal-dual-metric-selector-trace/v2"
@@ -80,6 +116,7 @@ MEMORY_LIMIT_MIB = 24576
 ACCOUNT = "naiss2025-5-561-cpu"
 BUILD_OPTIONS = ("release_no_lp",)
 REQUIRED_LAB_VERSION = "8.10"
+REQUIRED_PYTHON_VERSION = "3.12.13"
 PAR2_SECONDS = 3600
 MIN_NORMALIZED_PAR2_IMPROVEMENT_NUMERATOR = 1
 MIN_NORMALIZED_PAR2_IMPROVEMENT_DENOMINATOR = 50
@@ -96,6 +133,97 @@ CALIBRATION_TASK_SPECS = (
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
+V5_CODE_MANIFEST_FILES = tuple(sorted({
+    "experiments/artifacts/pdb-terminal-incidence-confirmation/"
+    "source-audit-launch-receipt-v1.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v2/"
+    "source-audit-launch-receipt-v2.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v3/"
+    "source-audit-launch-intent-v3.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v3/"
+    "source-audit-launch-receipt-v3.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v4/"
+    "source-audit-launch-intent-v4.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v4/"
+    "source-audit-launch-receipt-v4.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v4/"
+    "v3-infrastructure-failure-diagnostic.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v5/"
+    "v4-infrastructure-failure-diagnostic.json",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v3.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v4.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v5.py",
+    "experiments/cancel_pdb_terminal_incidence_confirmation_source_audit_v4_v5.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v4.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v5.py",
+    "experiments/pdb_terminal_incidence_confirmation_inventory.py",
+    "experiments/pdb_terminal_incidence_confirmation_safe_io_v5.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v3_code.sha256",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v3_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v4_cancellation_v5_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v4_code.sha256",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v4_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v5_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_scan_v3.slurm",
+    "experiments/pdb_terminal_incidence_confirmation_source_scan_v4.slurm",
+    "experiments/pdb_terminal_incidence_shadow_cost_attestation.json",
+    "experiments/recover_pdb_terminal_incidence_confirmation_source_audit.py",
+    "experiments/recover_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+    "experiments/recover_pdb_terminal_incidence_confirmation_source_audit_v4.py",
+    "experiments/recover_pdb_terminal_incidence_confirmation_source_audit_v5.py",
+    "experiments/requirements-pdb-terminal-incidence-shadow.txt",
+    "experiments/suite_wbh_operator_costs.json",
+    "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v3.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v4.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v4_cancellation_v5.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v5.py",
+}))
+V5_SCOPED_FILES = tuple(sorted({
+    *V5_CODE_MANIFEST_FILES,
+    V5_CODE_MANIFEST_PATH.relative_to(REPO).as_posix(),
+    V5_SLURM_PATH.relative_to(REPO).as_posix(),
+}))
+
+BASE_B_EXPERIMENT_SOURCE_FILES = (
+    "experiments/analyze_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/analyze_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/analyze_pdb_terminal_incidence_shadow.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/audit_pdb_terminal_incidence_shadow.py",
+    "experiments/exp_arrhenius_common.py",
+    "experiments/exp_pdb_profile_certificate_holdout.py",
+    "experiments/exp_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/exp_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/freeze_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/jj_cached_revision.py",
+    "experiments/pdb_cap_selector_parser.py",
+    "experiments/pdb_confirmation_safe_io.py",
+    "experiments/pdb_confirmation_run_cell.py",
+    "experiments/pdb_fixed_pattern_parser.py",
+    "experiments/pdb_profile_certificate_holdout_protocol.md",
+    "experiments/pdb_profile_certificate_holdout_protocol.py",
+    "experiments/pdb_profile_comparison_parser.py",
+    "experiments/pdb_profile_comparison_protocol.py",
+    "experiments/pdb_profile_semantic_union_protocol.md",
+    "experiments/pdb_profile_semantic_union_protocol.py",
+    "experiments/pdb_terminal_incidence_confirmation_a_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
+    "experiments/pdb_terminal_incidence_confirmation_b_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
+    "experiments/pdb_terminal_incidence_confirmation_safe_io_v5.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
+    "experiments/pdb_terminal_incidence_selector_parser.py",
+    "experiments/pdb_terminal_incidence_shadow_protocol.py",
+    "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/requirements-pdb-terminal-incidence-shadow.txt",
+    "experiments/validate_wbh_log.py",
+    "experiments/wbh_parser.py",
+)
+
 SOURCE_FILES = (
     "experiments/pdb_confirmation_safe_io.py",
     "experiments/pdb_terminal_metric_choice_io.py",
@@ -106,19 +234,24 @@ SOURCE_FILES = (
     "experiments/pdb_profile_comparison_parser.py",
     "experiments/wbh_parser.py",
     "experiments/pdb_terminal_metric_choice_protocol.py",
+    "experiments/pdb_terminal_metric_choice_planner_manifest.py",
     "experiments/pdb_terminal_metric_choice_freeze.py",
     "experiments/pdb_terminal_metric_choice_runner.py",
+    "experiments/pdb_terminal_metric_choice_execution.py",
     "experiments/pdb_terminal_metric_choice_audit.py",
     "experiments/pdb_terminal_metric_choice_recovery.py",
+    "experiments/pdb_terminal_metric_choice_standalone.py",
     "experiments/pdb_terminal_metric_choice_analyzer.py",
     "experiments/pdb_terminal_metric_choice_parser.py",
     "experiments/pdb_terminal_metric_choice_calibration.py",
     "experiments/pdb_terminal_metric_choice_protocol.md",
     "experiments/pdb_terminal_metric_choice_requirements.txt",
     "experiments/test_pdb_terminal_metric_choice_protocol.py",
+    "experiments/test_pdb_terminal_metric_choice_planner_manifest.py",
     "experiments/test_pdb_terminal_metric_choice_parser.py",
     "experiments/test_pdb_terminal_metric_choice_analyzer.py",
     "experiments/test_pdb_terminal_metric_choice_execution.py",
+    "experiments/test_pdb_terminal_metric_choice_standalone.py",
     "experiments/test_pdb_terminal_metric_choice_calibration.py",
     "experiments/test_pdb_terminal_metric_choice_hardening.py",
 )
@@ -357,7 +490,47 @@ def _require_sha(value, label: str) -> None:
         raise ProtocolError("{} SHA-256 is invalid".format(label))
 
 
-def validate_frozen_resources(time_limit: str, memory: str) -> None:
+def calibration_resource_recommendation(observations: list[dict]) -> dict:
+    """Derive the only allowed scheduler recommendation from redacted data."""
+    if not isinstance(observations, list) or not observations:
+        raise ProtocolError("calibration observations are absent")
+    try:
+        selector_wall = max(row["selection_wall_seconds"] for row in observations)
+        selector_memory = max(
+            row["selection_peak_memory_delta_kb"] for row in observations
+        )
+    except (KeyError, TypeError, ValueError) as err:
+        raise ProtocolError("calibration resource observations are invalid") from err
+    if any(
+        type(value) not in (int, float) or not math.isfinite(value) or value < 0
+        for value in (selector_wall, selector_memory)
+    ):
+        raise ProtocolError("calibration resource observations are invalid")
+    return {
+        "minimum_selector_wall_seconds": math.ceil(selector_wall * 2),
+        "minimum_selector_peak_delta_kb": math.ceil(selector_memory * 2),
+    }
+
+
+def scheduler_resource_floor(recommendation: dict) -> tuple[int, int]:
+    if not isinstance(recommendation, dict) or set(recommendation) != {
+        "minimum_selector_wall_seconds", "minimum_selector_peak_delta_kb",
+    } or any(type(value) is not int or value < 0
+             for value in recommendation.values()):
+        raise ProtocolError("calibration resource recommendation is invalid")
+    time_seconds = CONFIG_COUNT * max(
+        TIME_LIMIT_SECONDS, recommendation["minimum_selector_wall_seconds"]
+    )
+    memory_mib = max(
+        MEMORY_LIMIT_MIB,
+        math.ceil(recommendation["minimum_selector_peak_delta_kb"] / 1024),
+    )
+    return time_seconds, memory_mib
+
+
+def validate_frozen_resources(
+    time_limit: str, memory: str, recommendation: dict,
+) -> None:
     if not isinstance(time_limit, str) or not isinstance(memory, str):
         raise ProtocolError("frozen scheduler resource syntax changed")
     time_match = re.fullmatch(r"(\d{2}):(\d{2}):(\d{2})", time_limit)
@@ -368,33 +541,91 @@ def validate_frozen_resources(time_limit: str, memory: str) -> None:
     total_seconds = hours * 3600 + minutes * 60 + seconds
     memory_value = int(memory_match.group(1))
     memory_mib = memory_value * (1024 if memory_match.group(2) == "G" else 1)
+    minimum_time, minimum_memory = scheduler_resource_floor(recommendation)
     if any((
         minutes >= 60, seconds >= 60,
-        total_seconds < CONFIG_COUNT * TIME_LIMIT_SECONDS,
-        memory_mib < MEMORY_LIMIT_MIB,
+        total_seconds < minimum_time,
+        memory_mib < minimum_memory,
     )):
         raise ProtocolError("frozen scheduler resources cannot cover one triad")
+
+
+PLANNER_IDENTITY_FIELDS = (
+    "revision", "cache_name", "build_options", "downward_sha256",
+    "preprocess_sha256", "tree_manifest_sha256",
+)
+
+
+def planner_identity(value: dict) -> dict:
+    if not isinstance(value, dict):
+        raise ProtocolError("planner identity source is invalid")
+    return {field: value.get(field) for field in PLANNER_IDENTITY_FIELDS}
+
+
+def validate_planner_identity(value: dict) -> None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != set(PLANNER_IDENTITY_FIELDS)
+        or value.get("revision") != REQUIRED_PLANNER_REVISION
+        or not isinstance(value.get("cache_name"), str)
+        or not value["cache_name"]
+        or value.get("build_options") != list(BUILD_OPTIONS)
+    ):
+        raise ProtocolError("sealed planner identity changed")
+    for field in (
+        "downward_sha256", "preprocess_sha256", "tree_manifest_sha256",
+    ):
+        _require_sha(value.get(field), "sealed planner {}".format(field))
 
 
 def validate_base_snapshot(snapshot: dict) -> None:
     keys = {
         "schema", "base_b_freeze_path", "base_b_freeze_sha256",
+        "base_b_freeze_repository_revision",
+        "base_b_experiment_source_sha256", "base_b_planner",
         "benchmark_revision", "confirmation_a_authorization",
-        "source_audit_v4", "confirmation_a_cohort", "cohort",
+        "source_audit_v5", "confirmation_a_cohort", "cohort",
     }
     if not isinstance(snapshot, dict) or set(snapshot) != keys or (
         snapshot.get("schema") != BASE_SNAPSHOT_SCHEMA
     ):
         raise ProtocolError("sealed B snapshot schema changed")
     _require_sha(snapshot.get("base_b_freeze_sha256"), "base B freeze")
-    _safe_experiment_path(snapshot.get("base_b_freeze_path"), "base B freeze")
+    expected_base_freeze = BASE_B_FREEZE_PATH.relative_to(REPO).as_posix()
+    if snapshot.get("base_b_freeze_path") != expected_base_freeze:
+        raise ProtocolError("base B freeze path changed")
+    _safe_experiment_path(expected_base_freeze, "base B freeze")
+    if COMMIT_RE.fullmatch(
+        snapshot.get("base_b_freeze_repository_revision", "")
+    ) is None:
+        raise ProtocolError("base B freeze repository revision is invalid")
+    base_source_hashes = snapshot.get("base_b_experiment_source_sha256")
+    if not isinstance(base_source_hashes, dict) or set(
+        base_source_hashes
+    ) != set(BASE_B_EXPERIMENT_SOURCE_FILES):
+        raise ProtocolError("base B experiment source closure changed")
+    for relative, digest in base_source_hashes.items():
+        _safe_repo_path(relative, "base B experiment source")
+        _require_sha(digest, "base B experiment source")
+    validate_planner_identity(snapshot.get("base_b_planner"))
     if not isinstance(snapshot.get("benchmark_revision"), str) or (
         COMMIT_RE.fullmatch(snapshot["benchmark_revision"]) is None
     ):
         raise ProtocolError("benchmark revision is invalid")
     authorization = snapshot.get("confirmation_a_authorization")
+    authorization_keys = {
+        "receipt_path", "receipt_pin_path", "first_output_path",
+        "second_output_path", "receipt_sha256", "first_output_sha256",
+        "second_output_sha256", "input_properties_sha256",
+        "fetch_receipt_sha256", "receipt_schema", "analysis_protocol",
+        "guided_study_authorized", "benchmark_revision",
+        "cost_attestation_sha256", "source_audit_launch_receipt_sha256",
+        "source_audit_execution_receipt_sha256",
+        "confirmation_a_cohort_manifest_sha256", "planner_identity",
+    }
     if (
         not isinstance(authorization, dict)
+        or set(authorization) != authorization_keys
         or authorization.get("guided_study_authorized") is not True
     ):
         raise ProtocolError("Confirmation A does not authorize the campaign")
@@ -403,12 +634,11 @@ def validate_base_snapshot(snapshot: dict) -> None:
         "input_properties_sha256", "fetch_receipt_sha256",
     ):
         _require_sha(authorization.get(field), "A authorization {}".format(field))
-    base = _lazy_base_protocol()
     expected_authorization_paths = {
-        "receipt_path": base.CONFIRMATION_A_RECEIPT_PATH,
-        "receipt_pin_path": base.CONFIRMATION_A_RECEIPT_PIN_PATH,
-        "first_output_path": base.CONFIRMATION_A_FIRST_OUTPUT_PATH,
-        "second_output_path": base.CONFIRMATION_A_SECOND_OUTPUT_PATH,
+        "receipt_path": BASE_A_RECEIPT_PATH,
+        "receipt_pin_path": BASE_A_RECEIPT_PIN_PATH,
+        "first_output_path": BASE_A_FIRST_OUTPUT_PATH,
+        "second_output_path": BASE_A_SECOND_OUTPUT_PATH,
     }
     for field, path in expected_authorization_paths.items():
         expected = path.relative_to(REPO).as_posix()
@@ -419,22 +649,78 @@ def validate_base_snapshot(snapshot: dict) -> None:
         authorization.get("confirmation_a_cohort_manifest_sha256"),
         "A authorization cohort",
     )
-    provenance = snapshot.get("source_audit_v4")
+    for field in (
+        "cost_attestation_sha256", "source_audit_launch_receipt_sha256",
+        "source_audit_execution_receipt_sha256",
+    ):
+        _require_sha(authorization.get(field), "A authorization {}".format(field))
+    if (
+        authorization.get("benchmark_revision") != snapshot["benchmark_revision"]
+        or not isinstance(authorization.get("receipt_schema"), str)
+        or not authorization["receipt_schema"]
+        or not isinstance(authorization.get("analysis_protocol"), str)
+        or not authorization["analysis_protocol"]
+    ):
+        raise ProtocolError("Confirmation A authorization metadata changed")
+    validate_planner_identity(authorization.get("planner_identity"))
+    if authorization["planner_identity"] != snapshot["base_b_planner"]:
+        raise ProtocolError("Confirmation A/B planner identity differs")
+    provenance = snapshot.get("source_audit_v5")
     required_provenance = {
-        "campaign", "attestation_sha256", "launch_receipt_sha256",
-        "execution_receipt_sha256", "code_manifest_sha256",
-        "repository_commit_id", "output_tree_sha256", "translator_source_sha256",
+        "campaign", "attestation_path", "execution_receipt_path",
+        "launch_receipt_path", "launch_intent_path", "attestation_sha256",
+        "execution_receipt_sha256", "launch_receipt_sha256",
+        "launch_intent_sha256", "cohort_manifest_sha256",
+        "confirmation_a_cohort_manifest_sha256", "attestation_records_sha256",
+        "translator_source_sha256", "job_id", "code_manifest_sha256",
+        "repository_commit_id", "original_output_tree_sha256",
+        "slurm_script_sha256", "tracked_file_sha256",
     }
     if (
         not isinstance(provenance, dict)
         or set(provenance) != required_provenance
-        or provenance.get("campaign") != "v4"
+        or provenance.get("campaign") != "v5"
         or not isinstance(provenance.get("repository_commit_id"), str)
         or COMMIT_RE.fullmatch(provenance["repository_commit_id"]) is None
+        or not isinstance(provenance.get("job_id"), str)
+        or not provenance["job_id"].isdigit()
     ):
-        raise ProtocolError("source-audit v4 provenance changed")
-    for field in required_provenance - {"campaign", "repository_commit_id"}:
+        raise ProtocolError("source-audit V5 provenance changed")
+    expected_v5_paths = {
+        "attestation_path": V5_ATTESTATION_PATH,
+        "execution_receipt_path": V5_EXECUTION_RECEIPT_PATH,
+        "launch_receipt_path": V5_LAUNCH_RECEIPT_PATH,
+        "launch_intent_path": V5_INTENT_PATH,
+    }
+    for field, path in expected_v5_paths.items():
+        expected = path.relative_to(REPO).as_posix()
+        if provenance.get(field) != expected:
+            raise ProtocolError("source-audit V5 artifact path changed")
+        _safe_experiment_path(expected, "source-audit V5 artifact")
+    hash_fields = required_provenance - {
+        "campaign", "repository_commit_id", "job_id", "tracked_file_sha256",
+        "attestation_path", "execution_receipt_path", "launch_receipt_path",
+        "launch_intent_path",
+    }
+    for field in hash_fields:
         _require_sha(provenance.get(field), "source provenance {}".format(field))
+    tracked = provenance.get("tracked_file_sha256")
+    if not isinstance(tracked, dict) or set(tracked) != set(V5_SCOPED_FILES):
+        raise ProtocolError("source-audit V5 tracked source manifest changed")
+    for relative, digest in tracked.items():
+        _safe_repo_path(relative, "source-audit V5 tracked source")
+        _require_sha(digest, "source-audit V5 tracked source")
+    if any((
+        provenance["attestation_sha256"]
+        != authorization["cost_attestation_sha256"],
+        provenance["launch_receipt_sha256"]
+        != authorization["source_audit_launch_receipt_sha256"],
+        provenance["execution_receipt_sha256"]
+        != authorization["source_audit_execution_receipt_sha256"],
+        provenance["confirmation_a_cohort_manifest_sha256"]
+        != authorization["confirmation_a_cohort_manifest_sha256"],
+    )):
+        raise ProtocolError("Confirmation A and V5 source provenance differ")
     confirmation = snapshot.get("confirmation_a_cohort")
     if not isinstance(confirmation, dict) or set(confirmation) != {
         "role", "full_tasks_sha256", "identities", "identities_sha256",
@@ -479,6 +765,8 @@ def validate_base_snapshot(snapshot: dict) -> None:
         or cohort.get("task_name_sha256") != task_name_digest(tasks)
     ):
         raise ProtocolError("sealed B cohort digest changed")
+    if provenance["cohort_manifest_sha256"] != cohort["tasks_sha256"]:
+        raise ProtocolError("Confirmation B and V5 cohort provenance differ")
 
 
 def _lazy_base_protocol():
@@ -489,6 +777,8 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
     """Validate A authorization and return the exact sealed B cohort snapshot."""
     validate_calibration_receipt(calibration_receipt)
     base = _lazy_base_protocol()
+    if tuple(base.EXPERIMENT_SOURCE_FILES) != BASE_B_EXPERIMENT_SOURCE_FILES:
+        raise ProtocolError("Confirmation B source-file contract drifted")
     try:
         base.validate_protocol_without_sources()
         freeze, materials = base._load_freeze(base.FREEZE_PATH)
@@ -497,19 +787,17 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
     authorization = dict(freeze["confirmation_a_authorization"])
     if authorization.get("guided_study_authorized") is not True:
         raise ProtocolError("Confirmation A does not authorize the campaign")
-    launch = materials.launch_receipt
-    execution = materials.execution_receipt
     try:
         loaded, attestation = SafeIO.read_canonical_json(
             materials.attestation_path,
-            label="source-audit v4 attestation",
-            expected_path=base.SOURCE_V4_ATTESTATION_PATH,
+            label="source-audit V5 attestation",
+            expected_path=materials.attestation_path,
             canonical_json_line=base.canonical_json_line,
         )
     except SafeIO.SafeReadError as err:
         raise ProtocolError("cannot reopen sealed A/B cohort identities") from err
     if loaded.sha256 != materials.attestation_sha256:
-        raise ProtocolError("source-audit v4 attestation changed")
+        raise ProtocolError("source-audit V5 attestation changed")
     try:
         confirmation_tasks = attestation["cohorts"]["confirmation_a"]["tasks"]
         confirmation_identities = [{
@@ -524,17 +812,17 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
         "schema": BASE_SNAPSHOT_SCHEMA,
         "base_b_freeze_path": base.FREEZE_PATH.relative_to(REPO).as_posix(),
         "base_b_freeze_sha256": base.sha256_file(base.FREEZE_PATH),
+        "base_b_freeze_repository_revision": freeze[
+            "freeze_repository_revision"
+        ],
+        "base_b_experiment_source_sha256": dict(sorted(
+            freeze["experiment_source_sha256"].items()
+        )),
+        "base_b_planner": dict(freeze["planner"]),
         "benchmark_revision": base.BENCHMARK_REVISION,
         "confirmation_a_authorization": authorization,
-        "source_audit_v4": {
-            "campaign": "v4",
-            "attestation_sha256": materials.attestation_sha256,
-            "launch_receipt_sha256": materials.launch_receipt_sha256,
-            "execution_receipt_sha256": materials.execution_receipt_sha256,
-            "code_manifest_sha256": execution["code_manifest_sha256"],
-            "repository_commit_id": launch["repository_commit_id"],
-            "output_tree_sha256": execution["original_output_tree"]["sha256"],
-            "translator_source_sha256": materials.translator_source_sha256,
+        "source_audit_v5": {
+            "campaign": "v5", **dict(freeze["source_audit"]),
         },
         "confirmation_a_cohort": {
             "role": "confirmation-a",
@@ -552,6 +840,10 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
         },
     }
     validate_base_snapshot(snapshot)
+    if planner_identity(calibration_receipt["planner"]) != snapshot[
+        "base_b_planner"
+    ]:
+        raise ProtocolError("calibration and Confirmation A/B planner differ")
     validate_calibration_exclusion(calibration_receipt, snapshot)
     return snapshot
 
@@ -567,8 +859,7 @@ def validate_planner_manifest(manifest: dict) -> None:
         not isinstance(manifest, dict)
         or set(manifest) != keys
         or manifest.get("schema") != PLANNER_MANIFEST_SCHEMA
-        or not isinstance(manifest.get("revision"), str)
-        or COMMIT_RE.fullmatch(manifest["revision"]) is None
+        or manifest.get("revision") != REQUIRED_PLANNER_REVISION
         or manifest.get("selector_base_revision") != REQUIRED_SELECTOR_COMMIT
         or not isinstance(manifest.get("cache_name"), str)
         or not manifest["cache_name"]
@@ -686,13 +977,35 @@ def _standalone_reference_candidate(value: dict, pool: list[dict]) -> dict:
     return value
 
 
+def validate_standalone_source_binding(binding: dict) -> None:
+    expected_paths = {
+        "parse_receipt_path": BASE_B_PARSE_RECEIPT_PATH,
+        "fetch_receipt_path": BASE_B_FETCH_RECEIPT_PATH,
+        "properties_path": BASE_B_PROPERTIES_PATH,
+    }
+    if not isinstance(binding, dict) or set(binding) != {
+        *expected_paths, "parse_receipt_sha256", "fetch_receipt_sha256",
+        "properties_sha256",
+    }:
+        raise ProtocolError("standalone K32 sealed-B input binding changed")
+    for field, path in expected_paths.items():
+        expected = path.relative_to(REPO).as_posix()
+        if binding.get(field) != expected:
+            raise ProtocolError("standalone K32 sealed-B input path changed")
+        _safe_experiment_path(expected, "standalone K32 sealed-B input")
+    for field in (
+        "parse_receipt_sha256", "fetch_receipt_sha256", "properties_sha256",
+    ):
+        _require_sha(binding.get(field), "standalone K32 sealed-B input")
+
+
 def validate_standalone_evidence(
     evidence: dict, snapshot: dict, planner_manifest: dict | None = None,
 ) -> None:
     validate_base_snapshot(snapshot)
     keys = {
         "schema", "base_b_freeze_sha256", "cohort_manifest_sha256",
-        "producer", "records", "records_sha256",
+        "producer", "sealed_b_input", "records", "records_sha256",
     }
     if (
         not isinstance(evidence, dict)
@@ -717,11 +1030,15 @@ def validate_standalone_evidence(
     if producer.get("planner_manifest_sha256") != hashlib.sha256(
         canonical_json_line(producer["planner_manifest"])
     ).hexdigest() or (
+        planner_identity(producer["planner_manifest"])
+        != snapshot["base_b_planner"]
+    ) or (
         planner_manifest is not None
         and canonical_json(planner_manifest)
         != canonical_json(producer["planner_manifest"])
     ):
         raise ProtocolError("standalone K32 planner binding changed")
+    validate_standalone_source_binding(evidence.get("sealed_b_input"))
     records = evidence.get("records")
     if not isinstance(records, list) or len(records) != COHORT_TASKS:
         raise ProtocolError("standalone K32 evidence cardinality changed")
@@ -927,13 +1244,8 @@ def validate_calibration_receipt(receipt: dict) -> None:
     }:
         raise ProtocolError("calibration matrix changed")
     recommendation = receipt.get("resource_recommendation")
-    if not isinstance(recommendation, dict) or set(recommendation) != {
-        "minimum_selector_wall_seconds", "minimum_selector_peak_delta_kb",
-    }:
+    if recommendation != calibration_resource_recommendation(observations):
         raise ProtocolError("calibration resource recommendation changed")
-    for value in recommendation.values():
-        if type(value) is not int or value < 0:
-            raise ProtocolError("calibration resource recommendation is invalid")
 
 
 def validate_calibration_exclusion(receipt: dict, snapshot: dict) -> None:
@@ -974,6 +1286,7 @@ def live_source_hashes() -> dict[str, str]:
 
 def build_freeze(
     *,
+    freeze_repository_revision: str,
     base_snapshot: dict,
     calibration_receipt: dict,
     calibration_receipt_path: str,
@@ -990,11 +1303,19 @@ def build_freeze(
     validate_base_snapshot(base_snapshot)
     validate_calibration_receipt(calibration_receipt)
     validate_planner_manifest(planner_manifest)
+    if (
+        COMMIT_RE.fullmatch(freeze_repository_revision or "") is None
+        or planner_identity(planner_manifest) != base_snapshot["base_b_planner"]
+    ):
+        raise ProtocolError("campaign freeze repository/planner binding changed")
     validate_calibration_exclusion(calibration_receipt, base_snapshot)
     validate_standalone_evidence(
         standalone_evidence, base_snapshot, planner_manifest
     )
-    validate_frozen_resources(scheduler_time_limit, scheduler_memory)
+    validate_frozen_resources(
+        scheduler_time_limit, scheduler_memory,
+        calibration_receipt["resource_recommendation"],
+    )
     _require_sha(calibration_receipt_sha256, "calibration receipt")
     _require_sha(standalone_evidence_sha256, "standalone evidence")
     expected_calibration = CALIBRATION_RECEIPT_PATH.relative_to(REPO).as_posix()
@@ -1024,6 +1345,7 @@ def build_freeze(
     mapping_sha = run_cell_mapping_digest(tasks)
     return {
         "schema": FREEZE_SCHEMA,
+        "freeze_repository_revision": freeze_repository_revision,
         "base_confirmation_b": base_snapshot,
         "calibration": {
             "receipt_path": calibration_receipt_path,
@@ -1041,6 +1363,7 @@ def build_freeze(
             "evidence_path": standalone_evidence_path,
             "evidence_sha256": standalone_evidence_sha256,
             "records_sha256": standalone_evidence["records_sha256"],
+            "sealed_b_input": standalone_evidence["sealed_b_input"],
         },
         "design": {
             "protocol": PROTOCOL,
@@ -1086,12 +1409,19 @@ def _load_bound_file(
 
 def validate_freeze(freeze: dict, *, verify_live_sources: bool = True) -> None:
     if not isinstance(freeze, dict) or set(freeze) != {
-        "schema", "base_confirmation_b", "calibration", "planner",
-        "standalone_k32", "design", "experiment_source_sha256",
+        "schema", "freeze_repository_revision", "base_confirmation_b",
+        "calibration", "planner", "standalone_k32", "design",
+        "experiment_source_sha256",
     } or freeze.get("schema") != FREEZE_SCHEMA:
         raise ProtocolError("dual metric freeze schema changed")
+    if COMMIT_RE.fullmatch(freeze.get("freeze_repository_revision", "")) is None:
+        raise ProtocolError("dual metric freeze repository revision changed")
     validate_base_snapshot(freeze["base_confirmation_b"])
     validate_planner_manifest(freeze["planner"])
+    if planner_identity(freeze["planner"]) != freeze["base_confirmation_b"][
+        "base_b_planner"
+    ]:
+        raise ProtocolError("dual metric planner differs from Confirmation A/B")
     design = freeze.get("design")
     tasks = freeze["base_confirmation_b"]["cohort"]["tasks"]
     expected_design = {
@@ -1122,9 +1452,6 @@ def validate_freeze(freeze: dict, *, verify_live_sources: bool = True) -> None:
     }
     if not isinstance(design, dict):
         raise ProtocolError("dual metric frozen design changed")
-    validate_frozen_resources(
-        design.get("scheduler_time_limit"), design.get("scheduler_memory")
-    )
     comparison_design = dict(design)
     comparison_design.pop("scheduler_time_limit", None)
     comparison_design.pop("scheduler_memory", None)
@@ -1146,8 +1473,10 @@ def validate_freeze(freeze: dict, *, verify_live_sources: bool = True) -> None:
         "observations_sha256", "resource_recommendation",
     } or not isinstance(standalone, dict) or set(standalone) != {
         "evidence_path", "evidence_sha256", "records_sha256",
+        "sealed_b_input",
     }:
         raise ProtocolError("frozen calibration or K32 binding changed")
+    validate_standalone_source_binding(standalone.get("sealed_b_input"))
     for value, label in (
         (calibration["receipt_sha256"], "calibration receipt"),
         (calibration["development_task_manifest_sha256"], "development tasks"),
@@ -1170,6 +1499,10 @@ def validate_freeze(freeze: dict, *, verify_live_sources: bool = True) -> None:
     } or any(type(value) is not int or value < 0
              for value in recommendation.values()):
         raise ProtocolError("frozen calibration resources changed")
+    validate_frozen_resources(
+        design.get("scheduler_time_limit"), design.get("scheduler_memory"),
+        recommendation,
+    )
 
 
 def load_freeze(path: Path = FREEZE_PATH, *, verify_live_sources=True) -> dict:
@@ -1183,7 +1516,7 @@ def load_freeze(path: Path = FREEZE_PATH, *, verify_live_sources=True) -> dict:
 def load_authorized_freeze(
     path: Path = FREEZE_PATH, *, verify_live_sources=True,
 ) -> dict:
-    """Validate calibration before opening any live A/B/v4 evidence."""
+    """Validate calibration before opening any live A/B/V5 evidence."""
     calibration_raw, calibration = load_canonical(
         CALIBRATION_RECEIPT_PATH, "calibration receipt",
         expected_path=CALIBRATION_RECEIPT_PATH,
@@ -1229,7 +1562,10 @@ def load_bound_standalone(freeze: dict) -> dict:
     validate_standalone_evidence(
         value, freeze["base_confirmation_b"], freeze["planner"]
     )
-    if value["records_sha256"] != binding["records_sha256"]:
+    if (
+        value["records_sha256"] != binding["records_sha256"]
+        or value["sealed_b_input"] != binding["sealed_b_input"]
+    ):
         raise ProtocolError("standalone K32 binding changed")
     return value
 
