@@ -37,23 +37,23 @@ CONFIRMATION_A_ARTIFACT_DIR = (
     "confirmation-a"
 )
 CONFIRMATION_A_RECEIPT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v4.json"
 )
 CONFIRMATION_A_RECEIPT_PIN_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-execution-receipt-v4.sha256"
 )
 CONFIRMATION_A_FIRST_OUTPUT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v3.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v4.json"
 )
 CONFIRMATION_A_SECOND_OUTPUT_PATH = (
-    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v3-repeat.json"
+    CONFIRMATION_A_ARTIFACT_DIR / "analysis-v4-repeat.json"
 )
 SOURCE_AUDIT_SCHEMA = (
     "symbolic-search-heuristics/"
     "universal-unseen-confirmation-source-audit/v1"
 )
 PROTOCOL = "pdb-terminal-incidence-confirmation-b-measurement-v1"
-ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-b-analysis-v2"
+ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-b-analysis-v3"
 COHORT_ROLE = "source-disjoint-universal-confirmation-b"
 COHORT_SEED = (
     "symbolic-search-heuristics/universal-unseen-confirmation-guided-split/v1"
@@ -125,7 +125,7 @@ MIN_MECHANISM_FAMILIES = 10
 RUN_ORDER_PROTOCOL = "task-major-family-balanced-triads/v1"
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+COMMIT_RE = re.compile(r"^[0-9a-f]{40,64}$")
 SOURCE_V4_REPO = REPO
 SOURCE_V4_ATTESTATION_PATH = (
     SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v4.json"
@@ -516,6 +516,8 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/analyze_pdb_terminal_incidence_confirmation_a.py",
     "experiments/analyze_pdb_terminal_incidence_confirmation_b.py",
     "experiments/analyze_pdb_terminal_incidence_shadow.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v5.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v6.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_a.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_b.py",
     "experiments/audit_pdb_terminal_incidence_shadow.py",
@@ -525,6 +527,8 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/exp_pdb_terminal_incidence_confirmation_b.py",
     "experiments/freeze_pdb_terminal_incidence_confirmation_b.py",
     "experiments/jj_cached_revision.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v5.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v6.py",
     "experiments/pdb_cap_selector_parser.py",
     "experiments/pdb_confirmation_safe_io.py",
     "experiments/pdb_confirmation_run_cell.py",
@@ -540,7 +544,9 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_safe_io_v5.py",
+    "experiments/pdb_terminal_incidence_confirmation_safe_io_v6.py",
     "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
     "experiments/pdb_terminal_incidence_selector_parser.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
@@ -566,10 +572,12 @@ class CohortTask:
 @dataclass(frozen=True)
 class SourceMaterials:
     attestation_path: Path
+    diagnostic_path: Path
     intent_path: Path
     execution_receipt_path: Path
     launch_receipt_path: Path
     attestation_sha256: str
+    diagnostic_sha256: str
     intent_sha256: str
     execution_receipt_sha256: str
     launch_receipt_sha256: str
@@ -618,7 +626,13 @@ def load_confirmation_a_authorization(
             repeat_output=Path(second_output_path),
             verify_live=True,
         )
-        records, properties_sha, fetch_sha = ConfirmationA._load_sealed_input(
+        (
+            records,
+            properties_sha,
+            fetch_sha,
+            execution_sha,
+            hardware,
+        ) = ConfirmationA._load_sealed_input(
             ConfirmationA.Audit.EVAL_PROPERTIES
         )
         recomputed = ConfirmationA.analyze_records(records)
@@ -626,6 +640,8 @@ def load_confirmation_a_authorization(
             "path": str(ConfirmationA.Audit.EVAL_PROPERTIES.resolve()),
             "sha256": properties_sha,
             "fetch_receipt_sha256": fetch_sha,
+            "execution_receipt_sha256": execution_sha,
+            "hardware": hardware,
         }
         if ConfirmationA.P.canonical_json_line(recomputed) != (
             ConfirmationA.P.canonical_json_line(output)
@@ -650,6 +666,8 @@ def load_confirmation_a_authorization(
         "second_output_sha256": receipt["second_output_sha256"],
         "input_properties_sha256": receipt["input_properties_sha256"],
         "fetch_receipt_sha256": receipt["fetch_receipt_sha256"],
+        "execution_receipt_sha256": receipt["execution_receipt_sha256"],
+        "hardware": receipt["hardware"],
         "receipt_schema": receipt["schema"],
         "analysis_protocol": receipt["analysis_protocol"],
         "guided_study_authorized": output["guided_study_authorized"],
@@ -1154,10 +1172,12 @@ def _load_source_materials_v4_obsolete(
         raise ProtocolError("source launch job ID is invalid")
     return SourceMaterials(
         attestation_path=attestation_path,
+        diagnostic_path=SOURCE_V4_AMENDMENT_PATH,
         intent_path=SOURCE_V4_INTENT_PATH,
         execution_receipt_path=execution_receipt_path,
         launch_receipt_path=launch_receipt_path,
         attestation_sha256=attestation_sha,
+        diagnostic_sha256=SOURCE_V4_AMENDMENT_SHA256,
         intent_sha256=SOURCE_V4_LAUNCH_INTENT_SHA256,
         execution_receipt_sha256=execution_sha,
         launch_receipt_sha256=launch_sha,
@@ -1181,7 +1201,7 @@ def load_source_materials(
     execution_receipt_path: Path,
     launch_receipt_path: Path,
 ) -> SourceMaterials:
-    """Use A's shared V5 validator, then project the sealed guided-B cohort."""
+    """Use A's shared V6 validator, then project the sealed guided-B cohort."""
     try:
         source = SourceValidation.load_source_materials(
             attestation_path, execution_receipt_path, launch_receipt_path
@@ -1201,7 +1221,7 @@ def load_source_materials(
         or not _same_exact(cohort.get("target_tasks"), TARGET_COHORT_TASKS)
         or not _same_exact(cohort.get("max_tasks_per_family"), 12)
     ):
-        raise ProtocolError("V5 source audit has the wrong Confirmation B cohort")
+        raise ProtocolError("V6 source audit has the wrong Confirmation B cohort")
     try:
         for task in tasks:
             _validate_task(task)
@@ -1217,14 +1237,14 @@ def load_source_materials(
         or len(set(problem_hashes)) != len(tasks)
         or max(Counter(task["family"] for task in tasks).values()) > 12
     ):
-        raise ProtocolError("Confirmation B V5 source identities changed")
+        raise ProtocolError("Confirmation B V6 source identities changed")
     cohort_sha = hashlib.sha256(canonical_json_line(tasks)).hexdigest()
     confirmation = attestation.get("cohorts", {}).get("confirmation_a")
     confirmation_tasks = (
         confirmation.get("tasks") if isinstance(confirmation, dict) else None
     )
     if not isinstance(confirmation_tasks, list):
-        raise ProtocolError("V5 source audit lacks the disjoint A cohort")
+        raise ProtocolError("V6 source audit lacks the disjoint A cohort")
     confirmation_sha = hashlib.sha256(
         canonical_json_line(confirmation_tasks)
     ).hexdigest()
@@ -1247,12 +1267,12 @@ def load_source_materials(
         or set(identities) & confirmation_identities
         or set(problem_hashes) & confirmation_hashes
     ):
-        raise ProtocolError("V5 source audit A/B disjointness changed")
+        raise ProtocolError("V6 source audit A/B disjointness changed")
     directory_to_family = {}
     for task in tasks:
         previous = directory_to_family.setdefault(task["directory"], task["family"])
         if previous != task["family"]:
-            raise ProtocolError("V5 source audit maps one directory twice")
+            raise ProtocolError("V6 source audit maps one directory twice")
     shadow = source.shadow_unrepresented_families
     all_prior = source.all_prior_unrepresented_families
     shadow_set = set(shadow)
@@ -1263,7 +1283,7 @@ def load_source_materials(
             or task["is_all_prior_unrepresented"]
             != (task["family"] in all_prior_set)
         ):
-            raise ProtocolError("V5 guided task stratum flag changed")
+            raise ProtocolError("V6 guided task stratum flag changed")
     families = {task["family"] for task in tasks}
     shadow_families = {
         task["family"] for task in tasks if task["is_shadow_unrepresented"]
@@ -1276,13 +1296,15 @@ def load_source_materials(
         or len({task["family"] for task in all_prior_tasks})
         < MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES
     ):
-        raise ProtocolError("Confirmation B V5 source-support floor changed")
+        raise ProtocolError("Confirmation B V6 source-support floor changed")
     return SourceMaterials(
         attestation_path=source.attestation_path,
+        diagnostic_path=source.diagnostic_path,
         intent_path=source.intent_path,
         execution_receipt_path=source.execution_receipt_path,
         launch_receipt_path=source.launch_receipt_path,
         attestation_sha256=source.attestation_sha256,
+        diagnostic_sha256=source.diagnostic_sha256,
         intent_sha256=source.intent_sha256,
         execution_receipt_sha256=source.execution_receipt_sha256,
         launch_receipt_sha256=source.launch_receipt_sha256,
@@ -1337,7 +1359,11 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
     )
     materials = load_source_materials(attestation_path, execution_path, launch_path)
     expected_sources = {
+        "campaign": materials.execution_receipt["campaign"],
         "attestation_path": materials.attestation_path.relative_to(
+            REPO
+        ).as_posix(),
+        "terminal_diagnostic_path": materials.diagnostic_path.relative_to(
             REPO
         ).as_posix(),
         "execution_receipt_path": materials.execution_receipt_path.relative_to(
@@ -1348,6 +1374,7 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         ).as_posix(),
         "launch_intent_path": materials.intent_path.relative_to(REPO).as_posix(),
         "attestation_sha256": materials.attestation_sha256,
+        "terminal_diagnostic_sha256": materials.diagnostic_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
         "launch_intent_sha256": materials.intent_sha256,
@@ -1359,19 +1386,30 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": materials.launch_receipt["job_id"],
         "code_manifest_sha256": materials.execution_receipt[
-            "code_manifest_sha256"
+            "v6_code_manifest_sha256"
         ],
         "repository_commit_id": materials.launch_receipt[
             "repository_commit_id"
         ],
-        "original_output_tree_sha256": materials.execution_receipt[
-            "original_output_tree"
-        ][
-            "sha256"
+        "union_tree_sha256": materials.execution_receipt["union_tree"]["sha256"],
+        "union_sources_sha256": materials.execution_receipt[
+            "union_sources_sha256"
         ],
-        "slurm_script_sha256": materials.launch_receipt[
-            "slurm_script_sha256"
+        "v6_output_tree_sha256": materials.execution_receipt[
+            "v6_output_tree"
+        ]["sha256"],
+        "v5_launch_receipt_sha256": materials.execution_receipt[
+            "v5_launch_receipt_sha256"
         ],
+        "v5_code_manifest_sha256": materials.execution_receipt[
+            "v5_code_manifest_sha256"
+        ],
+        "slurm_template_sha256": materials.launch_receipt[
+            "slurm_template_sha256"
+        ],
+        **SourceValidation.v6_recovery_provenance(
+            materials.execution_receipt
+        ),
         "tracked_file_sha256": materials.tracked_file_sha256,
     }
     if intent_path != materials.intent_path or sources != expected_sources:
@@ -1473,6 +1511,18 @@ def _unfrozen_defaults() -> dict:
         "SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_JOB_ID": "TO_FREEZE",
         "SOURCE_AUDIT_CODE_MANIFEST_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_UNION_SOURCES_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID": "TO_FREEZE",
+        "SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_SEAL_PLAN_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_UNION_ROOT_STAGE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_UNION_STAGE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_CANDIDATE_STAGE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_ATTESTATION_STAGE_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_REPOSITORY_COMMIT_ID": "TO_FREEZE",
         "SOURCE_AUDIT_OUTPUT_TREE_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_SLURM_SHA256": "TO_FREEZE",
@@ -1528,12 +1578,44 @@ def _installed_values() -> dict:
         "SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256": materials.launch_receipt_sha256,
         "SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256": materials.execution_receipt_sha256,
         "SOURCE_AUDIT_JOB_ID": launch["job_id"],
-        "SOURCE_AUDIT_CODE_MANIFEST_SHA256": execution["code_manifest_sha256"],
-        "SOURCE_AUDIT_REPOSITORY_COMMIT_ID": launch["repository_commit_id"],
-        "SOURCE_AUDIT_OUTPUT_TREE_SHA256": execution[
-            "original_output_tree"
+        "SOURCE_AUDIT_CODE_MANIFEST_SHA256": execution[
+            "v6_code_manifest_sha256"
+        ],
+        "SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256": (
+            materials.diagnostic_sha256
+        ),
+        "SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256": execution[
+            "v5_launch_receipt_sha256"
+        ],
+        "SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256": execution[
+            "v5_code_manifest_sha256"
+        ],
+        "SOURCE_AUDIT_UNION_SOURCES_SHA256": execution[
+            "union_sources_sha256"
+        ],
+        "SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256": execution[
+            "v6_output_tree"
         ]["sha256"],
-        "SOURCE_AUDIT_SLURM_SHA256": launch["slurm_script_sha256"],
+        "SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID": execution[
+            "pre_diagnosis_freeze"
+        ]["repository_commit_id"],
+        "SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256": execution[
+            "pre_diagnosis_freeze"
+        ]["files_sha256"],
+        "SOURCE_AUDIT_SEAL_PLAN_SHA256": execution["seal_plan_sha256"],
+        "SOURCE_AUDIT_UNION_ROOT_STAGE_SHA256": execution[
+            "union_root_stage_sha256"
+        ],
+        "SOURCE_AUDIT_UNION_STAGE_SHA256": execution["union_stage_sha256"],
+        "SOURCE_AUDIT_CANDIDATE_STAGE_SHA256": execution[
+            "candidate_stage_sha256"
+        ],
+        "SOURCE_AUDIT_ATTESTATION_STAGE_SHA256": execution[
+            "attestation_stage_sha256"
+        ],
+        "SOURCE_AUDIT_REPOSITORY_COMMIT_ID": launch["repository_commit_id"],
+        "SOURCE_AUDIT_OUTPUT_TREE_SHA256": execution["union_tree"]["sha256"],
+        "SOURCE_AUDIT_SLURM_SHA256": launch["slurm_template_sha256"],
         "SOURCE_AUDIT_INTENT_SHA256": launch["launch_intent_sha256"],
         "CONFIRMATION_A_AUTHORIZATION_RECEIPT_SHA256": freeze[
             "confirmation_a_authorization"

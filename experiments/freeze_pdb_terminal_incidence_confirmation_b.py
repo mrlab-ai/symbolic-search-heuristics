@@ -86,15 +86,15 @@ def _require_clean_parent(revision: str | None) -> str:
     return revision
 
 
-def _tracked_source_v5_hashes(materials, revision: str) -> dict[str, str]:
+def _tracked_source_v6_hashes(materials, revision: str) -> dict[str, str]:
     hashes = dict(materials.tracked_file_sha256)
-    if set(hashes) != set(P.SourceValidation.SourceV5.SCOPED_FILES):
-        raise FreezeError("source-audit V5 bound file set changed")
+    if set(hashes) != set(P.SourceValidation.SourceV6.SCOPED_FILES):
+        raise FreezeError("source-audit V6 bound file set changed")
     for relative, expected in hashes.items():
         path = REPO / relative
         _attest_tracked_file(
             path, expected, revision,
-            "source-audit V5 bound file {}".format(relative),
+            "source-audit V6 bound file {}".format(relative),
         )
     return hashes
 
@@ -105,9 +105,16 @@ def _require_source_ancestor(materials, revision: str) -> None:
         JJ.require_ancestor(
             REPO, materials.launch_receipt["repository_commit_id"], revision
         )
+        JJ.require_ancestor(
+            REPO,
+            materials.execution_receipt["pre_diagnosis_freeze"][
+                "repository_commit_id"
+            ],
+            revision,
+        )
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "planner 8148 or V5 producer is not an ancestor of the freeze"
+            "planner 8148 or V6 producer is not an ancestor of the freeze"
         ) from err
 
 
@@ -136,14 +143,18 @@ def build_freeze(
     P._validate_confirmation_a_source_link(authorization, materials)
     for path, expected in (
         (materials.attestation_path, materials.attestation_sha256),
+        (materials.diagnostic_path, materials.diagnostic_sha256),
         (materials.intent_path, materials.intent_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
+        *P.SourceValidation.v6_recovery_artifacts(
+            materials.execution_receipt
+        ),
     ):
         _attest_tracked_file(
-            path, expected, freeze_repository_revision, "sealed V5 source artifact"
+            path, expected, freeze_repository_revision, "sealed V6 source artifact"
         )
-    tracked_file_sha256 = _tracked_source_v5_hashes(
+    tracked_file_sha256 = _tracked_source_v6_hashes(
         materials, freeze_repository_revision
     )
     authorization_hashes = {
@@ -196,11 +207,14 @@ def build_freeze(
     source_launch = materials.launch_receipt
     source_execution = materials.execution_receipt
     source_provenance = {
+        "campaign": source_execution["campaign"],
         "attestation_path": _relative(materials.attestation_path),
+        "terminal_diagnostic_path": _relative(materials.diagnostic_path),
         "execution_receipt_path": _relative(materials.execution_receipt_path),
         "launch_receipt_path": _relative(materials.launch_receipt_path),
         "launch_intent_path": _relative(materials.intent_path),
         "attestation_sha256": materials.attestation_sha256,
+        "terminal_diagnostic_sha256": materials.diagnostic_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
         "launch_intent_sha256": materials.intent_sha256,
@@ -211,12 +225,19 @@ def build_freeze(
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": source_launch["job_id"],
-        "code_manifest_sha256": source_execution["code_manifest_sha256"],
+        "code_manifest_sha256": source_execution["v6_code_manifest_sha256"],
         "repository_commit_id": source_launch["repository_commit_id"],
-        "original_output_tree_sha256": source_execution[
-            "original_output_tree"
-        ]["sha256"],
-        "slurm_script_sha256": source_launch["slurm_script_sha256"],
+        "union_tree_sha256": source_execution["union_tree"]["sha256"],
+        "union_sources_sha256": source_execution["union_sources_sha256"],
+        "v6_output_tree_sha256": source_execution["v6_output_tree"]["sha256"],
+        "v5_launch_receipt_sha256": source_execution[
+            "v5_launch_receipt_sha256"
+        ],
+        "v5_code_manifest_sha256": source_execution[
+            "v5_code_manifest_sha256"
+        ],
+        "slurm_template_sha256": source_launch["slurm_template_sha256"],
+        **P.SourceValidation.v6_recovery_provenance(source_execution),
         "tracked_file_sha256": tracked_file_sha256,
     }
     authorization_provenance = {
@@ -296,14 +317,18 @@ def _revalidate_before_write(
     P._validate_confirmation_a_source_link(authorization, materials)
     for path, expected in (
         (materials.attestation_path, materials.attestation_sha256),
+        (materials.diagnostic_path, materials.diagnostic_sha256),
         (materials.intent_path, materials.intent_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
+        *P.SourceValidation.v6_recovery_artifacts(
+            materials.execution_receipt
+        ),
     ):
         _attest_tracked_file(
-            path, expected, freeze_repository_revision, "sealed V5 source artifact"
+            path, expected, freeze_repository_revision, "sealed V6 source artifact"
         )
-    tracked = _tracked_source_v5_hashes(materials, freeze_repository_revision)
+    tracked = _tracked_source_v6_hashes(materials, freeze_repository_revision)
     authorization_hashes = {
         authorization["receipt_path"]: authorization["receipt_sha256"],
         authorization["first_output_path"]: authorization[
@@ -324,11 +349,14 @@ def _revalidate_before_write(
     launch = materials.launch_receipt
     execution = materials.execution_receipt
     expected_sources = {
+        "campaign": execution["campaign"],
         "attestation_path": _relative(materials.attestation_path),
+        "terminal_diagnostic_path": _relative(materials.diagnostic_path),
         "execution_receipt_path": _relative(materials.execution_receipt_path),
         "launch_receipt_path": _relative(materials.launch_receipt_path),
         "launch_intent_path": _relative(materials.intent_path),
         "attestation_sha256": materials.attestation_sha256,
+        "terminal_diagnostic_sha256": materials.diagnostic_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
         "launch_intent_sha256": materials.intent_sha256,
@@ -339,12 +367,15 @@ def _revalidate_before_write(
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": launch["job_id"],
-        "code_manifest_sha256": execution["code_manifest_sha256"],
+        "code_manifest_sha256": execution["v6_code_manifest_sha256"],
         "repository_commit_id": launch["repository_commit_id"],
-        "original_output_tree_sha256": execution[
-            "original_output_tree"
-        ]["sha256"],
-        "slurm_script_sha256": launch["slurm_script_sha256"],
+        "union_tree_sha256": execution["union_tree"]["sha256"],
+        "union_sources_sha256": execution["union_sources_sha256"],
+        "v6_output_tree_sha256": execution["v6_output_tree"]["sha256"],
+        "v5_launch_receipt_sha256": execution["v5_launch_receipt_sha256"],
+        "v5_code_manifest_sha256": execution["v5_code_manifest_sha256"],
+        "slurm_template_sha256": launch["slurm_template_sha256"],
+        **P.SourceValidation.v6_recovery_provenance(execution),
         "tracked_file_sha256": tracked,
     }
     expected_authorization = {

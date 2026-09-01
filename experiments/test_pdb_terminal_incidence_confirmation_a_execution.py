@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -20,6 +21,15 @@ import pdb_confirmation_run_cell as RunCell
 import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_a_protocol as P
 import recover_pdb_terminal_incidence_confirmation_a as Recover
+
+
+HARDWARE = {
+    "hardware_attestation_schema": RunCell.HARDWARE_ATTESTATION_SCHEMA,
+    "hardware_attestation_files": P.CELL_COUNT,
+    "hardware_records_sha256": "3" * 64,
+    "processor_model_counts": {"Synthetic CPU": P.CELL_COUNT},
+    "architecture_counts": {"x86_64": P.CELL_COUNT},
+}
 
 
 class PrepareJobTest(unittest.TestCase):
@@ -686,17 +696,27 @@ class JobHeaderTest(unittest.TestCase):
 
 
 def _comparison(
-    i_value=0.70, control_value=0.60, d_value=None,
+    i_value=0.70, control_value=0.60, d_value=None, value_count_value=None,
     families=10, pairs=100, tasks=50,
 ):
     i_value = Fraction(str(i_value))
     control_value = Fraction(str(control_value))
     d_value = control_value if d_value is None else Fraction(str(d_value))
+    value_count_value = (
+        control_value
+        if value_count_value is None
+        else Fraction(str(value_count_value))
+    )
     family_names = ["family-{:02d}".format(i) for i in range(families)]
 
     predictors = {}
     for key in P.PREDICTORS:
-        value = i_value if key == "I" else d_value if key == "D" else control_value
+        value = (
+            i_value if key == "I"
+            else d_value if key == "D"
+            else value_count_value if key == "value_count"
+            else control_value
+        )
         predictors[key] = {
             "equal_family": {
                 "macro": Analyze.Original._fraction_record(value)
@@ -724,6 +744,36 @@ def _comparison(
 
 
 class AnalysisGateTest(unittest.TestCase):
+    def test_analysis_v4_schema_and_paths(self):
+        self.assertEqual(
+            Analyze.SCHEMA,
+            "symbolic-search-heuristics/"
+            "pdb-terminal-incidence-confirmation-a-analysis/v4",
+        )
+        self.assertEqual(Analyze.DEFAULT_OUTPUT.name, "analysis-v4.json")
+        self.assertEqual(
+            Analyze.DEFAULT_REPEAT_OUTPUT.name, "analysis-v4-repeat.json"
+        )
+        self.assertEqual(
+            Analyze.DEFAULT_RECEIPT.name,
+            "analysis-execution-receipt-v4.json",
+        )
+
+    def test_predictor_contract_keeps_derived_meet_out_of_raw_construction(self):
+        self.assertEqual(P.MEET_CERTIFICATE, "meet")
+        self.assertEqual(len(P.CERTIFICATE_BASELINES), 7)
+        self.assertEqual(len(P.PREDICTORS), 10)
+        Analyze._configure_original()
+        self.assertEqual(
+            Analyze.Original.PREDICTORS,
+            ("I", "kD", "mQ", "mJ", "Cartesian", "width", "ADD"),
+        )
+        self.assertNotIn("meet", Analyze.Original.PREDICTORS)
+        with Analyze._ordering_predictors(True):
+            self.assertEqual(Analyze.Original.PREDICTORS, P.PREDICTORS)
+            self.assertIn("meet", Analyze.Original.CONTROLS)
+            self.assertIn("value_count", Analyze.Original.CONTROLS)
+
     def test_stratum_returns_selected_frontier_and_comparison(self):
         task = ("directory", "p01.pddl")
         comparison = _comparison()
@@ -786,6 +836,25 @@ class AnalysisGateTest(unittest.TestCase):
         self.assertFalse(stratum["pass"])
         self.assertFalse(stratum["controls"]["D"]["pass"])
 
+    def test_active_value_count_independently_gates_both_confirmations(self):
+        comparison = _comparison(
+            value_count_value=0.70, families=25, pairs=600, tasks=300
+        )
+        with mock.patch.object(
+            Analyze.Original, "P", P
+        ), mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100), (
+            Analyze._ordering_predictors(True)
+        ):
+            primary = Analyze.Original.primary_gates(comparison, 300, 25)
+        self.assertFalse(primary["pass"])
+        self.assertFalse(primary["controls"]["value_count"]["pass"])
+
+        comparison = _comparison(value_count_value=0.70)
+        with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            stratum = Analyze._stratum_gate(comparison)
+        self.assertFalse(stratum["pass"])
+        self.assertFalse(stratum["controls"]["value_count"]["pass"])
+
     def test_new_family_gate_passes_only_strict_control_advantages(self):
         with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
             gate = Analyze._stratum_gate(_comparison())
@@ -840,22 +909,25 @@ class AnalysisGateTest(unittest.TestCase):
     def test_target_strict_comparison_scores_predictor_ties_half(self):
         predictors = P.PREDICTORS
 
-        def observation(semantic_id, target, primary, d_value, kd, other):
+        def observation(
+            semantic_id, target, primary, d_value, value_count, kd, other
+        ):
             row = {
                 "semantic_id": semantic_id,
                 "U": 10,
                 "E": target,
                 "I": primary,
                 "D": d_value,
+                "value_count": value_count,
                 "kD": kd,
             }
             row.update({key: other for key in P.CERTIFICATE_BASELINES[1:]})
             return row
 
         grouped = {("directory", "p01.pddl"): {
-            "a": observation("a", 1, 1, 1, 1, 1),
-            "b": observation("b", 2, 2, 1, 1, 2),
-            "c": observation("c", 2, 3, 1, 1, 3),
+            "a": observation("a", 1, 1, 1, 1, 1, 1),
+            "b": observation("b", 2, 2, 1, 1, 1, 2),
+            "c": observation("c", 2, 3, 1, 1, 1, 3),
         }}
         with mock.patch.object(Analyze.Original, "P", P), mock.patch.object(
             P, "DIRECTORY_TO_FAMILY", {"directory": "family"}
@@ -873,6 +945,9 @@ class AnalysisGateTest(unittest.TestCase):
         self.assertEqual(tie_aware["predictors"]["kD"]["tied"], 2)
         self.assertEqual(tie_aware["predictors"]["D"]["tied"], 2)
         self.assertEqual(
+            tie_aware["predictors"]["value_count"]["tied"], 2
+        )
+        self.assertEqual(
             tie_aware["predictors"]["kD"]["micro_concordance"],
             {"numerator": 1, "denominator": 2, "value": 0.5},
         )
@@ -885,11 +960,13 @@ class AnalysisGateTest(unittest.TestCase):
     def test_top_choice_regret_averages_predictor_ties(self):
         predictors = P.PREDICTORS
         left = {
-            "semantic_id": "a", "E": 1, "I": 1, "D": 2, "kD": 1,
+            "semantic_id": "a", "E": 1, "I": 1, "D": 2,
+            "value_count": 2, "kD": 1,
             **{key: 2 for key in P.CERTIFICATE_BASELINES[1:]},
         }
         right = {
-            "semantic_id": "b", "E": 3, "I": 2, "D": 1, "kD": 1,
+            "semantic_id": "b", "E": 3, "I": 2, "D": 1,
+            "value_count": 1, "kD": 1,
             **{key: 1 for key in P.CERTIFICATE_BASELINES[1:]},
         }
         grouped = {("directory", "p01.pddl"): {"a": left, "b": right}}
@@ -914,6 +991,38 @@ class AnalysisGateTest(unittest.TestCase):
             result["predictors"]["D"]["equal_family_normalized_regret"],
             {"numerator": 1, "denominator": 1, "value": 1.0},
         )
+        self.assertEqual(
+            result["predictors"]["value_count"][
+                "equal_family_normalized_regret"
+            ],
+            {"numerator": 1, "denominator": 1, "value": 1.0},
+        )
+
+    def test_secondary_diagnostics_cover_only_certificates(self):
+        observation = {
+            "task": ("directory", "p01.pddl"),
+            "E": 1,
+            "D": 0,
+            "value_count": 0,
+            "timing_measurements": [{
+                "masked_seconds": 0.5,
+                "partition_audit_seconds": 1.0,
+            }],
+            **{
+                key: 1
+                for key in Analyze.CERTIFICATE_DIAGNOSTIC_PREDICTORS
+            },
+        }
+        with mock.patch.object(
+            P, "DIRECTORY_TO_FAMILY", {"directory": "family"}
+        ), Analyze._ordering_predictors(False):
+            result = Analyze.Original.secondary_diagnostics([observation])
+        self.assertEqual(
+            set(result["tightness"]),
+            set(Analyze.CERTIFICATE_DIAGNOSTIC_PREDICTORS),
+        )
+        self.assertNotIn("D", result["tightness"])
+        self.assertNotIn("value_count", result["tightness"])
 
     def test_masked_add_size_is_reconstructed_from_certified_layers(self):
         observation = {
@@ -942,6 +1051,83 @@ class AnalysisGateTest(unittest.TestCase):
         ):
             Analyze._add_masked_add_size(malformed)
 
+    def test_active_value_count_is_reconstructed_from_certified_layers(self):
+        observation = {
+            "active_terminal_sum": 5,
+            "layers": [
+                {"active_terminals": 2},
+                {"active_terminals": 3},
+            ],
+        }
+        primary = {"observations": [observation]}
+        Analyze._add_active_value_count(primary)
+        self.assertEqual(observation["value_count"], 5)
+        self.assertEqual(
+            [row["value_count"] for row in observation["layers"]], [2, 3]
+        )
+
+        malformed = {
+            "observations": [{
+                "active_terminal_sum": 6,
+                "layers": [{"active_terminals": 5}],
+            }]
+        }
+        with self.assertRaisesRegex(
+            Analyze.ConfirmationAnalysisError, "differs"
+        ):
+            Analyze._add_active_value_count(malformed)
+
+    def test_meet_certificate_is_derived_layerwise_and_checked_strictly(self):
+        observation = {
+            "E": 10,
+            "I": 12,
+            "kD": 17,
+            "ADD": 18,
+            "layers": [
+                {"E": 4, "I": 5, "kD": 6, "ADD": 9},
+                {"E": 6, "I": 7, "kD": 11, "ADD": 9},
+            ],
+        }
+        primary = {"observations": [observation]}
+        Analyze._add_meet_certificate(primary)
+        self.assertEqual(observation["meet"], 15)
+        self.assertEqual(
+            [layer["meet"] for layer in observation["layers"]], [6, 9]
+        )
+        self.assertLess(
+            observation["meet"], min(observation["kD"], observation["ADD"])
+        )
+        self.assertLessEqual(observation["I"], observation["meet"])
+        self.assertLessEqual(observation["meet"], observation["kD"])
+        self.assertLessEqual(observation["meet"], observation["ADD"])
+
+        preexisting = copy.deepcopy(observation)
+        with self.assertRaisesRegex(
+            Analyze.ConfirmationAnalysisError, "preexisting"
+        ):
+            Analyze._add_meet_certificate({"observations": [preexisting]})
+
+        invalid_type = copy.deepcopy(observation)
+        invalid_type.pop("meet")
+        for layer in invalid_type["layers"]:
+            layer.pop("meet")
+        invalid_type["layers"][0]["E"] = True
+        with self.assertRaisesRegex(
+            Analyze.ConfirmationAnalysisError, "nonnegative layer sum"
+        ):
+            Analyze._add_meet_certificate({"observations": [invalid_type]})
+
+        broken_chain = copy.deepcopy(observation)
+        broken_chain.pop("meet")
+        for layer in broken_chain["layers"]:
+            layer.pop("meet")
+        broken_chain["layers"][0]["I"] = 7
+        broken_chain["I"] = 14
+        with self.assertRaisesRegex(
+            Analyze.ConfirmationAnalysisError, "layer violates"
+        ):
+            Analyze._add_meet_certificate({"observations": [broken_chain]})
+
     def test_double_analysis_publishes_only_identical_bytes(self):
         result = {
             "schema": Analyze.SCHEMA,
@@ -961,7 +1147,10 @@ class AnalysisGateTest(unittest.TestCase):
             )
             with mock.patch.object(
                 Analyze, "_load_sealed_input",
-                side_effect=[([], "1" * 64, "2" * 64), ([], "1" * 64, "2" * 64)],
+                side_effect=[
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                ],
             ), mock.patch.object(
                 Analyze, "analyze_records", side_effect=[dict(result), dict(result)]
             ):
@@ -969,8 +1158,12 @@ class AnalysisGateTest(unittest.TestCase):
             self.assertEqual(outputs[0].read_bytes(), outputs[1].read_bytes())
             self.assertTrue(receipt["outputs_byte_identical"])
             self.assertTrue(receipt["confirmation_a_complete_gate_passed"])
+            self.assertEqual(receipt["execution_receipt_sha256"], "4" * 64)
+            self.assertEqual(receipt["hardware"], HARDWARE)
             stored = json.loads(outputs[2].read_text())
             self.assertTrue(stored["confirmation_a_complete_gate_passed"])
+            analysis = json.loads(outputs[0].read_text())
+            self.assertEqual(analysis["input"]["hardware"], HARDWARE)
             self.assertEqual(
                 outputs[3].read_text().strip(),
                 receipt["analysis_receipt_sha256"],
@@ -1008,7 +1201,10 @@ class AnalysisGateTest(unittest.TestCase):
             ))
             with mock.patch.object(
                 Analyze, "_load_sealed_input",
-                side_effect=[([], "1" * 64, "2" * 64), ([], "1" * 64, "2" * 64)],
+                side_effect=[
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                ],
             ), mock.patch.object(
                 Analyze, "analyze_records", side_effect=[first, second]
             ):

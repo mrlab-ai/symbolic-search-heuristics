@@ -47,12 +47,14 @@ is a new layer and does not modify the Confirmation A/B protocol or launcher.
    those explicit values. The freeze independently reopens and revalidates the
    sealed Confirmation B verifier. It fails unless
    Confirmation A authorized the guided study, B is still the exact sealed
-   300-task cohort, source-audit V5 provenance validates, calibration completed,
+   300-task cohort, source-audit V6 selective-repair provenance validates,
+   calibration completed,
    and every source, planner, option, task, K=32 record, and receipt hash binds.
    The freeze must be made from a clean working copy whose parent is recorded
    as the freeze source revision; all campaign sources and bound inputs must be
    tracked with the same bytes at that revision. The planner revision, sealed-B
-   freeze revision, and V5 producer revision must all be its ancestors. The
+   freeze revision, V6 producer revision, and V6 pre-diagnosis revision must
+   all be its ancestors. The
    freeze rebuilds the complete standalone evidence from the live B properties
    both before validation and immediately before exclusive publication.
    Campaign resources are absent from source defaults and are frozen only by
@@ -67,9 +69,12 @@ every component below a trusted root through retained directory descriptors
 with `O_DIRECTORY | O_NOFOLLOW`, open the leaf relative to its retained parent,
 and revalidate all ancestor, leaf-descriptor, and leaf-entry identities after
 same-descriptor reading and hashing. Calibration is completely
-loaded and validated before the freeze code opens any A/B/V5 evidence. Its
+loaded and validated before the freeze code opens any A/B/V6 evidence. Its
 generated IDs and domain/problem hashes are then checked against both sealed
 A and B cohorts. No outcome may be inspected before the freeze exists.
+The inherited V6 provenance includes the five deterministic seal-recovery
+stage paths and hashes, the pre-diagnosis committed file-set digest, both
+producer revisions, per-task log hashes, and elapsed-time resource rows.
 
 ## Execution
 
@@ -90,7 +95,7 @@ experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pd
 ```
 
 The launch likewise requires a clean working copy. Its commit must descend
-from the exact planner, sealed-B freeze, V5 producer, and recorded freeze source
+from the exact planner, sealed-B freeze, V6 producer, and recorded freeze source
 revisions, and the campaign-freeze bytes tracked in that commit must match the
 live freeze exactly.
 
@@ -128,14 +133,23 @@ ambiguous additional wave.
 Only when `status` reports 300 terminal-complete triads and all 900 structural
 cell markers may `seal` publish the execution receipt and pin. The seal binds
 the exact primary and optional recovery launch receipts, scheduler resource
-rows, effective-attempt matrix, all dynamic run files, and Slurm logs. Parsing
-and fetching are rejected until this receipt revalidates against live launch
-and scheduler evidence. Every run carries the full V5 source provenance,
-including all four canonical artifact paths, cohort and attestation-record
-cross-links, producer/job/output/Slurm/translator hashes and a digest of the
-complete V5 provenance object. The double-run analyzer copies that closure,
+rows, effective-attempt matrix, all dynamic run files, and Slurm logs. Before
+each planner launch, the cell helper writes canonical
+`execution-hardware-v1.json` containing only the unique whitespace-normalized
+`/proc/cpuinfo` model name and `os.uname().machine`; it records no hostname,
+job identifier, timestamp, raw processor data, or memory value. The seal
+requires all 900 records, requires the three cells in each allocation to
+agree, and binds their ordered digest and processor-model/architecture counts.
+Parsing and fetching are rejected until this receipt revalidates against live
+launch and scheduler evidence. Every run carries the full V6 source
+provenance, including the canonical diagnostic, attestation, intent, launch,
+and execution paths; cohort and attestation-record cross-links; the terminal
+V5 launch and code-manifest ancestry; repair-output and ordered-union hashes;
+producer/job/Slurm-template/translator hashes; and a digest of the complete V6
+provenance object. The double-run analyzer copies that closure,
 the freeze and B-freeze revisions, standalone B receipt/property hashes and
-the campaign execution-receipt path/hash into both outputs and its receipt.
+the campaign execution-receipt path/hash and validated hardware summary into
+both outputs and its receipt; hardware is non-gating provenance.
 The post-seal sequence is:
 
 ```
@@ -213,6 +227,13 @@ families. Incidence-guided versus matched K=32 is reported as secondary and
 cannot change the primary decision. Symmetric short-probe triads remain in
 both full-cohort contrasts as three equal PAR2 failures and are excluded from
 the differing-winner subset because they expose no winners.
+
+Every contrast also reports a fixed non-gating outcome decomposition. Its
+paired solve table counts tasks solved by both arms, only incidence, only the
+comparator, or neither. Among tasks solved by both arms, it reports
+`(comparator total time - incidence total time) / 1800`, aggregated task first
+with equal family weight. This decomposition is frozen before any campaign
+outcome and cannot change a decision.
 
 Before launch we fix a non-gating mechanism panel over the certified selector
 trace: treatment uptake and cap-versus-pattern changes; own-budget utilization,

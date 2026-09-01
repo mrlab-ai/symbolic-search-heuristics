@@ -7,16 +7,41 @@ import hashlib
 import json
 import tempfile
 import unittest
+from fractions import Fraction
 from pathlib import Path
 from unittest import mock
 
 import pdb_terminal_metric_choice_analyzer as Analyzer
+import pdb_confirmation_run_cell as RunCell
 import pdb_terminal_metric_choice_protocol as P
 from test_pdb_terminal_metric_choice_execution import FREEZE_SHA, fake_records
 from test_pdb_terminal_metric_choice_protocol import fake_freeze, fake_standalone
 
 
+HARDWARE = {
+    "hardware_attestation_schema": RunCell.HARDWARE_ATTESTATION_SCHEMA,
+    "hardware_attestation_files": P.CELL_COUNT,
+    "hardware_records_sha256": "d" * 64,
+    "processor_model_counts": {"Synthetic CPU": P.CELL_COUNT},
+    "architecture_counts": {"x86_64": P.CELL_COUNT},
+}
+
+
 class AnalyzerTest(unittest.TestCase):
+    def test_analysis_v4_schema_and_paths(self):
+        self.assertEqual(
+            Analyzer.ANALYSIS_SCHEMA,
+            P.FREEZE_SCHEMA + "/analysis/v4",
+        )
+        self.assertEqual(Analyzer.DEFAULT_OUTPUT.name, "analysis-v4.json")
+        self.assertEqual(
+            Analyzer.DEFAULT_REPEAT_OUTPUT.name, "analysis-v4-repeat.json"
+        )
+        self.assertEqual(
+            Analyzer.DEFAULT_RECEIPT.name,
+            "analysis-execution-receipt-v4.json",
+        )
+
     def analyze(self, records):
         freeze = fake_freeze()
         return Analyzer.analyze(
@@ -59,6 +84,73 @@ class AnalyzerTest(unittest.TestCase):
                 Analyzer.AnalysisError
             ):
                 Analyzer._par2(record)
+
+    def test_contrast_reports_paired_coverage_and_common_solved_time(self):
+        tasks = [("domain", "p{}.pddl".format(index)) for index in range(4)]
+
+        def row(coverage, total_time=None):
+            value = {
+                "coverage": coverage,
+                "planner_exit_code": 0 if coverage else 23,
+                "family": "family",
+            }
+            if total_time is not None:
+                value["total_time"] = total_time
+            return value
+
+        matrix = {
+            (mode, task): row(1, 100 if mode == P.INCIDENCE_MODE else 200)
+            for task in tasks for mode in (P.INCIDENCE_MODE, P.MJ_MODE)
+        }
+        matrix[(P.MJ_MODE, tasks[1])] = row(0)
+        matrix[(P.INCIDENCE_MODE, tasks[2])] = row(0)
+        matrix[(P.INCIDENCE_MODE, tasks[3])] = row(0)
+        matrix[(P.MJ_MODE, tasks[3])] = row(0)
+        result = Analyzer.contrast(
+            matrix, tasks, P.INCIDENCE_MODE, P.MJ_MODE,
+            replicates=100, seed=1,
+        )
+        decomposition = result["outcome_decomposition"]
+        self.assertFalse(decomposition["gating"])
+        self.assertEqual(decomposition["solve_pair_counts"], {
+            "both_solved": 1,
+            "intervention_only_solved": 1,
+            "reference_only_solved": 1,
+            "neither_solved": 1,
+        })
+        common = decomposition["common_solved"]
+        self.assertEqual(common["tasks"], 1)
+        self.assertEqual(common["families"], 1)
+        self.assertEqual(
+            common["equal_family_normalized_time_improvement"],
+            Analyzer._fraction(Fraction(1, 18)),
+        )
+
+    def test_common_solved_time_uses_equal_family_weight(self):
+        tasks = [("domain", "p{}.pddl".format(index)) for index in range(3)]
+        matrix = {}
+        for index, task in enumerate(tasks):
+            family = "large" if index < 2 else "small"
+            left_time, right_time = (
+                (100, 200) if index < 2 else (200, 100)
+            )
+            matrix[(P.INCIDENCE_MODE, task)] = {
+                "coverage": 1, "planner_exit_code": 0,
+                "total_time": left_time, "family": family,
+            }
+            matrix[(P.MJ_MODE, task)] = {
+                "coverage": 1, "planner_exit_code": 0,
+                "total_time": right_time, "family": family,
+            }
+        result = Analyzer.contrast(
+            matrix, tasks, P.INCIDENCE_MODE, P.MJ_MODE,
+            replicates=100, seed=1,
+        )
+        common = result["outcome_decomposition"]["common_solved"]
+        self.assertEqual(
+            common["equal_family_normalized_time_improvement"],
+            Analyzer._fraction(Fraction(0)),
+        )
 
     def test_macro_threshold_is_exactly_gating(self):
         records = fake_records()
@@ -363,13 +455,15 @@ class AnalyzerTest(unittest.TestCase):
         self.assertEqual(first["pass"], second["pass"])
         self.assertFalse(second["mechanism_diagnostics"]["gating"])
 
-    def test_downstream_provenance_is_v5_only_and_closed(self):
+    def test_downstream_provenance_is_v6_only_and_closed(self):
         freeze = fake_freeze()
         properties = Analyzer.Runner.build_manifest_properties(
             freeze, FREEZE_SHA
         )
         keys = set(properties)
-        self.assertFalse(any("v4" in key.lower() for key in keys))
+        self.assertFalse(any(
+            "source_audit_v5" in key.lower() for key in keys
+        ))
         self.assertFalse(any(
             "v4" in key.lower() for key in Analyzer.ANALYSIS_PROVENANCE_FIELDS
         ))
@@ -383,25 +477,7 @@ class AnalyzerTest(unittest.TestCase):
             "standalone_b_parse_receipt_sha256",
             "standalone_b_fetch_receipt_sha256",
             "standalone_b_properties_sha256",
-            "source_audit_v5_attestation_sha256",
-            "source_audit_v5_launch_intent_sha256",
-            "source_audit_v5_launch_receipt_sha256",
-            "source_audit_v5_execution_receipt_sha256",
-            "source_audit_v5_code_manifest_sha256",
-            "source_audit_v5_repository_commit_id",
-            "source_audit_v5_output_tree_sha256",
-            "source_audit_v5_slurm_script_sha256",
-            "source_audit_v5_translator_source_sha256",
-            "source_audit_v5_tracked_manifest_sha256",
-            "source_audit_v5_attestation_path",
-            "source_audit_v5_launch_intent_path",
-            "source_audit_v5_launch_receipt_path",
-            "source_audit_v5_execution_receipt_path",
-            "source_audit_v5_cohort_manifest_sha256",
-            "source_audit_v5_confirmation_a_cohort_manifest_sha256",
-            "source_audit_v5_attestation_records_sha256",
-            "source_audit_v5_job_id",
-            "source_audit_v5_provenance_sha256",
+            *Analyzer.Runner.V6_PROVENANCE_PROPERTY_FIELDS,
         }
         self.assertTrue(required.issubset(keys))
         provenance = Analyzer._analysis_provenance(freeze, FREEZE_SHA)
@@ -420,7 +496,7 @@ class AnalyzerTest(unittest.TestCase):
         inputs = (
             fake_records(), freeze, FREEZE_SHA, standalone, "a" * 64,
             "b" * 64, "experiments/artifacts/execution-receipt-v1.json",
-            "c" * 64,
+            "c" * 64, HARDWARE,
         )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -449,9 +525,11 @@ class AnalyzerTest(unittest.TestCase):
             receipt_value = json.loads(receipt.read_text())
             analysis_provenance = analysis_value["input"]["frozen_provenance"]
             receipt_provenance = receipt_value["frozen_provenance"]
+            self.assertEqual(analysis_value["input"]["hardware"], HARDWARE)
+            self.assertEqual(receipt_value["hardware"], HARDWARE)
             self.assertEqual(analysis_provenance, receipt_provenance)
             self.assertTrue(set(
-                Analyzer.Runner.V5_PROVENANCE_PROPERTY_FIELDS
+                Analyzer.Runner.V6_PROVENANCE_PROPERTY_FIELDS
             ).issubset(analysis_provenance))
 
     def test_second_pass_input_drift_publishes_nothing(self):
@@ -460,6 +538,7 @@ class AnalyzerTest(unittest.TestCase):
         base = [
             [], freeze, FREEZE_SHA, standalone, "a" * 64, "b" * 64,
             "experiments/artifacts/execution-receipt-v1.json", "c" * 64,
+            HARDWARE,
         ]
         mutations = {
             "freeze": lambda value: value[1].update({"nonce": 1}),
@@ -468,6 +547,9 @@ class AnalyzerTest(unittest.TestCase):
             "fetch": lambda value: value.__setitem__(5, "0" * 64),
             "execution_path": lambda value: value.__setitem__(6, "elsewhere"),
             "execution_sha": lambda value: value.__setitem__(7, "0" * 64),
+            "hardware": lambda value: value[8]["processor_model_counts"].update(
+                {"Other CPU": 1}
+            ),
         }
         for label, mutate in mutations.items():
             first = copy.deepcopy(base)
@@ -494,6 +576,7 @@ class AnalyzerTest(unittest.TestCase):
         inputs = (
             [], freeze, FREEZE_SHA, standalone, "a" * 64, "b" * 64,
             "experiments/artifacts/execution-receipt-v1.json", "c" * 64,
+            HARDWARE,
         )
         first = {"schema": Analyzer.ANALYSIS_SCHEMA, "pass": True, "nonce": 1}
         second = {**first, "nonce": 2}

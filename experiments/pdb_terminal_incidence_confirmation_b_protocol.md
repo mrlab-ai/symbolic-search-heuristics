@@ -8,25 +8,30 @@ its pin, both byte-identical A outputs, the sealed source-audit artifacts, the
 planner identity, every executed Python source, and the option matrix. The A
 authorization exports `{revision, cache_name, build_options, downward_sha256,
 preprocess_sha256, tree_manifest_sha256}` and B requires exact equality.
-The shared source chain is the outcome-blind, full campaign-V5 rerun. Unknown
-prospective job and artifact hashes are derived dynamically from the canonical
-sealed chain. The same shared A/B consumer validates exact paths and key sets,
-the code-manifest and normalized Slurm bytes, scheduler journal/resource rows,
-task environments, live output tree, diagnostic no-outcome flags, and every
-scoped byte at the producer revision.
+The shared source chain is the outcome-blind campaign-V6 selective repair of
+terminal V5. Unknown prospective diagnostic, job, artifact, and union hashes
+are derived dynamically from the canonical sealed chain. The same shared A/B
+consumer validates exact V6 paths and schemas, both producer closures,
+rendered Slurm bytes, scheduler/resource rows, task environments, live repair
+and union trees, no-outcome flags, and every scoped byte at both producer
+revisions.
 
-Campaign V5 uses exactly 2 TiB per CPU, a 28,800-second source timeout, a
-16:40:00 Slurm limit, the `fat` partition, normal QoS, and all 820 unthrottled
-array elements. It is original-only: all 820 shards and all 1,640 candidates
-are rerun, `recovery` is null, and reuse counts for V1 through V4 are zero.
-Each candidate is consumed from a read-only domain/problem snapshot inside the
-exact per-task temporary root and revalidated around both consumers. The
-execution receipt must preserve the launch identities of the regular,
-nonsymlink output and temporary roots, prove that the temporary root is empty,
-bind all 820 isolated task-environment records, and bind the exact 2,461-file
-original output tree: one inventory, 820 shard files, 820 environment-evidence
-files, and 820 Slurm logs with stderr merged into stdout. Detailed actual
-scheduler resource rows are mandatory.
+V6 reuses only V5 array tasks recorded `COMPLETED` with exit `0:0` and repairs
+their exact nonempty complement as complete original two-candidate shards.
+The repair runs on `fat` with normal QoS, no throttle, and one uniform resource
+profile chosen by the frozen infrastructure-only diagnostic. Reuse from V1
+through V4 is zero, partial output from every noncompleted V5 task is
+quarantined, and the seal requires every repair task to complete with exit
+`0:0`. It validates the reusable and repair environment records and binds an
+ordered 820-shard, 1,640-candidate union with an explicit origin and equal
+source/union hash for every shard.
+
+Before reading any V5 artifact, V6 freezes the exact committed outcome-free
+design. Its deterministic crash-recovery chain exclusively binds the seal
+plan, union root, complete union, candidate, and frozen attestation. The
+shared consumer reopens all five stages, both per-task Slurm-log hashes and
+the elapsed-time resource rows; the B freeze records every stage path/hash
+and the pre-diagnosis repository/file-set ancestry.
 
 The source launch passes the exact in-memory Slurm bytes on standard input to
 hash-pinned `/usr/bin/sbatch` under a controlled `C` environment. Its command
@@ -36,16 +41,17 @@ verifies the canonical launch intent, Slurm script, exact manifest,
 amendment protocol, inventory, every listed live file, and all bytes at the
 source repository commit. The B freeze records and checks the complete
 `tracked_file_sha256` proof at its freeze repository revision. Neither B
-freezing nor launching is possible until the canonical V5 intent, attestation,
-launch receipt, and execution receipt exist
+freezing nor launching is possible until the canonical V6 diagnostic, intent,
+attestation, launch receipt, and execution receipt exist
 and validate completely.
 The exact attestation envelope is required, and the manifest-verified producer
 is replayed over all 1,640 source records; its gate and complete A/B split must
 be byte-identical to the sealed values. The planner revision is exactly
 `8148f798f13059ee881ad2471bd20cdd61d2ec18`. The later clean
-`freeze_repository_revision` independently binds Python/protocol/V5 artifacts
-and must descend from both 8148 and the V5 producer; launch must descend from
-both frozen revisions. After cache validation and immediately before the
+`freeze_repository_revision` independently binds Python/protocol/V6 artifacts
+and must descend from 8148 and both the V6 producer and pre-diagnosis
+revisions; launch must descend from both frozen revisions. After cache
+validation and immediately before the
 exclusive freeze write, B repeats the clean-parent, source-chain,
 live/tracked byte, executed-source, and canonical Confirmation A authorization
 checks.
@@ -131,7 +137,15 @@ input, and use an options-only command with no job-file argument. Their journal
 must reproduce the exact command, unique job, and every intended array index.
 The sealed execution receipt includes detailed actual account, partition, QoS,
 CPU, memory, time-limit, state, exit-code, and job-name rows for every original
-and recovery array element.
+and recovery array element. Before each planner launch, the cell helper also
+writes canonical `execution-hardware-v1.json` containing only the unique
+whitespace-normalized `/proc/cpuinfo` model name and `os.uname().machine`.
+This dynamic record contains no hostname, job identifier, timestamp, raw
+processor data, or memory value, and recovery archives it with the other
+dynamic files. Execution sealing requires all 2,700 records, requires the
+three cells in every array element to agree, and binds their ordered digest
+and model/architecture counts. The analysis copies this validated summary and
+the execution-receipt digest only as non-gating provenance.
 
 ## Selector trace gate
 
@@ -230,6 +244,13 @@ reference and the matched-work control:
 The bootstrap uses exactly 100,000 resamples, seed 20260902, sampling frozen
 families with replacement, and nearest-rank 2.5% and 97.5% endpoints. All
 comparisons use the same complete task set.
+
+Every contrast also reports a fixed non-gating outcome decomposition. Its
+paired solve table counts tasks solved by both arms, only guided selection,
+only the comparator, or neither. Among tasks solved by both arms, it reports
+`(comparator total time - guided total time) / 1800`, aggregated task first
+with equal family weight. This decomposition is frozen before any B outcome
+and cannot change a decision.
 
 The analysis also freezes and reports the same complete-set contrast of guided
 selection against blind search, each of the three direct PDB constructions,

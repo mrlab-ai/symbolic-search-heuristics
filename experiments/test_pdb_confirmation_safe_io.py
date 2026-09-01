@@ -16,6 +16,88 @@ import recover_pdb_terminal_incidence_confirmation_a as RecoverA
 import recover_pdb_terminal_incidence_confirmation_b as RecoverB
 
 
+def hardware_raw(model="Synthetic CPU", architecture="x86_64"):
+    return RunCell._canonical_json_line({
+        "schema": RunCell.HARDWARE_ATTESTATION_SCHEMA,
+        "processor_model": model,
+        "architecture": architecture,
+    })
+
+
+class HardwareAttestationTest(unittest.TestCase):
+    def test_cpuinfo_model_is_unique_normalized_and_minimal(self):
+        value = RunCell.build_hardware_attestation(
+            b"processor: 0\nmodel name :  Synthetic   CPU  \n"
+            b"processor: 1\nmodel name: Synthetic CPU\n",
+            "x86_64",
+        )
+        self.assertEqual(value, {
+            "schema": RunCell.HARDWARE_ATTESTATION_SCHEMA,
+            "processor_model": "Synthetic CPU",
+            "architecture": "x86_64",
+        })
+        rendered = RunCell._canonical_json_line(value)
+        self.assertNotIn(b"hostname", rendered)
+        self.assertNotIn(b"memory", rendered)
+        self.assertNotIn(b"processor:", rendered)
+
+    def test_missing_mixed_or_nonascii_model_is_rejected(self):
+        cases = (
+            b"processor: 0\n",
+            b"model name: CPU A\nmodel name: CPU B\n",
+            b"model name: CPU \xff\n",
+        )
+        for raw in cases:
+            with self.subTest(raw=raw), self.assertRaises(
+                RunCell.RunCellError
+            ):
+                RunCell.build_hardware_attestation(raw, "x86_64")
+
+    def test_hardware_record_must_be_exact_canonical_json(self):
+        self.assertEqual(
+            RunCell.parse_hardware_attestation(hardware_raw())["processor_model"],
+            "Synthetic CPU",
+        )
+        cases = (
+            hardware_raw().rstrip(b"\n"),
+            b'{"architecture":"x86_64", "processor_model":"Synthetic CPU",'
+            b'"schema":"' + RunCell.HARDWARE_ATTESTATION_SCHEMA.encode("ascii")
+            + b'"}\n',
+            b'{"architecture":"x86_64","architecture":"x86_64",'
+            b'"processor_model":"Synthetic CPU","schema":"'
+            + RunCell.HARDWARE_ATTESTATION_SCHEMA.encode("ascii") + b'"}\n',
+        )
+        for raw in cases:
+            with self.subTest(raw=raw), self.assertRaises(
+                RunCell.RunCellError
+            ):
+                RunCell.parse_hardware_attestation(raw)
+
+    def test_ordered_summary_enforces_array_element_consistency(self):
+        records = [
+            (1, hardware_raw()), (2, hardware_raw()), (3, hardware_raw()),
+            (4, hardware_raw("Other CPU", "aarch64")),
+        ]
+        summary = RunCell.summarize_hardware_records(
+            records, [[1, 2, 3], [4]]
+        )
+        self.assertEqual(summary["hardware_attestation_files"], 4)
+        self.assertEqual(summary["processor_model_counts"], {
+            "Other CPU": 1, "Synthetic CPU": 3,
+        })
+        with self.assertRaisesRegex(
+            RunCell.RunCellError, "within an array element"
+        ):
+            RunCell.summarize_hardware_records(
+                [(1, hardware_raw()), (2, hardware_raw("Other CPU"))],
+                [[1, 2]],
+            )
+        with self.assertRaisesRegex(RunCell.RunCellError, "cell order"):
+            RunCell.summarize_hardware_records(
+                list(reversed(records)), [[1, 2, 3], [4]]
+            )
+
+
 class SafeReaderTest(unittest.TestCase):
     def test_regular_read_hashes_the_same_descriptor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -200,6 +282,78 @@ class RunCellTest(unittest.TestCase):
             self.assertEqual(victim.read_bytes(), b"unchanged")
             self.assertFalse(Path("driver.err").exists())
 
+    def test_hardware_probe_failure_prevents_child_and_outputs(self):
+        names = list(RecoverA.LegacyDynamic.names())
+        with tempfile.TemporaryDirectory() as tmp, self._in_directory(tmp), \
+                mock.patch.object(
+                    RunCell, "_live_hardware_attestation",
+                    side_effect=RunCell.RunCellError("mixed processors"),
+                ), mock.patch.object(RunCell.subprocess, "run") as child:
+            with self.assertRaisesRegex(RunCell.RunCellError, "mixed"):
+                RunCell.run_cell(
+                    Path("/usr/bin/python3"), Path("run"),
+                    Path("driver.log"), Path("driver.err"), names,
+                )
+            child.assert_not_called()
+            self.assertEqual(list(Path(".").iterdir()), [])
+
+    def test_hardware_record_exists_before_child_and_has_no_identifiers(self):
+        names = list(RecoverA.LegacyDynamic.names())
+
+        def child(*args, **kwargs):
+            path = Path(RunCell.HARDWARE_ATTESTATION_NAME)
+            self.assertTrue(path.is_file())
+            self.assertEqual(
+                RunCell.parse_hardware_attestation(path.read_bytes())[
+                    "processor_model"
+                ],
+                "Synthetic CPU",
+            )
+            return mock.Mock(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp, self._in_directory(tmp), \
+                mock.patch.object(
+                    RunCell, "_live_hardware_attestation",
+                    return_value=hardware_raw(),
+                ), mock.patch.object(
+                    RunCell.subprocess, "run", side_effect=child
+                ) as invoked:
+            self.assertEqual(RunCell.run_cell(
+                Path("/usr/bin/python3"), Path("run"),
+                Path("driver.log"), Path("driver.err"), names,
+            ), 0)
+            invoked.assert_called_once()
+            value = RunCell.parse_hardware_attestation(
+                Path(RunCell.HARDWARE_ATTESTATION_NAME).read_bytes()
+            )
+            self.assertEqual(set(value), {
+                "schema", "processor_model", "architecture",
+            })
+
+    def test_child_hardware_overwrite_is_detected_on_retained_descriptor(self):
+        names = list(RecoverA.LegacyDynamic.names())
+
+        def child(*args, **kwargs):
+            Path(RunCell.HARDWARE_ATTESTATION_NAME).write_bytes(
+                hardware_raw("Injected CPU")
+            )
+            return mock.Mock(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp, self._in_directory(tmp), \
+                mock.patch.object(
+                    RunCell, "_live_hardware_attestation",
+                    return_value=hardware_raw(),
+                ), mock.patch.object(
+                    RunCell.subprocess, "run", side_effect=child
+                ):
+            with self.assertRaisesRegex(
+                RunCell.RunCellError, "changed during execution"
+            ):
+                RunCell.run_cell(
+                    Path("/usr/bin/python3"), Path("run"),
+                    Path("driver.log"), Path("driver.err"), names,
+                )
+
 
 class RecoveryInventoryTest(unittest.TestCase):
     MODULES = ((RecoverA, AuditA), (RecoverB, AuditB))
@@ -270,6 +424,50 @@ class RecoveryInventoryTest(unittest.TestCase):
                         for call in opened.call_args_list
                     ))
                     read.assert_not_called()
+
+    def test_execution_hardware_is_complete_canonical_and_block_consistent(self):
+        for audit in (AuditA, AuditB):
+            with self.subTest(module=audit.__name__), \
+                    tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "experiment"
+                with mock.patch.multiple(
+                    audit,
+                    EXPERIMENT_PATH=root,
+                    EXPECTED_CELLS=3,
+                    EXPECTED_ARRAY_TASKS=1,
+                    RUNS_PER_ARRAY_TASK=3,
+                ):
+                    for cell in range(1, 4):
+                        path = audit._run_directory(cell)
+                        path.mkdir(parents=True)
+                    with self.assertRaisesRegex(
+                        audit.ExecutionAuditError, "missing or unsafe"
+                    ):
+                        audit._hardware_summary()
+                    for cell in range(1, 4):
+                        (audit._run_directory(cell) /
+                         RunCell.HARDWARE_ATTESTATION_NAME).write_bytes(
+                            hardware_raw()
+                        )
+                    summary = audit._hardware_summary()
+                    self.assertEqual(summary["hardware_attestation_files"], 3)
+                    self.assertEqual(
+                        summary["processor_model_counts"], {"Synthetic CPU": 3}
+                    )
+                    second = (
+                        audit._run_directory(2) /
+                        RunCell.HARDWARE_ATTESTATION_NAME
+                    )
+                    second.write_bytes(hardware_raw("Other CPU"))
+                    with self.assertRaisesRegex(
+                        audit.ExecutionAuditError, "within an array element"
+                    ):
+                        audit._hardware_summary()
+                    second.write_bytes(b"not canonical\n")
+                    with self.assertRaisesRegex(
+                        audit.ExecutionAuditError, "canonical"
+                    ):
+                        audit._hardware_summary()
 
     def test_source_swap_and_archive_target_symlink_fail_before_unlink(self):
         for recover, audit in self.MODULES:

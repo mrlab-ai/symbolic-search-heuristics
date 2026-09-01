@@ -173,28 +173,32 @@ class SourceFixture(AFixtures.SourceFixture):
 
 
 class ConfirmationBProtocolTest(unittest.TestCase):
-    def test_confirmation_a_authorization_uses_v3_analysis_namespace(self):
+    def test_analysis_v3_consumes_confirmation_a_v4_namespace(self):
+        self.assertEqual(
+            P.ANALYSIS_PROTOCOL,
+            "pdb-terminal-incidence-confirmation-b-analysis-v3",
+        )
         self.assertEqual(
             P.CONFIRMATION_A_RECEIPT_PATH.name,
-            "analysis-execution-receipt-v3.json",
+            "analysis-execution-receipt-v4.json",
         )
         self.assertEqual(
             P.CONFIRMATION_A_RECEIPT_PIN_PATH.name,
-            "analysis-execution-receipt-v3.sha256",
+            "analysis-execution-receipt-v4.sha256",
         )
-        self.assertEqual(P.CONFIRMATION_A_FIRST_OUTPUT_PATH.name, "analysis-v3.json")
+        self.assertEqual(P.CONFIRMATION_A_FIRST_OUTPUT_PATH.name, "analysis-v4.json")
         self.assertEqual(
             P.CONFIRMATION_A_SECOND_OUTPUT_PATH.name,
-            "analysis-v3-repeat.json",
+            "analysis-v4-repeat.json",
         )
 
-    def test_v5_manifest_contract_has_exact_order_and_cardinality(self):
-        self.assertEqual(len(P.SourceValidation.SourceV5.CODE_MANIFEST_FILES), 38)
-        self.assertEqual(len(P.SourceValidation.SourceV5.SCOPED_FILES), 40)
+    def test_v6_manifest_contract_has_exact_order_and_cardinality(self):
+        self.assertEqual(len(P.SourceValidation.SourceV6.CODE_MANIFEST_FILES), 50)
+        self.assertEqual(len(P.SourceValidation.SourceV6.SCOPED_FILES), 51)
 
-    def test_b_uses_a_shared_v5_consumer_and_8148_planner(self):
+    def test_b_uses_a_shared_v6_consumer_and_8148_planner(self):
         self.assertIn(
-            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
             P.EXPERIMENT_SOURCE_FILES,
         )
         self.assertEqual(
@@ -289,7 +293,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                         ),
                     ):
                 self.assertEqual(
-                    Freeze._tracked_source_v5_hashes(materials, "4" * 40),
+                    Freeze._tracked_source_v6_hashes(materials, "4" * 40),
                     materials.tracked_file_sha256,
                 )
             first = next(iter(materials.tracked_file_sha256))
@@ -302,7 +306,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                             else materials.tracked_file_sha256[relative]
                         ),
                     ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
-                Freeze._tracked_source_v5_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v6_hashes(materials, "4" * 40)
 
     def test_freeze_requires_source_revision_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -365,7 +369,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                     ), self.assertRaisesRegex(
                         Freeze.FreezeError, "changed during revision check"
                     ):
-                Freeze._tracked_source_v5_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v6_hashes(materials, "4" * 40)
 
     def test_freeze_reloads_source_after_mocked_planner_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -835,6 +839,78 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                     root / "receipt.json", root / "receipt.sha256",
                     root / "analysis.json", root / "repeat.json",
                 )
+
+    def test_confirmation_a_authorization_recomputes_full_input_provenance(self):
+        import analyze_pdb_terminal_incidence_confirmation_a as ConfirmationA
+
+        properties_sha = "1" * 64
+        fetch_sha = "2" * 64
+        execution_sha = "3" * 64
+        hardware = {
+            "hardware_attestation_schema": (
+                "symbolic-search-heuristics/execution-hardware/v1"
+            ),
+            "hardware_attestation_files": ConfirmationA.P.CELL_COUNT,
+            "hardware_records_sha256": "4" * 64,
+            "processor_model_counts": {
+                "Synthetic CPU": ConfirmationA.P.CELL_COUNT,
+            },
+            "architecture_counts": {
+                "x86_64": ConfirmationA.P.CELL_COUNT,
+            },
+        }
+        base_analysis = {"guided_study_authorized": True}
+        output = {
+            **base_analysis,
+            "input": {
+                "path": str(ConfirmationA.Audit.EVAL_PROPERTIES.resolve()),
+                "sha256": properties_sha,
+                "fetch_receipt_sha256": fetch_sha,
+                "execution_receipt_sha256": execution_sha,
+                "hardware": hardware,
+            },
+        }
+        receipt = {
+            "first_output_sha256": "5" * 64,
+            "second_output_sha256": "5" * 64,
+            "input_properties_sha256": properties_sha,
+            "fetch_receipt_sha256": fetch_sha,
+            "execution_receipt_sha256": execution_sha,
+            "hardware": hardware,
+            "schema": ConfirmationA.RECEIPT_SCHEMA,
+            "analysis_protocol": ConfirmationA.P.ANALYSIS_PROTOCOL,
+            "planner_identity": {"revision": "6" * 40},
+        }
+        with (
+            mock.patch.object(
+                ConfirmationA,
+                "load_analysis_receipt",
+                return_value=("7" * 64, receipt, output),
+            ),
+            mock.patch.object(
+                ConfirmationA,
+                "_load_sealed_input",
+                return_value=(
+                    [{"record": 1}], properties_sha, fetch_sha,
+                    execution_sha, hardware,
+                ),
+            ),
+            mock.patch.object(
+                ConfirmationA,
+                "analyze_records",
+                return_value=base_analysis,
+            ),
+        ):
+            authorization = P.load_confirmation_a_authorization(
+                P.CONFIRMATION_A_RECEIPT_PATH,
+                P.CONFIRMATION_A_RECEIPT_PIN_PATH,
+                P.CONFIRMATION_A_FIRST_OUTPUT_PATH,
+                P.CONFIRMATION_A_SECOND_OUTPUT_PATH,
+            )
+        self.assertEqual(
+            authorization["execution_receipt_sha256"], execution_sha
+        )
+        self.assertEqual(authorization["hardware"], hardware)
 
     def test_missing_freeze_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:

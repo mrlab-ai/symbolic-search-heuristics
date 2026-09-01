@@ -25,14 +25,14 @@ class ConfirmationBAnalysisError(RuntimeError):
 
 SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-b-analysis/v2"
+    "pdb-terminal-incidence-confirmation-b-analysis/v3"
 )
 RECEIPT_SCHEMA = SCHEMA + "/double-execution"
 ARTIFACT_DIR = Audit.ARTIFACT_DIR
-DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v2.json"
-DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v2-repeat.json"
-DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v2.json"
-DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v2.sha256"
+DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v3.json"
+DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v3-repeat.json"
+DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
+DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
 
 
 def _fraction_record(value: Fraction | None):
@@ -656,14 +656,34 @@ def _contrast(matrix, tasks, source_tasks, reference: str) -> dict:
     guided_coverage = 0
     reference_coverage = 0
     task_values = {}
+    solve_pairs = Counter()
+    common_solved_by_family = defaultdict(list)
+    common_solved_task_values = {}
     for task in sorted(tasks):
         guided = matrix[(P.GUIDED_LABEL, task)]
         other = matrix[(reference, task)]
-        guided_coverage += guided["record"]["coverage"]
-        reference_coverage += other["record"]["coverage"]
+        guided_solved = guided["record"]["coverage"]
+        reference_solved = other["record"]["coverage"]
+        guided_coverage += guided_solved
+        reference_coverage += reference_solved
         value = (other["par2"] - guided["par2"]) / P.PAR2_SECONDS
         task_values[task] = value
-        by_family[source_tasks[task]["family"]].append(value)
+        family = source_tasks[task]["family"]
+        by_family[family].append(value)
+        if guided_solved and reference_solved:
+            category = "both_solved"
+            common_value = (
+                other["par2"] - guided["par2"]
+            ) / P.TIME_LIMIT_SECONDS
+            common_solved_task_values[task] = common_value
+            common_solved_by_family[family].append(common_value)
+        elif guided_solved:
+            category = "intervention_only_solved"
+        elif reference_solved:
+            category = "reference_only_solved"
+        else:
+            category = "neither_solved"
+        solve_pairs[category] += 1
     family_values = {
         family: _mean(values) for family, values in sorted(by_family.items())
     }
@@ -674,6 +694,10 @@ def _contrast(matrix, tasks, source_tasks, reference: str) -> dict:
         for family in family_values
     }
     bootstrap = _bootstrap(family_values)
+    common_solved_family_values = {
+        family: _mean(values)
+        for family, values in sorted(common_solved_by_family.items())
+    }
     lower = bootstrap["lower_95"]
     lower_fraction = (
         None if lower is None else Fraction(
@@ -719,6 +743,38 @@ def _contrast(matrix, tasks, source_tasks, reference: str) -> dict:
         "leave_one_family_out": {
             family: _fraction_record(value)
             for family, value in leave_one_out.items()
+        },
+        "outcome_decomposition": {
+            "gating": False,
+            "solve_pair_counts": {
+                category: solve_pairs[category]
+                for category in (
+                    "both_solved", "intervention_only_solved",
+                    "reference_only_solved", "neither_solved",
+                )
+            },
+            "common_solved": {
+                "definition": (
+                    "(reference total time - guided total time) / planner "
+                    "time limit; positive favors guided"
+                ),
+                "normalization_seconds": P.TIME_LIMIT_SECONDS,
+                "tasks": len(common_solved_task_values),
+                "families": len(common_solved_family_values),
+                "task_normalized_time_improvements": {
+                    "{}:{}".format(*task): _fraction_record(value)
+                    for task, value in sorted(
+                        common_solved_task_values.items()
+                    )
+                },
+                "family_normalized_time_improvements": {
+                    family: _fraction_record(value)
+                    for family, value in common_solved_family_values.items()
+                },
+                "equal_family_normalized_time_improvement": _fraction_record(
+                    _mean(common_solved_family_values.values())
+                ),
+            },
         },
         "clauses": clauses,
         "pass": all(clauses.values()),
@@ -880,7 +936,7 @@ def analyze_records(records: list[dict]) -> dict:
     }
 
 
-def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
+def _load_sealed_input(path: Path) -> tuple[list[dict], str, str, str, dict]:
     try:
         path = SafeIO.validate_lexical_path(
             Path(path), label="sealed Confirmation B properties",
@@ -893,6 +949,9 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
     P.validate_protocol_without_sources()
     try:
         fetch_sha, fetch = Audit.load_fetch_receipt(verify_live=True)
+        execution_sha, execution = Audit.load_execution_receipt(
+            verify_live=True
+        )
     except Audit.ExecutionAuditError as err:
         raise ConfirmationBAnalysisError(
             "fetched properties provenance is invalid"
@@ -911,7 +970,9 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
     ):
         raise ConfirmationBAnalysisError("analysis input is not the sealed matrix")
     records = _decode_records(raw)
-    return records, properties_sha, fetch_sha
+    return records, properties_sha, fetch_sha, execution_sha, execution[
+        "hardware"
+    ]
 
 
 def _exclusive(path: Path, raw: bytes, label: str) -> str:
@@ -934,18 +995,27 @@ def run_twice(properties, output, repeat_output, receipt_path, receipt_pin):
         path.exists() or path.is_symlink() for path in paths
     ):
         raise ConfirmationBAnalysisError("analysis output namespace is not fresh")
-    records_one, properties_sha, fetch_sha = _load_sealed_input(Path(properties))
+    (
+        records_one, properties_sha, fetch_sha, execution_sha, hardware,
+    ) = _load_sealed_input(Path(properties))
     result_one = analyze_records(records_one)
     result_one["input"] = {
         "path": str(Path(properties).resolve()),
         "sha256": properties_sha,
         "fetch_receipt_sha256": fetch_sha,
+        "execution_receipt_sha256": execution_sha,
+        "hardware": hardware,
     }
     raw_one = P.canonical_json_line(result_one)
-    records_two, properties_sha_two, fetch_sha_two = _load_sealed_input(
-        Path(properties)
-    )
-    if (properties_sha_two, fetch_sha_two) != (properties_sha, fetch_sha):
+    (
+        records_two, properties_sha_two, fetch_sha_two,
+        execution_sha_two, hardware_two,
+    ) = _load_sealed_input(Path(properties))
+    if (
+        (properties_sha_two, fetch_sha_two, execution_sha_two)
+        != (properties_sha, fetch_sha, execution_sha)
+        or hardware_two != hardware
+    ):
         raise ConfirmationBAnalysisError("analysis input changed between runs")
     result_two = analyze_records(records_two)
     result_two["input"] = dict(result_one["input"])
@@ -975,6 +1045,8 @@ def run_twice(properties, output, repeat_output, receipt_path, receipt_pin):
         "schema": RECEIPT_SCHEMA,
         "input_properties_sha256": properties_sha,
         "fetch_receipt_sha256": fetch_sha,
+        "execution_receipt_sha256": execution_sha,
+        "hardware": hardware,
         "analysis_protocol": P.ANALYSIS_PROTOCOL,
         "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
         "bootstrap_seed": P.BOOTSTRAP_SEED,

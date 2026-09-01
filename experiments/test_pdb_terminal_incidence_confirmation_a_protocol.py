@@ -794,33 +794,66 @@ class SourceFixture:
                 self.attestation, self.execution, self.launch
             )
 
-    def v5_chain(self):
+    def v6_chain(self):
         # Retain the legacy fixture's exhaustive synthetic mutations while the
-        # dedicated V5-consumer tests cover the new sealed provenance layer.
+        # dedicated V6-consumer tests cover the new sealed provenance layer.
         P._load_source_materials_v4_obsolete(
             self.attestation, self.execution, self.launch
         )
         tracked = {}
-        for relative in P.SourceV5.SCOPED_FILES:
+        for relative in P.SourceV6.SCOPED_FILES:
             path = self.repo / relative
             if not path.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(("v5-fixture:{}\n".format(relative)).encode())
+                path.write_bytes(("v6-fixture:{}\n".format(relative)).encode())
             tracked[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        execution = json.loads(self.execution.read_text())
+        execution.update({
+            "schema": P.SourceV6.Launch.EXECUTION_SCHEMA,
+            "campaign": "v6-selective-repair",
+            "benchmark_revision": P.BENCHMARK_REVISION,
+            "v6_code_manifest_sha256": execution["code_manifest_sha256"],
+            "union_tree": execution["original_output_tree"],
+            "union_sources_sha256": "a" * 64,
+            "v6_output_tree": execution["original_output_tree"],
+            "v5_launch_receipt_sha256": "b" * 64,
+            "v5_code_manifest_sha256": "c" * 64,
+            "pre_diagnosis_freeze": {
+                "repository_commit_id": "d" * 40,
+                "files_sha256": "d" * 64,
+            },
+            "seal_recovery_protocol": (
+                "deterministic-exclusive-hash-chain-v1"
+            ),
+            "seal_plan_sha256": "e" * 64,
+            "union_root_stage_sha256": "f" * 64,
+            "union_stage_sha256": "1" * 64,
+            "candidate_stage_sha256": "2" * 64,
+            "attestation_stage_sha256": "3" * 64,
+        })
+        launch = json.loads(self.launch.read_text())
+        launch.update({
+            "schema": P.SourceV6.Launch.LAUNCH_SCHEMA,
+            "campaign": "v6-selective-repair",
+            "benchmark_revision": P.BENCHMARK_REVISION,
+        })
+        launch["slurm_template_sha256"] = launch["slurm_script_sha256"]
         return SimpleNamespace(
             attestation_path=self.attestation,
+            diagnostic_path=self.amendment,
             intent_path=self.intent,
             execution_receipt_path=self.execution,
             launch_receipt_path=self.launch,
             attestation_raw=self.attestation.read_bytes(),
+            diagnostic_raw=self.amendment.read_bytes(),
             intent_raw=self.intent.read_bytes(),
             execution_raw=self.execution.read_bytes(),
             launch_raw=self.launch.read_bytes(),
             inventory_raw=self.inventory.read_bytes(),
             attestation=json.loads(self.attestation.read_text()),
             intent=json.loads(self.intent.read_text()),
-            execution=json.loads(self.execution.read_text()),
-            launch=json.loads(self.launch.read_text()),
+            execution=execution,
+            launch=launch,
             inventory=json.loads(self.inventory.read_text()),
             tracked_file_sha256=dict(sorted(tracked.items())),
         )
@@ -857,7 +890,7 @@ class SourceFixture:
                 },
                 SOURCE_AUDIT_TASK_TIMEOUT_SECONDS=14400,
         ), mock.patch.object(
-            P, "_load_v5_source_chain", side_effect=lambda *args: self.v5_chain()
+            P, "_load_v6_source_chain", side_effect=lambda *args: self.v6_chain()
         ), mock.patch.object(
             SourceAudit.Inventory, "SHADOW_FAMILIES",
             self.shadow_represented,
@@ -908,7 +941,11 @@ class SourceFixture:
             "schema": P.FREEZE_SCHEMA,
             "freeze_repository_revision": "e" * 40,
             "source_audit": {
+                "campaign": materials.execution_receipt["campaign"],
                 "attestation_path": self.attestation.relative_to(
+                    P.REPO
+                ).as_posix(),
+                "terminal_diagnostic_path": self.amendment.relative_to(
                     P.REPO
                 ).as_posix(),
                 "execution_receipt_path": self.execution.relative_to(
@@ -919,6 +956,7 @@ class SourceFixture:
                 ).as_posix(),
                 "launch_intent_path": self.intent.relative_to(P.REPO).as_posix(),
                 "attestation_sha256": materials.attestation_sha256,
+                "terminal_diagnostic_sha256": materials.diagnostic_sha256,
                 "execution_receipt_sha256": (
                     materials.execution_receipt_sha256
                 ),
@@ -931,17 +969,32 @@ class SourceFixture:
                 ),
                 "job_id": materials.launch_receipt["job_id"],
                 "code_manifest_sha256": materials.execution_receipt[
-                    "code_manifest_sha256"
+                    "v6_code_manifest_sha256"
                 ],
                 "repository_commit_id": materials.launch_receipt[
                     "repository_commit_id"
                 ],
-                "original_output_tree_sha256": materials.execution_receipt[
-                    "original_output_tree"
+                "union_tree_sha256": materials.execution_receipt[
+                    "union_tree"
                 ]["sha256"],
-                "slurm_script_sha256": materials.launch_receipt[
-                    "slurm_script_sha256"
+                "union_sources_sha256": materials.execution_receipt[
+                    "union_sources_sha256"
                 ],
+                "v6_output_tree_sha256": materials.execution_receipt[
+                    "v6_output_tree"
+                ]["sha256"],
+                "v5_launch_receipt_sha256": materials.execution_receipt[
+                    "v5_launch_receipt_sha256"
+                ],
+                "v5_code_manifest_sha256": materials.execution_receipt[
+                    "v5_code_manifest_sha256"
+                ],
+                "slurm_template_sha256": materials.launch_receipt[
+                    "slurm_template_sha256"
+                ],
+                **P.v6_recovery_provenance(
+                    materials.execution_receipt
+                ),
                 "tracked_file_sha256": materials.tracked_file_sha256,
             },
             "planner": {
@@ -972,27 +1025,37 @@ class SourceFixture:
 
 
 class ConfirmationAProtocolTest(unittest.TestCase):
-    def test_analysis_v3_preregisters_d_as_a_noncertificate_baseline(self):
+    def test_analysis_v4_preregisters_noncertificate_baselines(self):
         self.assertEqual(
             P.ANALYSIS_PROTOCOL,
-            "pdb-terminal-incidence-confirmation-a-analysis-v3",
+            "pdb-terminal-incidence-confirmation-a-analysis-v4",
         )
-        self.assertEqual(P.PREDICTORS[0:2], ("I", "D"))
-        self.assertEqual(P.PREDICTOR_BASELINES[0], "D")
-        self.assertNotIn("D", P.CERTIFICATE_BASELINES)
-        self.assertEqual(len(P.PREDICTORS), 8)
-
-    def test_v5_manifest_contract_has_exact_order_and_cardinality(self):
-        self.assertEqual(len(P.SourceV5.CODE_MANIFEST_FILES), 38)
-        self.assertEqual(len(P.SourceV5.SCOPED_FILES), 40)
         self.assertEqual(
-            tuple(sorted(P.SourceV5.CODE_MANIFEST_FILES)),
-            P.SourceV5.CODE_MANIFEST_FILES,
+            P.PREDICTORS[0:3], ("I", "D", "value_count")
+        )
+        self.assertEqual(P.PREDICTOR_BASELINES[0:2], ("D", "value_count"))
+        self.assertNotIn("D", P.CERTIFICATE_BASELINES)
+        self.assertNotIn("value_count", P.CERTIFICATE_BASELINES)
+        self.assertEqual(P.ACTIVE_VALUE_COUNT_DIAGNOSTIC, "value_count")
+        self.assertEqual(P.MEET_CERTIFICATE, "meet")
+        self.assertEqual(P.CERTIFICATE_BASELINES[-1], "meet")
+        self.assertEqual(len(P.CERTIFICATE_BASELINES), 7)
+        self.assertEqual(len(P.PREDICTORS), 10)
+
+    def test_v6_manifest_contract_has_exact_order_and_cardinality(self):
+        self.assertGreater(len(P.SourceV6.CODE_MANIFEST_FILES), 38)
+        self.assertEqual(
+            len(P.SourceV6.SCOPED_FILES),
+            len(P.SourceV6.CODE_MANIFEST_FILES) + 1,
+        )
+        self.assertEqual(
+            tuple(sorted(P.SourceV6.CODE_MANIFEST_FILES)),
+            P.SourceV6.CODE_MANIFEST_FILES,
         )
 
-    def test_v5_source_consumer_and_8148_planner_are_bound(self):
+    def test_v6_source_consumer_and_8148_planner_are_bound(self):
         self.assertIn(
-            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
             P.EXPERIMENT_SOURCE_FILES,
         )
         self.assertEqual(
@@ -1266,7 +1329,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                         ),
                     ):
                 self.assertEqual(
-                    Freeze._tracked_source_v5_hashes(materials, "4" * 40),
+                    Freeze._tracked_source_v6_hashes(materials, "4" * 40),
                     materials.tracked_file_sha256,
                 )
             first = next(iter(materials.tracked_file_sha256))
@@ -1279,7 +1342,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                             else materials.tracked_file_sha256[relative]
                         ),
                     ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
-                Freeze._tracked_source_v5_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v6_hashes(materials, "4" * 40)
 
     def test_freeze_requires_source_revision_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1362,7 +1425,7 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                     ), self.assertRaisesRegex(
                         Freeze.FreezeError, "changed during revision check"
                     ):
-                Freeze._tracked_source_v5_hashes(materials, "4" * 40)
+                Freeze._tracked_source_v6_hashes(materials, "4" * 40)
 
     def test_freeze_reloads_source_after_mocked_planner_cache(self):
         with tempfile.TemporaryDirectory() as tmp:

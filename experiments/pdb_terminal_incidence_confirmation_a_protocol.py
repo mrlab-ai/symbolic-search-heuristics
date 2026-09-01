@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pdb_profile_comparison_protocol as Source
 import pdb_confirmation_safe_io as SafeIO
-import pdb_terminal_incidence_confirmation_source_consumer_v5 as SourceV5
+import pdb_terminal_incidence_confirmation_source_consumer_v6 as SourceV6
 
 
 class ProtocolError(RuntimeError):
@@ -39,7 +39,7 @@ SOURCE_AUDIT_SCHEMA = (
     "universal-unseen-confirmation-source-audit/v1"
 )
 PROTOCOL = "pdb-terminal-incidence-confirmation-a-measurement-v1"
-ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-a-analysis-v3"
+ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-a-analysis-v4"
 COHORT_ROLE = "source-disjoint-universal-confirmation-a"
 COHORT_SEED = (
     "symbolic-search-heuristics/universal-unseen-confirmation-guided-split/v1"
@@ -51,7 +51,7 @@ REQUIRED_LAB_VERSION = "8.10"
 REQUIRED_PYTHON_VERSION = "3.12.13"
 BUILD_OPTIONS = ("release_no_lp",)
 PLANNER_REVISION_REQUIRED = "8148f798f13059ee881ad2471bd20cdd61d2ec18"
-SOURCE_AUDIT_TASK_TIMEOUT_SECONDS = 28800
+SOURCE_AUDIT_TASK_TIMEOUT_SECONDS = 115200
 
 COHORT_TASKS = 650
 MIN_SOURCE_COHORT_FAMILIES = 28
@@ -95,12 +95,15 @@ BOOTSTRAP_SEED = 20260901
 
 PRIMARY_PREDICTOR = "I"
 MASKED_ADD_SIZE_DIAGNOSTIC = "D"
+ACTIVE_VALUE_COUNT_DIAGNOSTIC = "value_count"
+MEET_CERTIFICATE = "meet"
 CERTIFICATE_BASELINES = (
-    "kD", "mQ", "mJ", "Cartesian", "width", "ADD",
+    "kD", "mQ", "mJ", "Cartesian", "width", "ADD", MEET_CERTIFICATE,
 )
 PREDICTORS = (
     PRIMARY_PREDICTOR,
     MASKED_ADD_SIZE_DIAGNOSTIC,
+    ACTIVE_VALUE_COUNT_DIAGNOSTIC,
     *CERTIFICATE_BASELINES,
 )
 PREDICTOR_BASELINES = PREDICTORS[1:]
@@ -114,7 +117,7 @@ MIN_NEW_STRATUM_ADVANTAGE_NUMERATOR = 1
 MIN_NEW_STRATUM_ADVANTAGE_DENOMINATOR = 50
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+COMMIT_RE = re.compile(r"^[0-9a-f]{40,64}$")
 SOURCE_V4_REPO = REPO
 SOURCE_V4_ATTESTATION_PATH = (
     SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v4.json"
@@ -1213,12 +1216,16 @@ def option_matrix_digest(configs=CONFIGS) -> str:
 EXPERIMENT_SOURCE_FILES = (
     "experiments/analyze_pdb_terminal_incidence_confirmation_a.py",
     "experiments/analyze_pdb_terminal_incidence_shadow.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v5.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v6.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_a.py",
     "experiments/audit_pdb_terminal_incidence_shadow.py",
     "experiments/exp_pdb_profile_certificate_holdout.py",
     "experiments/exp_pdb_terminal_incidence_confirmation_a.py",
     "experiments/freeze_pdb_terminal_incidence_confirmation_a.py",
     "experiments/jj_cached_revision.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v5.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v6.py",
     "experiments/pdb_confirmation_safe_io.py",
     "experiments/pdb_confirmation_run_cell.py",
     "experiments/pdb_fixed_pattern_parser.py",
@@ -1231,7 +1238,9 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_safe_io_v5.py",
+    "experiments/pdb_terminal_incidence_confirmation_safe_io_v6.py",
     "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_a.py",
     "experiments/requirements-pdb-terminal-incidence-shadow.txt",
@@ -1256,10 +1265,12 @@ class CohortTask:
 @dataclass(frozen=True)
 class SourceMaterials:
     attestation_path: Path
+    diagnostic_path: Path
     intent_path: Path
     execution_receipt_path: Path
     launch_receipt_path: Path
     attestation_sha256: str
+    diagnostic_sha256: str
     intent_sha256: str
     execution_receipt_sha256: str
     launch_receipt_sha256: str
@@ -1276,6 +1287,38 @@ class SourceMaterials:
     inventory: dict
     execution_receipt: dict
     launch_receipt: dict
+
+
+V6_RECOVERY_STAGE_ARTIFACTS = (
+    ("seal_plan", SourceV6.SEAL_PLAN, "seal_plan_sha256"),
+    ("union_root_stage", SourceV6.UNION_ROOT_STAGE,
+     "union_root_stage_sha256"),
+    ("union_stage", SourceV6.UNION_STAGE, "union_stage_sha256"),
+    ("candidate_stage", SourceV6.CANDIDATE_STAGE,
+     "candidate_stage_sha256"),
+    ("attestation_stage", SourceV6.ATTESTATION_STAGE,
+     "attestation_stage_sha256"),
+)
+
+
+def v6_recovery_artifacts(execution: dict) -> tuple[tuple[Path, str], ...]:
+    return tuple(
+        (path, execution[hash_field])
+        for _label, path, hash_field in V6_RECOVERY_STAGE_ARTIFACTS
+    )
+
+
+def v6_recovery_provenance(execution: dict) -> dict:
+    pre = execution["pre_diagnosis_freeze"]
+    provenance = {
+        "seal_recovery_protocol": execution["seal_recovery_protocol"],
+        "pre_diagnosis_repository_commit_id": pre["repository_commit_id"],
+        "pre_diagnosis_files_sha256": pre["files_sha256"],
+    }
+    for label, path, hash_field in V6_RECOVERY_STAGE_ARTIFACTS:
+        provenance[label + "_path"] = path.relative_to(REPO).as_posix()
+        provenance[hash_field] = execution[hash_field]
+    return provenance
 
 
 def _validate_task(task: dict) -> None:
@@ -1805,10 +1848,12 @@ def _load_source_materials_v4_obsolete(
         raise ProtocolError("source launch job ID is invalid")
     return SourceMaterials(
         attestation_path=attestation_path,
+        diagnostic_path=SOURCE_V4_AMENDMENT_PATH,
         intent_path=SOURCE_V4_INTENT_PATH,
         execution_receipt_path=execution_receipt_path,
         launch_receipt_path=launch_receipt_path,
         attestation_sha256=attestation_sha,
+        diagnostic_sha256=SOURCE_V4_AMENDMENT_SHA256,
         intent_sha256=SOURCE_V4_LAUNCH_INTENT_SHA256,
         execution_receipt_sha256=execution_sha,
         launch_receipt_sha256=launch_sha,
@@ -1828,20 +1873,40 @@ def _load_source_materials_v4_obsolete(
     )
 
 
-def _load_v5_source_chain(
+def _load_v6_source_chain(
     attestation_path: Path,
     execution_receipt_path: Path,
     launch_receipt_path: Path,
 ):
     try:
-        return SourceV5.load_v5_source(
+        return SourceV6.load_v6_source(
             attestation_path,
             execution_receipt_path,
             launch_receipt_path,
             snapshot_reader=_repository_snapshot_files,
         )
-    except SourceV5.SourceConsumerError as err:
+    except SourceV6.SourceConsumerError as err:
         raise ProtocolError(str(err)) from err
+
+
+def _validate_v6_source_envelope(
+    attestation: dict, inventory: dict, execution: dict, launch: dict,
+) -> None:
+    if (
+        attestation.get("schema") != SOURCE_AUDIT_SCHEMA
+        or attestation.get("benchmark_revision") != BENCHMARK_REVISION
+        or launch.get("schema") != SourceV6.Launch.LAUNCH_SCHEMA
+        or launch.get("campaign") != SourceV6.CAMPAIGN
+        or launch.get("benchmark_revision") != BENCHMARK_REVISION
+        or execution.get("schema") != SourceV6.Launch.EXECUTION_SCHEMA
+        or execution.get("campaign") != SourceV6.CAMPAIGN
+        or execution.get("benchmark_revision") != BENCHMARK_REVISION
+        or not isinstance(inventory, dict)
+        or set(inventory) != {"schema", "benchmark_revision", "records"}
+        or inventory.get("schema") != SOURCE_AUDIT_SCHEMA + "/inventory"
+        or inventory.get("benchmark_revision") != BENCHMARK_REVISION
+    ):
+        raise ProtocolError("V6 source schema/benchmark provenance changed")
 
 
 def load_source_materials(
@@ -1849,27 +1914,19 @@ def load_source_materials(
     execution_receipt_path: Path,
     launch_receipt_path: Path,
 ) -> SourceMaterials:
-    """Load the sole prospective V5 source seal used by both A and B."""
-    chain = _load_v5_source_chain(
+    """Load the sole prospective V6 selective-repair seal used by A and B."""
+    chain = _load_v6_source_chain(
         attestation_path, execution_receipt_path, launch_receipt_path
     )
     attestation = chain.attestation
     execution = chain.execution
     launch = chain.launch
     inventory = chain.inventory
-    if (
-        attestation.get("benchmark_revision") != BENCHMARK_REVISION
-        or launch.get("benchmark_revision") != BENCHMARK_REVISION
-        or not isinstance(inventory, dict)
-        or set(inventory) != {"schema", "benchmark_revision", "records"}
-        or inventory.get("schema") != SOURCE_AUDIT_SCHEMA + "/inventory"
-        or inventory.get("benchmark_revision") != BENCHMARK_REVISION
-    ):
-        raise ProtocolError("V5 benchmark provenance changed")
+    _validate_v6_source_envelope(attestation, inventory, execution, launch)
     _validate_attestation_envelope(attestation, inventory)
     manifest_hashes = {
         relative: chain.tracked_file_sha256[relative]
-        for relative in SourceV5.CODE_MANIFEST_FILES
+        for relative in SourceV6.CODE_MANIFEST_FILES
     }
     _validate_attestation_split(attestation, manifest_hashes)
 
@@ -1880,7 +1937,7 @@ def load_source_materials(
         or len(tasks) != COHORT_TASKS
         or cohort.get("role") != "confirmation-a"
     ):
-        raise ProtocolError("V5 source audit has the wrong Confirmation A cohort")
+        raise ProtocolError("V6 source audit has the wrong Confirmation A cohort")
     for task in tasks:
         _validate_task(task)
         _validate_task_inventory_binding(task, inventory)
@@ -1892,13 +1949,13 @@ def load_source_materials(
         or len(set(identities)) != COHORT_TASKS
         or len(set(problem_hashes)) != COHORT_TASKS
     ):
-        raise ProtocolError("Confirmation A contains duplicate V5 sources")
+        raise ProtocolError("Confirmation A contains duplicate V6 sources")
     cohort_sha = hashlib.sha256(canonical_json_line(tasks)).hexdigest()
     records_sha = attestation.get("records_sha256")
     guided = attestation.get("cohorts", {}).get("guided_b")
     guided_tasks = guided.get("tasks") if isinstance(guided, dict) else None
     if not isinstance(guided_tasks, list):
-        raise ProtocolError("V5 source audit lacks the guided B cohort")
+        raise ProtocolError("V6 source audit lacks the guided B cohort")
     for task in guided_tasks:
         _validate_task_inventory_binding(task, inventory)
     guided_indexes = [task["candidate_index"] for task in guided_tasks]
@@ -1914,12 +1971,12 @@ def load_source_materials(
         }
         or execution.get("attestation_records_sha256") != records_sha
     ):
-        raise ProtocolError("V5 cohort hash chain changed")
+        raise ProtocolError("V6 cohort hash chain changed")
     directory_to_family = {}
     for task in tasks:
         previous = directory_to_family.setdefault(task["directory"], task["family"])
         if previous != task["family"]:
-            raise ProtocolError("V5 source audit maps one directory twice")
+            raise ProtocolError("V6 source audit maps one directory twice")
     shadow, all_prior = _validate_split_strata(attestation)
     shadow_set = set(shadow)
     all_prior_set = set(all_prior)
@@ -1929,7 +1986,7 @@ def load_source_materials(
             or task["is_all_prior_unrepresented"]
             != (task["family"] in all_prior_set)
         ):
-            raise ProtocolError("V5 task stratum flag changed")
+            raise ProtocolError("V6 task stratum flag changed")
     families = {task["family"] for task in tasks}
     shadow_families = {
         task["family"] for task in tasks if task["is_shadow_unrepresented"]
@@ -1942,20 +1999,22 @@ def load_source_materials(
         or len({task["family"] for task in all_prior_tasks})
         < MIN_SOURCE_ALL_PRIOR_UNREPRESENTED_FAMILIES
     ):
-        raise ProtocolError("Confirmation A V5 source-support floor changed")
+        raise ProtocolError("Confirmation A V6 source-support floor changed")
     _validate_prelaunch_gate(attestation, shadow, all_prior)
     translator_sha = attestation.get("translator_source_sha256")
     if (
         SHA256_RE.fullmatch(records_sha or "") is None
         or SHA256_RE.fullmatch(translator_sha or "") is None
     ):
-        raise ProtocolError("V5 attestation digest changed")
+        raise ProtocolError("V6 attestation digest changed")
     return SourceMaterials(
         attestation_path=chain.attestation_path,
+        diagnostic_path=chain.diagnostic_path,
         intent_path=chain.intent_path,
         execution_receipt_path=chain.execution_receipt_path,
         launch_receipt_path=chain.launch_receipt_path,
         attestation_sha256=hashlib.sha256(chain.attestation_raw).hexdigest(),
+        diagnostic_sha256=hashlib.sha256(chain.diagnostic_raw).hexdigest(),
         intent_sha256=hashlib.sha256(chain.intent_raw).hexdigest(),
         execution_receipt_sha256=hashlib.sha256(chain.execution_raw).hexdigest(),
         launch_receipt_sha256=hashlib.sha256(chain.launch_raw).hexdigest(),
@@ -2009,7 +2068,11 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
     )
     materials = load_source_materials(attestation_path, execution_path, launch_path)
     expected_sources = {
+        "campaign": materials.execution_receipt["campaign"],
         "attestation_path": materials.attestation_path.relative_to(
+            REPO
+        ).as_posix(),
+        "terminal_diagnostic_path": materials.diagnostic_path.relative_to(
             REPO
         ).as_posix(),
         "execution_receipt_path": materials.execution_receipt_path.relative_to(
@@ -2020,6 +2083,7 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         ).as_posix(),
         "launch_intent_path": materials.intent_path.relative_to(REPO).as_posix(),
         "attestation_sha256": materials.attestation_sha256,
+        "terminal_diagnostic_sha256": materials.diagnostic_sha256,
         "execution_receipt_sha256": materials.execution_receipt_sha256,
         "launch_receipt_sha256": materials.launch_receipt_sha256,
         "launch_intent_sha256": materials.intent_sha256,
@@ -2028,19 +2092,28 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": materials.launch_receipt["job_id"],
         "code_manifest_sha256": materials.execution_receipt[
-            "code_manifest_sha256"
+            "v6_code_manifest_sha256"
         ],
         "repository_commit_id": materials.launch_receipt[
             "repository_commit_id"
         ],
-        "original_output_tree_sha256": materials.execution_receipt[
-            "original_output_tree"
-        ][
-            "sha256"
+        "union_tree_sha256": materials.execution_receipt["union_tree"]["sha256"],
+        "union_sources_sha256": materials.execution_receipt[
+            "union_sources_sha256"
         ],
-        "slurm_script_sha256": materials.launch_receipt[
-            "slurm_script_sha256"
+        "v6_output_tree_sha256": materials.execution_receipt[
+            "v6_output_tree"
+        ]["sha256"],
+        "v5_launch_receipt_sha256": materials.execution_receipt[
+            "v5_launch_receipt_sha256"
         ],
+        "v5_code_manifest_sha256": materials.execution_receipt[
+            "v5_code_manifest_sha256"
+        ],
+        "slurm_template_sha256": materials.launch_receipt[
+            "slurm_template_sha256"
+        ],
+        **v6_recovery_provenance(materials.execution_receipt),
         "tracked_file_sha256": materials.tracked_file_sha256,
     }
     if intent_path != materials.intent_path or sources != expected_sources:
@@ -2104,6 +2177,18 @@ def _unfrozen_defaults() -> dict:
         "SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_JOB_ID": "TO_FREEZE",
         "SOURCE_AUDIT_CODE_MANIFEST_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_UNION_SOURCES_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID": "TO_FREEZE",
+        "SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_SEAL_PLAN_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_UNION_ROOT_STAGE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_UNION_STAGE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_CANDIDATE_STAGE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_ATTESTATION_STAGE_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_REPOSITORY_COMMIT_ID": "TO_FREEZE",
         "SOURCE_AUDIT_OUTPUT_TREE_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_SLURM_SHA256": "TO_FREEZE",
@@ -2154,12 +2239,44 @@ def _installed_values() -> dict:
         "SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256": materials.launch_receipt_sha256,
         "SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256": materials.execution_receipt_sha256,
         "SOURCE_AUDIT_JOB_ID": launch["job_id"],
-        "SOURCE_AUDIT_CODE_MANIFEST_SHA256": execution["code_manifest_sha256"],
-        "SOURCE_AUDIT_REPOSITORY_COMMIT_ID": launch["repository_commit_id"],
-        "SOURCE_AUDIT_OUTPUT_TREE_SHA256": execution[
-            "original_output_tree"
+        "SOURCE_AUDIT_CODE_MANIFEST_SHA256": execution[
+            "v6_code_manifest_sha256"
+        ],
+        "SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256": (
+            materials.diagnostic_sha256
+        ),
+        "SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256": execution[
+            "v5_launch_receipt_sha256"
+        ],
+        "SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256": execution[
+            "v5_code_manifest_sha256"
+        ],
+        "SOURCE_AUDIT_UNION_SOURCES_SHA256": execution[
+            "union_sources_sha256"
+        ],
+        "SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256": execution[
+            "v6_output_tree"
         ]["sha256"],
-        "SOURCE_AUDIT_SLURM_SHA256": launch["slurm_script_sha256"],
+        "SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID": execution[
+            "pre_diagnosis_freeze"
+        ]["repository_commit_id"],
+        "SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256": execution[
+            "pre_diagnosis_freeze"
+        ]["files_sha256"],
+        "SOURCE_AUDIT_SEAL_PLAN_SHA256": execution["seal_plan_sha256"],
+        "SOURCE_AUDIT_UNION_ROOT_STAGE_SHA256": execution[
+            "union_root_stage_sha256"
+        ],
+        "SOURCE_AUDIT_UNION_STAGE_SHA256": execution["union_stage_sha256"],
+        "SOURCE_AUDIT_CANDIDATE_STAGE_SHA256": execution[
+            "candidate_stage_sha256"
+        ],
+        "SOURCE_AUDIT_ATTESTATION_STAGE_SHA256": execution[
+            "attestation_stage_sha256"
+        ],
+        "SOURCE_AUDIT_REPOSITORY_COMMIT_ID": launch["repository_commit_id"],
+        "SOURCE_AUDIT_OUTPUT_TREE_SHA256": execution["union_tree"]["sha256"],
+        "SOURCE_AUDIT_SLURM_SHA256": launch["slurm_template_sha256"],
         "SOURCE_AUDIT_INTENT_SHA256": launch["launch_intent_sha256"],
         "COST_ATTESTATION_PATH": materials.attestation_path,
         "DIRECTORIES": materials.directories,
@@ -2260,6 +2377,13 @@ def validate_protocol_design() -> None:
         MIN_ADVANTAGE_DENOMINATOR != 50,
         BOOTSTRAP_REPLICATES != 100000,
         BOOTSTRAP_SEED != 20260901,
+        ACTIVE_VALUE_COUNT_DIAGNOSTIC != "value_count",
+        MEET_CERTIFICATE != "meet",
+        CERTIFICATE_BASELINES
+        != ("kD", "mQ", "mJ", "Cartesian", "width", "ADD", "meet"),
+        PREDICTORS
+        != ("I", "D", "value_count", "kD", "mQ", "mJ", "Cartesian",
+            "width", "ADD", "meet"),
         MIN_NEW_STRATUM_COMPARISON_TASKS != 50,
         MIN_NEW_STRATUM_COMPARISON_FAMILIES != 10,
         MIN_NEW_STRATUM_TARGET_STRICT_PAIRS != 100,

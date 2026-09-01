@@ -16,6 +16,7 @@ from pathlib import Path
 import analyze_pdb_terminal_incidence_shadow as OriginalAnalyzer
 import audit_pdb_terminal_incidence_shadow as Legacy
 import exp_pdb_terminal_incidence_confirmation_a as Runner
+import pdb_confirmation_run_cell as RunCell
 import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_a_protocol as P
 
@@ -654,6 +655,29 @@ def _run_directory(run_id: int) -> Path:
     )
 
 
+def _hardware_summary() -> dict:
+    records = []
+    for run_id in range(1, EXPECTED_CELLS + 1):
+        path = _run_directory(run_id) / RunCell.HARDWARE_ATTESTATION_NAME
+        try:
+            loaded = SafeIO.read_regular_file(
+                path, label="cell hardware attestation", root=EXPERIMENT_PATH,
+            )
+        except SafeIO.SafeReadError as err:
+            raise ExecutionAuditError(
+                "cell hardware attestation is missing or unsafe"
+            ) from err
+        records.append((run_id, loaded.raw))
+    groups = [
+        list(_task_cells(task))
+        for task in range(1, EXPECTED_ARRAY_TASKS + 1)
+    ]
+    try:
+        return RunCell.summarize_hardware_records(records, groups)
+    except RunCell.RunCellError as err:
+        raise ExecutionAuditError(str(err)) from err
+
+
 def cell_completeness() -> tuple[dict[str, int], list[int]]:
     counts = Counter()
     incomplete = []
@@ -761,6 +785,7 @@ def _live_execution_value() -> dict:
         launch["job_id"], launch["job_name"], rows
     )
     dynamic_hash, dynamic_files = Legacy.dynamic_tree_digest()
+    hardware = _hardware_summary()
     value = {
         "schema": EXECUTION_SCHEMA,
         "launch_receipt_sha256": launch_sha,
@@ -774,6 +799,7 @@ def _live_execution_value() -> dict:
         "recovery_executions": recoveries,
         "dynamic_cell_tree_sha256": dynamic_hash,
         "dynamic_cell_files": dynamic_files,
+        "hardware": hardware,
     }
     if not status["scheduler_all_completed"] or status["incomplete_cells"]:
         raise ExecutionAuditError("execution receipt does not seal a complete matrix")
@@ -816,7 +842,14 @@ def load_execution_receipt(*, verify_live: bool = True) -> tuple[str, dict]:
         "partition", "scheduler_state_counts", "cell_state_counts",
         "scheduler_rows", "scheduler_contract_rows", "recovery_executions",
         "dynamic_cell_tree_sha256", "dynamic_cell_files",
+        "hardware",
     }
+    try:
+        RunCell.validate_hardware_summary(
+            receipt.get("hardware"), EXPECTED_CELLS
+        )
+    except RunCell.RunCellError as err:
+        raise ExecutionAuditError("execution hardware summary changed") from err
     if (
         pin != (digest + "\n").encode("ascii")
         or set(receipt) != expected_keys

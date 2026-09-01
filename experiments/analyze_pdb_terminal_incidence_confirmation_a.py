@@ -16,6 +16,7 @@ from pathlib import Path
 
 import analyze_pdb_terminal_incidence_shadow as Original
 import audit_pdb_terminal_incidence_confirmation_a as Audit
+import pdb_confirmation_run_cell as RunCell
 import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_a_protocol as P
 
@@ -26,15 +27,22 @@ class ConfirmationAnalysisError(RuntimeError):
 
 SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-a-analysis/v3"
+    "pdb-terminal-incidence-confirmation-a-analysis/v4"
 )
 RECEIPT_SCHEMA = SCHEMA + "/double-execution"
 ARTIFACT_DIR = Audit.ARTIFACT_DIR
-DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v3.json"
-DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v3-repeat.json"
-DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
-DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
-CERTIFICATE_PREDICTORS = (
+DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v4.json"
+DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v4-repeat.json"
+DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v4.json"
+DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v4.sha256"
+RAW_CERTIFICATE_BASELINES = (
+    "kD", "mQ", "mJ", "Cartesian", "width", "ADD",
+)
+RAW_CERTIFICATE_PREDICTORS = (
+    P.PRIMARY_PREDICTOR,
+    *RAW_CERTIFICATE_BASELINES,
+)
+CERTIFICATE_DIAGNOSTIC_PREDICTORS = (
     P.PRIMARY_PREDICTOR,
     *P.CERTIFICATE_BASELINES,
 )
@@ -43,9 +51,9 @@ CERTIFICATE_PREDICTORS = (
 def _configure_original() -> None:
     Original.P = P
     Original.SCHEMA = SCHEMA
-    Original.PREDICTORS = CERTIFICATE_PREDICTORS
+    Original.PREDICTORS = RAW_CERTIFICATE_PREDICTORS
     Original.PRIMARY_PREDICTOR = P.PRIMARY_PREDICTOR
-    Original.CONTROLS = P.CERTIFICATE_BASELINES
+    Original.CONTROLS = RAW_CERTIFICATE_BASELINES
     Original.REQUESTED_MODES = {
         "pdb_bdd_prefix_shadow": "bdd_prefix",
         "pdb_goal_prefix_shadow": "goal_prefix",
@@ -60,19 +68,21 @@ def _configure_original() -> None:
 
 
 @contextlib.contextmanager
-def _ordering_predictors(include_masked_add_size: bool):
+def _ordering_predictors(include_noncertificate_challengers: bool):
     previous = (
         Original.PREDICTORS,
         Original.PRIMARY_PREDICTOR,
         Original.CONTROLS,
     )
     Original.PREDICTORS = (
-        P.PREDICTORS if include_masked_add_size else CERTIFICATE_PREDICTORS
+        P.PREDICTORS
+        if include_noncertificate_challengers
+        else CERTIFICATE_DIAGNOSTIC_PREDICTORS
     )
     Original.PRIMARY_PREDICTOR = P.PRIMARY_PREDICTOR
     Original.CONTROLS = (
         P.PREDICTOR_BASELINES
-        if include_masked_add_size else P.CERTIFICATE_BASELINES
+        if include_noncertificate_challengers else P.CERTIFICATE_BASELINES
     )
     try:
         yield
@@ -114,6 +124,96 @@ def _add_masked_add_size(primary: dict) -> None:
         observation["D"] = total
         for layer in layers:
             layer["D"] = layer["masked_add_nodes"]
+
+
+def _add_active_value_count(primary: dict) -> None:
+    """Expose the certified sum of active heuristic values as a predictor."""
+    observations = primary.get("observations")
+    if not isinstance(observations, list):
+        raise ConfirmationAnalysisError("primary observations are malformed")
+    key = P.ACTIVE_VALUE_COUNT_DIAGNOSTIC
+    for observation in observations:
+        layers = observation.get("layers")
+        total = observation.get("active_terminal_sum")
+        if (
+            not isinstance(layers, list)
+            or type(total) is not int
+            or total < 0
+            or any(
+                not isinstance(layer, dict)
+                or type(layer.get("active_terminals")) is not int
+                or layer["active_terminals"] < 0
+                for layer in layers
+            )
+            or sum(layer["active_terminals"] for layer in layers) != total
+        ):
+            raise ConfirmationAnalysisError(
+                "active-value count differs from its certified layers"
+            )
+        if key in observation or any(key in layer for layer in layers):
+            raise ConfirmationAnalysisError(
+                "active-value-count predictor was already present"
+            )
+        observation[key] = total
+        for layer in layers:
+            layer[key] = layer["active_terminals"]
+
+
+def _add_meet_certificate(primary: dict) -> None:
+    """Derive the layerwise meet of the kD and ADD certificates."""
+    observations = primary.get("observations")
+    if not isinstance(observations, list):
+        raise ConfirmationAnalysisError("primary observations are malformed")
+    key = P.MEET_CERTIFICATE
+    fields = ("E", "I", "kD", "ADD")
+    for observation in observations:
+        layers = observation.get("layers")
+        if (
+            not isinstance(layers, list)
+            or not layers
+            or key in observation
+            or any(not isinstance(layer, dict) or key in layer for layer in layers)
+        ):
+            raise ConfirmationAnalysisError(
+                "meet certificate input is malformed or preexisting"
+            )
+        for field in fields:
+            if (
+                type(observation.get(field)) is not int
+                or observation[field] < 0
+                or any(
+                    type(layer.get(field)) is not int or layer[field] < 0
+                    for layer in layers
+                )
+                or sum(layer[field] for layer in layers) != observation[field]
+            ):
+                raise ConfirmationAnalysisError(
+                    "meet certificate input is not a nonnegative layer sum"
+                )
+        meets = []
+        for layer in layers:
+            meet = min(layer["kD"], layer["ADD"])
+            if not (
+                layer["E"] <= layer["I"] <= meet
+                and meet <= layer["kD"]
+                and meet <= layer["ADD"]
+            ):
+                raise ConfirmationAnalysisError(
+                    "layer violates the meet certificate chain"
+                )
+            meets.append(meet)
+        total = sum(meets)
+        if not (
+            observation["E"] <= observation["I"] <= total
+            and total <= observation["kD"]
+            and total <= observation["ADD"]
+        ):
+            raise ConfirmationAnalysisError(
+                "aggregate violates the meet certificate chain"
+            )
+        for layer, meet in zip(layers, meets):
+            layer[key] = meet
+        observation[key] = total
 
 
 def _projected_attestation() -> bytes:
@@ -433,7 +533,9 @@ def analyze_records(records: list[dict]) -> dict:
             records, P.COHORT_TASKS
         )
     primary = Original.primary_observations(matrix, tasks)
+    _add_meet_certificate(primary)
     _add_masked_add_size(primary)
+    _add_active_value_count(primary)
     with _ordering_predictors(True):
         comparison = Original.target_strict_tie_aware_comparison(
             primary["grouped"]
@@ -524,7 +626,7 @@ def analyze_records(records: list[dict]) -> dict:
     }
 
 
-def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
+def _load_sealed_input(path: Path) -> tuple[list[dict], str, str, str, dict]:
     try:
         path = SafeIO.validate_lexical_path(
             Path(path), label="sealed Confirmation A properties",
@@ -535,6 +637,9 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
     P.validate_protocol_without_sources()
     try:
         fetch_sha, fetch = Audit.load_fetch_receipt(verify_live=True)
+        execution_sha, execution = Audit.load_execution_receipt(
+            verify_live=True
+        )
     except Audit.ExecutionAuditError as err:
         raise ConfirmationAnalysisError(
             "fetched properties provenance is invalid"
@@ -563,7 +668,9 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str]:
         raise ConfirmationAnalysisError(
             "sealed properties must contain a matrix of objects"
         )
-    return records, properties_sha, fetch_sha
+    return records, properties_sha, fetch_sha, execution_sha, execution[
+        "hardware"
+    ]
 
 
 def _exclusive(path: Path, raw: bytes, label: str) -> str:
@@ -590,16 +697,27 @@ def run_twice(
         path.exists() or path.is_symlink() for path in paths
     ):
         raise ConfirmationAnalysisError("analysis output namespace is not fresh")
-    records_one, properties_sha, fetch_sha = _load_sealed_input(properties)
+    (
+        records_one, properties_sha, fetch_sha, execution_sha, hardware,
+    ) = _load_sealed_input(properties)
     result_one = analyze_records(records_one)
     result_one["input"] = {
         "path": str(properties.resolve()),
         "sha256": properties_sha,
         "fetch_receipt_sha256": fetch_sha,
+        "execution_receipt_sha256": execution_sha,
+        "hardware": hardware,
     }
     raw_one = P.canonical_json_line(result_one)
-    records_two, properties_sha_two, fetch_sha_two = _load_sealed_input(properties)
-    if (properties_sha_two, fetch_sha_two) != (properties_sha, fetch_sha):
+    (
+        records_two, properties_sha_two, fetch_sha_two,
+        execution_sha_two, hardware_two,
+    ) = _load_sealed_input(properties)
+    if (
+        (properties_sha_two, fetch_sha_two, execution_sha_two)
+        != (properties_sha, fetch_sha, execution_sha)
+        or hardware_two != hardware
+    ):
         raise ConfirmationAnalysisError("analysis input changed between executions")
     result_two = analyze_records(records_two)
     result_two["input"] = dict(result_one["input"])
@@ -625,6 +743,8 @@ def run_twice(
         "schema": RECEIPT_SCHEMA,
         "input_properties_sha256": properties_sha,
         "fetch_receipt_sha256": fetch_sha,
+        "execution_receipt_sha256": execution_sha,
+        "hardware": hardware,
         "analysis_protocol": P.ANALYSIS_PROTOCOL,
         "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
         "bootstrap_seed": P.BOOTSTRAP_SEED,
@@ -705,6 +825,7 @@ def load_analysis_receipt(
 
     expected_fields = {
         "schema", "input_properties_sha256", "fetch_receipt_sha256",
+        "execution_receipt_sha256", "hardware",
         "analysis_protocol", "bootstrap_replicates", "bootstrap_seed",
         "first_output", "second_output", "first_output_sha256",
         "second_output_sha256", "outputs_byte_identical",
@@ -713,6 +834,14 @@ def load_analysis_receipt(
     }
     analysis_input = first.get("input")
     gates = first.get("gates")
+    try:
+        RunCell.validate_hardware_summary(
+            receipt.get("hardware"), Audit.EXPECTED_CELLS
+        )
+    except RunCell.RunCellError as err:
+        raise ConfirmationAnalysisError(
+            "Confirmation A hardware provenance changed"
+        ) from err
     if any((
         set(receipt) != expected_fields,
         receipt.get("schema") != RECEIPT_SCHEMA,
@@ -749,9 +878,17 @@ def load_analysis_receipt(
         analysis_input.get("fetch_receipt_sha256")
         != receipt.get("fetch_receipt_sha256")
         if isinstance(analysis_input, dict) else True,
+        analysis_input.get("execution_receipt_sha256")
+        != receipt.get("execution_receipt_sha256")
+        if isinstance(analysis_input, dict) else True,
+        analysis_input.get("hardware") != receipt.get("hardware")
+        if isinstance(analysis_input, dict) else True,
         P.SHA256_RE.fullmatch(receipt.get("input_properties_sha256", ""))
         is None,
         P.SHA256_RE.fullmatch(receipt.get("fetch_receipt_sha256", "")) is None,
+        P.SHA256_RE.fullmatch(
+            receipt.get("execution_receipt_sha256", "")
+        ) is None,
     )):
         raise ConfirmationAnalysisError(
             "Confirmation A complete-gate receipt changed or did not pass"
@@ -759,12 +896,17 @@ def load_analysis_receipt(
     if verify_live:
         try:
             fetch_sha, fetch = Audit.load_fetch_receipt(verify_live=True)
+            execution_sha, execution = Audit.load_execution_receipt(
+                verify_live=True
+            )
         except Audit.ExecutionAuditError as err:
             raise ConfirmationAnalysisError(
                 "Confirmation A fetched-input seal changed"
             ) from err
         if any((
             fetch_sha != receipt["fetch_receipt_sha256"],
+            execution_sha != receipt["execution_receipt_sha256"],
+            execution.get("hardware") != receipt["hardware"],
             fetch.get("properties_sha256")
             != receipt["input_properties_sha256"],
             analysis_input.get("path") != str(Audit.EVAL_PROPERTIES.resolve()),

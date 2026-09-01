@@ -18,6 +18,7 @@ from pathlib import Path
 
 import exp_pdb_profile_certificate_holdout as Base
 import jj_cached_revision as JJ
+import pdb_confirmation_run_cell as RunCell
 import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_incidence_confirmation_b_protocol as P
 
@@ -63,6 +64,7 @@ RUN_CELL_HELPER = SCRIPT_DIR / "pdb_confirmation_run_cell.py"
 DYNAMIC_OUTPUT_NAMES = (
     "driver.err", "driver.log", "incidence-selector.jsonl", "output.sas",
     "run.err", "run.log", "sas_plan", "wbh-profile.jsonl", "wbh.jsonl",
+    RunCell.HARDWARE_ATTESTATION_NAME,
 )
 
 
@@ -192,6 +194,41 @@ def configure() -> None:
         "source_audit_repository_commit_id": (
             P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
         ),
+        "source_audit_campaign": "v6-selective-repair",
+        "source_audit_terminal_diagnostic_sha256": (
+            P.SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256
+        ),
+        "source_audit_v5_launch_receipt_sha256": (
+            P.SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256
+        ),
+        "source_audit_v5_code_manifest_sha256": (
+            P.SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256
+        ),
+        "source_audit_union_sources_sha256": (
+            P.SOURCE_AUDIT_UNION_SOURCES_SHA256
+        ),
+        "source_audit_v6_output_tree_sha256": (
+            P.SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256
+        ),
+        "source_audit_pre_diagnosis_repository_commit_id": (
+            P.SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID
+        ),
+        "source_audit_pre_diagnosis_files_sha256": (
+            P.SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256
+        ),
+        "source_audit_seal_plan_sha256": P.SOURCE_AUDIT_SEAL_PLAN_SHA256,
+        "source_audit_union_root_stage_sha256": (
+            P.SOURCE_AUDIT_UNION_ROOT_STAGE_SHA256
+        ),
+        "source_audit_union_stage_sha256": (
+            P.SOURCE_AUDIT_UNION_STAGE_SHA256
+        ),
+        "source_audit_candidate_stage_sha256": (
+            P.SOURCE_AUDIT_CANDIDATE_STAGE_SHA256
+        ),
+        "source_audit_attestation_stage_sha256": (
+            P.SOURCE_AUDIT_ATTESTATION_STAGE_SHA256
+        ),
         "cohort_seed": P.COHORT_SEED,
         "cohort_family_count": P.COHORT_FAMILIES,
         "cohort_directory_family_sha256": hashlib.sha256(
@@ -242,6 +279,41 @@ def configure() -> None:
         "source_audit_repository_commit_id": (
             P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
         ),
+        "source_audit_campaign": "v6-selective-repair",
+        "source_audit_terminal_diagnostic_sha256": (
+            P.SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256
+        ),
+        "source_audit_v5_launch_receipt_sha256": (
+            P.SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256
+        ),
+        "source_audit_v5_code_manifest_sha256": (
+            P.SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256
+        ),
+        "source_audit_union_sources_sha256": (
+            P.SOURCE_AUDIT_UNION_SOURCES_SHA256
+        ),
+        "source_audit_v6_output_tree_sha256": (
+            P.SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256
+        ),
+        "source_audit_pre_diagnosis_repository_commit_id": (
+            P.SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID
+        ),
+        "source_audit_pre_diagnosis_files_sha256": (
+            P.SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256
+        ),
+        "source_audit_seal_plan_sha256": P.SOURCE_AUDIT_SEAL_PLAN_SHA256,
+        "source_audit_union_root_stage_sha256": (
+            P.SOURCE_AUDIT_UNION_ROOT_STAGE_SHA256
+        ),
+        "source_audit_union_stage_sha256": (
+            P.SOURCE_AUDIT_UNION_STAGE_SHA256
+        ),
+        "source_audit_candidate_stage_sha256": (
+            P.SOURCE_AUDIT_CANDIDATE_STAGE_SHA256
+        ),
+        "source_audit_attestation_stage_sha256": (
+            P.SOURCE_AUDIT_ATTESTATION_STAGE_SHA256
+        ),
         "source_audit_output_tree_sha256": (
             P.SOURCE_AUDIT_OUTPUT_TREE_SHA256
         ),
@@ -249,6 +321,7 @@ def configure() -> None:
         "source_audit_intent_sha256": P.SOURCE_AUDIT_INTENT_SHA256,
         "confirmation_b_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
         "source_attestation_path": str(materials.attestation_path),
+        "source_terminal_diagnostic_path": str(materials.diagnostic_path),
         "source_launch_intent_path": str(materials.intent_path),
         "source_execution_receipt_path": str(materials.execution_receipt_path),
         "source_launch_receipt_path": str(materials.launch_receipt_path),

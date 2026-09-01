@@ -27,16 +27,25 @@ class HardeningTest(unittest.TestCase):
     @staticmethod
     def closure_ready_freeze():
         freeze = fake_freeze()
-        v5 = freeze["base_confirmation_b"]["source_audit_v5"]
-        v5["tracked_file_sha256"][
-            P.V5_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()
-        ] = v5["code_manifest_sha256"]
-        v5["tracked_file_sha256"][
-            P.V5_SLURM_PATH.relative_to(P.REPO).as_posix()
-        ] = v5["slurm_script_sha256"]
+        v6 = freeze["base_confirmation_b"]["source_audit_v6"]
+        v6["tracked_file_sha256"][
+            P.V6_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()
+        ] = v6["code_manifest_sha256"]
+        v6["tracked_file_sha256"][
+            P.V6_SLURM_PATH.relative_to(P.REPO).as_posix()
+        ] = v6["slurm_template_sha256"]
+        base_sources = freeze["base_confirmation_b"][
+            "base_b_experiment_source_sha256"
+        ]
+        campaign_sources = freeze["experiment_source_sha256"]
+        for relative, digest in v6["tracked_file_sha256"].items():
+            if relative in base_sources:
+                base_sources[relative] = digest
+            if relative in campaign_sources:
+                campaign_sources[relative] = digest
         return freeze
 
-    def test_repository_closure_covers_b_properties_and_live_a_v5(self):
+    def test_repository_closure_covers_b_properties_and_live_a_v6(self):
         freeze = self.closure_ready_freeze()
         bindings = Freeze._launch_closure_bindings(freeze, "f" * 64)
         expected = {
@@ -53,13 +62,19 @@ class HardeningTest(unittest.TestCase):
             Freeze.BASE_A_FETCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
             Freeze.BASE_A_FETCH_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
             Freeze.BASE_A_PROPERTIES_PATH.relative_to(P.REPO).as_posix(),
-            P.V5_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
-            P.V5_INTENT_PATH.relative_to(P.REPO).as_posix(),
-            P.V5_LAUNCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
-            P.V5_EXECUTION_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
-            P.V5_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix(),
-            P.V5_SLURM_PATH.relative_to(P.REPO).as_posix(),
-            *P.V5_SCOPED_FILES,
+            P.V6_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_DIAGNOSTIC_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_INTENT_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_LAUNCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_EXECUTION_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_SEAL_PLAN_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_UNION_ROOT_STAGE_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_UNION_STAGE_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_CANDIDATE_STAGE_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_ATTESTATION_STAGE_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix(),
+            P.V6_SLURM_PATH.relative_to(P.REPO).as_posix(),
+            *P.V6_SCOPED_FILES,
             *P.SOURCE_FILES,
             *freeze["base_confirmation_b"][
                 "base_b_experiment_source_sha256"
@@ -81,7 +96,7 @@ class HardeningTest(unittest.TestCase):
             "base_b_experiment_source_sha256"
         ]
         b_only = sorted(
-            set(base_sources) - set(P.SOURCE_FILES) - set(P.V5_SCOPED_FILES)
+            set(base_sources) - set(P.SOURCE_FILES) - set(P.V6_SCOPED_FILES)
         )[0]
         raw = b"synthetic B-only committed dependency\n"
         digest = hashlib.sha256(raw).hexdigest()
@@ -302,17 +317,21 @@ class HardeningTest(unittest.TestCase):
         exclusive.assert_called_once_with(P.FREEZE_PATH, built)
         self.assertEqual(events[-1], "write")
 
-    def test_freeze_requires_planner_b_and_v5_ancestors_in_exact_order(self):
+    def test_freeze_requires_planner_b_and_v6_ancestors_in_exact_order(self):
         snapshot = fake_snapshot()
         revision = "d" * 40
         snapshot["base_b_freeze_repository_revision"] = "b" * 40
-        snapshot["source_audit_v5"]["repository_commit_id"] = "c" * 40
+        snapshot["source_audit_v6"]["repository_commit_id"] = "c" * 40
+        snapshot["source_audit_v6"][
+            "pre_diagnosis_repository_commit_id"
+        ] = "e" * 40
         with mock.patch.object(Freeze.JJ, "require_ancestor") as require:
             Freeze._require_ancestors(snapshot, revision)
         self.assertEqual(require.call_args_list, [
             mock.call(P.REPO, P.REQUIRED_PLANNER_REVISION, revision),
             mock.call(P.REPO, "b" * 40, revision),
             mock.call(P.REPO, "c" * 40, revision),
+            mock.call(P.REPO, "e" * 40, revision),
         ])
 
     def test_freeze_rebuild_rejects_fabricated_standalone_with_real_hashes(self):
@@ -431,7 +450,7 @@ class HardeningTest(unittest.TestCase):
                 mutated[section]["tasks_sha256"] = P.cohort_digest(
                     mutated[section]["tasks"]
                 )
-                mutated["source_audit_v5"]["cohort_manifest_sha256"] = (
+                mutated["source_audit_v6"]["cohort_manifest_sha256"] = (
                     mutated[section]["tasks_sha256"]
                 )
             with self.subTest(section=section):

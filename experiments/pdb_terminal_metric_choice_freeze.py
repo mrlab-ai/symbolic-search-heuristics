@@ -119,12 +119,12 @@ def _add_binding(
 def _base_snapshot_bindings(
     snapshot: dict, standalone_binding: dict,
 ) -> dict[str, str]:
-    """Return every in-repository A/B/V5 artifact bound by the snapshot."""
+    """Return every in-repository A/B/V6 artifact bound by the snapshot."""
     try:
         P.validate_base_snapshot(snapshot)
         P.validate_standalone_source_binding(standalone_binding)
     except P.ProtocolError as err:
-        raise FreezeError("sealed A/B/V5 binding is invalid") from err
+        raise FreezeError("sealed A/B/V6 binding is invalid") from err
     bindings: dict[str, str] = {}
     _add_binding(
         bindings, snapshot["base_b_freeze_path"],
@@ -184,32 +184,50 @@ def _base_snapshot_bindings(
         authorization["input_properties_sha256"], "Confirmation A properties",
     )
 
-    v5 = snapshot["source_audit_v5"]
+    v6 = snapshot["source_audit_v6"]
     for path_field, hash_field, label in (
-        ("attestation_path", "attestation_sha256", "source-audit V5 attestation"),
-        ("launch_intent_path", "launch_intent_sha256", "source-audit V5 intent"),
-        ("launch_receipt_path", "launch_receipt_sha256", "source-audit V5 launch"),
+        ("attestation_path", "attestation_sha256", "source-audit V6 attestation"),
+        ("terminal_diagnostic_path", "terminal_diagnostic_sha256", "source-audit V6 diagnostic"),
+        ("launch_intent_path", "launch_intent_sha256", "source-audit V6 intent"),
+        ("launch_receipt_path", "launch_receipt_sha256", "source-audit V6 launch"),
         (
             "execution_receipt_path", "execution_receipt_sha256",
-            "source-audit V5 execution",
+            "source-audit V6 execution",
+        ),
+        ("seal_plan_path", "seal_plan_sha256", "source-audit V6 seal plan"),
+        (
+            "union_root_stage_path", "union_root_stage_sha256",
+            "source-audit V6 union-root stage",
+        ),
+        (
+            "union_stage_path", "union_stage_sha256",
+            "source-audit V6 union stage",
+        ),
+        (
+            "candidate_stage_path", "candidate_stage_sha256",
+            "source-audit V6 candidate stage",
+        ),
+        (
+            "attestation_stage_path", "attestation_stage_sha256",
+            "source-audit V6 attestation stage",
         ),
     ):
-        _add_binding(bindings, v5[path_field], v5[hash_field], label)
+        _add_binding(bindings, v6[path_field], v6[hash_field], label)
     _add_binding(
-        bindings, P.V5_CODE_MANIFEST_PATH, v5["code_manifest_sha256"],
-        "source-audit V5 code manifest",
+        bindings, P.V6_CODE_MANIFEST_PATH, v6["code_manifest_sha256"],
+        "source-audit V6 code manifest",
     )
     _add_binding(
-        bindings, P.V5_SLURM_PATH, v5["slurm_script_sha256"],
-        "source-audit V5 Slurm source",
+        bindings, P.V6_SLURM_PATH, v6["slurm_template_sha256"],
+        "source-audit V6 Slurm source",
     )
-    tracked = v5["tracked_file_sha256"]
-    if not isinstance(tracked, dict) or set(tracked) != set(P.V5_SCOPED_FILES):
-        raise FreezeError("source-audit V5 tracked closure changed")
+    tracked = v6["tracked_file_sha256"]
+    if not isinstance(tracked, dict) or set(tracked) != set(P.V6_SCOPED_FILES):
+        raise FreezeError("source-audit V6 tracked closure changed")
     for relative, digest in tracked.items():
         _add_binding(
             bindings, relative, digest,
-            "source-audit V5 tracked file {}".format(relative),
+            "source-audit V6 tracked file {}".format(relative),
         )
     return dict(sorted(bindings.items()))
 
@@ -287,14 +305,17 @@ def _require_ancestors(snapshot: dict, revision: str) -> None:
     ancestors = (
         P.REQUIRED_PLANNER_REVISION,
         snapshot["base_b_freeze_repository_revision"],
-        snapshot["source_audit_v5"]["repository_commit_id"],
+        snapshot["source_audit_v6"]["repository_commit_id"],
+        snapshot["source_audit_v6"][
+            "pre_diagnosis_repository_commit_id"
+        ],
     )
     try:
         for ancestor in ancestors:
             JJ.require_ancestor(P.REPO, ancestor, revision)
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "planner, Confirmation B, or V5 producer is not an ancestor"
+            "planner, Confirmation B, or V6 producer is not an ancestor"
         ) from err
 
 
@@ -337,7 +358,7 @@ def freeze(
     )):
         raise FreezeError("campaign freeze input/output path changed")
     revision = _require_clean_parent(freeze_repository_revision)
-    # Calibration is opened and completely validated before any A/B/V5
+    # Calibration is opened and completely validated before any A/B/V6
     # verifier or evidence path is touched.
     calibration_raw, calibration = P.load_canonical(
         calibration_path, "calibration receipt",

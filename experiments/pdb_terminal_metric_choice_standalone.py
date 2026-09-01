@@ -4,11 +4,11 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 from pathlib import Path
 
-import pdb_cap_selector_parser as CapParser
 import pdb_terminal_metric_choice_io as CampaignIO
 import pdb_terminal_metric_choice_protocol as P
 
@@ -25,6 +25,12 @@ PLAIN_REFERENCE_STRUCTURAL_FIELDS = (
     "pdb_selector_trace_certified", "pdb_selector_validation_error",
     "pdb_selector_candidates", "pdb_selector_selected", "pdb_selector_final",
 )
+
+
+def _cap_parser():
+    # Lab is part of the pinned run environment, not a prerequisite for the
+    # outcome-blind protocol/calibration import boundary.
+    return importlib.import_module("pdb_cap_selector_parser")
 
 
 def plain_reference_rows(snapshot: dict) -> list[dict]:
@@ -52,6 +58,7 @@ def plain_reference_rows(snapshot: dict) -> list[dict]:
 
 
 def _plain_reference_evidence(record: dict) -> dict:
+    CapParser = _cap_parser()
     candidates = record.get("pdb_selector_candidates")
     selected = record.get("pdb_selector_selected")
     final = record.get("pdb_selector_final")
@@ -134,6 +141,7 @@ def _representative_projection(
 
 
 def _record_projection(record: dict) -> dict:
+    CapParser = _cap_parser()
     structural = {
         field: record.get(field) for field in PLAIN_REFERENCE_STRUCTURAL_FIELDS
     }

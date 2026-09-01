@@ -12,7 +12,17 @@ from unittest import mock
 
 import analyze_pdb_terminal_incidence_confirmation_b as A
 import pdb_cap_selector_parser as CapParser
+import pdb_confirmation_run_cell as RunCell
 import pdb_terminal_incidence_confirmation_b_protocol as P
+
+
+HARDWARE = {
+    "hardware_attestation_schema": RunCell.HARDWARE_ATTESTATION_SCHEMA,
+    "hardware_attestation_files": 2700,
+    "hardware_records_sha256": "3" * 64,
+    "processor_model_counts": {"Synthetic CPU": 2700},
+    "architecture_counts": {"x86_64": 2700},
+}
 
 
 def _selector_record(*, status="complete", differs=False, selected=None):
@@ -123,6 +133,19 @@ def _matrix(
 
 
 class OutcomeTest(unittest.TestCase):
+    def test_analysis_v3_schema_and_paths(self):
+        self.assertEqual(
+            A.SCHEMA,
+            "symbolic-search-heuristics/"
+            "pdb-terminal-incidence-confirmation-b-analysis/v3",
+        )
+        self.assertEqual(A.DEFAULT_OUTPUT.name, "analysis-v3.json")
+        self.assertEqual(A.DEFAULT_REPEAT_OUTPUT.name, "analysis-v3-repeat.json")
+        self.assertEqual(
+            A.DEFAULT_RECEIPT.name,
+            "analysis-execution-receipt-v3.json",
+        )
+
     def test_every_failure_is_fixed_par2(self):
         for code in (10, 22, 23, 24, 34, 99):
             value, outcome = A._par2({
@@ -188,6 +211,59 @@ class GateTest(unittest.TestCase):
         self.assertFalse(result["clauses"]["family_macro_at_least_0_02"])
         self.assertFalse(
             result["clauses"]["every_leave_one_family_out_positive"]
+        )
+
+    def test_contrast_reports_paired_coverage_and_common_solved_time(self):
+        tasks = [("d{}".format(index), "p") for index in range(4)]
+        sources = {
+            task: {"family": "family"} for task in tasks
+        }
+        matrix = _matrix(tasks, guided=100, plain=200)
+        matrix[(P.PLAIN_REFERENCE_LABEL, tasks[1])]["record"]["coverage"] = 0
+        matrix[(P.PLAIN_REFERENCE_LABEL, tasks[1])]["par2"] = Fraction(3600)
+        matrix[(P.GUIDED_LABEL, tasks[2])]["record"]["coverage"] = 0
+        matrix[(P.GUIDED_LABEL, tasks[2])]["par2"] = Fraction(3600)
+        matrix[(P.GUIDED_LABEL, tasks[3])]["record"]["coverage"] = 0
+        matrix[(P.GUIDED_LABEL, tasks[3])]["par2"] = Fraction(3600)
+        matrix[(P.PLAIN_REFERENCE_LABEL, tasks[3])]["record"]["coverage"] = 0
+        matrix[(P.PLAIN_REFERENCE_LABEL, tasks[3])]["par2"] = Fraction(3600)
+        with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            result = A._contrast(
+                matrix, tasks, sources, P.PLAIN_REFERENCE_LABEL
+            )
+        decomposition = result["outcome_decomposition"]
+        self.assertFalse(decomposition["gating"])
+        self.assertEqual(decomposition["solve_pair_counts"], {
+            "both_solved": 1,
+            "intervention_only_solved": 1,
+            "reference_only_solved": 1,
+            "neither_solved": 1,
+        })
+        common = decomposition["common_solved"]
+        self.assertEqual(common["tasks"], 1)
+        self.assertEqual(common["families"], 1)
+        self.assertEqual(
+            common["equal_family_normalized_time_improvement"],
+            A._fraction_record(Fraction(1, 18)),
+        )
+
+    def test_common_solved_time_uses_equal_family_weight(self):
+        tasks = [("d{}".format(index), "p") for index in range(3)]
+        sources = {
+            task: {"family": "large" if index < 2 else "small"}
+            for index, task in enumerate(tasks)
+        }
+        matrix = _matrix(tasks, guided=100, plain=200)
+        matrix[(P.GUIDED_LABEL, tasks[2])]["par2"] = Fraction(200)
+        matrix[(P.PLAIN_REFERENCE_LABEL, tasks[2])]["par2"] = Fraction(100)
+        with mock.patch.object(P, "BOOTSTRAP_REPLICATES", 100):
+            result = A._contrast(
+                matrix, tasks, sources, P.PLAIN_REFERENCE_LABEL
+            )
+        common = result["outcome_decomposition"]["common_solved"]
+        self.assertEqual(
+            common["equal_family_normalized_time_improvement"],
+            A._fraction_record(Fraction(0)),
         )
 
     def test_selector_pair_requires_exact_preselection_evidence(self):
@@ -458,11 +534,18 @@ class DoubleExecutionTest(unittest.TestCase):
                 A.Audit, "load_fetch_receipt",
                 return_value=("f" * 64, receipt),
             ), mock.patch.object(
+                A.Audit, "load_execution_receipt",
+                return_value=("e" * 64, {"hardware": HARDWARE}),
+            ), mock.patch.object(
                 Path, "read_bytes", side_effect=[raw_a, raw_a]
             ), mock.patch.object(Path, "read_text", return_value=raw_b.decode()):
-                records, properties_sha, _ = A._load_sealed_input(path)
+                records, properties_sha, _, execution_sha, hardware = (
+                    A._load_sealed_input(path)
+                )
         self.assertEqual(records, [{"marker": "A"}])
         self.assertEqual(properties_sha, receipt["properties_sha256"])
+        self.assertEqual(execution_sha, "e" * 64)
+        self.assertEqual(hardware, HARDWARE)
 
     def test_double_execution_publishes_only_identical_bytes(self):
         result = {
@@ -479,8 +562,10 @@ class DoubleExecutionTest(unittest.TestCase):
             ))
             with mock.patch.object(
                 A, "_load_sealed_input",
-                side_effect=[([], "1" * 64, "2" * 64),
-                             ([], "1" * 64, "2" * 64)],
+                side_effect=[
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                ],
             ), mock.patch.object(
                 A, "analyze_records", side_effect=[dict(result), dict(result)]
             ):
@@ -509,8 +594,10 @@ class DoubleExecutionTest(unittest.TestCase):
             ))
             with mock.patch.object(
                 A, "_load_sealed_input",
-                side_effect=[([], "1" * 64, "2" * 64),
-                             ([], "1" * 64, "2" * 64)],
+                side_effect=[
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                ],
             ), mock.patch.object(
                 A, "analyze_records", side_effect=[first, second]
             ):
@@ -547,8 +634,10 @@ class DoubleExecutionTest(unittest.TestCase):
 
             with mock.patch.object(
                 A, "_load_sealed_input",
-                side_effect=[([], "1" * 64, "2" * 64),
-                             ([], "1" * 64, "2" * 64)],
+                side_effect=[
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                    ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE),
+                ],
             ), mock.patch.object(
                 A, "analyze_records", side_effect=[dict(result), dict(result)]
             ), mock.patch.object(

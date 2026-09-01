@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import analyze_pdb_terminal_incidence_confirmation_b as Analyze
 import audit_pdb_terminal_incidence_confirmation_b as Audit
 import exp_pdb_terminal_incidence_confirmation_b as Runner
 import pdb_confirmation_run_cell as RunCell
@@ -24,6 +26,13 @@ import recover_pdb_terminal_incidence_confirmation_b as Recover
 TASKS = 300
 CELLS = 9 * TASKS
 ARRAY_TASKS = CELLS // 3
+HARDWARE = {
+    "hardware_attestation_schema": RunCell.HARDWARE_ATTESTATION_SCHEMA,
+    "hardware_attestation_files": CELLS,
+    "hardware_records_sha256": "3" * 64,
+    "processor_model_counts": {"Synthetic CPU": CELLS},
+    "architecture_counts": {"x86_64": CELLS},
+}
 
 
 class PrepareJobCommandTest(unittest.TestCase):
@@ -706,6 +715,41 @@ class JobFileTest(unittest.TestCase):
             ),
             passes=False,
         )
+
+
+class AnalysisProvenanceTest(unittest.TestCase):
+    def test_analysis_carries_execution_hardware_as_nongating_input(self):
+        result = {
+            "schema": Analyze.SCHEMA,
+            "analysis_protocol": P.ANALYSIS_PROTOCOL,
+            "gates": {"pass": True},
+            "mechanism": {"claim_authorized": True},
+        }
+        sealed = ([], "1" * 64, "2" * 64, "4" * 64, HARDWARE)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            properties = root / "properties"
+            properties.write_text("{}")
+            outputs = tuple(root / name for name in (
+                "analysis.json", "repeat.json", "receipt.json",
+                "receipt.sha256",
+            ))
+            with mock.patch.object(
+                Analyze, "_load_sealed_input",
+                side_effect=[copy.deepcopy(sealed), copy.deepcopy(sealed)],
+            ), mock.patch.object(
+                Analyze, "analyze_records",
+                side_effect=[copy.deepcopy(result), copy.deepcopy(result)],
+            ):
+                published = Analyze.run_twice(properties, *outputs)
+            analysis = json.loads(outputs[0].read_text())
+            receipt = json.loads(outputs[2].read_text())
+            self.assertEqual(
+                analysis["input"]["execution_receipt_sha256"], "4" * 64
+            )
+            self.assertEqual(analysis["input"]["hardware"], HARDWARE)
+            self.assertEqual(receipt["hardware"], HARDWARE)
+            self.assertEqual(published["hardware"], HARDWARE)
 
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@
 \newcommand{\incidence}[2]{\ensuremath{I_{\pi}(#1,#2)}}
 \newcommand{\maskednodes}[2]{\ensuremath{D_{\pi}(#1,#2)}}
 \newcommand{\activecount}[2]{\ensuremath{k(#1,#2)}}
+\newcommand{\valuecount}{\ensuremath{N_{\mathrm{val}}}}
 \newcommand{\maskfun}[2]{\ensuremath{m_{#1,#2}}}
 \newcommand{\terminalset}[1]{\ensuremath{\mathcal{T}(#1)}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
@@ -70,7 +71,7 @@
 \input{generated/pdb-profile-certificate-holdout-v1.tex}
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
 
-\title{Terminal Incidence for Heuristic Fragmentation in Symbolic Search:\\
+\title{Terminal Incidence for Fixed-Frontier Partition Effort in Symbolic Search:\\
 Supplementary Material}
 \author{Anonymous for review}
 \date{}
@@ -134,6 +135,9 @@ Let $M=\mathrm{ADD}_\pi(\maskfun{S}{h})$, let
 $D=\maskednodes{S}{h}$ be its number of inner nodes and let
 $T_M(u)\subseteq\terminalset{S}$ be the active terminals reachable from an
 inner node $u$ of $M$.
+Per-node reachable-terminal sets themselves are established MTBDD operations
+\citep{duret-lutz-et-al-ciaa2025}; terminal incidence aggregates their
+cardinalities after frontier masking.
 Terminal incidence is
 \begin{equation}
  \incidence{S}{h}=\sum_{u\in\mathrm{Inn}(M)}|T_M(u)|.
@@ -169,6 +173,11 @@ Consequently, $\partcost{S}{h}\leq\incidence{S}{h}$.
 \end{lemma}
 
 \begin{proof}
+The classical terminal-substitution construction produces each Boolean value
+set by relabeling and reducing the ADD
+\citep[Proposition~2.1]{torralba-phd2015}.
+We refine its whole-diagram charge by retaining only ancestors of the selected
+terminal.
 Relabel terminal $v$ of $M$ by one and every other terminal, including
 $\bot$, by zero.
 The resulting ordered Boolean diagram represents
@@ -306,27 +315,38 @@ The run-level target and predictors used in the confirmatory study are
 E&=&\displaystyle\sum_{g\in G}\partcost{S_g}{h},
 &I&=&\displaystyle\sum_{g\in G}\incidence{S_g}{h},\\[3pt]
 D&=&\displaystyle\sum_{g\in G}D_g,
-&kD&=&\displaystyle\sum_{g\in G}k_gD_g,\\[3pt]
-mQ&=&\displaystyle\sum_{g\in G}k_g\cofcount(m_g),
-&mJ&=&\displaystyle\sum_{g\in G}k_g\jointprofile{S_g}{h},\\[3pt]
-C&=&\displaystyle\sum_{g\in G}k_g\cutprod{S_g}{h},
-&W&=&\displaystyle\sum_{g\in G}k_g\width_\pi(h)\cofcount(\chi_{S_g}),\\[3pt]
-A_{\mathrm{Apply}}&=&\displaystyle\sum_{g\in G}
+&\valuecount&=&\displaystyle\sum_{g\in G}k_g,\\[3pt]
+kD&=&\displaystyle\sum_{g\in G}k_gD_g,
+&mQ&=&\displaystyle\sum_{g\in G}k_g\cofcount(m_g),\\[3pt]
+mJ&=&\displaystyle\sum_{g\in G}k_g\jointprofile{S_g}{h},
+&C&=&\displaystyle\sum_{g\in G}k_g\cutprod{S_g}{h},\\[3pt]
+W&=&\displaystyle\sum_{g\in G}k_g\width_\pi(h)\cofcount(\chi_{S_g}),
+&A_{\mathrm{Apply}}&=&\displaystyle\sum_{g\in G}
 k_g\bigl(2(A+1)\bddsize{S_g}+A\bigr).
 \end{array}
+\]
+The strongest direct combination of the two certificate branches is their
+layerwise meet
+\[
+ B_\wedge
+ =\sum_{g\in G}\min\bigl\{k_gD_g,
+ k_g\bigl(2(A+1)\bddsize{S_g}+A\bigr)\bigr\}.
 \]
 Summing the nonnegative layerwise inequalities gives
 \[
  E\leq I\leq kD\leq mQ\leq mJ\leq C\leq W,
  \qquad
- E\leq I\leq A_{\mathrm{Apply}}.
+ E\leq I\leq A_{\mathrm{Apply}},
+ \qquad
+ E\leq I\leq B_\wedge\leq\min\{kD,A_{\mathrm{Apply}}\}.
 \]
 The definition of $I$ already sums over terminals through
 Equation~\ref{eq:supp-terminal-incidence}; multiplying it by $k_g$ again would
 double-count the value partition.
-Masked ADD size $D$ is a non-certificate ordering baseline.
-The relation $D\leq I$ does not imply $E\leq D$, and it supplies no guaranteed
-$E$--$D$ order across two heuristics.
+Masked ADD size $D$ and active-value count \valuecount are non-certificate
+ordering baselines. They are the row and column counts of the node--terminal
+incidence relation. The relation $D\leq I$ does not imply $E\leq D$, and
+neither baseline supplies a guaranteed order for $E$ across two heuristics.
 
 \subsection{An Ordinal Separation for Exact PDBs}
 
@@ -386,7 +406,8 @@ Before masking by $S$, both heuristic ADDs have three inner nodes.
 For $h_A$, their active-terminal reach-set sizes are $(3,2,2)$; for $h_B$
 they are $(3,3,2)$.
 Masking adds one leading $z$ node with three reachable active terminals.
-Consequently $D_A=D_B=4$, while $I_A=10$ and $I_B=11$.
+Consequently $D_A=D_B=4$ and
+$N_{\mathrm{val},A}=N_{\mathrm{val},B}=3$, while $I_A=10$ and $I_B=11$.
 
 The three value-bucket BDDs have sizes $(2,4,4)$ for $h_A$ and $(3,4,4)$
 for $h_B$ under complemented edges.
@@ -395,12 +416,12 @@ Nevertheless, both masked ADDs have cofactor sum 20, both co-occurring and
 Cartesian profiles sum to 27, both heuristic widths are three,
 $\cofcount(\chi_S)=13$, and $\bddsize{S}=1$.
 With three active values and three inner nodes in each unmasked heuristic ADD,
-all six certificate baselines therefore tie:
+all seven certificate baselines therefore tie:
 \[
- (kD,mQ,mJ,C,W,A_{\mathrm{Apply}})
- =(12,60,81,81,117,33).
+ (kD,mQ,mJ,C,W,A_{\mathrm{Apply}},B_\wedge)
+ =(12,60,81,81,117,33,12).
 \]
-Among the eight ordering predictors, only incidence distinguishes the two
+Among the ten ordering predictors, only incidence distinguishes the two
 exact partition efforts.
 \end{example}
 
@@ -432,8 +453,8 @@ A&=&k-1,
 &b&=&L.
 \end{array}
 \]
-Consequently, each of $kD$, $mQ$, $mJ$, Cartesian, width and ADD is
-$\Theta(k^2L)$, while $E=I=\Theta(kL)$.
+Consequently, $B_\wedge=kD$, and each of $kD$, $mQ$, $mJ$, Cartesian, width,
+Apply and $B_\wedge$ is $\Theta(k^2L)$, while $E=I=\Theta(kL)$.
 \end{theorem}
 
 \begin{proof}
@@ -513,7 +534,7 @@ The BDD for $S$ is the length-$L$ conjunction chain, so $b=L$.
 Its cofactor counts are one at the $r+1$ cuts through the complete address
 prefix and two at each of the remaining $L-1$ cuts, giving
 $\cofcount(\chi_S)=r+2L-1$.
-Substitution yields the six certificate baselines
+Substitution yields the six primitive certificate relaxations
 \[
 \begin{array}{@{}rcl@{\qquad}rcl@{}}
 kD&=&k(kL+k-1),
@@ -524,7 +545,8 @@ W&=&k^2(r+2L-1),
 &A_{\mathrm{Apply}}&=&k(2kL+k-1).
 \end{array}
 \]
-Since $L\geq r\geq1$, all six are $\Theta(k^2L)$ and
+The layerwise meet is $B_\wedge=kD$ in this one-layer construction.
+Since $L\geq r\geq1$, all seven certificate baselines are $\Theta(k^2L)$ and
 $E=I=k(r+L)=\Theta(kL)$.
 \end{proof}
 
@@ -532,8 +554,10 @@ $E=I=k(r+L)=\Theta(kL)$.
 
 \begin{proposition}[contraction under terminal maps]
 \label{prop:supp-incidence-contraction}
-Let $\phi$ map heuristic terminals to heuristic terminals and fix the fresh
-bottom terminal.
+Let $\mathcal Y$ contain the terminal labels of $h$, let $\mathcal Z$ be any
+output-label set and let $\phi\colon\mathcal Y\to\mathcal Z$.
+Extend $\phi$ to a fresh bottom terminal
+$\bot\notin\mathcal Y\cup\mathcal Z$ by $\phi(\bot)=\bot$.
 For fixed $S$, replacing $h$ by $h'=\phi\circ h$ cannot increase
 \begin{enumerate}
 \item the active-terminal count;
@@ -589,7 +613,8 @@ Use order $x_1,x_2,x_3,x_4$ and let
 The sets are disjoint because they require opposite values of $x_4$.
 Their BDDs are three-node chains on $(x_1,x_3,x_4)$ and
 $(x_2,x_3,x_4)$, respectively.
-Let $S=F\cup G$, assign heuristic value one on $F$ and value two on $G$.
+Let $S=F\cup G$, assign heuristic value one on $F$, value two on $G$ and
+zero outside $S$.
 Then $\partcost{S}{h}=3+3=6$.
 
 To count the BDD for the union, branch first on $x_1$.
@@ -604,6 +629,11 @@ Together with the root, the union BDD therefore has
 $1+2+3+1=7$ regular inner nodes.
 The uniform cap $\kappa=1$ merges the two heuristic terminals, produces the
 single bucket $S$ and increases exact partition effort from six to seven.
+This total $h$ has an admissible-consistent planning embedding: take the
+assignment $1111\notin S$ as the sole goal and give every other assignment
+one cost-three operator, with a complete-state precondition, that reaches the
+goal.  Every non-goal state then has optimal cost three, so
+$h\leq h^*$ and every transition satisfies consistency.
 \end{proof}
 
 Uniform caps are a special case of Proposition
@@ -667,7 +697,8 @@ This section defines the terms abbreviated in the main paper and records the
 outcome-independent execution and analysis contract.
 Confirmation A and Confirmation B use disjoint cohorts selected before any
 planner outcome is read.
-The direct metric-choice campaign executes fresh runs on the B cohort; it is
+The controlled predecessor-ablation campaign executes fresh runs on the B
+cohort; it is
 therefore an intervention on the selector rule, not a third task holdout.
 The B launch additionally requires a pinned receipt showing that two fresh
 executions of the A analyzer produced byte-identical outputs and that A passed
@@ -698,9 +729,13 @@ These labels depend only on source identity, never on planner behavior.
 
 Within every supported family, SHA-256 ranks derived from fixed role strings
 determine the split.
-The audit first reserves the B base cohort, draws exactly 650 A tasks by
-lexicographic-family round robin, and only then draws exactly 300 B tasks, with
-a maximum of 12 B tasks per family.
+For a family with $n_f$ supported tasks, the audit reserves the first
+$\min\{3,\lfloor n_f/2\rfloor\}$ tasks under the B-base rank.
+After removing those problem hashes, it draws exactly 650 A tasks by
+lexicographic-family round robin under the A rank.
+It then tops up the reserved B cohort from the remaining tasks by
+lexicographic-family round robin under a separate B-top-up rank until B has
+exactly 300 tasks, with at most 12 B tasks per family.
 The A and B records are disjoint in canonical identity and problem hash.
 A is authorized only with exactly 650 tasks, at least 28 source families, at
 least 12 shadow-unrepresented families, and at least 100 tasks from ten
@@ -709,9 +744,9 @@ B is authorized only with exactly 300 tasks, at least 30 families, at least 12
 shadow-unrepresented families, and at least 50 tasks from ten
 all-prior-unrepresented families.
 
-% ================= RESULT_INSERT_SOURCE_AUDIT_V5_BEGIN =================
-% Replace this prospective V5 account with the sealed audit outcome, exact A/B
-% cohort support and source/environment/scheduler verification status.
+% ================= RESULT_INSERT_SOURCE_AUDIT_V6_BEGIN =================
+% Replace this prospective V6 account with the sealed audit outcome, exact A/B
+% cohort support, mixed-shard origins, and source/environment/scheduler status.
 Campaign v5 is the fourth outcome-blind resource amendment after the original
 scan.
 The first scan requested 26~GiB and had out-of-memory shards.
@@ -725,13 +760,55 @@ project-backed temporary storage, 1,024~GiB and a 14,400-second per-candidate
 translation limit within an 08:20:00 Slurm limit. It ended naturally with 801
 scheduler-completed array elements, ten classified translator timeouts and
 nine classified out-of-memory failures, so it also cannot be sealed. Campaign
-v5 therefore reruns all 820 shards again, reuses no earlier shard, requests
-2~TiB and allows
-28,800 seconds per candidate within a 16:40:00 Slurm limit. These resource
-changes are outcome-blind. Neither cohort exists for a
-confirmation launch unless v5 completes and all source, environment and
-scheduler manifests verify.
-% ================== RESULT_INSERT_SOURCE_AUDIT_V5_END ==================
+v5 reruns all 820 shards with 2~TiB and a 28,800-second per-candidate limit,
+but its terminal infrastructure failures make it seal-ineligible.
+Prospective campaign v6 freezes an infrastructure-only terminal-v5 diagnostic
+before opening any successful shard or source-support outcome. It reuses
+exactly the v5 shards whose scheduler state is \texttt{COMPLETED} with exit
+\texttt{0:0}, repairs the exact nonempty complement as complete two-candidate
+shards under one predeclared resource rule, and reuses no v1--v4 shard or
+partial output from a noncompleted v5 task. The v6 seal is possible only if
+every repair task completes with exit \texttt{0:0} and the ordered 820-shard
+union verifies each origin and equal source/union hash. Neither cohort exists
+for a confirmation launch until the complete v6 source, environment,
+scheduler, producer-revision, and union chain verifies. Before diagnosis, v6
+binds the committed outcome-free design; its crash-resumable seal binds an
+exclusive five-stage plan--union--candidate--attestation hash chain that every
+downstream freeze reopens and records.
+% ================== RESULT_INSERT_SOURCE_AUDIT_V6_END ==================
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Origin of the principal confirmatory design choices.  ``Inherited''
+means that the choice appeared in a named developmental protocol; no A or B
+outcome was available when any row was frozen.}
+\label{tab:supp-choice-provenance}
+\begin{tabular}{@{}p{0.25\linewidth}p{0.65\linewidth}@{}}
+\toprule
+Choice & Origin and role \\
+\midrule
+100,000 abstract states & Inherited from the developmental PDB experiments;
+shared by every direct generator and selector candidate. \\
+Four PDB sources & The BDD-prefix, goal-prefix, goal-fill and deterministic
+CEGAR constructions used in the terminal-incidence shadow study. \\
+First 16 blind layers & Inherited unchanged from the frozen terminal-incidence
+shadow horizon and used only as a common fixed-frontier probe. \\
+Cap grid & The powers-of-two ladder through 256 plus the exact endpoint from
+the developmental cap-grid study. \\
+Information score & The developmental selector's fixed lexicographic score;
+the metric controls feasibility, not the score. \\
+$K=32$ reference & The largest prespecified width in the developmental
+five-budget grid, fixed as the cap-aware reference before either confirmation. \\
+A thresholds & The numeric 0.65 concordance and 0.02 margin thresholds and
+the numeric support cutoffs are inherited from the terminal-incidence shadow
+protocol. Confirmation A newly freezes a target-strict, tie-aware denominator,
+100,000 paired-family bootstrap replicates, and the all-prior-unrepresented
+gate; the $D$, $B_\wedge$ and \valuecount challenger margins are also
+prospective additions. \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Confirmation A Measurement and Analysis}
 
@@ -744,6 +821,9 @@ The Boolean order is the untranslated Fast Downward encoding order
 (\texttt{gamer\_ordering=false}); dynamic reordering is disabled.
 The PDB heuristic is instrumented on the blind search but cannot guide,
 prune, order or partition it.
+The statistics ADD maps unused Boolean codes to zero and represents abstract
+dead ends by a distinct terminal; the search itself continues to treat those
+states as having infinite heuristic value.
 
 The retained horizon contains up to the first 16 completed non-goal blind
 layers in increasing $g$ order.
@@ -757,16 +837,20 @@ A missing or failed PDB construction supplies no observation; a provenance,
 schema, frontier-identity or certificate inconsistency invalidates the
 campaign instead of silently excluding the cell.
 
-For every observation, the target is $E$ and the eight ordering predictors
-are $I$, $D$, $kD$, $mQ$, $mJ$, Cartesian, width and ADD.
-Masked ADD size $D$ is a gating non-certificate baseline; the other six
-baselines satisfy the two certificate branches above.
+For every observation, the target is $E$ and the ten ordering predictors
+are $I$, $D$, \valuecount, $kD$, $mQ$, $mJ$, Cartesian, width, ADD and
+$B_\wedge$.
+Masked ADD size $D$ and active-value count \valuecount are gating
+non-certificate baselines; the other seven baselines are the six primitive
+certificate relaxations and the layerwise meet of the $kD$ and Apply branches.
 The legacy artifact key ADD denotes $A_{\mathrm{Apply}}$, the standard-Apply
 bound, rather than masked ADD size or total ADD size alone.
-This baseline and all seven associated margins are fixed before any
-Confirmation A outcome exists. The amendment is motivated by $D\leq I$; no
-Confirmation A comparison of $D$ with $E$ was available or inspected.
-The primary gate therefore contains seven margins from $I$, one against each
+These baselines and all nine associated margins are fixed before any
+Confirmation A outcome exists. The amendments are motivated by $D\leq I$,
+the alternative that incidence merely proxies the number of active values and
+the strongest direct combination of the two certificate branches; no
+Confirmation A comparison with $E$ was available or inspected.
+The primary gate therefore contains nine margins from $I$, one against each
 baseline.
 
 A \emph{semantic PDB observation} is identified by the exact pattern, value
@@ -795,7 +879,7 @@ nonempty; target ties never enter a predictor's score.
 Task concordances are averaged within normalized family and then equally
 across families.
 As a non-gating sensitivity, the analyzer repeats the comparison on the
-all-strict subset where $E$ and all eight predictors are unequal; there ties
+all-strict subset where $E$ and all ten predictors are unequal; there ties
 are absent and concordance is the ordinary fraction of matching signs.
 The analyzer also checks that normalizing $E$ by the common unsplit-frontier
 node sum leaves every pair orientation unchanged and that the inverse
@@ -812,25 +896,28 @@ removing each family in turn.
 All support and effect clauses in the main paper are conjunctive.
 The all-prior-unrepresented gate requires at least 50 comparison tasks in ten
 families and 100 target-strict pairs, in addition to the source floors above.
-It uses the same 0.65 concordance, seven 0.02 margins, paired-family reweighting and
+It uses the same 0.65 concordance, nine 0.02 margins, paired-family reweighting and
 leave-one-family-out clauses as the primary gate.
 The analysis is run twice from fresh loads of the sealed matrix; publication
 requires byte-identical canonical outputs.
 
-\subsection{Direct Metric-Choice Measurement and Analysis}
+\subsection{Controlled Predecessor-Ablation Measurement and Analysis}
 
 This campaign may freeze only after Confirmation A passes its complete gate
-and Confirmation B's exact 300-task parse, fetch and fetched-properties chain
-is sealed.
-An outcome-redacted standalone producer reconstructs the cap-aware $K=32$
-pool and selected identity for every B task from that exact chain.
-The direct freeze reopens the live sealed-B verifier, rebuilds those records
-from the fetched properties and checks every path and hash; benchmark outcomes
-are not admitted into its resource or selector design.
+and a preparation manifest for the exact 300-task B cohort is sealed.
+The preparation manifest binds the cohort's source provenance and, for every
+task, the cap-aware $K=32$ pool and selected identity reconstructed without
+using final-search outcomes.
+We generate it from the sealed B records while withholding coverage, runtime
+and all other final-search outcome fields.
+Before the direct freeze, independent replay reconstructs every manifest
+record from the source-attested B inputs and verifies every path and hash.
+Confirmation B performance remains unread until the direct campaign is both
+frozen and launched.
 It contains one task-blocked triad per B task: incidence-guided,
 $mJ$-guided and matched $K=32$, for 900 fresh planner cells.
 Within each family, the three execution positions rotate cyclically by task.
-The task mapping, source-audit-v5 provenance, planner revision, executable and
+The task mapping, source-audit-v6 selective-repair provenance, planner revision, executable and
 preprocessor hashes, search strings, options, limits and trace schemas are
 bound before launch.
 
@@ -893,6 +980,13 @@ This subset depends only on certified selector structure and is blind to
 search coverage, runtime and all other search outcomes.
 The incidence-guided versus matched-$K=32$ contrast is secondary.
 It cannot rescue a failed direct metric decision.
+Every contrast also reports a non-gating paired solve table with the four
+outcomes both solved, incidence only, comparator only and neither solved.
+On commonly solved tasks, it reports
+$(t_{\mathrm{comparator}}-t_I)/1800$, averaged first within family and then
+equally across families. This decomposition is fixed before campaign outcomes
+and helps distinguish coverage changes from total-time changes without affecting a
+gate.
 The bootstrap uses nearest-rank endpoints and seeds 20260903, 20260904 and
 20260905 for the full, differing-winner and secondary contrasts,
 respectively.
@@ -931,6 +1025,9 @@ Execution sealing first requires all triads to be terminal-complete and all
 structural output markers to exist.
 Parsing and audit then certify the traces; only after that may fetching and
 the deterministic double-run analysis proceed.
+The direct campaign and Confirmation~B use the same frozen 300-task cohort.
+Their separately executed cells and contrasts answer complementary questions;
+they are not independent replications.
 
 \subsection{Confirmation B Measurement and Analysis}
 
@@ -977,6 +1074,8 @@ As in A, this is a finite-cohort family-reweighting stability analysis, not a
 population confidence statement about unseen families.
 The complete gate applies separately against the cap-aware reference and the
 matched-work control; every task appears in both contrasts.
+Each contrast additionally reports the same non-gating paired solve table and
+equal-family normalized total-time difference on commonly solved tasks.
 The mechanism subset is fixed solely by a certified difference between the
 guided and reference selected identities.
 It must contain at least 50 tasks from ten families and pass the same coverage,
@@ -2146,6 +2245,14 @@ $0.8930$ for
 $mJ$, $0.8366$ for Cartesian, $0.8349$ for width and $0.8215$ for ADD.
 Terminal incidence passed every prespecified effect-size, paired-bootstrap and
 leave-one-family-out clause against all six certificate baselines.
+The later theory review defined $B_\wedge$ before Confirmation A; recomputation
+from the preserved layer records gives $0.8472$ under A's tie-aware rule,
+exactly the $kD$ value under that rule. It was not part of the failed
+developmental gate.
+A subsequent pre-A design audit added \valuecount as the missing column-count
+challenger to complement the masked-node row count $D$. The active-value sum
+was already present in the preserved measurements, and no Confirmation A
+outcome existed when the margin was added.
 These conditional results motivated the larger source audit and Confirmation
 A, but they do not constitute confirmation because support was part of the
 frozen gate.
@@ -2341,13 +2448,11 @@ when every deterministic measurement agrees.  Each comparison uses one
 shared strict-pair set, weights domains equally, and repeats the complete
 calculation after removing each of the 45 domains.
 
-Lab skips a file-specific callback when its optional file is absent.  After
-the first fail-closed analysis rejected that missing parser contract, a
-parser-only correction initialized the declared profile fields from the
-always-present run log.  It affected 227 pre-search records and one
-search-resource record, hence no eligible observation; no raw run file was
-modified.  The correction receipt binds the old and new parser, test,
-execution-tree, and fetched-properties digests.
+A fail-closed audit exposed a parser-only omission for records lacking an
+optional file.
+The corrected parser recovered the declared profile fields from the
+always-present run log without modifying any raw run; all 228 affected records
+remained ineligible, so no scientific observation or decision changed.
 
 Four comparisons were frozen.  First, $\profilescore$, normalized width, and
 normalized Apply predict $\fragfactor$.  Second, $\profilescore$ and the
@@ -2635,10 +2740,20 @@ BDD-node effort measure.
 The classical ADD representation already relates one multi-terminal diagram
 to a forest of Boolean diagrams, one for each value
 \citep{bahar-et-al-iccad1993}.
-We do not claim that relation as new.
-Terminal incidence refines it node by node after masking the ADD by the actual
-frontier: for each inner node, it retains exactly which active value terminals
-remain reachable.
+Torralba's terminal-substitution bound
+\citep[Proposition~2.1]{torralba-phd2015} yields the coarser $E\leq kD$
+certificate when applied to the masked ADD.
+\citet{ciardo-miner-jva2023} explicitly compare an MTBDD with the corresponding
+shared per-value BDD forest; its unique-node size differs from the rootwise sum
+$E$ used here.
+Reachable-terminal sets of individual MTBDD nodes are also used by
+\citet{duret-lutz-et-al-ciaa2025}.
+Terminal incidence refines this charge node by node: for each inner node, it
+retains exactly which active value terminals remain reachable.
+We do not claim the forest relation, per-value substitution or reachable-
+terminal sets as new; to our knowledge, the summed node-local aggregate and
+its $E\leq I$ charging bound have not previously been stated for rootwise-
+summed value BDDs.
 The legacy cofactor analysis gives a sufficient parameterized
 representation-effort certificate for product-at-evaluation forward search,
 and its exact-width selector operationalizes that condition.

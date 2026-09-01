@@ -24,12 +24,12 @@ class AnalysisError(RuntimeError):
     pass
 
 
-ANALYSIS_SCHEMA = P.FREEZE_SCHEMA + "/analysis/v3"
+ANALYSIS_SCHEMA = P.FREEZE_SCHEMA + "/analysis/v4"
 RECEIPT_SCHEMA = ANALYSIS_SCHEMA + "/double-execution"
-DEFAULT_OUTPUT = P.ARTIFACT_DIR / "analysis-v3.json"
-DEFAULT_REPEAT_OUTPUT = P.ARTIFACT_DIR / "analysis-v3-repeat.json"
-DEFAULT_RECEIPT = P.ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
-DEFAULT_RECEIPT_PIN = P.ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
+DEFAULT_OUTPUT = P.ARTIFACT_DIR / "analysis-v4.json"
+DEFAULT_REPEAT_OUTPUT = P.ARTIFACT_DIR / "analysis-v4-repeat.json"
+DEFAULT_RECEIPT = P.ARTIFACT_DIR / "analysis-execution-receipt-v4.json"
+DEFAULT_RECEIPT_PIN = P.ARTIFACT_DIR / "analysis-execution-receipt-v4.sha256"
 
 
 def _fraction(value: Fraction | None):
@@ -102,14 +102,33 @@ def contrast(
     intervention_coverage = 0
     reference_coverage = 0
     task_values = {}
+    solve_pairs = Counter()
+    common_solved_by_family = defaultdict(list)
+    common_solved_task_values = {}
     for task in sorted(tasks):
         left = matrix[(intervention, task)]
         right = matrix[(reference, task)]
         intervention_coverage += left["coverage"]
         reference_coverage += right["coverage"]
-        value = (_par2(right) - _par2(left)) / P.PAR2_SECONDS
+        left_par2 = _par2(left)
+        right_par2 = _par2(right)
+        value = (right_par2 - left_par2) / P.PAR2_SECONDS
         task_values[task] = value
         by_family[left["family"]].append(value)
+        if left["coverage"] and right["coverage"]:
+            category = "both_solved"
+            common_value = (
+                right_par2 - left_par2
+            ) / P.TIME_LIMIT_SECONDS
+            common_solved_task_values[task] = common_value
+            common_solved_by_family[left["family"]].append(common_value)
+        elif left["coverage"]:
+            category = "intervention_only_solved"
+        elif right["coverage"]:
+            category = "reference_only_solved"
+        else:
+            category = "neither_solved"
+        solve_pairs[category] += 1
     family_values = {
         family: _mean(values) for family, values in sorted(by_family.items())
     }
@@ -121,6 +140,10 @@ def contrast(
         for family in family_values
     }
     bootstrap = _bootstrap(family_values, replicates=replicates, seed=seed)
+    common_solved_family_values = {
+        family: _mean(values)
+        for family, values in sorted(common_solved_by_family.items())
+    }
     lower_record = bootstrap["lower_95"]
     lower = None if lower_record is None else Fraction(
         lower_record["numerator"], lower_record["denominator"]
@@ -159,6 +182,38 @@ def contrast(
         "equal_family_normalized_par2_improvement": _fraction(macro),
         "bootstrap": bootstrap,
         "lodo": {family: _fraction(value) for family, value in lodo.items()},
+        "outcome_decomposition": {
+            "gating": False,
+            "solve_pair_counts": {
+                category: solve_pairs[category]
+                for category in (
+                    "both_solved", "intervention_only_solved",
+                    "reference_only_solved", "neither_solved",
+                )
+            },
+            "common_solved": {
+                "definition": (
+                    "(reference total time - intervention total time) / "
+                    "planner time limit; positive favors intervention"
+                ),
+                "normalization_seconds": P.TIME_LIMIT_SECONDS,
+                "tasks": len(common_solved_task_values),
+                "families": len(common_solved_family_values),
+                "task_normalized_time_improvements": {
+                    "{}:{}".format(*task): _fraction(value)
+                    for task, value in sorted(
+                        common_solved_task_values.items()
+                    )
+                },
+                "family_normalized_time_improvements": {
+                    family: _fraction(value)
+                    for family, value in common_solved_family_values.items()
+                },
+                "equal_family_normalized_time_improvement": _fraction(
+                    _mean(common_solved_family_values.values())
+                ),
+            },
+        },
         "clauses": clauses,
         "pass": all(clauses.values()),
     }
@@ -830,7 +885,9 @@ def _exclusive_bytes(path: Path, raw: bytes, label: str) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def _load_inputs() -> tuple[list[dict], dict, str, dict, str, str, str, str]:
+def _load_inputs() -> tuple[
+    list[dict], dict, str, dict, str, str, str, str, dict,
+]:
     import pdb_terminal_metric_choice_execution as Execution
 
     freeze_path = P.FREEZE_PATH
@@ -840,7 +897,9 @@ def _load_inputs() -> tuple[list[dict], dict, str, dict, str, str, str, str]:
         freeze_path, expected_path=P.FREEZE_PATH, label="campaign freeze"
     )
     try:
-        execution_sha, _ = Execution.load_execution_receipt(verify_live=False)
+        execution_sha, execution = Execution.load_execution_receipt(
+            verify_live=False
+        )
     except Execution.ExecutionError as err:
         raise AnalysisError("cannot load sealed campaign execution") from err
     try:
@@ -859,7 +918,7 @@ def _load_inputs() -> tuple[list[dict], dict, str, dict, str, str, str, str]:
     execution_path = Execution.EXECUTION_RECEIPT.relative_to(P.REPO).as_posix()
     return (
         records, freeze, freeze_sha, standalone, properties_sha, fetch_sha,
-        execution_path, execution_sha,
+        execution_path, execution_sha, execution["hardware"],
     )
 
 
@@ -871,7 +930,7 @@ ANALYSIS_PROVENANCE_FIELDS = (
     "standalone_k32_evidence_sha256", "standalone_k32_records_sha256",
     "standalone_b_parse_receipt_sha256",
     "standalone_b_fetch_receipt_sha256", "standalone_b_properties_sha256",
-) + Runner.V5_PROVENANCE_PROPERTY_FIELDS
+) + Runner.V6_PROVENANCE_PROPERTY_FIELDS
 
 
 def _analysis_provenance(freeze: dict, freeze_sha256: str) -> dict:
@@ -894,7 +953,7 @@ def run_twice(
     first_inputs = _load_inputs()
     (
         records, freeze, freeze_sha, standalone, properties_sha, fetch_sha,
-        execution_path, execution_sha,
+        execution_path, execution_sha, hardware,
     ) = first_inputs
     first = analyze(
         records, freeze, freeze_sha, standalone,
@@ -907,6 +966,7 @@ def run_twice(
         "post_fetch_receipt_sha256": fetch_sha,
         "execution_receipt_path": execution_path,
         "execution_receipt_sha256": execution_sha,
+        "hardware": hardware,
     }
     first_raw = P.canonical_json_line(first)
 
@@ -914,7 +974,7 @@ def run_twice(
     (
         records_two, freeze_two, freeze_sha_two, standalone_two,
         properties_sha_two, fetch_sha_two, execution_path_two,
-        execution_sha_two,
+        execution_sha_two, hardware_two,
     ) = second_inputs
     if (
         P.canonical_json(freeze_two) != P.canonical_json(freeze)
@@ -926,6 +986,7 @@ def run_twice(
             freeze_sha, properties_sha, fetch_sha, execution_path,
             execution_sha,
         )
+        or hardware_two != hardware
     ):
         raise AnalysisError("analysis input changed between executions")
     second = analyze(
@@ -967,6 +1028,7 @@ def run_twice(
         "post_fetch_receipt_sha256": fetch_sha,
         "execution_receipt_path": execution_path,
         "execution_receipt_sha256": execution_sha,
+        "hardware": hardware,
         "bootstrap_replicates": (
             P.BOOTSTRAP_REPLICATES
             if bootstrap_replicates is None else bootstrap_replicates

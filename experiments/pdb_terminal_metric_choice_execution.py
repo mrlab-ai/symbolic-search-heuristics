@@ -15,6 +15,7 @@ from collections import Counter
 from pathlib import Path
 
 import jj_cached_revision as JJ
+import pdb_confirmation_run_cell as RunCell
 import pdb_confirmation_safe_io as SafeIO
 import pdb_terminal_metric_choice_freeze as Freeze
 import pdb_terminal_metric_choice_io as CampaignIO
@@ -186,7 +187,10 @@ def _validate_job_body(raw: bytes) -> None:
     execute_run_block = SafeIO.hardened_execute_run_block(
         Path(os.sys.executable),
         P.SCRIPT_DIR / "pdb_confirmation_run_cell.py",
-        ("driver.err", "driver.log", P.SELECTOR_TRACE),
+        (
+            "driver.err", "driver.log", P.SELECTOR_TRACE,
+            RunCell.HARDWARE_ATTESTATION_NAME,
+        ),
     )
     if any(text.count(block) != 1 for block in (
         print_block, print_run_dir_block, execute_run_block,
@@ -280,7 +284,7 @@ def _required_launch_ancestors(freeze: dict) -> tuple[str, ...]:
         freeze["planner"]["revision"],
         freeze["freeze_repository_revision"],
         freeze["base_confirmation_b"]["base_b_freeze_repository_revision"],
-        freeze["base_confirmation_b"]["source_audit_v5"][
+        freeze["base_confirmation_b"]["source_audit_v6"][
             "repository_commit_id"
         ],
     )
@@ -1196,7 +1200,10 @@ def status(base) -> dict:
 
 def _dynamic_manifest() -> dict:
     relatives = []
-    required = {"driver.log", "driver.err", P.SELECTOR_TRACE}
+    required = {
+        "driver.log", "driver.err", P.SELECTOR_TRACE,
+        RunCell.HARDWARE_ATTESTATION_NAME,
+    }
     for cell in range(1, P.CELL_COUNT + 1):
         directory = _run_directory(cell)
         try:
@@ -1220,6 +1227,30 @@ def _dynamic_manifest() -> dict:
             label="completed dynamic cell tree",
         )
     except Transport.TransportError as err:
+        raise ExecutionError(str(err)) from err
+
+
+def _hardware_summary() -> dict:
+    records = []
+    for cell in range(1, P.CELL_COUNT + 1):
+        path = _run_directory(cell) / RunCell.HARDWARE_ATTESTATION_NAME
+        try:
+            loaded = SafeIO.read_regular_file(
+                path, label="cell hardware attestation",
+                root=Runner.EXPERIMENT_PATH,
+            )
+        except SafeIO.SafeReadError as err:
+            raise ExecutionError(
+                "cell hardware attestation is missing or unsafe"
+            ) from err
+        records.append((cell, loaded.raw))
+    groups = [
+        list(P.triad_cells(task))
+        for task in range(1, P.EXPECTED_ARRAY_TASKS + 1)
+    ]
+    try:
+        return RunCell.summarize_hardware_records(records, groups)
+    except RunCell.RunCellError as err:
         raise ExecutionError(str(err)) from err
 
 
@@ -1264,6 +1295,7 @@ def _live_execution_value(base) -> dict:
             _load_freeze()[0], P.ACCOUNT
         ),
         "dynamic_cell_manifest": _dynamic_manifest(),
+        "hardware": _hardware_summary(),
         "primary_log_manifest": _primary_log_manifest(),
         "recovery_log_manifest": _recovery_log_manifest(recovery),
     }
@@ -1400,7 +1432,10 @@ def _validate_dynamic_manifest(value: object) -> None:
         ).parts != parts[:2]:
             raise ExecutionError("dynamic cell manifest mapping changed")
         names[cell].add(parts[2])
-    required = {"driver.log", "driver.err", P.SELECTOR_TRACE}
+    required = {
+        "driver.log", "driver.err", P.SELECTOR_TRACE,
+        RunCell.HARDWARE_ATTESTATION_NAME,
+    }
     if any(not required <= names[cell] for cell in names):
         raise ExecutionError("dynamic cell manifest is incomplete")
 
@@ -1417,7 +1452,7 @@ def _validate_execution_value(
         "effective_entries", "effective_entries_sha256", "state_counts",
         "complete_cells", "started_cells", "scheduler_contract",
         "dynamic_cell_manifest", "primary_log_manifest",
-        "recovery_log_manifest",
+        "recovery_log_manifest", "hardware",
     }
     if (
         not isinstance(receipt, dict) or set(receipt) != keys
@@ -1432,6 +1467,12 @@ def _validate_execution_value(
         or receipt.get("started_cells") != P.CELL_COUNT
     ):
         raise ExecutionError("execution receipt semantics changed")
+    try:
+        RunCell.validate_hardware_summary(
+            receipt.get("hardware"), P.CELL_COUNT
+        )
+    except RunCell.RunCellError as err:
+        raise ExecutionError("execution hardware summary changed") from err
     primary_job = receipt.get("primary_job_id")
     tasks = list(range(1, P.EXPECTED_ARRAY_TASKS + 1))
     primary_rows = _validate_accounting_rows(

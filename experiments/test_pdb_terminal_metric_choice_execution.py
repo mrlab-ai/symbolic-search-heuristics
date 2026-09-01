@@ -14,6 +14,7 @@ from unittest import mock
 
 import pdb_terminal_metric_choice_audit as Audit
 import pdb_terminal_metric_choice_execution as Coordinator
+import pdb_confirmation_run_cell as RunCell
 import pdb_terminal_metric_choice_protocol as P
 import pdb_terminal_metric_choice_recovery as Recovery
 import pdb_terminal_metric_choice_runner as Runner
@@ -26,6 +27,14 @@ import pdb_terminal_metric_choice_parser as Trace
 
 
 FREEZE_SHA = "f" * 64
+
+
+def hardware_bytes(model="Synthetic CPU", architecture="x86_64"):
+    return RunCell._canonical_json_line({
+        "schema": RunCell.HARDWARE_ATTESTATION_SCHEMA,
+        "processor_model": model,
+        "architecture": architecture,
+    })
 
 
 class LabPathContractTest(unittest.TestCase):
@@ -350,7 +359,10 @@ def fake_execution_receipt(freeze):
         )
         dynamic.extend(
             (relative / name).as_posix()
-            for name in ("driver.err", "driver.log", P.SELECTOR_TRACE)
+            for name in (
+                "driver.err", "driver.log", P.SELECTOR_TRACE,
+                RunCell.HARDWARE_ATTESTATION_NAME,
+            )
         )
     return {
         "schema": Coordinator.EXECUTION_SCHEMA,
@@ -373,6 +385,13 @@ def fake_execution_receipt(freeze):
         "started_cells": P.CELL_COUNT,
         "scheduler_contract": Transport.scheduler_contract(freeze, P.ACCOUNT),
         "dynamic_cell_manifest": fake_tree_manifest(dynamic),
+        "hardware": {
+            "hardware_attestation_schema": RunCell.HARDWARE_ATTESTATION_SCHEMA,
+            "hardware_attestation_files": P.CELL_COUNT,
+            "hardware_records_sha256": "c" * 64,
+            "processor_model_counts": {"Synthetic CPU": P.CELL_COUNT},
+            "architecture_counts": {"x86_64": P.CELL_COUNT},
+        },
         "primary_log_manifest": fake_tree_manifest(["slurm.err", "slurm.log"]),
         "recovery_log_manifest": None,
     }
@@ -969,6 +988,30 @@ class ExecutionTest(unittest.TestCase):
                 broken, freeze, FREEZE_SHA, "a" * 64
             )
         broken = copy.deepcopy(receipt)
+        dynamic_paths = [
+            row["path"] for row in broken["dynamic_cell_manifest"]["files"]
+            if row["path"] != (
+                Coordinator._run_directory(1).relative_to(
+                    Runner.EXPERIMENT_PATH
+                ) / RunCell.HARDWARE_ATTESTATION_NAME
+            ).as_posix()
+        ]
+        broken["dynamic_cell_manifest"] = fake_tree_manifest(dynamic_paths)
+        with self.assertRaisesRegex(
+            Coordinator.ExecutionError, "dynamic cell manifest is incomplete"
+        ):
+            Coordinator._validate_execution_value(
+                broken, freeze, FREEZE_SHA, "a" * 64
+            )
+        broken = copy.deepcopy(receipt)
+        broken["hardware"]["processor_model_counts"] = {"Synthetic CPU": 899}
+        with self.assertRaisesRegex(
+            Coordinator.ExecutionError, "hardware summary"
+        ):
+            Coordinator._validate_execution_value(
+                broken, freeze, FREEZE_SHA, "a" * 64
+            )
+        broken = copy.deepcopy(receipt)
         broken["primary_scheduler_rows"][0]["state"] = "TIMEOUT"
         broken["primary_scheduler_contract_rows"][0]["state"] = "TIMEOUT"
         with self.assertRaisesRegex(
@@ -977,6 +1020,30 @@ class ExecutionTest(unittest.TestCase):
             Coordinator._validate_execution_value(
                 broken, freeze, FREEZE_SHA, "a" * 64
             )
+
+    def test_live_hardware_summary_requires_one_consistent_triad(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            Runner, "EXPERIMENT_PATH", Path(tmp) / "experiment"
+        ), mock.patch.multiple(
+            P, CELL_COUNT=3, EXPECTED_ARRAY_TASKS=1
+        ):
+            for cell in range(1, 4):
+                directory = Coordinator._run_directory(cell)
+                directory.mkdir(parents=True)
+                (directory / RunCell.HARDWARE_ATTESTATION_NAME).write_bytes(
+                    hardware_bytes()
+                )
+            summary = Coordinator._hardware_summary()
+            self.assertEqual(summary["hardware_attestation_files"], 3)
+            second = (
+                Coordinator._run_directory(2) /
+                RunCell.HARDWARE_ATTESTATION_NAME
+            )
+            second.write_bytes(hardware_bytes("Other CPU"))
+            with self.assertRaisesRegex(
+                Coordinator.ExecutionError, "within an array element"
+            ):
+                Coordinator._hardware_summary()
 
 
 if __name__ == "__main__":

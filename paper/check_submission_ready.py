@@ -136,10 +136,16 @@ REVIEW_BUNDLE_FILENAMES = (
 )
 
 OUTCOME_CONTINGENT_TITLES = (
-    "Terminal Incidence: From Partition-Effort Prediction to Heuristic Selection",
-    "Terminal Incidence Predicts Heuristic Fragmentation in Symbolic Search",
     (
-        "Heuristic Fragmentation in Symbolic Search: "
+        "Terminal Incidence Predicts Fixed-Frontier Partition Effort and "
+        "Guides PDB Selection"
+    ),
+    (
+        "Terminal Incidence Predicts Fixed-Frontier Partition Effort in "
+        "Symbolic Search"
+    ),
+    (
+        "Fixed-Frontier Partition Effort in Symbolic Search: "
         "Terminal-Incidence Certificates and Their Limits"
     ),
 )
@@ -308,10 +314,12 @@ FORBIDDEN_CONTENT = (
         re.compile(r"\bpending\s+source\s+(?:audit|scan)\b", re.IGNORECASE),
     ),
     (
-        "prospective V5 source audit",
+        "prospective source-audit campaign",
         re.compile(
-            r"\bv5\s+(?:therefore\s+)?reruns\b"
-            r"|\bunless\s+v5\s+completes\b",
+            r"\bv[0-9]+\s+(?:therefore\s+)?(?:reruns|repairs)\b"
+            r"|\bunless\s+v[0-9]+\s+completes\b"
+            r"|\bprospective\s+campaign\s+v[0-9]+\b"
+            r"|\bv[0-9]+\s+seal\s+is\s+possible\s+only\b",
             re.IGNORECASE,
         ),
     ),
@@ -326,12 +334,12 @@ FORBIDDEN_CONTENT = (
 
 UNRESOLVED_RAW_SOURCE = (
     (
-        "V5 source-audit result insertion marker",
-        re.compile(r"RESULT_INSERT_SOURCE_AUDIT_V5(?:_[A-Z0-9_]+)?"),
+        "source-audit result insertion marker",
+        re.compile(r"RESULT_INSERT_SOURCE_AUDIT_V[0-9]+(?:_[A-Z0-9_]+)?"),
     ),
     (
         "result insertion marker",
-        re.compile(r"RESULT_INSERT_(?!SOURCE_AUDIT_V5(?:_|\b))[A-Z0-9_]+"),
+        re.compile(r"RESULT_INSERT_(?!SOURCE_AUDIT_V[0-9]+(?:_|\b))[A-Z0-9_]+"),
     ),
 )
 
@@ -1463,7 +1471,8 @@ def _review_bundle_self_test():
     for bad_first_page in (
         "Unreviewed Terminal Metric Title\nAnonymous submission\nAbstract\n",
         (
-            "Terminal Incidence for Heuristic Fragmentation in Symbolic Search\n"
+            "Terminal Incidence for Fixed-Frontier Partition Effort in "
+            "Symbolic Search\n"
             "Anonymous submission\nAbstract\n"
         ),
     ):
@@ -1964,7 +1973,10 @@ def self_test():
         (
             main.replace(
                 main_title_command,
-                r"\title{Terminal Incidence for Heuristic Fragmentation in Symbolic Search}",
+                (
+                    r"\title{Terminal Incidence for Fixed-Frontier "
+                    r"Partition Effort in Symbolic Search}"
+                ),
                 1,
             ),
             supplement,
@@ -2006,14 +2018,14 @@ def self_test():
         (main + "preliminary results\n", supplement, cap_study, manifest, generated),
         (
             main,
-            supplement + "% RESULT_INSERT_SOURCE_AUDIT_V5_BEGIN\n",
+            supplement + "% RESULT_INSERT_SOURCE_AUDIT_V6_BEGIN\n",
             cap_study,
             manifest,
             generated,
         ),
         (
             main,
-            supplement + "Campaign v5 therefore reruns all shards.\n",
+            supplement + "Prospective campaign v6 repairs the complement.\n",
             cap_study,
             manifest,
             generated,

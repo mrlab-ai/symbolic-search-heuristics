@@ -35,18 +35,19 @@ def fake_snapshot():
     tasks_sha = P.cohort_digest(tasks)
     planner = fake_planner()
     base_source_files = P.BASE_B_EXPERIMENT_SOURCE_FILES
-    v5_tracked = {relative: "4" * 64 for relative in P.V5_SCOPED_FILES}
-    v5_tracked[P.V5_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()] = (
+    v6_tracked = {relative: "4" * 64 for relative in P.V6_SCOPED_FILES}
+    v6_tracked[P.V6_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()] = (
         "1" * 64
     )
-    v5_tracked[P.V5_SLURM_PATH.relative_to(P.REPO).as_posix()] = "3" * 64
+    v6_tracked[P.V6_SLURM_PATH.relative_to(P.REPO).as_posix()] = "3" * 64
+    v6_tracked[P.V6_DIAGNOSTIC_PATH.relative_to(P.REPO).as_posix()] = "7" * 64
     return {
         "schema": P.BASE_SNAPSHOT_SCHEMA,
         "base_b_freeze_path": P.BASE_B_FREEZE_PATH.relative_to(P.REPO).as_posix(),
         "base_b_freeze_sha256": "1" * 64,
         "base_b_freeze_repository_revision": "1" * 40,
         "base_b_experiment_source_sha256": {
-            relative: v5_tracked.get(relative, SHA)
+            relative: v6_tracked.get(relative, SHA)
             for relative in base_source_files
         },
         "base_b_planner": P.planner_identity(planner),
@@ -58,6 +59,20 @@ def fake_snapshot():
             "second_output_sha256": "5" * 64,
             "input_properties_sha256": "6" * 64,
             "fetch_receipt_sha256": "7" * 64,
+            "execution_receipt_sha256": "0" * 64,
+            "hardware": {
+                "hardware_attestation_schema": (
+                    "symbolic-search-heuristics/execution-hardware/v1"
+                ),
+                "hardware_attestation_files": P.BASE_A_CELL_COUNT,
+                "hardware_records_sha256": "1" * 64,
+                "processor_model_counts": {
+                    "Synthetic CPU": P.BASE_A_CELL_COUNT,
+                },
+                "architecture_counts": {
+                    "x86_64": P.BASE_A_CELL_COUNT,
+                },
+            },
             "receipt_schema": P.BASE_A_RECEIPT_SCHEMA,
             "analysis_protocol": P.BASE_A_ANALYSIS_PROTOCOL,
             "benchmark_revision": "2" * 40,
@@ -77,17 +92,21 @@ def fake_snapshot():
             "confirmation_a_cohort_manifest_sha256": "f" * 64,
             "planner_identity": P.planner_identity(planner),
         },
-        "source_audit_v5": {
-            "campaign": "v5",
-            "attestation_path": P.V5_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
-            "execution_receipt_path": P.V5_EXECUTION_RECEIPT_PATH.relative_to(
+        "source_audit_v6": {
+            "campaign": "v6-selective-repair",
+            "attestation_path": P.V6_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
+            "terminal_diagnostic_path": P.V6_DIAGNOSTIC_PATH.relative_to(
                 P.REPO
             ).as_posix(),
-            "launch_receipt_path": P.V5_LAUNCH_RECEIPT_PATH.relative_to(
+            "execution_receipt_path": P.V6_EXECUTION_RECEIPT_PATH.relative_to(
                 P.REPO
             ).as_posix(),
-            "launch_intent_path": P.V5_INTENT_PATH.relative_to(P.REPO).as_posix(),
+            "launch_receipt_path": P.V6_LAUNCH_RECEIPT_PATH.relative_to(
+                P.REPO
+            ).as_posix(),
+            "launch_intent_path": P.V6_INTENT_PATH.relative_to(P.REPO).as_posix(),
             "attestation_sha256": "8" * 64,
+            "terminal_diagnostic_sha256": "7" * 64,
             "execution_receipt_sha256": "a" * 64,
             "launch_receipt_sha256": "9" * 64,
             "launch_intent_sha256": "b" * 64,
@@ -97,9 +116,38 @@ def fake_snapshot():
             "translator_source_sha256": "e" * 64,
             "job_id": "12345", "code_manifest_sha256": "1" * 64,
             "repository_commit_id": "3" * 40,
-            "original_output_tree_sha256": "2" * 64,
-            "slurm_script_sha256": "3" * 64,
-            "tracked_file_sha256": v5_tracked,
+            "union_tree_sha256": "2" * 64,
+            "union_sources_sha256": "5" * 64,
+            "v6_output_tree_sha256": "6" * 64,
+            "v5_launch_receipt_sha256": "7" * 64,
+            "v5_code_manifest_sha256": "0" * 64,
+            "slurm_template_sha256": "3" * 64,
+            "seal_recovery_protocol": (
+                "deterministic-exclusive-hash-chain-v1"
+            ),
+            "pre_diagnosis_repository_commit_id": "4" * 40,
+            "pre_diagnosis_files_sha256": "4" * 64,
+            "seal_plan_path": P.V6_SEAL_PLAN_PATH.relative_to(
+                P.REPO
+            ).as_posix(),
+            "seal_plan_sha256": "5" * 64,
+            "union_root_stage_path": P.V6_UNION_ROOT_STAGE_PATH.relative_to(
+                P.REPO
+            ).as_posix(),
+            "union_root_stage_sha256": "6" * 64,
+            "union_stage_path": P.V6_UNION_STAGE_PATH.relative_to(
+                P.REPO
+            ).as_posix(),
+            "union_stage_sha256": "7" * 64,
+            "candidate_stage_path": P.V6_CANDIDATE_STAGE_PATH.relative_to(
+                P.REPO
+            ).as_posix(),
+            "candidate_stage_sha256": "8" * 64,
+            "attestation_stage_path": P.V6_ATTESTATION_STAGE_PATH.relative_to(
+                P.REPO
+            ).as_posix(),
+            "attestation_stage_sha256": "9" * 64,
+            "tracked_file_sha256": v6_tracked,
         },
         "confirmation_a_cohort": {
             "role": "confirmation-a", "full_tasks_sha256": "f" * 64,
@@ -267,16 +315,25 @@ def fake_freeze():
 
 
 class ProtocolTest(unittest.TestCase):
-    def test_confirmation_a_authorization_uses_v3_analysis_namespace(self):
+    def test_static_design_pins_base_a_cell_count(self):
+        with mock.patch.object(P, "BASE_A_CELL_COUNT", 2599):
+            with self.assertRaisesRegex(P.ProtocolError, "static design changed"):
+                P.validate_static_design()
+
+    def test_analysis_v4_consumes_confirmation_a_v4_namespace(self):
         self.assertEqual(
-            P.BASE_A_RECEIPT_PATH.name, "analysis-execution-receipt-v3.json"
+            P.ANALYSIS_PROTOCOL,
+            "pdb-terminal-metric-choice-analysis-v4",
+        )
+        self.assertEqual(
+            P.BASE_A_RECEIPT_PATH.name, "analysis-execution-receipt-v4.json"
         )
         self.assertEqual(
             P.BASE_A_RECEIPT_PIN_PATH.name,
-            "analysis-execution-receipt-v3.sha256",
+            "analysis-execution-receipt-v4.sha256",
         )
-        self.assertEqual(P.BASE_A_FIRST_OUTPUT_PATH.name, "analysis-v3.json")
-        self.assertEqual(P.BASE_A_SECOND_OUTPUT_PATH.name, "analysis-v3-repeat.json")
+        self.assertEqual(P.BASE_A_FIRST_OUTPUT_PATH.name, "analysis-v4.json")
+        self.assertEqual(P.BASE_A_SECOND_OUTPUT_PATH.name, "analysis-v4-repeat.json")
 
     def test_exact_task_major_cyclic_triads(self):
         tasks = fake_tasks()
@@ -309,10 +366,10 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "does not authorize"):
             P.validate_base_snapshot(snapshot)
 
-    def test_requires_exact_a_v3_authorization_metadata(self):
+    def test_requires_exact_a_v4_authorization_metadata(self):
         mutations = {
-            "receipt_schema": P.BASE_A_RECEIPT_SCHEMA.replace("/v3/", "/v2/"),
-            "analysis_protocol": P.BASE_A_ANALYSIS_PROTOCOL.replace("v3", "v2"),
+            "receipt_schema": P.BASE_A_RECEIPT_SCHEMA.replace("/v4/", "/v2/"),
+            "analysis_protocol": P.BASE_A_ANALYSIS_PROTOCOL.replace("v4", "v2"),
         }
         for field, value in mutations.items():
             snapshot = fake_snapshot()
@@ -321,6 +378,21 @@ class ProtocolTest(unittest.TestCase):
                 P.ProtocolError, "authorization metadata"
             ):
                 P.validate_base_snapshot(snapshot)
+
+    def test_requires_a_execution_and_hardware_provenance(self):
+        snapshot = fake_snapshot()
+        snapshot["confirmation_a_authorization"][
+            "execution_receipt_sha256"
+        ] = "not-a-digest"
+        with self.assertRaises(P.ProtocolError):
+            P.validate_base_snapshot(snapshot)
+
+        snapshot = fake_snapshot()
+        snapshot["confirmation_a_authorization"]["hardware"][
+            "hardware_attestation_files"
+        ] -= 1
+        with self.assertRaisesRegex(P.ProtocolError, "hardware"):
+            P.validate_base_snapshot(snapshot)
 
     def test_snapshot_requires_exact_confirmation_b_source_closure(self):
         snapshot = fake_snapshot()
@@ -361,14 +433,14 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "planner manifest"):
             P.validate_planner_manifest(planner)
 
-    def test_v5_paths_scope_and_authorization_links_are_exact(self):
+    def test_v6_paths_scope_and_authorization_links_are_exact(self):
         path_fields = (
-            "attestation_path", "execution_receipt_path",
+            "attestation_path", "terminal_diagnostic_path", "execution_receipt_path",
             "launch_receipt_path", "launch_intent_path",
         )
         for field in path_fields:
             snapshot = fake_snapshot()
-            snapshot["source_audit_v5"][field] = "experiments/elsewhere.json"
+            snapshot["source_audit_v6"][field] = "experiments/elsewhere.json"
             with self.subTest(path=field), self.assertRaises(P.ProtocolError):
                 P.validate_base_snapshot(snapshot)
         link_fields = (
@@ -378,12 +450,12 @@ class ProtocolTest(unittest.TestCase):
         )
         for field in link_fields:
             snapshot = fake_snapshot()
-            snapshot["source_audit_v5"][field] = "0" * 64
+            snapshot["source_audit_v6"][field] = "0" * 64
             with self.subTest(link=field), self.assertRaises(P.ProtocolError):
                 P.validate_base_snapshot(snapshot)
         snapshot = fake_snapshot()
-        snapshot["source_audit_v5"]["tracked_file_sha256"].pop(
-            P.V5_SCOPED_FILES[0]
+        snapshot["source_audit_v6"]["tracked_file_sha256"].pop(
+            P.V6_SCOPED_FILES[0]
         )
         with self.assertRaisesRegex(P.ProtocolError, "tracked source"):
             P.validate_base_snapshot(snapshot)
