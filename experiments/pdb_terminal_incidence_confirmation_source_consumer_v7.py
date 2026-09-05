@@ -1058,6 +1058,19 @@ def _validate_inventory_manifest(inventory: dict) -> None:
         raise SourceConsumerError("V7 rebuilt inventory records changed")
 
 
+def _validate_v5_producer_ancestry(
+    diagnostic: dict, snapshot_reader: SnapshotReader,
+) -> dict[str, str]:
+    """Apply the unchanged V6 ancestry validator under V5's LF encoding."""
+    try:
+        return Source.validate_with_historical_v5_diagnostic_encoding(
+            V6Utilities.V5, V6Utilities._validate_v5_producer,
+            diagnostic, snapshot_reader,
+        )
+    except V6Utilities.SourceConsumerError as err:
+        raise SourceConsumerError("invalid V5 producer ancestry") from err
+
+
 def load_v7_source(
     attestation_path: Path, execution_receipt_path: Path,
     launch_receipt_path: Path, *, snapshot_reader: SnapshotReader,
@@ -1081,10 +1094,7 @@ def load_v7_source(
         pre["repository_commit_id"], Launch.PRE_DIAGNOSIS_FILES,
         pre_tracked, snapshot_reader, "V7 prediagnosis",
     )
-    try:
-        V6Utilities._validate_v5_producer(diagnostic, snapshot_reader)
-    except V6Utilities.SourceConsumerError as err:
-        raise SourceConsumerError("invalid V5 producer ancestry") from err
+    _validate_v5_producer_ancestry(diagnostic, snapshot_reader)
     manifest = _validate_launch(
         diagnostic_raw, diagnostic, intent_raw, intent,
         launch_raw, launch_receipt,

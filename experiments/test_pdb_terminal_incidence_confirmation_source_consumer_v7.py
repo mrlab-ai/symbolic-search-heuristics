@@ -162,6 +162,39 @@ class V7ConsumerTest(unittest.TestCase):
             C.MANIFEST_RELATIVE,
         })
 
+    def test_v5_ancestry_compatibility_restores_encoder_on_success_and_failure(self):
+        original_encoder = C.V6Utilities.V5._canonical_json
+        observed = []
+
+        def succeeds(*_args):
+            observed.append(C.V6Utilities.V5._canonical_json)
+            return {"validated": "v5"}
+
+        with mock.patch.object(
+            C.V6Utilities, "_validate_v5_producer", side_effect=succeeds
+        ) as validator:
+            result = C._validate_v5_producer_ancestry({}, lambda *_: {})
+        self.assertEqual(result, {"validated": "v5"})
+        validator.assert_called_once()
+        self.assertEqual(observed, [C.V6Utilities.V5._canonical_json_line])
+        self.assertIs(C.V6Utilities.V5._canonical_json, original_encoder)
+
+        def fails(*_args):
+            observed.append(C.V6Utilities.V5._canonical_json)
+            raise C.V6Utilities.SourceConsumerError("invalid provenance")
+
+        with (
+            mock.patch.object(
+                C.V6Utilities, "_validate_v5_producer", side_effect=fails
+            ),
+            self.assertRaisesRegex(
+                C.SourceConsumerError, "invalid V5 producer ancestry"
+            ),
+        ):
+            C._validate_v5_producer_ancestry({}, lambda *_: {})
+        self.assertEqual(observed[-1], C.V6Utilities.V5._canonical_json_line)
+        self.assertIs(C.V6Utilities.V5._canonical_json, original_encoder)
+
     def test_diagnostic_consumer_rejects_outcome_or_output_fields(self):
         value = {"schema": "fixture"}
         raw = C._canonical_json_line(value)

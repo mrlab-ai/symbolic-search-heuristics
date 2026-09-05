@@ -770,7 +770,19 @@ metadata and transiently parsed scheduler elapsed fields before rejecting a
 It produced no accepted diagnostic, manifest, launch, job or shard.
 No v5 shard, environment record, log or source-support classification was read.
 
-Prospective campaign v7 is frozen after these disclosed operational facts but
+The first v7 diagnosis attempt, at revision
+\texttt{9c06f962627739d40d00cb2ef19525a80b2ca97f}, completed its freeze and
+validated the v5 intent, receipt, live executable identities, 38 manifest
+dependencies and historical v4-to-v5 diagnostic. It failed at four embedded
+list digests because their producer included a terminating line feed while the
+v5 consumer omitted it. It issued no scheduler query, read no scheduler row or
+v5 output, shard, environment, log or support result, and created no v7
+diagnostic, manifest, intent, receipt, job or output. A v7-local wrapper now
+invokes the unchanged v5 validator with the historical producer encoding and
+restores the consumer state on success or failure; v5 and v6 remain unchanged.
+
+The amended prospective campaign v7 is frozen before its first
+scheduler-reaching diagnosis, after these disclosed operational facts but
 before any source-support outcome or repair output is inspected.
 Its diagnostic requests only array identity, state, exit code and partition.
 It reuses exactly the v5 shards whose scheduler state is \texttt{COMPLETED}

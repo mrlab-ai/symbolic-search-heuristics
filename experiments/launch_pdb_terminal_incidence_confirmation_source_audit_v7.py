@@ -123,6 +123,9 @@ MANIFEST_PLACEHOLDER = b"__V7_CODE_MANIFEST_SHA256__"
 NORMALIZED_SLURM_SHA256 = (
     "cdbd944245e37d34dfde7371ef60fef7ea4776b2aa8ef21241f43a5ecfd3011b"
 )
+FAILED_V7_PREDIAGNOSIS_REVISION = (
+    "9c06f962627739d40d00cb2ef19525a80b2ca97f"
+)
 
 SEAL_PLAN_SCHEMA = EXECUTION_SCHEMA + "/seal-plan/v1"
 UNION_ROOT_STAGE_SCHEMA = EXECUTION_SCHEMA + "/union-root-stage/v1"
@@ -355,6 +358,26 @@ def _design_timing_disclosure() -> dict:
             "V5 logs", "source-support classifications",
         ],
         "accepted_v6_diagnostic_manifest_launch_job_or_shards": False,
+        "failed_v7_prediagnosis_attempt": {
+            "revision": FAILED_V7_PREDIAGNOSIS_REVISION,
+            "completed_before_failure": [
+                "V7 prediagnosis freeze",
+                "V5 launch intent and receipt reads",
+                "live executable identity checks",
+                "38 V5 code-manifest dependency checks",
+                "historical V4-to-V5 diagnostic read",
+            ],
+            "failure": (
+                "four historical list digests were produced from canonical "
+                "JSON plus LF but checked with a no-LF consumer encoder"
+            ),
+            "sacct_queries": 0,
+            "v5_scheduler_rows_read": 0,
+            "v5_output_namespace_accessed": False,
+            "v5_shards_environment_logs_or_support_read": False,
+            "v7_diagnostic_manifest_intent_receipt_job_or_output_created": False,
+        },
+        "amended_v7_frozen_before_first_scheduler_reaching_diagnosis": True,
         "interpretation": (
             "V7 is prospectively frozen before repair and scientific outcome "
             "inspection, not preregistered before V5 scheduler telemetry"
@@ -476,7 +499,10 @@ def _load_v5_launch_without_output_access() -> tuple[str, dict]:
             )
         ):
             raise LaunchAuditError("V5 launch code/environment chain changed")
-        V5Consumer._validate_diagnostic(launch_receipt, manifest)
+        Source.validate_with_historical_v5_diagnostic_encoding(
+            V5Consumer, V5Consumer._validate_diagnostic,
+            launch_receipt, manifest,
+        )
         V5Consumer._slurm(launch_receipt)
     except V5Consumer.SourceConsumerError as err:
         raise LaunchAuditError("V5 launch provenance is invalid") from err

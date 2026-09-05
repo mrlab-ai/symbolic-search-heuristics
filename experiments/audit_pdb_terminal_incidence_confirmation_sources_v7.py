@@ -192,6 +192,26 @@ def atomic_exclusive_bytes(path: Path, raw: bytes, label: str) -> str:
         raise V5.SourceAuditError(str(err)) from err
 
 
+def validate_with_historical_v5_diagnostic_encoding(
+    consumer_module, validator, *args, **kwargs
+):
+    """Run an unchanged V5 validator with its producer's JSON+LF digests.
+
+    V5 produced four embedded list digests with ``canonical_json``, whose
+    bytes include the terminating line feed.  Its later consumer accidentally
+    used the no-line-feed helper for those four comparisons.  V7 changes only
+    that runtime encoder binding and restores it even when validation fails;
+    every predicate remains in the unchanged V5 validator.
+    """
+    original = consumer_module._canonical_json
+    historical = consumer_module._canonical_json_line
+    try:
+        consumer_module._canonical_json = historical
+        return validator(*args, **kwargs)
+    finally:
+        consumer_module._canonical_json = original
+
+
 def configure(timeout_seconds: int) -> None:
     """Install the single frozen V7 ceiling profile in the private producer."""
     if (

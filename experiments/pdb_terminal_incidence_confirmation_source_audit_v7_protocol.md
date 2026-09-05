@@ -9,11 +9,23 @@ diagnostic, manifest, launch, job, or shard, and no V5 log, shard,
 environment record, or source-support classification was opened. The aborted
 V6 call did revalidate the already-fixed V5 inventory/task metadata and its
 scheduler parser transiently parsed `Elapsed`; neither value was persisted in
-an accepted diagnostic or exposed beyond aggregate state/exit reporting. V7 therefore
-starts a distinct, prospectively frozen provenance chain before any repair or
-source/support-outcome inspection. Scheduler membership is its sole observed
-operational outcome and affects only which campaign executes a fixed inventory
-record.
+an accepted diagnostic or exposed beyond aggregate state/exit reporting.
+
+The first V7 `diagnose-v5` attempt, from revision
+`9c06f962627739d40d00cb2ef19525a80b2ca97f`, completed the prediagnosis
+freeze, read the V5 intent and receipt, checked the live executable identities
+and all 38 V5 manifest dependencies, and read the historical V4-to-V5
+diagnostic. It then failed at the diagnostic's four embedded list-digest
+checks: the V5 producer had hashed canonical JSON including its terminating
+line feed, whereas the unchanged V5 consumer recomputed those four digests
+without that byte. The attempt issued no `sacct` query, read no scheduler row,
+did not access the V5 output namespace or any shard, environment, log, or
+support result, and created no V7 diagnostic, manifest, intent, receipt, job,
+or output. The amended V7 is frozen before the first scheduler-reaching V7
+diagnosis. It starts a distinct, prospectively frozen provenance chain before
+any repair or source/support-outcome inspection. Scheduler membership is its
+sole observed operational outcome and affects only which campaign executes a
+fixed inventory record.
 The disclosed counts and row-2 event are historical context, not diagnostic
 acceptance criteria. V7 recomputes the state counts from one fresh exact
 820-row snapshot and applies only the generic rule below.
@@ -31,7 +43,13 @@ V5 output name or byte.
 
 Diagnosis then validates the committed frozen V5 intent, receipt, code,
 environment, Slurm template and V4-to-V5 diagnostic chain without touching its
-output namespace. It takes the launch identity from that authenticated V5
+output namespace. A V7-local compatibility wrapper temporarily supplies the
+historical producer's canonical-JSON-plus-line-feed encoder to the unchanged
+V5 diagnostic validator and restores the original consumer binding on both
+success and failure. No V5 predicate is copied, removed, or relaxed, and no
+V5/V6 byte is changed. The same wrapper encloses the unchanged V6 utility when
+the dedicated V7 consumer independently replays V5 producer ancestry. It takes
+the launch identity from that authenticated V5
 receipt and performs no separate live launch-journal query. It then reads
 exactly 820 expanded V5 array rows from raw, pipe-delimited `sacct` output. The
 only V7 diagnostic scheduler query requests `JobID`, `State`, `ExitCode`, and

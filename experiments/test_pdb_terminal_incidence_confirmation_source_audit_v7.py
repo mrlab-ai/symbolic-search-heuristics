@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import os
 import stat
@@ -90,6 +91,130 @@ class SourceAuditV7Test(unittest.TestCase):
         for invalid in (28800, 57600, 0, True, "115200"):
             with self.assertRaises(Source.SourceAuditError):
                 Source.configure(invalid)
+
+    def test_historical_v5_lf_diagnostic_compatibility_is_exact_and_restored(self):
+        _raw, launch = Launch.V5Consumer._read_json(
+            Launch.V5_LAUNCH_RECEIPT,
+            Launch.V5_LAUNCH_RECEIPT,
+            "V5 launch receipt fixture",
+        )
+        manifest = Launch.V5Consumer._manifest(launch)
+        original_encoder = Launch.V5Consumer._canonical_json
+        line_encoder = Launch.V5Consumer._canonical_json_line
+
+        # This is the historical defect: the unchanged no-LF consumer rejects
+        # the authentic diagnostic whose producer included the line feed.
+        with self.assertRaises(Launch.V5Consumer.SourceConsumerError):
+            Launch.V5Consumer._validate_diagnostic(launch, manifest)
+        self.assertIs(Launch.V5Consumer._canonical_json, original_encoder)
+
+        Source.validate_with_historical_v5_diagnostic_encoding(
+            Launch.V5Consumer,
+            Launch.V5Consumer._validate_diagnostic,
+            launch,
+            manifest,
+        )
+        self.assertIs(Launch.V5Consumer._canonical_json, original_encoder)
+
+        def no_line_feed(value):
+            return line_encoder(value)[:-1]
+
+        with (
+            mock.patch.object(
+                Launch.V5Consumer, "_canonical_json_line", no_line_feed
+            ),
+            self.assertRaises(Launch.V5Consumer.SourceConsumerError),
+        ):
+            Source.validate_with_historical_v5_diagnostic_encoding(
+                Launch.V5Consumer,
+                Launch.V5Consumer._validate_diagnostic,
+                launch,
+                manifest,
+            )
+        self.assertIs(Launch.V5Consumer._canonical_json, original_encoder)
+
+        diagnostic_path = Path(
+            launch["v4_infrastructure_diagnostic_path"]
+        )
+        _diagnostic_raw, diagnostic = Launch.V5Consumer._read_json(
+            diagnostic_path, diagnostic_path, "V5 diagnostic fixture"
+        )
+        relative = diagnostic_path.relative_to(Launch.REPO).as_posix()
+        list_digest_pairs = (
+            ("v4_scheduler_rows", "v4_scheduler_rows_sha256"),
+            ("v4_failure_logs", "v4_failure_logs_sha256"),
+            (
+                "v4_oom_scheduler_resource_rows",
+                "v4_oom_scheduler_resource_rows_sha256",
+            ),
+            (
+                "v4_timeout_scheduler_resource_rows",
+                "v4_timeout_scheduler_resource_rows_sha256",
+            ),
+        )
+        for field, digest_field in list_digest_pairs:
+            no_lf_diagnostic = copy.deepcopy(diagnostic)
+            no_lf_diagnostic[digest_field] = hashlib.sha256(
+                original_encoder(no_lf_diagnostic[field])
+            ).hexdigest()
+            no_lf_raw = line_encoder(no_lf_diagnostic)
+            no_lf_launch = copy.deepcopy(launch)
+            no_lf_launch["v4_infrastructure_diagnostic"] = no_lf_diagnostic
+            no_lf_launch["v4_infrastructure_diagnostic_sha256"] = (
+                hashlib.sha256(no_lf_raw).hexdigest()
+            )
+            no_lf_manifest = dict(manifest)
+            no_lf_manifest[relative] = hashlib.sha256(no_lf_raw).hexdigest()
+            with (
+                self.subTest(digest_field=digest_field),
+                mock.patch.object(
+                    Launch.V5Consumer, "_read_json",
+                    return_value=(no_lf_raw, no_lf_diagnostic),
+                ),
+                self.assertRaises(Launch.V5Consumer.SourceConsumerError),
+            ):
+                Source.validate_with_historical_v5_diagnostic_encoding(
+                    Launch.V5Consumer,
+                    Launch.V5Consumer._validate_diagnostic,
+                    no_lf_launch,
+                    no_lf_manifest,
+                )
+            self.assertIs(Launch.V5Consumer._canonical_json, original_encoder)
+
+        altered = copy.deepcopy(diagnostic)
+        altered["v4_scheduler_rows"] = list(
+            reversed(altered["v4_scheduler_rows"])
+        )
+        altered["v4_scheduler_rows_sha256"] = hashlib.sha256(
+            line_encoder(altered["v4_scheduler_rows"])
+        ).hexdigest()
+        with (
+            mock.patch.object(
+                Launch.V5Consumer, "_read_json",
+                return_value=(
+                    line_encoder(altered), altered
+                ),
+            ),
+            self.assertRaises(Launch.V5Consumer.SourceConsumerError),
+        ):
+            Source.validate_with_historical_v5_diagnostic_encoding(
+                Launch.V5Consumer,
+                Launch.V5Consumer._validate_diagnostic,
+                launch,
+                manifest,
+            )
+        self.assertIs(Launch.V5Consumer._canonical_json, original_encoder)
+
+        changed_launch = dict(launch)
+        changed_launch["v4_infrastructure_diagnostic_path"] = "/invalid/path"
+        with self.assertRaises(Launch.V5Consumer.SourceConsumerError):
+            Source.validate_with_historical_v5_diagnostic_encoding(
+                Launch.V5Consumer,
+                Launch.V5Consumer._validate_diagnostic,
+                changed_launch,
+                manifest,
+            )
+        self.assertIs(Launch.V5Consumer._canonical_json, original_encoder)
 
     def test_manifest_closure_binds_v7_and_imported_helpers(self):
         required = {
@@ -389,6 +514,29 @@ class SourceAuditV7Test(unittest.TestCase):
                 "historical_operational_information_known_before_v7_freeze"
             ],
         )
+        failed = timing["failed_v7_prediagnosis_attempt"]
+        self.assertEqual(
+            failed["revision"],
+            "9c06f962627739d40d00cb2ef19525a80b2ca97f",
+        )
+        self.assertIn(
+            "38 V5 code-manifest dependency checks",
+            failed["completed_before_failure"],
+        )
+        self.assertEqual(failed["sacct_queries"], 0)
+        self.assertEqual(failed["v5_scheduler_rows_read"], 0)
+        self.assertFalse(failed["v5_output_namespace_accessed"])
+        self.assertFalse(
+            failed["v5_shards_environment_logs_or_support_read"]
+        )
+        self.assertFalse(
+            failed["v7_diagnostic_manifest_intent_receipt_job_or_output_created"]
+        )
+        self.assertTrue(
+            timing[
+                "amended_v7_frozen_before_first_scheduler_reaching_diagnosis"
+            ]
+        )
 
     def test_active_unknown_malformed_missing_and_step_rows_abort(self):
         with mock.patch.object(Launch, "ARRAY_TASKS", 1):
@@ -452,6 +600,122 @@ class SourceAuditV7Test(unittest.TestCase):
         ))
         journal.assert_not_called()
         tree.assert_not_called()
+
+    def test_invalid_v5_diagnostic_cannot_reach_scheduler_or_output(self):
+        intent = {"submission_token": "a" * 24}
+        launch = {
+            "job_id": "123", "launcher_sha256": "l" * 64,
+            "python_requirements_sha256": "r" * 64,
+        }
+        manifest = {
+            "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v5.py": "l" * 64,
+            "experiments/requirements-pdb-terminal-incidence-shadow.txt": "r" * 64,
+        }
+        files = iter(((b"intent\n", intent), (b"launch\n", launch)))
+        original_encoder = Launch.V5Consumer._canonical_json
+        with (
+            mock.patch.object(
+                Launch.Runtime, "_pre_diagnosis_freeze", return_value={}
+            ),
+            mock.patch.object(Launch.os.path, "lexists", return_value=False),
+            mock.patch.object(
+                Launch.V5Consumer, "_read_json",
+                side_effect=lambda *_: next(files),
+            ),
+            mock.patch.object(Launch.V5Consumer, "_validate_launch"),
+            mock.patch.object(
+                Launch.V5Consumer, "_manifest", return_value=manifest
+            ),
+            mock.patch.object(
+                Launch.V5Consumer, "_validate_diagnostic",
+                side_effect=Launch.V5Consumer.SourceConsumerError("bad digest"),
+            ),
+            mock.patch.object(Launch.V5Consumer, "_slurm") as slurm,
+            mock.patch.object(Launch.Runtime, "_sacct") as sacct,
+            mock.patch.object(Launch.Runtime, "_exclusive_json") as publish,
+            mock.patch.object(
+                Launch.SelectedIO, "read_selected_flat_tree"
+            ) as selected,
+            mock.patch.object(
+                Launch.V5Source, "load_inventory_manifest"
+            ) as inventory,
+            self.assertRaisesRegex(
+                Launch.LaunchAuditError, "V5 launch provenance is invalid"
+            ),
+        ):
+            Launch.diagnose_v5()
+        self.assertIs(Launch.V5Consumer._canonical_json, original_encoder)
+        slurm.assert_not_called()
+        sacct.assert_not_called()
+        publish.assert_not_called()
+        selected.assert_not_called()
+        inventory.assert_not_called()
+
+    def test_valid_v5_compatibility_path_reaches_one_intended_query(self):
+        output = "123_0|COMPLETED|0:0|fat\n123_1|FAILED|2:0|fat\n"
+        intent = {"submission_token": "a" * 24}
+        launch = {
+            "job_id": "123", "launcher_sha256": "l" * 64,
+            "python_requirements_sha256": "r" * 64,
+            "code_manifest_sha256": "c" * 64,
+            "source_inventory_sha256": "d" * 64,
+        }
+        manifest = {
+            "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v5.py": "l" * 64,
+            "experiments/requirements-pdb-terminal-incidence-shadow.txt": "r" * 64,
+        }
+        files = iter(((b"intent\n", intent), (b"launch\n", launch)))
+        original_encoder = Launch.V5Consumer._canonical_json
+        observed_encoders = []
+
+        def validate_diagnostic(*_args):
+            observed_encoders.append(Launch.V5Consumer._canonical_json)
+
+        with (
+            mock.patch.object(Launch, "ARRAY_TASKS", 2),
+            mock.patch.object(Source, "CANDIDATE_COUNT", 4),
+            mock.patch.object(
+                Launch.Runtime, "_pre_diagnosis_freeze", return_value={}
+            ),
+            mock.patch.object(Launch.os.path, "lexists", return_value=False),
+            mock.patch.object(
+                Launch.V5Consumer, "_read_json",
+                side_effect=lambda *_: next(files),
+            ),
+            mock.patch.object(Launch.V5Consumer, "_validate_launch"),
+            mock.patch.object(
+                Launch.V5Consumer, "_manifest", return_value=manifest
+            ),
+            mock.patch.object(
+                Launch.V5Consumer, "_validate_diagnostic",
+                side_effect=validate_diagnostic,
+            ) as diagnostic_validator,
+            mock.patch.object(Launch.V5Consumer, "_slurm"),
+            mock.patch.object(
+                Launch.Runtime, "_safe_file",
+                return_value=SimpleNamespace(raw=b"intent\n"),
+            ),
+            mock.patch.object(
+                Launch.Runtime, "_sacct", return_value=output
+            ) as sacct,
+            mock.patch.object(
+                Launch.Runtime, "_exclusive_json", return_value="e" * 64
+            ),
+        ):
+            Launch.diagnose_v5()
+        diagnostic_validator.assert_called_once_with(launch, manifest)
+        self.assertEqual(
+            observed_encoders, [Launch.V5Consumer._canonical_json_line]
+        )
+        self.assertIs(Launch.V5Consumer._canonical_json, original_encoder)
+        sacct.assert_called_once()
+        command = sacct.call_args.args[0]
+        self.assertIn("--format=JobID,State,ExitCode,Partition", command)
+        self.assertFalse(any(
+            field in item
+            for item in command
+            for field in ("Elapsed", "MaxRSS", "NodeList", "SubmitLine")
+        ))
 
     def test_raw_scheduler_rejects_duplicate_out_of_order_and_compressed_rows(self):
         invalid_outputs = (
