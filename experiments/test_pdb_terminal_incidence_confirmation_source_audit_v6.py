@@ -166,7 +166,10 @@ class SourceAuditV6Test(unittest.TestCase):
                 mock.patch.object(
                     Launch.subprocess,
                     "check_output",
-                    side_effect=["", "a\nb\n", "a" * 40] * 2,
+                    # `jj file list` uses repository tree order, which need
+                    # not match Python's lexical ordering of the exact path
+                    # set (notably around a directory and a `-vN` sibling).
+                    side_effect=["", "b\na\n", "a" * 40] * 2,
                 ) as run,
             ):
                 freeze = Launch._pre_diagnosis_freeze()
@@ -247,6 +250,7 @@ class SourceAuditV6Test(unittest.TestCase):
             for answers in (
                 ["M a\n", "a\n", "a" * 40] * 2,
                 ["", "", "a" * 40] * 2,
+                ["", "a\na\n", "a" * 40] * 2,
                 ["", "a\n", "not-a-commit"] * 2,
             ):
                 with (

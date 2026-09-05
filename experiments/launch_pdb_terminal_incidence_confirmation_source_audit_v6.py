@@ -355,7 +355,8 @@ def _pre_diagnosis_freeze() -> dict:
         != jj_identity
         or before != after
         or changed
-        or tracked != list(PRE_DIAGNOSIS_FILES)
+        or len(tracked) != len(PRE_DIAGNOSIS_FILES)
+        or set(tracked) != set(PRE_DIAGNOSIS_FILES)
         or JJ_COMMIT_RE.fullmatch(commit_id or "") is None
     ):
         raise LaunchAuditError(
