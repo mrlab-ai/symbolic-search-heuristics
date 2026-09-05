@@ -348,6 +348,12 @@ def _reject_artifact_text(value: object, path: str = "evidence") -> None:
         for key, child in value.items():
             if type(key) is not str:
                 raise RenderError(f"{path} contains a non-string schema key")
+            if (
+                path == "evidence.source_audit"
+                and key == "accepted_translation_statuses"
+                and child == ["input-rejected", "success"]
+            ):
+                continue
             _reject_artifact_text(child, f"{path}.{key}")
     elif type(value) in (list, tuple, set):
         for index, child in enumerate(value):
@@ -391,12 +397,27 @@ def _validate_source_audit(value: object) -> dict:
             "reused_v5_shards",
             "repaired_v5_shards",
             "whole_campaign_rerun",
-            "outcome_blind_selective_repair",
+            "source_support_outcome_blind_selective_repair",
             "reuse_eligibility_rule_verified",
             "repair_scope_verified",
             "union_sources_verified",
             "reused_v1_v4_shards",
+            "reused_v6_shards",
             "noncompleted_v5_shards_used",
+            "noncompleted_v5_files_opened",
+            "v5_noncompleted_failure_logs_inspected",
+            "v5_failure_detailed_accounting_inspected",
+            "v7_success_resource_accounting_recorded",
+            "v5_output_namespace_enumerated_by_v7",
+            "v5_output_triplet_bytes_read_before_v7_all_success_gate",
+            "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
+            "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
+            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
+            "accepted_translation_statuses",
+            "translator_timeout_is_infrastructure_failure",
+            "resource_ceiling_changes_accepted_outcome_classes",
+            "source_audit_runtime_estimand_recorded",
+            "cross_campaign_runtime_comparison_authorized",
             "source_chain_verified",
             "environment_verified",
             "scheduler_verified",
@@ -496,8 +517,13 @@ def _validate_source_audit(value: object) -> dict:
     reused_v1_v4 = _integer(
         record, "reused_v1_v4_shards", path, maximum=logical_shards
     )
+    reused_v6 = _integer(
+        record, "reused_v6_shards", path, maximum=logical_shards
+    )
     whole_rerun = _boolean(record, "whole_campaign_rerun", path)
-    outcome_blind = _boolean(record, "outcome_blind_selective_repair", path)
+    source_support_outcome_blind = _boolean(
+        record, "source_support_outcome_blind_selective_repair", path
+    )
     completed_zero_only = _boolean(
         record, "reuse_eligibility_rule_verified", path
     )
@@ -505,6 +531,56 @@ def _validate_source_audit(value: object) -> dict:
     union_sources_verified = _boolean(record, "union_sources_verified", path)
     noncompleted_used = _boolean(
         record, "noncompleted_v5_shards_used", path
+    )
+    noncompleted_opened = _boolean(
+        record, "noncompleted_v5_files_opened", path
+    )
+    failure_logs_inspected = _boolean(
+        record, "v5_noncompleted_failure_logs_inspected", path
+    )
+    failure_accounting_inspected = _boolean(
+        record, "v5_failure_detailed_accounting_inspected", path
+    )
+    v7_resources_recorded = _boolean(
+        record, "v7_success_resource_accounting_recorded", path
+    )
+    v5_namespace_enumerated = _boolean(
+        record, "v5_output_namespace_enumerated_by_v7", path
+    )
+    v5_triplets_read_before_gate = _boolean(
+        record, "v5_output_triplet_bytes_read_before_v7_all_success_gate", path
+    )
+    v5_triplets_read_after_gate = _boolean(
+        record,
+        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
+        path,
+    )
+    v5_bytes_contemporaneously_committed = _boolean(
+        record,
+        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
+        path,
+    )
+    v5_bytes_first_recorded_at_v7_seal = _boolean(
+        record,
+        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
+        path,
+    )
+    accepted_translation_statuses = record["accepted_translation_statuses"]
+    if accepted_translation_statuses != ["input-rejected", "success"]:
+        raise RenderError(
+            f"{path}.accepted_translation_statuses changed"
+        )
+    timeout_is_infrastructure = _boolean(
+        record, "translator_timeout_is_infrastructure_failure", path
+    )
+    ceiling_changes_classes = _boolean(
+        record, "resource_ceiling_changes_accepted_outcome_classes", path
+    )
+    runtime_estimand = _boolean(
+        record, "source_audit_runtime_estimand_recorded", path
+    )
+    cross_campaign_runtime = _boolean(
+        record, "cross_campaign_runtime_comparison_authorized", path
     )
     verification = all(
         _boolean(record, key, path)
@@ -569,12 +645,26 @@ def _validate_source_audit(value: object) -> dict:
         and not (set(reused_indices) & set(repair_indices))
         and sorted(reused_indices + repair_indices) == list(range(logical_shards))
         and not whole_rerun
-        and outcome_blind
+        and source_support_outcome_blind
         and completed_zero_only
         and complete_shard_scope
         and union_sources_verified
         and reused_v1_v4 == 0
+        and reused_v6 == 0
         and not noncompleted_used
+        and not noncompleted_opened
+        and not failure_logs_inspected
+        and not failure_accounting_inspected
+        and v7_resources_recorded
+        and not v5_namespace_enumerated
+        and not v5_triplets_read_before_gate
+        and v5_triplets_read_after_gate
+        and not v5_bytes_contemporaneously_committed
+        and v5_bytes_first_recorded_at_v7_seal
+        and timeout_is_infrastructure
+        and not ceiling_changes_classes
+        and not runtime_estimand
+        and not cross_campaign_runtime
         and verification
         and a_tasks == 650
         and a_families >= 28
@@ -2240,9 +2330,18 @@ def _source_text(source: dict) -> str:
         f"reason incidences followed by mutually exclusive primary counts. The "
         f"sealed campaign used "
         f"{source['reused_v5_shards']} byte-verified successful V5 shards and "
-        f"{source['repaired_v5_shards']} fresh V6 repair shards, totaling "
-        f"{source['logical_shards']}; no V1--V4 shard or noncompleted V5 shard was "
-        f"reused. The audit authorized {source['a_tasks']} Confirmation A "
+        f"{source['repaired_v5_shards']} fresh V7 repair shards, totaling "
+        f"{source['logical_shards']}; no V1--V4 or V6 shard and no noncompleted "
+        f"V5 file was used. The scheduler-defined repair was frozen before "
+        f"source/support outcomes were inspected. Translation timeouts remain "
+        f"infrastructure failures rather than accepted record classes, and the "
+        f"source audit records no runtime estimand. The reusable V5 tree was "
+        f"first separately recorded at V7 seal rather than contemporaneously "
+        f"committed at V5 completion; the protocol requires an immediate "
+        f"content-addressed commit before outcome analysis and later archival. "
+        f"Live provenance and semantic checks cannot exclude a coherent "
+        f"same-user replacement before that commitment. The audit authorized "
+        f"{source['a_tasks']} Confirmation A "
         f"tasks from {source['a_families']} families and {source['b_tasks']} "
         f"Confirmation B tasks from {source['b_families']} families; the "
         f"remaining {source['unassigned_supported_tasks']} supported tasks were "

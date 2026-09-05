@@ -518,6 +518,7 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/analyze_pdb_terminal_incidence_shadow.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v5.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v6.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v7.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_a.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_b.py",
     "experiments/audit_pdb_terminal_incidence_shadow.py",
@@ -529,6 +530,7 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/jj_cached_revision.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v5.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v6.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v7.py",
     "experiments/pdb_cap_selector_parser.py",
     "experiments/pdb_confirmation_safe_io.py",
     "experiments/pdb_confirmation_run_cell.py",
@@ -545,8 +547,12 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_safe_io_v5.py",
     "experiments/pdb_terminal_incidence_confirmation_safe_io_v6.py",
+    "experiments/pdb_terminal_incidence_confirmation_safe_io_v7.py",
     "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
     "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v7.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v7_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_scan_v7.slurm",
     "experiments/pdb_terminal_incidence_selector_parser.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
@@ -1201,7 +1207,7 @@ def load_source_materials(
     execution_receipt_path: Path,
     launch_receipt_path: Path,
 ) -> SourceMaterials:
-    """Use A's shared V6 validator, then project the sealed guided-B cohort."""
+    """Use A's shared V7 validator, then project the sealed guided-B cohort."""
     try:
         source = SourceValidation.load_source_materials(
             attestation_path, execution_receipt_path, launch_receipt_path
@@ -1221,7 +1227,7 @@ def load_source_materials(
         or not _same_exact(cohort.get("target_tasks"), TARGET_COHORT_TASKS)
         or not _same_exact(cohort.get("max_tasks_per_family"), 12)
     ):
-        raise ProtocolError("V6 source audit has the wrong Confirmation B cohort")
+        raise ProtocolError("V7 source audit has the wrong Confirmation B cohort")
     try:
         for task in tasks:
             _validate_task(task)
@@ -1237,14 +1243,14 @@ def load_source_materials(
         or len(set(problem_hashes)) != len(tasks)
         or max(Counter(task["family"] for task in tasks).values()) > 12
     ):
-        raise ProtocolError("Confirmation B V6 source identities changed")
+        raise ProtocolError("Confirmation B V7 source identities changed")
     cohort_sha = hashlib.sha256(canonical_json_line(tasks)).hexdigest()
     confirmation = attestation.get("cohorts", {}).get("confirmation_a")
     confirmation_tasks = (
         confirmation.get("tasks") if isinstance(confirmation, dict) else None
     )
     if not isinstance(confirmation_tasks, list):
-        raise ProtocolError("V6 source audit lacks the disjoint A cohort")
+        raise ProtocolError("V7 source audit lacks the disjoint A cohort")
     confirmation_sha = hashlib.sha256(
         canonical_json_line(confirmation_tasks)
     ).hexdigest()
@@ -1267,12 +1273,12 @@ def load_source_materials(
         or set(identities) & confirmation_identities
         or set(problem_hashes) & confirmation_hashes
     ):
-        raise ProtocolError("V6 source audit A/B disjointness changed")
+        raise ProtocolError("V7 source audit A/B disjointness changed")
     directory_to_family = {}
     for task in tasks:
         previous = directory_to_family.setdefault(task["directory"], task["family"])
         if previous != task["family"]:
-            raise ProtocolError("V6 source audit maps one directory twice")
+            raise ProtocolError("V7 source audit maps one directory twice")
     shadow = source.shadow_unrepresented_families
     all_prior = source.all_prior_unrepresented_families
     shadow_set = set(shadow)
@@ -1283,7 +1289,7 @@ def load_source_materials(
             or task["is_all_prior_unrepresented"]
             != (task["family"] in all_prior_set)
         ):
-            raise ProtocolError("V6 guided task stratum flag changed")
+            raise ProtocolError("V7 guided task stratum flag changed")
     families = {task["family"] for task in tasks}
     shadow_families = {
         task["family"] for task in tasks if task["is_shadow_unrepresented"]
@@ -1296,7 +1302,7 @@ def load_source_materials(
         or len({task["family"] for task in all_prior_tasks})
         < MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES
     ):
-        raise ProtocolError("Confirmation B V6 source-support floor changed")
+        raise ProtocolError("Confirmation B V7 source-support floor changed")
     return SourceMaterials(
         attestation_path=source.attestation_path,
         diagnostic_path=source.diagnostic_path,
@@ -1386,7 +1392,7 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": materials.launch_receipt["job_id"],
         "code_manifest_sha256": materials.execution_receipt[
-            "v6_code_manifest_sha256"
+            "v7_code_manifest_sha256"
         ],
         "repository_commit_id": materials.launch_receipt[
             "repository_commit_id"
@@ -1395,8 +1401,11 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "union_sources_sha256": materials.execution_receipt[
             "union_sources_sha256"
         ],
-        "v6_output_tree_sha256": materials.execution_receipt[
-            "v6_output_tree"
+        "v5_reusable_tree_sha256": materials.execution_receipt[
+            "v5_reusable_tree"
+        ]["sha256"],
+        "v7_output_tree_sha256": materials.execution_receipt[
+            "v7_output_tree"
         ]["sha256"],
         "v5_launch_receipt_sha256": materials.execution_receipt[
             "v5_launch_receipt_sha256"
@@ -1404,10 +1413,54 @@ def _load_freeze(path: Path = FREEZE_PATH) -> tuple[dict, SourceMaterials]:
         "v5_code_manifest_sha256": materials.execution_receipt[
             "v5_code_manifest_sha256"
         ],
+        "reused_v5_shards": materials.execution_receipt["reused_v5_shards"],
+        "repaired_v5_shards": materials.execution_receipt["repaired_v5_shards"],
+        "reused_v6_shards": materials.execution_receipt["reused_v6_shards"],
+        "source_support_outcome_blind_selective_repair": (
+            materials.execution_receipt[
+                "source_support_outcome_blind_selective_repair"
+            ]
+        ),
+        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
+            materials.execution_receipt[
+                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
+            ]
+        ),
+        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
+            materials.execution_receipt[
+                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
+            ]
+        ),
+        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": (
+            materials.execution_receipt[
+                "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
+            ]
+        ),
+        "scheduler_membership_affects_execution_origin_only": (
+            materials.execution_receipt[
+                "scheduler_membership_affects_execution_origin_only"
+            ]
+        ),
+        "v6_runtime_artifacts_used": materials.execution_receipt[
+            "v6_runtime_artifacts_used"
+        ],
+        "accepted_translation_statuses": materials.execution_receipt[
+            "accepted_translation_statuses"
+        ],
+        "translator_timeout_is_infrastructure_failure": (
+            materials.execution_receipt[
+                "translator_timeout_is_infrastructure_failure"
+            ]
+        ),
+        "resource_ceiling_changes_accepted_outcome_classes": (
+            materials.execution_receipt[
+                "resource_ceiling_changes_accepted_outcome_classes"
+            ]
+        ),
         "slurm_template_sha256": materials.launch_receipt[
             "slurm_template_sha256"
         ],
-        **SourceValidation.v6_recovery_provenance(
+        **SourceValidation.v7_recovery_provenance(
             materials.execution_receipt
         ),
         "tracked_file_sha256": materials.tracked_file_sha256,
@@ -1515,7 +1568,8 @@ def _unfrozen_defaults() -> dict:
         "SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_UNION_SOURCES_SHA256": "TO_FREEZE",
-        "SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_V5_REUSABLE_TREE_SHA256": "TO_FREEZE",
+        "SOURCE_AUDIT_V7_OUTPUT_TREE_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID": "TO_FREEZE",
         "SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256": "TO_FREEZE",
         "SOURCE_AUDIT_SEAL_PLAN_SHA256": "TO_FREEZE",
@@ -1579,7 +1633,7 @@ def _installed_values() -> dict:
         "SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256": materials.execution_receipt_sha256,
         "SOURCE_AUDIT_JOB_ID": launch["job_id"],
         "SOURCE_AUDIT_CODE_MANIFEST_SHA256": execution[
-            "v6_code_manifest_sha256"
+            "v7_code_manifest_sha256"
         ],
         "SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256": (
             materials.diagnostic_sha256
@@ -1593,8 +1647,11 @@ def _installed_values() -> dict:
         "SOURCE_AUDIT_UNION_SOURCES_SHA256": execution[
             "union_sources_sha256"
         ],
-        "SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256": execution[
-            "v6_output_tree"
+        "SOURCE_AUDIT_V5_REUSABLE_TREE_SHA256": execution[
+            "v5_reusable_tree"
+        ]["sha256"],
+        "SOURCE_AUDIT_V7_OUTPUT_TREE_SHA256": execution[
+            "v7_output_tree"
         ]["sha256"],
         "SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID": execution[
             "pre_diagnosis_freeze"

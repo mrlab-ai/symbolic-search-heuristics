@@ -700,9 +700,12 @@ The evaluation separates ordinal-predictor confirmation from algorithm
 evaluation.
 Source-selection rules and family mappings are fixed before source
 classification.
-The source audit may raise translation ceilings only after classified
-infrastructure failures; each amendment reruns the full inventory before
+A change to the source definition or producer reruns the full inventory before
 either cohort exists.
+A frozen scheduler-defined recovery may instead rerun the exact whole-shard
+complement of array elements with state \texttt{COMPLETED} and exit
+\texttt{0:0} while preserving every inventory record; infrastructure ceilings
+affect completion but introduce no accepted translation class.
 Planner and search commands, limits, seeds, exclusions, metrics and decision
 thresholds are fixed before any corresponding benchmark search or performance
 outcome is read.

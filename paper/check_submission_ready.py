@@ -2018,14 +2018,14 @@ def self_test():
         (main + "preliminary results\n", supplement, cap_study, manifest, generated),
         (
             main,
-            supplement + "% RESULT_INSERT_SOURCE_AUDIT_V6_BEGIN\n",
+            supplement + "% RESULT_INSERT_SOURCE_AUDIT_V7_BEGIN\n",
             cap_study,
             manifest,
             generated,
         ),
         (
             main,
-            supplement + "Prospective campaign v6 repairs the complement.\n",
+            supplement + "Prospective campaign v7 repairs the complement.\n",
             cap_study,
             manifest,
             generated,

@@ -47,13 +47,13 @@ is a new layer and does not modify the Confirmation A/B protocol or launcher.
    those explicit values. The freeze independently reopens and revalidates the
    sealed Confirmation B verifier. It fails unless
    Confirmation A authorized the guided study, B is still the exact sealed
-   300-task cohort, source-audit V6 selective-repair provenance validates,
+   300-task cohort, source-audit V7 two-origin repair provenance validates,
    calibration completed,
    and every source, planner, option, task, K=32 record, and receipt hash binds.
    The freeze must be made from a clean working copy whose parent is recorded
    as the freeze source revision; all campaign sources and bound inputs must be
    tracked with the same bytes at that revision. The planner revision, sealed-B
-   freeze revision, V6 producer revision, and V6 pre-diagnosis revision must
+   freeze revision, V7 producer revision, and V7 pre-diagnosis revision must
    all be its ancestors. The
    freeze rebuilds the complete standalone evidence from the live B properties
    both before validation and immediately before exclusive publication.
@@ -69,12 +69,24 @@ every component below a trusted root through retained directory descriptors
 with `O_DIRECTORY | O_NOFOLLOW`, open the leaf relative to its retained parent,
 and revalidate all ancestor, leaf-descriptor, and leaf-entry identities after
 same-descriptor reading and hashing. Calibration is completely
-loaded and validated before the freeze code opens any A/B/V6 evidence. Its
+loaded and validated before the freeze code opens any A/B/V7 evidence. Its
 generated IDs and domain/problem hashes are then checked against both sealed
 A and B cohorts. No outcome may be inspected before the freeze exists.
-The inherited V6 provenance includes the five deterministic seal-recovery
+The inherited V7 provenance includes the five deterministic seal-recovery
 stage paths and hashes, the pre-diagnosis committed file-set digest, both
-producer revisions, per-task log hashes, and elapsed-time resource rows.
+producer revisions, selected-V5 and V7-repair tree hashes, the ordered union
+ledger/tree, per-task log hashes, and V7 elapsed-time resource rows. Every
+union origin is `v5-completed` or `v7-repair`; reuse from V6 is exactly zero,
+and V6 contributes only byte-pinned streaming/recovery code. The reusable V5
+selected tree was not contemporaneously externally committed at V5 completion:
+the sealed execution provenance attests that its bytes were read only after
+the V7 all-success gate and that the selected tree was first separately
+recorded at the V7 seal.
+The consumer authenticates the complete pre-diagnosis closure at the retained
+V7 producer revision. Only after the V7 seal may a descendant revision insert
+the A/B freeze constants or result text and revise the direct protocol, paper,
+or renderer; the direct campaign freeze binds those descendant edits. No
+current-live equality to the historical V7 paper or renderer is required.
 
 ## Execution
 
@@ -95,7 +107,7 @@ experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pd
 ```
 
 The launch likewise requires a clean working copy. Its commit must descend
-from the exact planner, sealed-B freeze, V6 producer, and recorded freeze source
+from the exact planner, sealed-B freeze, V7 producer, and recorded freeze source
 revisions, and the campaign-freeze bytes tracked in that commit must match the
 live freeze exactly.
 
@@ -141,11 +153,13 @@ job identifier, timestamp, raw processor data, or memory value. The seal
 requires all 900 records, requires the three cells in each allocation to
 agree, and binds their ordered digest and processor-model/architecture counts.
 Parsing and fetching are rejected until this receipt revalidates against live
-launch and scheduler evidence. Every run carries the full V6 source
+launch and scheduler evidence. Every run carries the full V7 source
 provenance, including the canonical diagnostic, attestation, intent, launch,
 and execution paths; cohort and attestation-record cross-links; the terminal
-V5 launch and code-manifest ancestry; repair-output and ordered-union hashes;
-producer/job/Slurm-template/translator hashes; and a digest of the complete V6
+V5 launch and code-manifest ancestry; selected-V5, V7-repair, and ordered-union
+hashes; producer/job/Slurm-template/translator hashes; the exact accepted
+translation statuses and resource-ceiling validity declarations; and a digest
+of the complete V7
 provenance object. The double-run analyzer copies that closure,
 the freeze and B-freeze revisions, standalone B receipt/property hashes and
 the campaign execution-receipt path/hash and validated hardware summary into

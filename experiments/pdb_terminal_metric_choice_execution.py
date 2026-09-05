@@ -284,7 +284,7 @@ def _required_launch_ancestors(freeze: dict) -> tuple[str, ...]:
         freeze["planner"]["revision"],
         freeze["freeze_repository_revision"],
         freeze["base_confirmation_b"]["base_b_freeze_repository_revision"],
-        freeze["base_confirmation_b"]["source_audit_v6"][
+        freeze["base_confirmation_b"]["source_audit_v7"][
             "repository_commit_id"
         ],
     )

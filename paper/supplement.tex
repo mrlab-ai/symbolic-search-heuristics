@@ -694,7 +694,7 @@ confirmatory analysis.
 \label{sec:supp-confirmatory-protocols}
 
 This section defines the terms abbreviated in the main paper and records the
-outcome-independent execution and analysis contract.
+planner-outcome-independent execution and analysis contract.
 Confirmation A and Confirmation B use disjoint cohorts selected before any
 planner outcome is read.
 The controlled predecessor-ablation campaign executes fresh runs on the B
@@ -744,10 +744,10 @@ B is authorized only with exactly 300 tasks, at least 30 families, at least 12
 shadow-unrepresented families, and at least 50 tasks from ten
 all-prior-unrepresented families.
 
-% ================= RESULT_INSERT_SOURCE_AUDIT_V6_BEGIN =================
-% Replace this prospective V6 account with the sealed audit outcome, exact A/B
+% ================= RESULT_INSERT_SOURCE_AUDIT_V7_BEGIN =================
+% Replace this prospective V7 account with the sealed audit outcome, exact A/B
 % cohort support, mixed-shard origins, and source/environment/scheduler status.
-Campaign v5 is the fourth outcome-blind resource amendment after the original
+Campaign v5 is the fourth infrastructure-ceiling amendment after the original
 scan.
 The first scan requested 26~GiB and had out-of-memory shards.
 The second reran all shards with 256~GiB and a 2,700-second translation limit,
@@ -761,21 +761,60 @@ translation limit within an 08:20:00 Slurm limit. It ended naturally with 801
 scheduler-completed array elements, ten classified translator timeouts and
 nine classified out-of-memory failures, so it also cannot be sealed. Campaign
 v5 reruns all 820 shards with 2~TiB and a 28,800-second per-candidate limit,
-but its terminal infrastructure failures make it seal-ineligible.
-Prospective campaign v6 freezes an infrastructure-only terminal-v5 diagnostic
-before opening any successful shard or source-support outcome. It reuses
-exactly the v5 shards whose scheduler state is \texttt{COMPLETED} with exit
-\texttt{0:0}, repairs the exact nonempty complement as complete two-candidate
-shards under one predeclared resource rule, and reuses no v1--v4 shard or
-partial output from a noncompleted v5 task. The v6 seal is possible only if
-every repair task completes with exit \texttt{0:0} and the ordered 820-shard
-union verifies each origin and equal source/union hash. Neither cohort exists
-for a confirmation launch until the complete v6 source, environment,
-scheduler, producer-revision, and union chain verifies. Before diagnosis, v6
-binds the committed outcome-free design; its crash-resumable seal binds an
-exclusive five-stage plan--union--candidate--attestation hash chain that every
-downstream freeze reopens and records.
-% ================== RESULT_INSERT_SOURCE_AUDIT_V6_END ==================
+but its terminal scheduler summary contains 795 completed, 15 failed and ten
+out-of-memory elements and therefore makes v5 seal-ineligible.
+
+The attempted v6 diagnostic revalidated the already fixed v5 inventory and task
+metadata and transiently parsed scheduler elapsed fields before rejecting a
+\texttt{FAILED}/\texttt{2:0} result for array row~2.
+It produced no accepted diagnostic, manifest, launch, job or shard.
+No v5 shard, environment record, log or source-support classification was read.
+
+Prospective campaign v7 is frozen after these disclosed operational facts but
+before any source-support outcome or repair output is inspected.
+Its diagnostic requests only array identity, state, exit code and partition.
+It reuses exactly the v5 shards whose scheduler state is \texttt{COMPLETED}
+with exit \texttt{0:0} and repairs every other recognized terminal row as a
+complete two-candidate shard under one fixed maximum profile on \texttt{fat}.
+Active, missing, duplicate, malformed or unknown rows abort, and no failure
+cause affects this exact partition.
+V7 reuses no v1--v4 or v6 shard and no file from a noncompleted v5 task.
+Launch rebuilds the canonical inventory independently and does not read the v5
+output namespace.
+Seal first requires every v7 repair row to complete with exit \texttt{0:0}; it
+then opens only the selected v5 shard, environment and success-log triplets and
+constructs the ordered 820-shard union with origins \texttt{v5-completed} and
+\texttt{v7-repair}.
+The reusable v5 triplet bytes were not externally committed when v5
+completed; their selected tree is first separately recorded by the digest
+published at v7 seal, which is not itself an external witness.
+The seal authenticates the v5 launch, code, inventory and root identities and
+checks scheduler success, triplet consistency and live semantic replay, but it
+cannot cryptographically exclude a coherent same-user replacement made before
+the sealed records receive their content-addressed commit. Immediately after
+seal and before discretionary outcome analysis or paper claims, the execution
+receipt, attestation and five seal-stage records are committed with
+Jujutsu and subsequently archived or uploaded when practical. This explicit
+historical-integrity limitation is distinct from outcome-based adaptation; a
+full v7 rerun would remove it.
+Controller-side v7 publications and private-root creation use retained
+directory descriptors and no-follow checks, but task scratch, snapshot,
+cleanup and Slurm-output paths remain pathname-based. We therefore assume no
+concurrent same-user pathname mutator during task execution and make no active
+same-user task-path containment claim; this trust boundary is recorded in the
+v7 diagnostic, launch record and execution receipt.
+The unchanged semantic producer accepts only translator statuses
+\texttt{success} and \texttt{input-rejected}; a timeout is an infrastructure
+exception that cannot enter a valid shard.
+Thus the 28,800-second v5 and 115,200-second v7 ceilings affect completion, not
+the accepted classification classes, and the audit records no runtime
+estimand or cross-campaign runtime comparison.
+Neither cohort exists for a confirmation launch until the complete v7 source,
+environment, scheduler, producer-revision and union chain verifies.
+The crash-resumable seal binds an exclusive five-stage
+plan--union--candidate--attestation hash chain that every downstream freeze
+reopens and records.
+% ================== RESULT_INSERT_SOURCE_AUDIT_V7_END ==================
 
 \begin{table}[htbp]
 \centering
@@ -917,7 +956,7 @@ frozen and launched.
 It contains one task-blocked triad per B task: incidence-guided,
 $mJ$-guided and matched $K=32$, for 900 fresh planner cells.
 Within each family, the three execution positions rotate cyclically by task.
-The task mapping, source-audit-v6 selective-repair provenance, planner revision, executable and
+The task mapping, source-audit-v7 selective-repair provenance, planner revision, executable and
 preprocessor hashes, search strings, options, limits and trace schemas are
 bound before launch.
 

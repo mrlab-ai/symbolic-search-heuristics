@@ -192,13 +192,19 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             "analysis-v4-repeat.json",
         )
 
-    def test_v6_manifest_contract_has_exact_order_and_cardinality(self):
-        self.assertEqual(len(P.SourceValidation.SourceV6.CODE_MANIFEST_FILES), 50)
-        self.assertEqual(len(P.SourceValidation.SourceV6.SCOPED_FILES), 51)
+    def test_v7_manifest_contract_has_exact_order_and_cardinality(self):
+        source = P.SourceValidation.SourceV7
+        self.assertGreater(len(source.CODE_MANIFEST_FILES), 50)
+        self.assertEqual(
+            len(source.SCOPED_FILES), len(source.CODE_MANIFEST_FILES) + 1
+        )
+        self.assertEqual(
+            tuple(sorted(source.CODE_MANIFEST_FILES)), source.CODE_MANIFEST_FILES
+        )
 
-    def test_b_uses_a_shared_v6_consumer_and_8148_planner(self):
+    def test_b_uses_a_shared_v7_consumer_and_8148_planner(self):
         self.assertIn(
-            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v7.py",
             P.EXPERIMENT_SOURCE_FILES,
         )
         self.assertEqual(
@@ -280,22 +286,30 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                         fixture.attestation, fixture.execution, fixture.launch
                     )
 
-    def test_freeze_revision_tracks_all_v4_bound_files(self):
+    def test_v7_producer_revision_tracks_all_bound_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             materials = fixture.load()
+            revisions = []
+
+            def tracked(repo, revision, relative):
+                revisions.append(revision)
+                return materials.tracked_file_sha256[relative]
+
             with mock.patch.object(Freeze, "REPO", fixture.repo), \
                     mock.patch.object(
                         Freeze.JJ,
                         "tracked_file_sha256",
-                        side_effect=lambda repo, revision, relative: (
-                            materials.tracked_file_sha256[relative]
-                        ),
+                        side_effect=tracked,
                     ):
                 self.assertEqual(
-                    Freeze._tracked_source_v6_hashes(materials, "4" * 40),
+                    Freeze._tracked_source_v7_hashes(materials, "8" * 40),
                     materials.tracked_file_sha256,
                 )
+            self.assertEqual(
+                set(revisions),
+                {materials.launch_receipt["repository_commit_id"]},
+            )
             first = next(iter(materials.tracked_file_sha256))
             with mock.patch.object(Freeze, "REPO", fixture.repo), \
                     mock.patch.object(
@@ -305,8 +319,10 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                             "9" * 64 if relative == first
                             else materials.tracked_file_sha256[relative]
                         ),
-                    ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
-                Freeze._tracked_source_v6_hashes(materials, "4" * 40)
+                    ), self.assertRaisesRegex(
+                        Freeze.FreezeError, "producer revision"
+                    ):
+                Freeze._tracked_source_v7_hashes(materials, "8" * 40)
 
     def test_freeze_requires_source_revision_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -348,28 +364,28 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             shared._repository_snapshot_files("4" * 40, ["file"])
         query.assert_called_once()
 
-    def test_freeze_rechecks_live_bytes_around_revision_lookup(self):
+    def test_postseal_live_edit_keeps_pinned_v7_producer_hashes(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             materials = fixture.load()
             first = next(iter(materials.tracked_file_sha256))
             target = fixture.repo / first
-            changed = []
-
-            def mutate_during_lookup(repo, revision, relative):
-                if relative == first and not changed:
-                    target.write_bytes(target.read_bytes() + b"swap\n")
-                    changed.append(True)
-                return materials.tracked_file_sha256[relative]
+            target.write_bytes(target.read_bytes() + b"postseal-edit\n")
+            self.assertNotEqual(
+                P.sha256_file(target), materials.tracked_file_sha256[first]
+            )
 
             with mock.patch.object(Freeze, "REPO", fixture.repo), \
                     mock.patch.object(
                         Freeze.JJ, "tracked_file_sha256",
-                        side_effect=mutate_during_lookup,
-                    ), self.assertRaisesRegex(
-                        Freeze.FreezeError, "changed during revision check"
+                        side_effect=lambda repo, revision, relative: (
+                            materials.tracked_file_sha256[relative]
+                        ),
                     ):
-                Freeze._tracked_source_v6_hashes(materials, "4" * 40)
+                self.assertEqual(
+                    Freeze._tracked_source_v7_hashes(materials, "8" * 40),
+                    materials.tracked_file_sha256,
+                )
 
     def test_freeze_reloads_source_after_mocked_planner_cache(self):
         with tempfile.TemporaryDirectory() as tmp:

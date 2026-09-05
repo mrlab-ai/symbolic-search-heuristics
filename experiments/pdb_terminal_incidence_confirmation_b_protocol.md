@@ -8,48 +8,62 @@ its pin, both byte-identical A outputs, the sealed source-audit artifacts, the
 planner identity, every executed Python source, and the option matrix. The A
 authorization exports `{revision, cache_name, build_options, downward_sha256,
 preprocess_sha256, tree_manifest_sha256}` and B requires exact equality.
-The shared source chain is the outcome-blind campaign-V6 selective repair of
-terminal V5. Unknown prospective diagnostic, job, artifact, and union hashes
+The shared source chain is the source-support-outcome-blind campaign-V7 repair
+of terminal V5. Unknown prospective diagnostic, job, artifact, and union hashes
 are derived dynamically from the canonical sealed chain. The same shared A/B
-consumer validates exact V6 paths and schemas, both producer closures,
-rendered Slurm bytes, scheduler/resource rows, task environments, live repair
-and union trees, no-outcome flags, and every scoped byte at both producer
-revisions.
+consumer validates exact V7 paths and schemas, the producer closure, rendered
+Slurm bytes, scheduler/resource rows, task environments, the selected V5 tree,
+the V7 repair tree, the union tree, no-outcome flags, and every scoped byte at
+both producer revisions. V6 contributes byte-pinned streaming and recovery
+code only; no V6 runtime artifact or V6 shard is consumed.
 
-V6 reuses only V5 array tasks recorded `COMPLETED` with exit `0:0` and repairs
-their exact nonempty complement as complete original two-candidate shards.
+V7 reuses only V5 array tasks recorded exactly `COMPLETED` with exit `0:0` and
+repairs every other terminal row as a complete original two-candidate shard.
 The repair runs on `fat` with normal QoS, no throttle, and one uniform resource
-profile chosen by the frozen infrastructure-only diagnostic. Reuse from V1
-through V4 is zero, partial output from every noncompleted V5 task is
-quarantined, and the seal requires every repair task to complete with exit
-`0:0`. It validates the reusable and repair environment records and binds an
-ordered 820-shard, 1,640-candidate union with an explicit origin and equal
-source/union hash for every shard.
+profile frozen before the scheduler-only diagnosis. Reuse from V1 through V4
+and V6 is zero, partial output from every noncompleted V5 task is unusable, and
+the seal requires every repair task to complete with exit `0:0`. It validates
+exactly the scheduler-selected V5 and repaired V7 environment records and
+binds an ordered 820-shard, 1,640-candidate union. Every shard has origin
+`v5-completed` or `v7-repair` and equal source/union hashes.
+The reusable V5 selected tree was not contemporaneously externally committed
+when V5 completed; the sealed V7 execution receipt attests that its bytes were
+read only after the V7 all-success gate and that the selected tree was first
+separately recorded at the V7 seal.
+The only accepted translation statuses are `input-rejected` and `success`;
+translator timeout is an infrastructure failure, and the larger V7 resource
+ceiling does not change the accepted source-outcome classes.
 
-Before reading any V5 artifact, V6 freezes the exact committed outcome-free
-design. Its deterministic crash-recovery chain exclusively binds the seal
-plan, union root, complete union, candidate, and frozen attestation. The
-shared consumer reopens all five stages, both per-task Slurm-log hashes and
-the elapsed-time resource rows; the B freeze records every stage path/hash
-and the pre-diagnosis repository/file-set ancestry.
+Before reading any V5 output byte, V7 freezes the exact committed
+source-support-outcome-free design. Its deterministic crash-recovery chain
+exclusively binds the seal plan, union root, complete union, candidate, and
+frozen attestation. The shared consumer reopens all five stages, the selected
+V5 and V7 per-task Slurm-log hashes, and the V7 elapsed-time resource rows; the
+B freeze records every stage path/hash and the pre-diagnosis repository/file-
+set ancestry. The consumer authenticates this complete pre-diagnosis closure
+at the retained V7 producer revision. Only after the V7 seal may a descendant
+revision insert the B freeze constants or result text and revise the paper or
+renderer; the B freeze binds those descendant edits. No current-live equality
+to the historical V7 paper or renderer is required.
 
 The source launch passes the exact in-memory Slurm bytes on standard input to
 hash-pinned `/usr/bin/sbatch` under a controlled `C` environment. Its command
 contains options only and no script path; hash-pinned `/usr/bin/sacct` must
 reproduce the exact `SubmitLine`, unique job, and complete array. The consumer
 verifies the canonical launch intent, Slurm script, exact manifest,
-amendment protocol, inventory, every listed live file, and all bytes at the
+amendment protocol, inventory, every listed producer file, and all bytes at the
 source repository commit. The B freeze records and checks the complete
-`tracked_file_sha256` proof at its freeze repository revision. Neither B
-freezing nor launching is possible until the canonical V6 diagnostic, intent,
+historical `tracked_file_sha256` proof at the retained V7 producer revision.
+Neither B
+freezing nor launching is possible until the canonical V7 diagnostic, intent,
 attestation, launch receipt, and execution receipt exist
 and validate completely.
 The exact attestation envelope is required, and the manifest-verified producer
 is replayed over all 1,640 source records; its gate and complete A/B split must
 be byte-identical to the sealed values. The planner revision is exactly
 `8148f798f13059ee881ad2471bd20cdd61d2ec18`. The later clean
-`freeze_repository_revision` independently binds Python/protocol/V6 artifacts
-and must descend from 8148 and both the V6 producer and pre-diagnosis
+`freeze_repository_revision` independently binds Python/protocol/V7 artifacts
+and must descend from 8148 and both the V7 producer and pre-diagnosis
 revisions; launch must descend from both frozen revisions. After cache
 validation and immediately before the
 exclusive freeze write, B repeats the clean-parent, source-chain,

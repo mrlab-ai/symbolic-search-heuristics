@@ -86,16 +86,28 @@ def _require_clean_parent(revision: str | None) -> str:
     return revision
 
 
-def _tracked_source_v6_hashes(materials, revision: str) -> dict[str, str]:
+def _tracked_source_v7_hashes(materials, revision: str) -> dict[str, str]:
     hashes = dict(materials.tracked_file_sha256)
-    if set(hashes) != set(P.SourceV6.SCOPED_FILES):
-        raise FreezeError("source-audit V6 bound file set changed")
+    producer_revision = materials.launch_receipt.get("repository_commit_id")
+    if (
+        set(hashes) != set(P.SourceV7.SCOPED_FILES)
+        or P.COMMIT_RE.fullmatch(revision or "") is None
+        or P.COMMIT_RE.fullmatch(producer_revision or "") is None
+    ):
+        raise FreezeError("source-audit V7 bound file set changed")
     for relative, expected in hashes.items():
-        path = REPO / relative
-        _attest_tracked_file(
-            path, expected, revision,
-            "source-audit V6 bound file {}".format(relative),
-        )
+        try:
+            tracked = JJ.tracked_file_sha256(
+                REPO, producer_revision, relative
+            )
+        except JJ.JjCacheError as err:
+            raise FreezeError(
+                "source-audit V7 bound file is absent from the producer revision"
+            ) from err
+        if tracked != expected:
+            raise FreezeError(
+                "source-audit V7 bound file differs from the producer revision"
+            )
     return hashes
 
 
@@ -114,7 +126,7 @@ def _require_source_ancestor(materials, revision: str) -> None:
         )
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "planner 8148 or V6 producer is not an ancestor of the freeze"
+            "planner 8148 or V7 producer is not an ancestor of the freeze"
         ) from err
 
 
@@ -136,12 +148,12 @@ def build_freeze(
         (materials.intent_path, materials.intent_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
-        *P.v6_recovery_artifacts(materials.execution_receipt),
+        *P.v7_recovery_artifacts(materials.execution_receipt),
     ):
         _attest_tracked_file(
-            path, expected, freeze_repository_revision, "sealed V6 source artifact"
+            path, expected, freeze_repository_revision, "sealed V7 source artifact"
         )
-    tracked_file_sha256 = _tracked_source_v6_hashes(
+    tracked_file_sha256 = _tracked_source_v7_hashes(
         materials, freeze_repository_revision
     )
     cached = JJ.JjCachedFastDownwardRevision(
@@ -182,19 +194,56 @@ def build_freeze(
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": source_launch["job_id"],
-        "code_manifest_sha256": source_execution["v6_code_manifest_sha256"],
+        "code_manifest_sha256": source_execution["v7_code_manifest_sha256"],
         "repository_commit_id": source_launch["repository_commit_id"],
         "union_tree_sha256": source_execution["union_tree"]["sha256"],
         "union_sources_sha256": source_execution["union_sources_sha256"],
-        "v6_output_tree_sha256": source_execution["v6_output_tree"]["sha256"],
+        "v5_reusable_tree_sha256": source_execution[
+            "v5_reusable_tree"
+        ]["sha256"],
+        "v7_output_tree_sha256": source_execution["v7_output_tree"]["sha256"],
         "v5_launch_receipt_sha256": source_execution[
             "v5_launch_receipt_sha256"
         ],
         "v5_code_manifest_sha256": source_execution[
             "v5_code_manifest_sha256"
         ],
+        "reused_v5_shards": source_execution["reused_v5_shards"],
+        "repaired_v5_shards": source_execution["repaired_v5_shards"],
+        "reused_v6_shards": source_execution["reused_v6_shards"],
+        "source_support_outcome_blind_selective_repair": source_execution[
+            "source_support_outcome_blind_selective_repair"
+        ],
+        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
+            source_execution[
+                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
+            ]
+        ),
+        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
+            source_execution[
+                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
+            ]
+        ),
+        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": source_execution[
+            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
+        ],
+        "scheduler_membership_affects_execution_origin_only": source_execution[
+            "scheduler_membership_affects_execution_origin_only"
+        ],
+        "v6_runtime_artifacts_used": source_execution[
+            "v6_runtime_artifacts_used"
+        ],
+        "accepted_translation_statuses": source_execution[
+            "accepted_translation_statuses"
+        ],
+        "translator_timeout_is_infrastructure_failure": source_execution[
+            "translator_timeout_is_infrastructure_failure"
+        ],
+        "resource_ceiling_changes_accepted_outcome_classes": source_execution[
+            "resource_ceiling_changes_accepted_outcome_classes"
+        ],
         "slurm_template_sha256": source_launch["slurm_template_sha256"],
-        **P.v6_recovery_provenance(source_execution),
+        **P.v7_recovery_provenance(source_execution),
         "tracked_file_sha256": tracked_file_sha256,
     }
     return {
@@ -241,12 +290,12 @@ def _revalidate_before_write(
         (materials.intent_path, materials.intent_sha256),
         (materials.execution_receipt_path, materials.execution_receipt_sha256),
         (materials.launch_receipt_path, materials.launch_receipt_sha256),
-        *P.v6_recovery_artifacts(materials.execution_receipt),
+        *P.v7_recovery_artifacts(materials.execution_receipt),
     ):
         _attest_tracked_file(
-            path, expected, freeze_repository_revision, "sealed V6 source artifact"
+            path, expected, freeze_repository_revision, "sealed V7 source artifact"
         )
-    tracked = _tracked_source_v6_hashes(materials, freeze_repository_revision)
+    tracked = _tracked_source_v7_hashes(materials, freeze_repository_revision)
     launch = materials.launch_receipt
     execution = materials.execution_receipt
     expected_sources = {
@@ -265,15 +314,48 @@ def _revalidate_before_write(
         "attestation_records_sha256": materials.records_sha256,
         "translator_source_sha256": materials.translator_source_sha256,
         "job_id": launch["job_id"],
-        "code_manifest_sha256": execution["v6_code_manifest_sha256"],
+        "code_manifest_sha256": execution["v7_code_manifest_sha256"],
         "repository_commit_id": launch["repository_commit_id"],
         "union_tree_sha256": execution["union_tree"]["sha256"],
         "union_sources_sha256": execution["union_sources_sha256"],
-        "v6_output_tree_sha256": execution["v6_output_tree"]["sha256"],
+        "v5_reusable_tree_sha256": execution["v5_reusable_tree"]["sha256"],
+        "v7_output_tree_sha256": execution["v7_output_tree"]["sha256"],
         "v5_launch_receipt_sha256": execution["v5_launch_receipt_sha256"],
         "v5_code_manifest_sha256": execution["v5_code_manifest_sha256"],
+        "reused_v5_shards": execution["reused_v5_shards"],
+        "repaired_v5_shards": execution["repaired_v5_shards"],
+        "reused_v6_shards": execution["reused_v6_shards"],
+        "source_support_outcome_blind_selective_repair": execution[
+            "source_support_outcome_blind_selective_repair"
+        ],
+        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
+            execution[
+                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
+            ]
+        ),
+        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
+            execution[
+                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
+            ]
+        ),
+        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": execution[
+            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
+        ],
+        "scheduler_membership_affects_execution_origin_only": execution[
+            "scheduler_membership_affects_execution_origin_only"
+        ],
+        "v6_runtime_artifacts_used": execution["v6_runtime_artifacts_used"],
+        "accepted_translation_statuses": execution[
+            "accepted_translation_statuses"
+        ],
+        "translator_timeout_is_infrastructure_failure": execution[
+            "translator_timeout_is_infrastructure_failure"
+        ],
+        "resource_ceiling_changes_accepted_outcome_classes": execution[
+            "resource_ceiling_changes_accepted_outcome_classes"
+        ],
         "slurm_template_sha256": launch["slurm_template_sha256"],
-        **P.v6_recovery_provenance(execution),
+        **P.v7_recovery_provenance(execution),
         "tracked_file_sha256": tracked,
     }
     if value.get("source_audit") != expected_sources:

@@ -455,7 +455,7 @@ class AnalyzerTest(unittest.TestCase):
         self.assertEqual(first["pass"], second["pass"])
         self.assertFalse(second["mechanism_diagnostics"]["gating"])
 
-    def test_downstream_provenance_is_v6_only_and_closed(self):
+    def test_downstream_provenance_is_v7_only_and_closed(self):
         freeze = fake_freeze()
         properties = Analyzer.Runner.build_manifest_properties(
             freeze, FREEZE_SHA
@@ -464,6 +464,28 @@ class AnalyzerTest(unittest.TestCase):
         self.assertFalse(any(
             "source_audit_v5" in key.lower() for key in keys
         ))
+        self.assertTrue(all(
+            key.startswith("source_audit_v7_")
+            for key in Analyzer.Runner.V7_PROVENANCE_PROPERTY_FIELDS
+        ))
+        self.assertFalse(
+            properties["source_audit_v7_v6_runtime_artifacts_used"]
+        )
+        self.assertTrue(properties[
+            "source_audit_v7_v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
+        ])
+        self.assertFalse(properties[
+            "source_audit_v7_v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
+        ])
+        self.assertTrue(properties[
+            "source_audit_v7_v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
+        ])
+        self.assertIn(
+            "source_audit_v7_v7_output_tree_sha256", properties
+        )
+        self.assertNotIn(
+            "source_audit_v7_repair_output_tree_sha256", properties
+        )
         self.assertFalse(any(
             "v4" in key.lower() for key in Analyzer.ANALYSIS_PROVENANCE_FIELDS
         ))
@@ -477,7 +499,7 @@ class AnalyzerTest(unittest.TestCase):
             "standalone_b_parse_receipt_sha256",
             "standalone_b_fetch_receipt_sha256",
             "standalone_b_properties_sha256",
-            *Analyzer.Runner.V6_PROVENANCE_PROPERTY_FIELDS,
+            *Analyzer.Runner.V7_PROVENANCE_PROPERTY_FIELDS,
         }
         self.assertTrue(required.issubset(keys))
         provenance = Analyzer._analysis_provenance(freeze, FREEZE_SHA)
@@ -529,7 +551,7 @@ class AnalyzerTest(unittest.TestCase):
             self.assertEqual(receipt_value["hardware"], HARDWARE)
             self.assertEqual(analysis_provenance, receipt_provenance)
             self.assertTrue(set(
-                Analyzer.Runner.V6_PROVENANCE_PROPERTY_FIELDS
+                Analyzer.Runner.V7_PROVENANCE_PROPERTY_FIELDS
             ).issubset(analysis_provenance))
 
     def test_second_pass_input_drift_publishes_nothing(self):

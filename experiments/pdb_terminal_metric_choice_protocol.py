@@ -58,40 +58,40 @@ BASE_B_PROPERTIES_PATH = (
     SCRIPT_DIR / "data" / "exp_pdb_terminal_incidence_confirmation_b-eval" /
     "properties"
 )
-V6_ARTIFACT_DIR = (
-    SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation-v6"
+V7_ARTIFACT_DIR = (
+    SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation-v7"
 )
-V6_ATTESTATION_PATH = (
-    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v6.json"
+V7_ATTESTATION_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v7.json"
 )
-V6_DIAGNOSTIC_PATH = (
-    V6_ARTIFACT_DIR / "v5-infrastructure-failure-diagnostic-v6.json"
+V7_DIAGNOSTIC_PATH = (
+    V7_ARTIFACT_DIR / "v5-scheduler-terminal-diagnostic-v7.json"
 )
-V6_INTENT_PATH = (
-    V6_ARTIFACT_DIR / "source-audit-repair-launch-intent-v6.json"
+V7_INTENT_PATH = (
+    V7_ARTIFACT_DIR / "source-audit-repair-launch-intent-v7.json"
 )
-V6_LAUNCH_RECEIPT_PATH = (
-    V6_ARTIFACT_DIR / "source-audit-repair-launch-receipt-v6.json"
+V7_LAUNCH_RECEIPT_PATH = (
+    V7_ARTIFACT_DIR / "source-audit-repair-launch-receipt-v7.json"
 )
-V6_EXECUTION_RECEIPT_PATH = (
-    V6_ARTIFACT_DIR / "source-audit-execution-receipt-v6.json"
+V7_EXECUTION_RECEIPT_PATH = (
+    V7_ARTIFACT_DIR / "source-audit-execution-receipt-v7.json"
 )
-V6_CODE_MANIFEST_PATH = (
-    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v6_code.sha256"
+V7_CODE_MANIFEST_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_audit_v7_code.sha256"
 )
-V6_SLURM_PATH = (
-    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_scan_v6.slurm"
+V7_SLURM_PATH = (
+    SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_scan_v7.slurm"
 )
-V6_SEAL_PLAN_PATH = V6_ARTIFACT_DIR / "source-audit-seal-plan-v6.json"
-V6_UNION_ROOT_STAGE_PATH = (
-    V6_ARTIFACT_DIR / "source-audit-union-root-stage-v6.json"
+V7_SEAL_PLAN_PATH = V7_ARTIFACT_DIR / "source-audit-seal-plan-v7.json"
+V7_UNION_ROOT_STAGE_PATH = (
+    V7_ARTIFACT_DIR / "source-audit-union-root-stage-v7.json"
 )
-V6_UNION_STAGE_PATH = V6_ARTIFACT_DIR / "source-audit-union-stage-v6.json"
-V6_CANDIDATE_STAGE_PATH = (
-    V6_ARTIFACT_DIR / "source-audit-candidate-stage-v6.json"
+V7_UNION_STAGE_PATH = V7_ARTIFACT_DIR / "source-audit-union-stage-v7.json"
+V7_CANDIDATE_STAGE_PATH = (
+    V7_ARTIFACT_DIR / "source-audit-candidate-stage-v7.json"
 )
-V6_ATTESTATION_STAGE_PATH = (
-    V6_ARTIFACT_DIR / "source-audit-attestation-stage-v6.json"
+V7_ATTESTATION_STAGE_PATH = (
+    V7_ARTIFACT_DIR / "source-audit-attestation-stage-v7.json"
 )
 CALIBRATION_DRIVER_PATH = REPO / "fast-downward.py"
 FREEZE_SCHEMA = (
@@ -156,7 +156,27 @@ CALIBRATION_TASK_SPECS = (
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40,64}$")
 
-V6_CODE_MANIFEST_FILES = (
+V7_CODE_MANIFEST_FILES = tuple(sorted({
+    "experiments/analyze_pdb_cap_grid_posthoc_review.py",
+    "experiments/analyze_pdb_terminal_incidence_shadow.py",
+    "experiments/audit_pdb_terminal_incidence_shadow.py",
+    "experiments/exp_arrhenius_common.py",
+    "experiments/exp_pdb_profile_certificate_holdout.py",
+    "experiments/exp_pdb_terminal_incidence_shadow.py",
+    "experiments/jj_cached_revision.py",
+    "experiments/pdb_cap_selector_parser.py",
+    "experiments/pdb_confirmation_run_cell.py",
+    "experiments/pdb_fixed_pattern_parser.py",
+    "experiments/pdb_profile_certificate_holdout_protocol.md",
+    "experiments/pdb_profile_certificate_holdout_protocol.py",
+    "experiments/pdb_profile_comparison_parser.py",
+    "experiments/pdb_profile_comparison_protocol.py",
+    "experiments/pdb_profile_semantic_union_protocol.md",
+    "experiments/pdb_profile_semantic_union_protocol.py",
+    "experiments/pdb_terminal_incidence_selector_parser.py",
+    "experiments/pdb_terminal_incidence_shadow_protocol.py",
+    "experiments/validate_wbh_log.py",
+    "experiments/wbh_parser.py",
     "experiments/artifacts/pdb-terminal-incidence-confirmation-v2/source-audit-launch-receipt-v2.json",
     "experiments/artifacts/pdb-terminal-incidence-confirmation-v3/source-audit-launch-intent-v3.json",
     "experiments/artifacts/pdb-terminal-incidence-confirmation-v3/source-audit-launch-receipt-v3.json",
@@ -166,22 +186,26 @@ V6_CODE_MANIFEST_FILES = (
     "experiments/artifacts/pdb-terminal-incidence-confirmation-v5/source-audit-launch-intent-v5.json",
     "experiments/artifacts/pdb-terminal-incidence-confirmation-v5/source-audit-launch-receipt-v5.json",
     "experiments/artifacts/pdb-terminal-incidence-confirmation-v5/v4-infrastructure-failure-diagnostic.json",
-    "experiments/artifacts/pdb-terminal-incidence-confirmation-v6/v5-infrastructure-failure-diagnostic-v6.json",
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v7/v5-scheduler-terminal-diagnostic-v7.json",
     "experiments/artifacts/pdb-terminal-incidence-confirmation/source-audit-launch-receipt-v1.json",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v3.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v4.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v5.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v6.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v7.py",
     "experiments/cancel_pdb_terminal_incidence_confirmation_source_audit_v4_v5.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v3.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v4.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v5.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v6.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v7.py",
+    "experiments/pdb_confirmation_safe_io.py",
     "experiments/pdb_terminal_incidence_confirmation_inventory.py",
     "experiments/pdb_terminal_incidence_confirmation_safe_io_v5.py",
     "experiments/pdb_terminal_incidence_confirmation_safe_io_v6.py",
+    "experiments/pdb_terminal_incidence_confirmation_safe_io_v7.py",
     "experiments/pdb_terminal_incidence_confirmation_source_audit_v3_code.sha256",
     "experiments/pdb_terminal_incidence_confirmation_source_audit_v3_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_source_audit_v4_cancellation_v5_protocol.md",
@@ -189,28 +213,79 @@ V6_CODE_MANIFEST_FILES = (
     "experiments/pdb_terminal_incidence_confirmation_source_audit_v4_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_source_audit_v5_code.sha256",
     "experiments/pdb_terminal_incidence_confirmation_source_audit_v5_protocol.md",
-    "experiments/pdb_terminal_incidence_confirmation_source_audit_v6_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v7_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
     "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v7.py",
     "experiments/pdb_terminal_incidence_confirmation_source_scan_v3.slurm",
     "experiments/pdb_terminal_incidence_confirmation_source_scan_v4.slurm",
-    "experiments/pdb_terminal_incidence_confirmation_source_scan_v6.slurm",
+    "experiments/pdb_terminal_incidence_confirmation_source_scan_v7.slurm",
     "experiments/pdb_terminal_incidence_shadow_cost_attestation.json",
     "experiments/recover_pdb_terminal_incidence_confirmation_source_audit.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_source_audit_v3.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_source_audit_v4.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_source_audit_v5.py",
     "experiments/requirements-pdb-terminal-incidence-shadow.txt",
+    "experiments/suite_cost_manifest.py",
     "experiments/suite_wbh_operator_costs.json",
+    "experiments/test_pdb_cap_selector_parser.py",
     "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v3.py",
     "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v4.py",
     "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v4_cancellation_v5.py",
     "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v5.py",
-    "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v6.py",
-    "experiments/test_pdb_terminal_incidence_confirmation_source_consumer_v6.py",
-)
-V6_SCOPED_FILES = tuple(sorted((
-    *V6_CODE_MANIFEST_FILES,
-    "experiments/pdb_terminal_incidence_confirmation_source_audit_v6_code.sha256",
+    "experiments/test_pdb_terminal_incidence_confirmation_source_audit_v7.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_source_consumer_v7.py",
+    "experiments/analyze_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/analyze_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/exp_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/exp_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/freeze_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/freeze_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/pdb_terminal_incidence_confirmation_a_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
+    "experiments/pdb_terminal_incidence_confirmation_b_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
+    "experiments/pdb_terminal_metric_choice_analyzer.py",
+    "experiments/pdb_terminal_metric_choice_audit.py",
+    "experiments/pdb_terminal_metric_choice_calibration.py",
+    "experiments/pdb_terminal_metric_choice_execution.py",
+    "experiments/pdb_terminal_metric_choice_freeze.py",
+    "experiments/pdb_terminal_metric_choice_io.py",
+    "experiments/pdb_terminal_metric_choice_parser.py",
+    "experiments/pdb_terminal_metric_choice_planner_manifest.py",
+    "experiments/pdb_terminal_metric_choice_protocol.md",
+    "experiments/pdb_terminal_metric_choice_protocol.py",
+    "experiments/pdb_terminal_metric_choice_recovery.py",
+    "experiments/pdb_terminal_metric_choice_requirements.txt",
+    "experiments/pdb_terminal_metric_choice_runner.py",
+    "experiments/pdb_terminal_metric_choice_standalone.py",
+    "experiments/pdb_terminal_metric_choice_transport.py",
+    "experiments/recover_pdb_terminal_incidence_confirmation_a.py",
+    "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_a_execution.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_a_protocol.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_b_analysis.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_b_execution.py",
+    "experiments/test_pdb_terminal_incidence_confirmation_b_protocol.py",
+    "experiments/test_pdb_terminal_metric_choice_analyzer.py",
+    "experiments/test_pdb_terminal_metric_choice_calibration.py",
+    "experiments/test_pdb_terminal_metric_choice_execution.py",
+    "experiments/test_pdb_terminal_metric_choice_hardening.py",
+    "experiments/test_pdb_terminal_metric_choice_parser.py",
+    "experiments/test_pdb_terminal_metric_choice_planner_manifest.py",
+    "experiments/test_pdb_terminal_metric_choice_protocol.py",
+    "experiments/test_pdb_terminal_metric_choice_standalone.py",
+    "paper/check_submission_ready.py",
+    "paper/paper.tex",
+    "paper/render_terminal_incidence_results.py",
+    "paper/supplement.tex",
+    "paper/test_render_terminal_incidence_results.py",
+}))
+V7_SCOPED_FILES = tuple(sorted((
+    *V7_CODE_MANIFEST_FILES,
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v7_code.sha256",
 )))
 
 BASE_B_EXPERIMENT_SOURCE_FILES = (
@@ -219,6 +294,7 @@ BASE_B_EXPERIMENT_SOURCE_FILES = (
     "experiments/analyze_pdb_terminal_incidence_shadow.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v5.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v6.py",
+    "experiments/audit_pdb_terminal_incidence_confirmation_sources_v7.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_a.py",
     "experiments/audit_pdb_terminal_incidence_confirmation_b.py",
     "experiments/audit_pdb_terminal_incidence_shadow.py",
@@ -230,6 +306,7 @@ BASE_B_EXPERIMENT_SOURCE_FILES = (
     "experiments/jj_cached_revision.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v5.py",
     "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v6.py",
+    "experiments/launch_pdb_terminal_incidence_confirmation_source_audit_v7.py",
     "experiments/pdb_cap_selector_parser.py",
     "experiments/pdb_confirmation_safe_io.py",
     "experiments/pdb_confirmation_run_cell.py",
@@ -246,8 +323,12 @@ BASE_B_EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_safe_io_v5.py",
     "experiments/pdb_terminal_incidence_confirmation_safe_io_v6.py",
+    "experiments/pdb_terminal_incidence_confirmation_safe_io_v7.py",
     "experiments/pdb_terminal_incidence_confirmation_source_consumer_v5.py",
     "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v7.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_audit_v7_protocol.md",
+    "experiments/pdb_terminal_incidence_confirmation_source_scan_v7.slurm",
     "experiments/pdb_terminal_incidence_selector_parser.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
@@ -278,7 +359,7 @@ SOURCE_FILES = (
     "experiments/pdb_terminal_metric_choice_calibration.py",
     "experiments/pdb_terminal_metric_choice_protocol.md",
     "experiments/pdb_terminal_metric_choice_requirements.txt",
-    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v7.py",
     "experiments/test_pdb_terminal_metric_choice_protocol.py",
     "experiments/test_pdb_terminal_metric_choice_planner_manifest.py",
     "experiments/test_pdb_terminal_metric_choice_parser.py",
@@ -618,7 +699,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
         "base_b_freeze_repository_revision",
         "base_b_experiment_source_sha256", "base_b_planner",
         "benchmark_revision", "confirmation_a_authorization",
-        "source_audit_v6", "confirmation_a_cohort", "cohort",
+        "source_audit_v7", "confirmation_a_cohort", "cohort",
     }
     if not isinstance(snapshot, dict) or set(snapshot) != keys or (
         snapshot.get("schema") != BASE_SNAPSHOT_SCHEMA
@@ -705,7 +786,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
     validate_planner_identity(authorization.get("planner_identity"))
     if authorization["planner_identity"] != snapshot["base_b_planner"]:
         raise ProtocolError("Confirmation A/B planner identity differs")
-    provenance = snapshot.get("source_audit_v6")
+    provenance = snapshot.get("source_audit_v7")
     required_provenance = {
         "campaign", "attestation_path", "terminal_diagnostic_path",
         "execution_receipt_path",
@@ -716,8 +797,18 @@ def validate_base_snapshot(snapshot: dict) -> None:
         "confirmation_a_cohort_manifest_sha256", "attestation_records_sha256",
         "translator_source_sha256", "job_id", "code_manifest_sha256",
         "repository_commit_id", "union_tree_sha256", "union_sources_sha256",
-        "v6_output_tree_sha256", "v5_launch_receipt_sha256",
+        "v5_reusable_tree_sha256", "v7_output_tree_sha256",
+        "v5_launch_receipt_sha256",
         "v5_code_manifest_sha256", "slurm_template_sha256",
+        "reused_v5_shards", "repaired_v5_shards", "reused_v6_shards",
+        "source_support_outcome_blind_selective_repair",
+        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
+        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
+        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
+        "scheduler_membership_affects_execution_origin_only",
+        "v6_runtime_artifacts_used", "accepted_translation_statuses",
+        "translator_timeout_is_infrastructure_failure",
+        "resource_ceiling_changes_accepted_outcome_classes",
         "seal_recovery_protocol", "pre_diagnosis_repository_commit_id",
         "pre_diagnosis_files_sha256", "seal_plan_path",
         "seal_plan_sha256", "union_root_stage_path",
@@ -730,33 +821,42 @@ def validate_base_snapshot(snapshot: dict) -> None:
     if (
         not isinstance(provenance, dict)
         or set(provenance) != required_provenance
-        or provenance.get("campaign") != "v6-selective-repair"
+        or provenance.get("campaign") != "v7-selective-repair"
         or not isinstance(provenance.get("repository_commit_id"), str)
         or COMMIT_RE.fullmatch(provenance["repository_commit_id"]) is None
         or not isinstance(provenance.get("job_id"), str)
         or not provenance["job_id"].isdigit()
     ):
-        raise ProtocolError("source-audit V6 provenance changed")
-    expected_v6_paths = {
-        "attestation_path": V6_ATTESTATION_PATH,
-        "terminal_diagnostic_path": V6_DIAGNOSTIC_PATH,
-        "execution_receipt_path": V6_EXECUTION_RECEIPT_PATH,
-        "launch_receipt_path": V6_LAUNCH_RECEIPT_PATH,
-        "launch_intent_path": V6_INTENT_PATH,
-        "seal_plan_path": V6_SEAL_PLAN_PATH,
-        "union_root_stage_path": V6_UNION_ROOT_STAGE_PATH,
-        "union_stage_path": V6_UNION_STAGE_PATH,
-        "candidate_stage_path": V6_CANDIDATE_STAGE_PATH,
-        "attestation_stage_path": V6_ATTESTATION_STAGE_PATH,
+        raise ProtocolError("source-audit V7 provenance changed")
+    expected_v7_paths = {
+        "attestation_path": V7_ATTESTATION_PATH,
+        "terminal_diagnostic_path": V7_DIAGNOSTIC_PATH,
+        "execution_receipt_path": V7_EXECUTION_RECEIPT_PATH,
+        "launch_receipt_path": V7_LAUNCH_RECEIPT_PATH,
+        "launch_intent_path": V7_INTENT_PATH,
+        "seal_plan_path": V7_SEAL_PLAN_PATH,
+        "union_root_stage_path": V7_UNION_ROOT_STAGE_PATH,
+        "union_stage_path": V7_UNION_STAGE_PATH,
+        "candidate_stage_path": V7_CANDIDATE_STAGE_PATH,
+        "attestation_stage_path": V7_ATTESTATION_STAGE_PATH,
     }
-    for field, path in expected_v6_paths.items():
+    for field, path in expected_v7_paths.items():
         expected = path.relative_to(REPO).as_posix()
         if provenance.get(field) != expected:
-            raise ProtocolError("source-audit V6 artifact path changed")
-        _safe_experiment_path(expected, "source-audit V6 artifact")
+            raise ProtocolError("source-audit V7 artifact path changed")
+        _safe_experiment_path(expected, "source-audit V7 artifact")
     hash_fields = required_provenance - {
         "campaign", "repository_commit_id", "job_id", "tracked_file_sha256",
         "seal_recovery_protocol", "pre_diagnosis_repository_commit_id",
+        "reused_v5_shards", "repaired_v5_shards", "reused_v6_shards",
+        "source_support_outcome_blind_selective_repair",
+        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
+        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
+        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
+        "scheduler_membership_affects_execution_origin_only",
+        "v6_runtime_artifacts_used", "accepted_translation_statuses",
+        "translator_timeout_is_infrastructure_failure",
+        "resource_ceiling_changes_accepted_outcome_classes",
         "attestation_path", "terminal_diagnostic_path",
         "execution_receipt_path", "launch_receipt_path", "launch_intent_path",
         "seal_plan_path", "union_root_stage_path", "union_stage_path",
@@ -771,13 +871,43 @@ def validate_base_snapshot(snapshot: dict) -> None:
             provenance.get("pre_diagnosis_repository_commit_id", "")
         ) is None
     ):
-        raise ProtocolError("source-audit V6 recovery ancestry changed")
+        raise ProtocolError("source-audit V7 recovery ancestry changed")
+    if (
+        type(provenance.get("reused_v5_shards")) is not int
+        or provenance["reused_v5_shards"] < 0
+        or type(provenance.get("repaired_v5_shards")) is not int
+        or provenance["repaired_v5_shards"] < 1
+        or provenance["reused_v5_shards"]
+        + provenance["repaired_v5_shards"] != 820
+        or provenance.get("reused_v6_shards") != 0
+        or provenance.get("source_support_outcome_blind_selective_repair")
+        is not True
+        or provenance.get(
+            "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
+        ) is not True
+        or provenance.get(
+            "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
+        ) is not False
+        or provenance.get(
+            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
+        ) is not True
+        or provenance.get("scheduler_membership_affects_execution_origin_only")
+        is not True
+        or provenance.get("v6_runtime_artifacts_used") is not False
+        or provenance.get("accepted_translation_statuses")
+        != ["input-rejected", "success"]
+        or provenance.get("translator_timeout_is_infrastructure_failure")
+        is not True
+        or provenance.get("resource_ceiling_changes_accepted_outcome_classes")
+        is not False
+    ):
+        raise ProtocolError("source-audit V7 origin/validity contract changed")
     tracked = provenance.get("tracked_file_sha256")
-    if not isinstance(tracked, dict) or set(tracked) != set(V6_SCOPED_FILES):
-        raise ProtocolError("source-audit V6 tracked source manifest changed")
+    if not isinstance(tracked, dict) or set(tracked) != set(V7_SCOPED_FILES):
+        raise ProtocolError("source-audit V7 tracked source manifest changed")
     for relative, digest in tracked.items():
-        _safe_repo_path(relative, "source-audit V6 tracked source")
-        _require_sha(digest, "source-audit V6 tracked source")
+        _safe_repo_path(relative, "source-audit V7 tracked source")
+        _require_sha(digest, "source-audit V7 tracked source")
     if any((
         provenance["attestation_sha256"]
         != authorization["cost_attestation_sha256"],
@@ -788,7 +918,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
         provenance["confirmation_a_cohort_manifest_sha256"]
         != authorization["confirmation_a_cohort_manifest_sha256"],
     )):
-        raise ProtocolError("Confirmation A and V6 source provenance differ")
+        raise ProtocolError("Confirmation A and V7 source provenance differ")
     confirmation = snapshot.get("confirmation_a_cohort")
     if not isinstance(confirmation, dict) or set(confirmation) != {
         "role", "full_tasks_sha256", "identities", "identities_sha256",
@@ -834,7 +964,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
     ):
         raise ProtocolError("sealed B cohort digest changed")
     if provenance["cohort_manifest_sha256"] != cohort["tasks_sha256"]:
-        raise ProtocolError("Confirmation B and V6 cohort provenance differ")
+        raise ProtocolError("Confirmation B and V7 cohort provenance differ")
 
 
 def _lazy_base_protocol():
@@ -855,17 +985,29 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
     authorization = dict(freeze["confirmation_a_authorization"])
     if authorization.get("guided_study_authorized") is not True:
         raise ProtocolError("Confirmation A does not authorize the campaign")
+    source_consumer = importlib.import_module(
+        "pdb_terminal_incidence_confirmation_source_consumer_v7"
+    )
     try:
-        loaded, attestation = SafeIO.read_canonical_json(
+        chain = source_consumer.load_v7_source(
             materials.attestation_path,
-            label="source-audit V6 attestation",
-            expected_path=materials.attestation_path,
-            canonical_json_line=base.canonical_json_line,
+            materials.execution_receipt_path,
+            materials.launch_receipt_path,
+            snapshot_reader=base.SourceValidation._repository_snapshot_files,
         )
-    except SafeIO.SafeReadError as err:
-        raise ProtocolError("cannot reopen sealed A/B cohort identities") from err
-    if loaded.sha256 != materials.attestation_sha256:
-        raise ProtocolError("source-audit V6 attestation changed")
+    except source_consumer.SourceConsumerError as err:
+        raise ProtocolError("cannot revalidate sealed V7 source chain") from err
+    if (
+        hashlib.sha256(chain.attestation_raw).hexdigest()
+        != materials.attestation_sha256
+        or hashlib.sha256(chain.execution_raw).hexdigest()
+        != materials.execution_receipt_sha256
+        or hashlib.sha256(chain.launch_raw).hexdigest()
+        != materials.launch_receipt_sha256
+        or chain.tracked_file_sha256 != materials.tracked_file_sha256
+    ):
+        raise ProtocolError("source-audit V7 chain changed")
+    attestation = chain.attestation
     try:
         confirmation_tasks = attestation["cohorts"]["confirmation_a"]["tasks"]
         confirmation_identities = [{
@@ -889,8 +1031,8 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
         "base_b_planner": dict(freeze["planner"]),
         "benchmark_revision": base.BENCHMARK_REVISION,
         "confirmation_a_authorization": authorization,
-        "source_audit_v6": {
-            "campaign": "v6-selective-repair", **dict(freeze["source_audit"]),
+        "source_audit_v7": {
+            "campaign": "v7-selective-repair", **dict(freeze["source_audit"]),
         },
         "confirmation_a_cohort": {
             "role": "confirmation-a",
@@ -1584,7 +1726,7 @@ def load_freeze(path: Path = FREEZE_PATH, *, verify_live_sources=True) -> dict:
 def load_authorized_freeze(
     path: Path = FREEZE_PATH, *, verify_live_sources=True,
 ) -> dict:
-    """Validate calibration before opening any live A/B/V6 evidence."""
+    """Validate calibration before opening any live A/B/V7 evidence."""
     calibration_raw, calibration = load_canonical(
         CALIBRATION_RECEIPT_PATH, "calibration receipt",
         expected_path=CALIBRATION_RECEIPT_PATH,

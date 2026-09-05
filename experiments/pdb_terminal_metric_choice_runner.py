@@ -481,52 +481,65 @@ def validate_manifest(manifest: dict, freeze: dict, freeze_sha256: str) -> None:
         raise RunnerError("runner provenance binding changed")
 
 
-V6_PROVENANCE_PROPERTY_FIELDS = (
-    "source_audit_v6_campaign",
-    "source_audit_v6_attestation_path",
-    "source_audit_v6_attestation_sha256",
-    "source_audit_v6_terminal_diagnostic_path",
-    "source_audit_v6_terminal_diagnostic_sha256",
-    "source_audit_v6_launch_intent_path",
-    "source_audit_v6_launch_intent_sha256",
-    "source_audit_v6_launch_receipt_path",
-    "source_audit_v6_launch_receipt_sha256",
-    "source_audit_v6_execution_receipt_path",
-    "source_audit_v6_execution_receipt_sha256",
-    "source_audit_v6_cohort_manifest_sha256",
-    "source_audit_v6_confirmation_a_cohort_manifest_sha256",
-    "source_audit_v6_attestation_records_sha256",
-    "source_audit_v6_code_manifest_sha256",
-    "source_audit_v6_repository_commit_id",
-    "source_audit_v6_job_id",
-    "source_audit_v6_union_tree_sha256",
-    "source_audit_v6_union_sources_sha256",
-    "source_audit_v6_repair_output_tree_sha256",
-    "source_audit_v6_v5_launch_receipt_sha256",
-    "source_audit_v6_v5_code_manifest_sha256",
-    "source_audit_v6_slurm_template_sha256",
-    "source_audit_v6_seal_recovery_protocol",
-    "source_audit_v6_pre_diagnosis_repository_commit_id",
-    "source_audit_v6_pre_diagnosis_files_sha256",
-    "source_audit_v6_seal_plan_path",
-    "source_audit_v6_seal_plan_sha256",
-    "source_audit_v6_union_root_stage_path",
-    "source_audit_v6_union_root_stage_sha256",
-    "source_audit_v6_union_stage_path",
-    "source_audit_v6_union_stage_sha256",
-    "source_audit_v6_candidate_stage_path",
-    "source_audit_v6_candidate_stage_sha256",
-    "source_audit_v6_attestation_stage_path",
-    "source_audit_v6_attestation_stage_sha256",
-    "source_audit_v6_translator_source_sha256",
-    "source_audit_v6_tracked_manifest_sha256",
-    "source_audit_v6_provenance_sha256",
+V7_PROVENANCE_PROPERTY_FIELDS = (
+    "source_audit_v7_campaign",
+    "source_audit_v7_attestation_path",
+    "source_audit_v7_attestation_sha256",
+    "source_audit_v7_terminal_diagnostic_path",
+    "source_audit_v7_terminal_diagnostic_sha256",
+    "source_audit_v7_launch_intent_path",
+    "source_audit_v7_launch_intent_sha256",
+    "source_audit_v7_launch_receipt_path",
+    "source_audit_v7_launch_receipt_sha256",
+    "source_audit_v7_execution_receipt_path",
+    "source_audit_v7_execution_receipt_sha256",
+    "source_audit_v7_cohort_manifest_sha256",
+    "source_audit_v7_confirmation_a_cohort_manifest_sha256",
+    "source_audit_v7_attestation_records_sha256",
+    "source_audit_v7_code_manifest_sha256",
+    "source_audit_v7_repository_commit_id",
+    "source_audit_v7_job_id",
+    "source_audit_v7_union_tree_sha256",
+    "source_audit_v7_union_sources_sha256",
+    "source_audit_v7_v5_reusable_tree_sha256",
+    "source_audit_v7_v7_output_tree_sha256",
+    "source_audit_v7_v5_launch_receipt_sha256",
+    "source_audit_v7_v5_code_manifest_sha256",
+    "source_audit_v7_reused_v5_shards",
+    "source_audit_v7_repaired_v5_shards",
+    "source_audit_v7_reused_v6_shards",
+    "source_audit_v7_source_support_outcome_blind_selective_repair",
+    "source_audit_v7_v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
+    "source_audit_v7_v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
+    "source_audit_v7_v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
+    "source_audit_v7_scheduler_membership_affects_execution_origin_only",
+    "source_audit_v7_v6_runtime_artifacts_used",
+    "source_audit_v7_accepted_translation_statuses",
+    "source_audit_v7_translator_timeout_is_infrastructure_failure",
+    "source_audit_v7_resource_ceiling_changes_accepted_outcome_classes",
+    "source_audit_v7_slurm_template_sha256",
+    "source_audit_v7_seal_recovery_protocol",
+    "source_audit_v7_pre_diagnosis_repository_commit_id",
+    "source_audit_v7_pre_diagnosis_files_sha256",
+    "source_audit_v7_seal_plan_path",
+    "source_audit_v7_seal_plan_sha256",
+    "source_audit_v7_union_root_stage_path",
+    "source_audit_v7_union_root_stage_sha256",
+    "source_audit_v7_union_stage_path",
+    "source_audit_v7_union_stage_sha256",
+    "source_audit_v7_candidate_stage_path",
+    "source_audit_v7_candidate_stage_sha256",
+    "source_audit_v7_attestation_stage_path",
+    "source_audit_v7_attestation_stage_sha256",
+    "source_audit_v7_translator_source_sha256",
+    "source_audit_v7_tracked_manifest_sha256",
+    "source_audit_v7_provenance_sha256",
 )
 
 
 def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
     base = freeze["base_confirmation_b"]
-    source = base["source_audit_v6"]
+    source = base["source_audit_v7"]
     standalone_source = freeze["standalone_k32"]["sealed_b_input"]
     return {
         "campaign_freeze_sha256": freeze_sha256,
@@ -581,103 +594,142 @@ def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
         "standalone_b_properties_sha256": standalone_source[
             "properties_sha256"
         ],
-        "source_audit_v6_campaign": source["campaign"],
-        "source_audit_v6_attestation_path": source["attestation_path"],
-        "source_audit_v6_attestation_sha256": source["attestation_sha256"],
-        "source_audit_v6_terminal_diagnostic_path": source[
+        "source_audit_v7_campaign": source["campaign"],
+        "source_audit_v7_attestation_path": source["attestation_path"],
+        "source_audit_v7_attestation_sha256": source["attestation_sha256"],
+        "source_audit_v7_terminal_diagnostic_path": source[
             "terminal_diagnostic_path"
         ],
-        "source_audit_v6_terminal_diagnostic_sha256": source[
+        "source_audit_v7_terminal_diagnostic_sha256": source[
             "terminal_diagnostic_sha256"
         ],
-        "source_audit_v6_launch_intent_path": source["launch_intent_path"],
-        "source_audit_v6_launch_intent_sha256": source[
+        "source_audit_v7_launch_intent_path": source["launch_intent_path"],
+        "source_audit_v7_launch_intent_sha256": source[
             "launch_intent_sha256"
         ],
-        "source_audit_v6_launch_receipt_path": source["launch_receipt_path"],
-        "source_audit_v6_launch_receipt_sha256": source[
+        "source_audit_v7_launch_receipt_path": source["launch_receipt_path"],
+        "source_audit_v7_launch_receipt_sha256": source[
             "launch_receipt_sha256"
         ],
-        "source_audit_v6_execution_receipt_path": source[
+        "source_audit_v7_execution_receipt_path": source[
             "execution_receipt_path"
         ],
-        "source_audit_v6_execution_receipt_sha256": source[
+        "source_audit_v7_execution_receipt_sha256": source[
             "execution_receipt_sha256"
         ],
-        "source_audit_v6_cohort_manifest_sha256": source[
+        "source_audit_v7_cohort_manifest_sha256": source[
             "cohort_manifest_sha256"
         ],
-        "source_audit_v6_confirmation_a_cohort_manifest_sha256": source[
+        "source_audit_v7_confirmation_a_cohort_manifest_sha256": source[
             "confirmation_a_cohort_manifest_sha256"
         ],
-        "source_audit_v6_attestation_records_sha256": source[
+        "source_audit_v7_attestation_records_sha256": source[
             "attestation_records_sha256"
         ],
-        "source_audit_v6_code_manifest_sha256": source[
+        "source_audit_v7_code_manifest_sha256": source[
             "code_manifest_sha256"
         ],
-        "source_audit_v6_repository_commit_id": source[
+        "source_audit_v7_repository_commit_id": source[
             "repository_commit_id"
         ],
-        "source_audit_v6_job_id": source["job_id"],
-        "source_audit_v6_union_tree_sha256": source[
+        "source_audit_v7_job_id": source["job_id"],
+        "source_audit_v7_union_tree_sha256": source[
             "union_tree_sha256"
         ],
-        "source_audit_v6_union_sources_sha256": source[
+        "source_audit_v7_union_sources_sha256": source[
             "union_sources_sha256"
         ],
-        "source_audit_v6_repair_output_tree_sha256": source[
-            "v6_output_tree_sha256"
+        "source_audit_v7_v5_reusable_tree_sha256": source[
+            "v5_reusable_tree_sha256"
         ],
-        "source_audit_v6_v5_launch_receipt_sha256": source[
+        "source_audit_v7_v7_output_tree_sha256": source[
+            "v7_output_tree_sha256"
+        ],
+        "source_audit_v7_v5_launch_receipt_sha256": source[
             "v5_launch_receipt_sha256"
         ],
-        "source_audit_v6_v5_code_manifest_sha256": source[
+        "source_audit_v7_v5_code_manifest_sha256": source[
             "v5_code_manifest_sha256"
         ],
-        "source_audit_v6_slurm_template_sha256": source[
+        "source_audit_v7_reused_v5_shards": source["reused_v5_shards"],
+        "source_audit_v7_repaired_v5_shards": source[
+            "repaired_v5_shards"
+        ],
+        "source_audit_v7_reused_v6_shards": source["reused_v6_shards"],
+        "source_audit_v7_source_support_outcome_blind_selective_repair": source[
+            "source_support_outcome_blind_selective_repair"
+        ],
+        "source_audit_v7_v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
+            source[
+                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
+            ]
+        ),
+        "source_audit_v7_v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
+            source[
+                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
+            ]
+        ),
+        "source_audit_v7_v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": source[
+            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
+        ],
+        "source_audit_v7_scheduler_membership_affects_execution_origin_only": (
+            source["scheduler_membership_affects_execution_origin_only"]
+        ),
+        "source_audit_v7_v6_runtime_artifacts_used": source[
+            "v6_runtime_artifacts_used"
+        ],
+        "source_audit_v7_accepted_translation_statuses": source[
+            "accepted_translation_statuses"
+        ],
+        "source_audit_v7_translator_timeout_is_infrastructure_failure": source[
+            "translator_timeout_is_infrastructure_failure"
+        ],
+        "source_audit_v7_resource_ceiling_changes_accepted_outcome_classes": (
+            source["resource_ceiling_changes_accepted_outcome_classes"]
+        ),
+        "source_audit_v7_slurm_template_sha256": source[
             "slurm_template_sha256"
         ],
-        "source_audit_v6_seal_recovery_protocol": source[
+        "source_audit_v7_seal_recovery_protocol": source[
             "seal_recovery_protocol"
         ],
-        "source_audit_v6_pre_diagnosis_repository_commit_id": source[
+        "source_audit_v7_pre_diagnosis_repository_commit_id": source[
             "pre_diagnosis_repository_commit_id"
         ],
-        "source_audit_v6_pre_diagnosis_files_sha256": source[
+        "source_audit_v7_pre_diagnosis_files_sha256": source[
             "pre_diagnosis_files_sha256"
         ],
-        "source_audit_v6_seal_plan_path": source["seal_plan_path"],
-        "source_audit_v6_seal_plan_sha256": source["seal_plan_sha256"],
-        "source_audit_v6_union_root_stage_path": source[
+        "source_audit_v7_seal_plan_path": source["seal_plan_path"],
+        "source_audit_v7_seal_plan_sha256": source["seal_plan_sha256"],
+        "source_audit_v7_union_root_stage_path": source[
             "union_root_stage_path"
         ],
-        "source_audit_v6_union_root_stage_sha256": source[
+        "source_audit_v7_union_root_stage_sha256": source[
             "union_root_stage_sha256"
         ],
-        "source_audit_v6_union_stage_path": source["union_stage_path"],
-        "source_audit_v6_union_stage_sha256": source[
+        "source_audit_v7_union_stage_path": source["union_stage_path"],
+        "source_audit_v7_union_stage_sha256": source[
             "union_stage_sha256"
         ],
-        "source_audit_v6_candidate_stage_path": source[
+        "source_audit_v7_candidate_stage_path": source[
             "candidate_stage_path"
         ],
-        "source_audit_v6_candidate_stage_sha256": source[
+        "source_audit_v7_candidate_stage_sha256": source[
             "candidate_stage_sha256"
         ],
-        "source_audit_v6_attestation_stage_path": source[
+        "source_audit_v7_attestation_stage_path": source[
             "attestation_stage_path"
         ],
-        "source_audit_v6_attestation_stage_sha256": source[
+        "source_audit_v7_attestation_stage_sha256": source[
             "attestation_stage_sha256"
         ],
-        "source_audit_v6_translator_source_sha256": source[
+        "source_audit_v7_translator_source_sha256": source[
             "translator_source_sha256"
         ],
-        "source_audit_v6_tracked_manifest_sha256": hashlib.sha256(
+        "source_audit_v7_tracked_manifest_sha256": hashlib.sha256(
             P.canonical_json(source["tracked_file_sha256"])
         ).hexdigest(),
-        "source_audit_v6_provenance_sha256": hashlib.sha256(
+        "source_audit_v7_provenance_sha256": hashlib.sha256(
             P.canonical_json(source)
         ).hexdigest(),
         "campaign_source_manifest_sha256": hashlib.sha256(P.canonical_json(

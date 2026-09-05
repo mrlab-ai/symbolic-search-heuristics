@@ -367,10 +367,94 @@ class SourceFixture:
         self.slurm.write_bytes(slurm_raw)
         self.slurm_sha = hashlib.sha256(slurm_raw).hexdigest()
         inventory_tasks = [_task(index) for index in range(1640)]
+        inventory_records = [
+            _inventory_record(task) for task in inventory_tasks
+        ]
+        residue_families = sorted({
+            task["family"] for task in inventory_tasks
+        })
+        shadow_families = sorted({
+            task["family"] for task in inventory_tasks
+            if task["is_shadow_family"]
+        })
+        shadow_unrepresented_families = sorted(
+            set(residue_families) - set(shadow_families)
+        )
+        all_prior_families = sorted({
+            task["family"] for task in inventory_tasks
+            if task["is_all_prior_represented"]
+        })
+        all_prior_unrepresented_families = sorted(
+            set(residue_families) - set(all_prior_families)
+        )
+        directory_to_family = dict(sorted({
+            task["directory"]: task["family"] for task in inventory_tasks
+        }.items()))
+        prior_family_ledger = [
+            {"directory": directory, "family": family}
+            for directory, family in directory_to_family.items()
+        ]
+
+        def digest(value):
+            return hashlib.sha256(P.canonical_json(value)).hexdigest()
+
         inventory_value = {
             "schema": P.SOURCE_AUDIT_SCHEMA + "/inventory",
             "benchmark_revision": P.BENCHMARK_REVISION,
-            "records": [_inventory_record(task) for task in inventory_tasks],
+            "cost_manifest_sha256": "1" * 64,
+            "shadow_attestation_sha256": "2" * 64,
+            "candidate_records_sha256": digest(inventory_records),
+            "alias_groups_sha256": "3" * 64,
+            "shadow_family_sequence_sha256": digest(shadow_families),
+            "shadow_unrepresented_family_sequence_sha256": digest(
+                shadow_unrepresented_families
+            ),
+            "all_prior_family_sequence_sha256": digest(all_prior_families),
+            "all_prior_unrepresented_family_sequence_sha256": digest(
+                all_prior_unrepresented_families
+            ),
+            "prior_directory_family_map_sha256": digest(
+                directory_to_family
+            ),
+            "prior_family_ledger_sha256": digest(prior_family_ledger),
+            "inventory_digests": {
+                "candidate_records_sha256": digest(inventory_records),
+                "residue_family_sequence_sha256": digest(residue_families),
+            },
+            "counts": {
+                "candidates": len(inventory_records),
+                "families": len(residue_families),
+                "represented_shadow_families": len(shadow_families),
+                "shadow_unrepresented_families": len(
+                    shadow_unrepresented_families
+                ),
+                "represented_all_prior_families": len(all_prior_families),
+                "all_prior_unrepresented_families": len(
+                    all_prior_unrepresented_families
+                ),
+                "prior_family_provenance_records": len(prior_family_ledger),
+                "source_aliases": len(inventory_records),
+                "discarded_aliases": 0,
+                "name_overlap_after_hash_filter": 0,
+                "prior_identity_overlap": 0,
+                "prior_problem_hash_overlap": 0,
+            },
+            "shadow_families": shadow_families,
+            "represented_shadow_families": shadow_families,
+            "shadow_unrepresented_families": (
+                shadow_unrepresented_families
+            ),
+            "represented_all_prior_families": all_prior_families,
+            "all_prior_families": all_prior_families,
+            "all_prior_unrepresented_families": (
+                all_prior_unrepresented_families
+            ),
+            "prior_family_provenance": {
+                "directory_to_family": directory_to_family,
+                "ledger": prior_family_ledger,
+            },
+            "records_sha256": digest(inventory_records),
+            "records": inventory_records,
         }
         inventory_raw = _write(self.inventory, inventory_value)
         self.inventory_sha = hashlib.sha256(inventory_raw).hexdigest()
@@ -794,30 +878,56 @@ class SourceFixture:
                 self.attestation, self.execution, self.launch
             )
 
-    def v6_chain(self):
+    def v7_chain(self):
         # Retain the legacy fixture's exhaustive synthetic mutations while the
-        # dedicated V6-consumer tests cover the new sealed provenance layer.
+        # dedicated V7-consumer tests cover the new sealed provenance layer.
         P._load_source_materials_v4_obsolete(
             self.attestation, self.execution, self.launch
         )
         tracked = {}
-        for relative in P.SourceV6.SCOPED_FILES:
+        for relative in P.SourceV7.SCOPED_FILES:
             path = self.repo / relative
             if not path.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(("v6-fixture:{}\n".format(relative)).encode())
+                path.write_bytes(("v7-fixture:{}\n".format(relative)).encode())
             tracked[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
         execution = json.loads(self.execution.read_text())
         execution.update({
-            "schema": P.SourceV6.Launch.EXECUTION_SCHEMA,
-            "campaign": "v6-selective-repair",
+            "schema": P.SourceV7.Launch.EXECUTION_SCHEMA,
+            "campaign": "v7-selective-repair",
             "benchmark_revision": P.BENCHMARK_REVISION,
-            "v6_code_manifest_sha256": execution["code_manifest_sha256"],
+            "v7_code_manifest_sha256": execution["code_manifest_sha256"],
             "union_tree": execution["original_output_tree"],
+            "union_sources": [
+                {
+                    "shard_index": index,
+                    "origin": (
+                        "v5-completed" if index < 819 else "v7-repair"
+                    ),
+                }
+                for index in range(820)
+            ],
             "union_sources_sha256": "a" * 64,
-            "v6_output_tree": execution["original_output_tree"],
+            "v5_reusable_tree": execution["original_output_tree"],
+            "v7_output_tree": execution["original_output_tree"],
             "v5_launch_receipt_sha256": "b" * 64,
             "v5_code_manifest_sha256": "c" * 64,
+            "reused_v5_shards": 819,
+            "repaired_v5_shards": 1,
+            "reused_v6_shards": 0,
+            "source_support_outcome_blind_selective_repair": True,
+            "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
+                True
+            ),
+            "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
+                False
+            ),
+            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": True,
+            "scheduler_membership_affects_execution_origin_only": True,
+            "v6_runtime_artifacts_used": False,
+            "accepted_translation_statuses": ["input-rejected", "success"],
+            "translator_timeout_is_infrastructure_failure": True,
+            "resource_ceiling_changes_accepted_outcome_classes": False,
             "pre_diagnosis_freeze": {
                 "repository_commit_id": "d" * 40,
                 "files_sha256": "d" * 64,
@@ -833,8 +943,8 @@ class SourceFixture:
         })
         launch = json.loads(self.launch.read_text())
         launch.update({
-            "schema": P.SourceV6.Launch.LAUNCH_SCHEMA,
-            "campaign": "v6-selective-repair",
+            "schema": P.SourceV7.Launch.LAUNCH_SCHEMA,
+            "campaign": "v7-selective-repair",
             "benchmark_revision": P.BENCHMARK_REVISION,
         })
         launch["slurm_template_sha256"] = launch["slurm_script_sha256"]
@@ -889,8 +999,14 @@ class SourceFixture:
                     for relative in relatives
                 },
                 SOURCE_AUDIT_TASK_TIMEOUT_SECONDS=14400,
+                SOURCE_AUDIT_V5_TASK_TIMEOUT_SECONDS=14400,
+                SOURCE_AUDIT_V7_TASK_TIMEOUT_SECONDS=14400,
         ), mock.patch.object(
-            P, "_load_v6_source_chain", side_effect=lambda *args: self.v6_chain()
+            P.SourceV7.Launch.V5Source, "TASK_TIMEOUT_SECONDS", 14400,
+        ), mock.patch.object(
+            P.SourceV7.Source, "TASK_TIMEOUT_SECONDS", 14400,
+        ), mock.patch.object(
+            P, "_load_v7_source_chain", side_effect=lambda *args: self.v7_chain()
         ), mock.patch.object(
             SourceAudit.Inventory, "SHADOW_FAMILIES",
             self.shadow_represented,
@@ -969,7 +1085,7 @@ class SourceFixture:
                 ),
                 "job_id": materials.launch_receipt["job_id"],
                 "code_manifest_sha256": materials.execution_receipt[
-                    "v6_code_manifest_sha256"
+                    "v7_code_manifest_sha256"
                 ],
                 "repository_commit_id": materials.launch_receipt[
                     "repository_commit_id"
@@ -980,8 +1096,11 @@ class SourceFixture:
                 "union_sources_sha256": materials.execution_receipt[
                     "union_sources_sha256"
                 ],
-                "v6_output_tree_sha256": materials.execution_receipt[
-                    "v6_output_tree"
+                "v5_reusable_tree_sha256": materials.execution_receipt[
+                    "v5_reusable_tree"
+                ]["sha256"],
+                "v7_output_tree_sha256": materials.execution_receipt[
+                    "v7_output_tree"
                 ]["sha256"],
                 "v5_launch_receipt_sha256": materials.execution_receipt[
                     "v5_launch_receipt_sha256"
@@ -989,10 +1108,60 @@ class SourceFixture:
                 "v5_code_manifest_sha256": materials.execution_receipt[
                     "v5_code_manifest_sha256"
                 ],
+                "reused_v5_shards": materials.execution_receipt[
+                    "reused_v5_shards"
+                ],
+                "repaired_v5_shards": materials.execution_receipt[
+                    "repaired_v5_shards"
+                ],
+                "reused_v6_shards": materials.execution_receipt[
+                    "reused_v6_shards"
+                ],
+                "source_support_outcome_blind_selective_repair": (
+                    materials.execution_receipt[
+                        "source_support_outcome_blind_selective_repair"
+                    ]
+                ),
+                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
+                    materials.execution_receipt[
+                        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
+                    ]
+                ),
+                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
+                    materials.execution_receipt[
+                        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
+                    ]
+                ),
+                "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": (
+                    materials.execution_receipt[
+                        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
+                    ]
+                ),
+                "scheduler_membership_affects_execution_origin_only": (
+                    materials.execution_receipt[
+                        "scheduler_membership_affects_execution_origin_only"
+                    ]
+                ),
+                "v6_runtime_artifacts_used": materials.execution_receipt[
+                    "v6_runtime_artifacts_used"
+                ],
+                "accepted_translation_statuses": materials.execution_receipt[
+                    "accepted_translation_statuses"
+                ],
+                "translator_timeout_is_infrastructure_failure": (
+                    materials.execution_receipt[
+                        "translator_timeout_is_infrastructure_failure"
+                    ]
+                ),
+                "resource_ceiling_changes_accepted_outcome_classes": (
+                    materials.execution_receipt[
+                        "resource_ceiling_changes_accepted_outcome_classes"
+                    ]
+                ),
                 "slurm_template_sha256": materials.launch_receipt[
                     "slurm_template_sha256"
                 ],
-                **P.v6_recovery_provenance(
+                **P.v7_recovery_provenance(
                     materials.execution_receipt
                 ),
                 "tracked_file_sha256": materials.tracked_file_sha256,
@@ -1042,26 +1211,132 @@ class ConfirmationAProtocolTest(unittest.TestCase):
         self.assertEqual(len(P.CERTIFICATE_BASELINES), 7)
         self.assertEqual(len(P.PREDICTORS), 10)
 
-    def test_v6_manifest_contract_has_exact_order_and_cardinality(self):
-        self.assertGreater(len(P.SourceV6.CODE_MANIFEST_FILES), 38)
+    def test_v7_manifest_contract_has_exact_order_and_cardinality(self):
+        self.assertGreater(len(P.SourceV7.CODE_MANIFEST_FILES), 38)
         self.assertEqual(
-            len(P.SourceV6.SCOPED_FILES),
-            len(P.SourceV6.CODE_MANIFEST_FILES) + 1,
+            len(P.SourceV7.SCOPED_FILES),
+            len(P.SourceV7.CODE_MANIFEST_FILES) + 1,
         )
         self.assertEqual(
-            tuple(sorted(P.SourceV6.CODE_MANIFEST_FILES)),
-            P.SourceV6.CODE_MANIFEST_FILES,
+            tuple(sorted(P.SourceV7.CODE_MANIFEST_FILES)),
+            P.SourceV7.CODE_MANIFEST_FILES,
         )
 
-    def test_v6_source_consumer_and_8148_planner_are_bound(self):
+    def test_v7_source_consumer_and_8148_planner_are_bound(self):
         self.assertIn(
-            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v6.py",
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v7.py",
             P.EXPERIMENT_SOURCE_FILES,
         )
         self.assertEqual(
             P.PLANNER_REVISION_REQUIRED,
             "8148f798f13059ee881ad2471bd20cdd61d2ec18",
         )
+
+    def test_v7_envelope_accepts_full_inventory_manifest(self):
+        expected_inventory_fields = {
+            "schema", "benchmark_revision", "cost_manifest_sha256",
+            "shadow_attestation_sha256", "candidate_records_sha256",
+            "alias_groups_sha256", "shadow_family_sequence_sha256",
+            "shadow_unrepresented_family_sequence_sha256",
+            "all_prior_family_sequence_sha256",
+            "all_prior_unrepresented_family_sequence_sha256",
+            "prior_directory_family_map_sha256",
+            "prior_family_ledger_sha256", "inventory_digests", "counts",
+            "shadow_families", "represented_shadow_families",
+            "shadow_unrepresented_families",
+            "represented_all_prior_families", "all_prior_families",
+            "all_prior_unrepresented_families", "prior_family_provenance",
+            "records_sha256", "records",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            with fixture.patch():
+                chain = fixture.v7_chain()
+                self.assertEqual(set(chain.inventory), expected_inventory_fields)
+                P._validate_v7_source_envelope(
+                    chain.attestation,
+                    chain.inventory,
+                    chain.execution,
+                    chain.launch,
+                )
+
+    def test_v7_split_replay_dispatches_timeout_by_union_origin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = SourceFixture(Path(tmp))
+            with fixture.patch():
+                chain = fixture.v7_chain()
+                manifest = {
+                    relative: chain.tracked_file_sha256[relative]
+                    for relative in P.SourceV7.CODE_MANIFEST_FILES
+                }
+                attestation = json.loads(json.dumps(chain.attestation))
+                for record in attestation["records"]:
+                    record["translation"]["timeout_seconds"] = (
+                        28800 if record["candidate_index"] // 2 < 819
+                        else 115200
+                    )
+                gate, cohorts = SourceAudit.split_supported(
+                    attestation["records"]
+                )
+                attestation["prelaunch_gate"] = gate
+                attestation["cohorts"] = cohorts
+                with mock.patch.multiple(
+                    P,
+                    SOURCE_AUDIT_V5_TASK_TIMEOUT_SECONDS=28800,
+                    SOURCE_AUDIT_V7_TASK_TIMEOUT_SECONDS=115200,
+                ):
+                    P._validate_attestation_split(
+                        attestation, manifest, chain.execution
+                    )
+                for candidate, wrong_timeout in (
+                    (0, 115200),
+                    (1639, 28800),
+                ):
+                    wrong = json.loads(json.dumps(attestation))
+                    record = next(
+                        row for row in wrong["records"]
+                        if row["candidate_index"] == candidate
+                    )
+                    record["translation"]["timeout_seconds"] = wrong_timeout
+                    with mock.patch.multiple(
+                        P,
+                        SOURCE_AUDIT_V5_TASK_TIMEOUT_SECONDS=28800,
+                        SOURCE_AUDIT_V7_TASK_TIMEOUT_SECONDS=115200,
+                    ), self.subTest(candidate=candidate), self.assertRaises(
+                            P.ProtocolError):
+                        P._validate_attestation_split(
+                            wrong, manifest, chain.execution
+                        )
+
+    def test_v7_seal_time_v5_byte_binding_is_required(self):
+        mutations = (
+            (
+                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
+                False,
+            ),
+            (
+                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
+                True,
+            ),
+            (
+                "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
+                False,
+            ),
+        )
+        for field, value in mutations:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                fixture = SourceFixture(Path(tmp))
+                with fixture.patch():
+                    chain = fixture.v7_chain()
+                    chain.execution[field] = value
+                    with mock.patch.object(
+                        P, "_load_v7_source_chain", return_value=chain
+                    ), self.assertRaisesRegex(P.ProtocolError, "origin ledger"):
+                        P.load_source_materials(
+                            fixture.attestation,
+                            fixture.execution,
+                            fixture.launch,
+                        )
 
     def test_design_and_cegar_bound(self):
         P.validate_protocol_design()
@@ -1289,6 +1564,56 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                 ):
                     fixture.load()
 
+    def test_repo_reads_ignore_parent_sibling_churn_but_detect_rooted_race(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            repo = parent / "repo"
+            repo.mkdir()
+            canonical = repo / "value.json"
+            expected_raw = _write(canonical, {"schema": "fixture"})
+            real_read = os.read
+            changed = False
+
+            def mutate_parent_sibling(descriptor, size):
+                nonlocal changed
+                block = real_read(descriptor, size)
+                if not changed:
+                    changed = True
+                    (parent / "unrelated-sibling").write_bytes(b"unrelated\n")
+                return block
+
+            with mock.patch.object(P, "SOURCE_V4_REPO", repo), \
+                    mock.patch.object(
+                        P.SafeIO.os, "read", side_effect=mutate_parent_sibling
+                    ):
+                raw, value = P._load_canonical(canonical, "rooted JSON")
+            self.assertEqual(raw, expected_raw)
+            self.assertEqual(value, {"schema": "fixture"})
+
+            directory = repo / "directory"
+            directory.mkdir()
+            raced_path = directory / "input"
+            raced_path.write_bytes(b"original")
+            replaced = False
+
+            def replace_inside_root(descriptor, size):
+                nonlocal replaced
+                block = real_read(descriptor, size)
+                if not replaced:
+                    replaced = True
+                    directory.rename(repo / "old-directory")
+                    directory.mkdir()
+                    raced_path.write_bytes(b"replacement")
+                return block
+
+            with mock.patch.object(P, "SOURCE_V4_REPO", repo), \
+                    mock.patch.object(
+                        P.SafeIO.os, "read", side_effect=replace_inside_root
+                    ), self.assertRaisesRegex(
+                        P.ProtocolError, "ancestor changed while reading"
+                    ):
+                P._read_regular_bytes(raced_path, "rooted raced input")
+
     def test_v4_intent_fixed_materials_and_repository_snapshot_are_bound(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
@@ -1316,22 +1641,30 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                         fixture.attestation, fixture.execution, fixture.launch
                     )
 
-    def test_freeze_revision_tracks_all_v4_bound_files(self):
+    def test_v7_producer_revision_tracks_all_bound_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             materials = fixture.load()
+            revisions = []
+
+            def tracked(repo, revision, relative):
+                revisions.append(revision)
+                return materials.tracked_file_sha256[relative]
+
             with mock.patch.object(Freeze, "REPO", fixture.repo), \
                     mock.patch.object(
                         Freeze.JJ,
                         "tracked_file_sha256",
-                        side_effect=lambda repo, revision, relative: (
-                            materials.tracked_file_sha256[relative]
-                        ),
+                        side_effect=tracked,
                     ):
                 self.assertEqual(
-                    Freeze._tracked_source_v6_hashes(materials, "4" * 40),
+                    Freeze._tracked_source_v7_hashes(materials, "8" * 40),
                     materials.tracked_file_sha256,
                 )
+            self.assertEqual(
+                set(revisions),
+                {materials.launch_receipt["repository_commit_id"]},
+            )
             first = next(iter(materials.tracked_file_sha256))
             with mock.patch.object(Freeze, "REPO", fixture.repo), \
                     mock.patch.object(
@@ -1341,8 +1674,10 @@ class ConfirmationAProtocolTest(unittest.TestCase):
                             "9" * 64 if relative == first
                             else materials.tracked_file_sha256[relative]
                         ),
-                    ), self.assertRaisesRegex(Freeze.FreezeError, "freeze revision"):
-                Freeze._tracked_source_v6_hashes(materials, "4" * 40)
+                    ), self.assertRaisesRegex(
+                        Freeze.FreezeError, "producer revision"
+                    ):
+                Freeze._tracked_source_v7_hashes(materials, "8" * 40)
 
     def test_freeze_requires_source_revision_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1404,28 +1739,28 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             P._repository_snapshot_files("4" * 40, ["file"])
         query.assert_called_once()
 
-    def test_freeze_rechecks_live_bytes_around_revision_lookup(self):
+    def test_postseal_live_edit_keeps_pinned_v7_producer_hashes(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = SourceFixture(Path(tmp))
             materials = fixture.load()
             first = next(iter(materials.tracked_file_sha256))
             target = fixture.repo / first
-            changed = []
-
-            def mutate_during_lookup(repo, revision, relative):
-                if relative == first and not changed:
-                    target.write_bytes(target.read_bytes() + b"swap\n")
-                    changed.append(True)
-                return materials.tracked_file_sha256[relative]
+            target.write_bytes(target.read_bytes() + b"postseal-edit\n")
+            self.assertNotEqual(
+                P.sha256_file(target), materials.tracked_file_sha256[first]
+            )
 
             with mock.patch.object(Freeze, "REPO", fixture.repo), \
                     mock.patch.object(
                         Freeze.JJ, "tracked_file_sha256",
-                        side_effect=mutate_during_lookup,
-                    ), self.assertRaisesRegex(
-                        Freeze.FreezeError, "changed during revision check"
+                        side_effect=lambda repo, revision, relative: (
+                            materials.tracked_file_sha256[relative]
+                        ),
                     ):
-                Freeze._tracked_source_v6_hashes(materials, "4" * 40)
+                self.assertEqual(
+                    Freeze._tracked_source_v7_hashes(materials, "8" * 40),
+                    materials.tracked_file_sha256,
+                )
 
     def test_freeze_reloads_source_after_mocked_planner_cache(self):
         with tempfile.TemporaryDirectory() as tmp:

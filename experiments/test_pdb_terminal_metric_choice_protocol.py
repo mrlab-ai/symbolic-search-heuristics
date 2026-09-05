@@ -35,19 +35,19 @@ def fake_snapshot():
     tasks_sha = P.cohort_digest(tasks)
     planner = fake_planner()
     base_source_files = P.BASE_B_EXPERIMENT_SOURCE_FILES
-    v6_tracked = {relative: "4" * 64 for relative in P.V6_SCOPED_FILES}
-    v6_tracked[P.V6_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()] = (
+    v7_tracked = {relative: "4" * 64 for relative in P.V7_SCOPED_FILES}
+    v7_tracked[P.V7_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()] = (
         "1" * 64
     )
-    v6_tracked[P.V6_SLURM_PATH.relative_to(P.REPO).as_posix()] = "3" * 64
-    v6_tracked[P.V6_DIAGNOSTIC_PATH.relative_to(P.REPO).as_posix()] = "7" * 64
+    v7_tracked[P.V7_SLURM_PATH.relative_to(P.REPO).as_posix()] = "3" * 64
+    v7_tracked[P.V7_DIAGNOSTIC_PATH.relative_to(P.REPO).as_posix()] = "7" * 64
     return {
         "schema": P.BASE_SNAPSHOT_SCHEMA,
         "base_b_freeze_path": P.BASE_B_FREEZE_PATH.relative_to(P.REPO).as_posix(),
         "base_b_freeze_sha256": "1" * 64,
         "base_b_freeze_repository_revision": "1" * 40,
         "base_b_experiment_source_sha256": {
-            relative: v6_tracked.get(relative, SHA)
+            relative: v7_tracked.get(relative, SHA)
             for relative in base_source_files
         },
         "base_b_planner": P.planner_identity(planner),
@@ -92,19 +92,19 @@ def fake_snapshot():
             "confirmation_a_cohort_manifest_sha256": "f" * 64,
             "planner_identity": P.planner_identity(planner),
         },
-        "source_audit_v6": {
-            "campaign": "v6-selective-repair",
-            "attestation_path": P.V6_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
-            "terminal_diagnostic_path": P.V6_DIAGNOSTIC_PATH.relative_to(
+        "source_audit_v7": {
+            "campaign": "v7-selective-repair",
+            "attestation_path": P.V7_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
+            "terminal_diagnostic_path": P.V7_DIAGNOSTIC_PATH.relative_to(
                 P.REPO
             ).as_posix(),
-            "execution_receipt_path": P.V6_EXECUTION_RECEIPT_PATH.relative_to(
+            "execution_receipt_path": P.V7_EXECUTION_RECEIPT_PATH.relative_to(
                 P.REPO
             ).as_posix(),
-            "launch_receipt_path": P.V6_LAUNCH_RECEIPT_PATH.relative_to(
+            "launch_receipt_path": P.V7_LAUNCH_RECEIPT_PATH.relative_to(
                 P.REPO
             ).as_posix(),
-            "launch_intent_path": P.V6_INTENT_PATH.relative_to(P.REPO).as_posix(),
+            "launch_intent_path": P.V7_INTENT_PATH.relative_to(P.REPO).as_posix(),
             "attestation_sha256": "8" * 64,
             "terminal_diagnostic_sha256": "7" * 64,
             "execution_receipt_sha256": "a" * 64,
@@ -118,36 +118,53 @@ def fake_snapshot():
             "repository_commit_id": "3" * 40,
             "union_tree_sha256": "2" * 64,
             "union_sources_sha256": "5" * 64,
-            "v6_output_tree_sha256": "6" * 64,
+            "v5_reusable_tree_sha256": "4" * 64,
+            "v7_output_tree_sha256": "6" * 64,
             "v5_launch_receipt_sha256": "7" * 64,
             "v5_code_manifest_sha256": "0" * 64,
+            "reused_v5_shards": 819,
+            "repaired_v5_shards": 1,
+            "reused_v6_shards": 0,
+            "source_support_outcome_blind_selective_repair": True,
+            "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
+                True
+            ),
+            "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
+                False
+            ),
+            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": True,
+            "scheduler_membership_affects_execution_origin_only": True,
+            "v6_runtime_artifacts_used": False,
+            "accepted_translation_statuses": ["input-rejected", "success"],
+            "translator_timeout_is_infrastructure_failure": True,
+            "resource_ceiling_changes_accepted_outcome_classes": False,
             "slurm_template_sha256": "3" * 64,
             "seal_recovery_protocol": (
                 "deterministic-exclusive-hash-chain-v1"
             ),
             "pre_diagnosis_repository_commit_id": "4" * 40,
             "pre_diagnosis_files_sha256": "4" * 64,
-            "seal_plan_path": P.V6_SEAL_PLAN_PATH.relative_to(
+            "seal_plan_path": P.V7_SEAL_PLAN_PATH.relative_to(
                 P.REPO
             ).as_posix(),
             "seal_plan_sha256": "5" * 64,
-            "union_root_stage_path": P.V6_UNION_ROOT_STAGE_PATH.relative_to(
+            "union_root_stage_path": P.V7_UNION_ROOT_STAGE_PATH.relative_to(
                 P.REPO
             ).as_posix(),
             "union_root_stage_sha256": "6" * 64,
-            "union_stage_path": P.V6_UNION_STAGE_PATH.relative_to(
+            "union_stage_path": P.V7_UNION_STAGE_PATH.relative_to(
                 P.REPO
             ).as_posix(),
             "union_stage_sha256": "7" * 64,
-            "candidate_stage_path": P.V6_CANDIDATE_STAGE_PATH.relative_to(
+            "candidate_stage_path": P.V7_CANDIDATE_STAGE_PATH.relative_to(
                 P.REPO
             ).as_posix(),
             "candidate_stage_sha256": "8" * 64,
-            "attestation_stage_path": P.V6_ATTESTATION_STAGE_PATH.relative_to(
+            "attestation_stage_path": P.V7_ATTESTATION_STAGE_PATH.relative_to(
                 P.REPO
             ).as_posix(),
             "attestation_stage_sha256": "9" * 64,
-            "tracked_file_sha256": v6_tracked,
+            "tracked_file_sha256": v7_tracked,
         },
         "confirmation_a_cohort": {
             "role": "confirmation-a", "full_tasks_sha256": "f" * 64,
@@ -433,14 +450,18 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "planner manifest"):
             P.validate_planner_manifest(planner)
 
-    def test_v6_paths_scope_and_authorization_links_are_exact(self):
+    def test_v7_paths_scope_and_authorization_links_are_exact(self):
+        import pdb_terminal_incidence_confirmation_source_consumer_v7 as SourceV7
+
+        self.assertEqual(P.V7_CODE_MANIFEST_FILES, SourceV7.CODE_MANIFEST_FILES)
+        self.assertEqual(P.V7_SCOPED_FILES, SourceV7.SCOPED_FILES)
         path_fields = (
             "attestation_path", "terminal_diagnostic_path", "execution_receipt_path",
             "launch_receipt_path", "launch_intent_path",
         )
         for field in path_fields:
             snapshot = fake_snapshot()
-            snapshot["source_audit_v6"][field] = "experiments/elsewhere.json"
+            snapshot["source_audit_v7"][field] = "experiments/elsewhere.json"
             with self.subTest(path=field), self.assertRaises(P.ProtocolError):
                 P.validate_base_snapshot(snapshot)
         link_fields = (
@@ -450,15 +471,42 @@ class ProtocolTest(unittest.TestCase):
         )
         for field in link_fields:
             snapshot = fake_snapshot()
-            snapshot["source_audit_v6"][field] = "0" * 64
+            snapshot["source_audit_v7"][field] = "0" * 64
             with self.subTest(link=field), self.assertRaises(P.ProtocolError):
                 P.validate_base_snapshot(snapshot)
         snapshot = fake_snapshot()
-        snapshot["source_audit_v6"]["tracked_file_sha256"].pop(
-            P.V6_SCOPED_FILES[0]
+        snapshot["source_audit_v7"]["tracked_file_sha256"].pop(
+            P.V7_SCOPED_FILES[0]
         )
         with self.assertRaisesRegex(P.ProtocolError, "tracked source"):
             P.validate_base_snapshot(snapshot)
+        for field, value in (
+            ("reused_v6_shards", 1),
+            ("v6_runtime_artifacts_used", True),
+            ("source_support_outcome_blind_selective_repair", False),
+            (
+                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
+                False,
+            ),
+            (
+                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
+                True,
+            ),
+            (
+                "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
+                False,
+            ),
+            ("scheduler_membership_affects_execution_origin_only", False),
+            ("accepted_translation_statuses", ["success"]),
+            ("translator_timeout_is_infrastructure_failure", False),
+            ("resource_ceiling_changes_accepted_outcome_classes", True),
+        ):
+            snapshot = fake_snapshot()
+            snapshot["source_audit_v7"][field] = value
+            with self.subTest(validity=field), self.assertRaisesRegex(
+                P.ProtocolError, "origin/validity"
+            ):
+                P.validate_base_snapshot(snapshot)
 
     def test_standalone_sealed_b_paths_are_exact(self):
         evidence = fake_standalone()

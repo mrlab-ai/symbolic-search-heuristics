@@ -276,12 +276,27 @@ def fixture(*, a_pass: bool, direct_pass: bool | None, b_pass: bool | None) -> d
             "reused_v5_shards": 800,
             "repaired_v5_shards": 20,
             "whole_campaign_rerun": False,
-            "outcome_blind_selective_repair": True,
+            "source_support_outcome_blind_selective_repair": True,
             "reuse_eligibility_rule_verified": True,
             "repair_scope_verified": True,
             "union_sources_verified": True,
             "reused_v1_v4_shards": 0,
+            "reused_v6_shards": 0,
             "noncompleted_v5_shards_used": False,
+            "noncompleted_v5_files_opened": False,
+            "v5_noncompleted_failure_logs_inspected": False,
+            "v5_failure_detailed_accounting_inspected": False,
+            "v7_success_resource_accounting_recorded": True,
+            "v5_output_namespace_enumerated_by_v7": False,
+            "v5_output_triplet_bytes_read_before_v7_all_success_gate": False,
+            "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": True,
+            "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": False,
+            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": True,
+            "accepted_translation_statuses": ["input-rejected", "success"],
+            "translator_timeout_is_infrastructure_failure": True,
+            "resource_ceiling_changes_accepted_outcome_classes": False,
+            "source_audit_runtime_estimand_recorded": False,
+            "cross_campaign_runtime_comparison_authorized": False,
             "source_chain_verified": True,
             "environment_verified": True,
             "scheduler_verified": True,
@@ -690,7 +705,7 @@ class RendererTests(unittest.TestCase):
         with self.assertRaisesRegex(renderer.RenderError, "exceeds incidence"):
             renderer.classify(evidence)
 
-    def test_source_v5_v6_index_partition_is_exact(self) -> None:
+    def test_source_v5_v7_index_partition_is_exact(self) -> None:
         cases = {}
         evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
         evidence["source_audit"]["reusable_v5_shard_indices"] = [1, 0] + list(
@@ -714,20 +729,39 @@ class RendererTests(unittest.TestCase):
                 with self.assertRaises(renderer.RenderError):
                     renderer.classify(changed)
 
-    def test_source_v6_policy_flags_are_all_required(self) -> None:
+    def test_source_v7_policy_flags_are_all_required(self) -> None:
         for field, invalid in (
             ("whole_campaign_rerun", True),
-            ("outcome_blind_selective_repair", False),
+            ("source_support_outcome_blind_selective_repair", False),
             ("reuse_eligibility_rule_verified", False),
             ("repair_scope_verified", False),
             ("union_sources_verified", False),
             ("noncompleted_v5_shards_used", True),
+            ("noncompleted_v5_files_opened", True),
+            ("v5_noncompleted_failure_logs_inspected", True),
+            ("v5_failure_detailed_accounting_inspected", True),
+            ("v7_success_resource_accounting_recorded", False),
+            ("v5_output_namespace_enumerated_by_v7", True),
+            ("v5_output_triplet_bytes_read_before_v7_all_success_gate", True),
+            ("v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate", False),
+            ("v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion", True),
+            ("v5_reusable_selected_tree_first_separately_recorded_at_v7_seal", False),
+            ("translator_timeout_is_infrastructure_failure", False),
+            ("resource_ceiling_changes_accepted_outcome_classes", True),
+            ("source_audit_runtime_estimand_recorded", True),
+            ("cross_campaign_runtime_comparison_authorized", True),
+            ("reused_v6_shards", 1),
         ):
             evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
             evidence["source_audit"][field] = invalid
             with self.subTest(field=field):
                 with self.assertRaisesRegex(renderer.RenderError, "does not authorize"):
                     renderer.classify(evidence)
+
+        evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
+        evidence["source_audit"]["accepted_translation_statuses"] = []
+        with self.assertRaisesRegex(renderer.RenderError, "statuses changed"):
+            renderer.classify(evidence)
 
     def test_a_gate_boundary_is_recomputed(self) -> None:
         evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)

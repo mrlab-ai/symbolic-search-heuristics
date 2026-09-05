@@ -119,12 +119,12 @@ def _add_binding(
 def _base_snapshot_bindings(
     snapshot: dict, standalone_binding: dict,
 ) -> dict[str, str]:
-    """Return every in-repository A/B/V6 artifact bound by the snapshot."""
+    """Return every in-repository A/B/V7 artifact bound by the snapshot."""
     try:
         P.validate_base_snapshot(snapshot)
         P.validate_standalone_source_binding(standalone_binding)
     except P.ProtocolError as err:
-        raise FreezeError("sealed A/B/V6 binding is invalid") from err
+        raise FreezeError("sealed A/B/V7 binding is invalid") from err
     bindings: dict[str, str] = {}
     _add_binding(
         bindings, snapshot["base_b_freeze_path"],
@@ -184,51 +184,49 @@ def _base_snapshot_bindings(
         authorization["input_properties_sha256"], "Confirmation A properties",
     )
 
-    v6 = snapshot["source_audit_v6"]
+    v7 = snapshot["source_audit_v7"]
     for path_field, hash_field, label in (
-        ("attestation_path", "attestation_sha256", "source-audit V6 attestation"),
-        ("terminal_diagnostic_path", "terminal_diagnostic_sha256", "source-audit V6 diagnostic"),
-        ("launch_intent_path", "launch_intent_sha256", "source-audit V6 intent"),
-        ("launch_receipt_path", "launch_receipt_sha256", "source-audit V6 launch"),
+        ("attestation_path", "attestation_sha256", "source-audit V7 attestation"),
+        ("terminal_diagnostic_path", "terminal_diagnostic_sha256", "source-audit V7 diagnostic"),
+        ("launch_intent_path", "launch_intent_sha256", "source-audit V7 intent"),
+        ("launch_receipt_path", "launch_receipt_sha256", "source-audit V7 launch"),
         (
             "execution_receipt_path", "execution_receipt_sha256",
-            "source-audit V6 execution",
+            "source-audit V7 execution",
         ),
-        ("seal_plan_path", "seal_plan_sha256", "source-audit V6 seal plan"),
+        ("seal_plan_path", "seal_plan_sha256", "source-audit V7 seal plan"),
         (
             "union_root_stage_path", "union_root_stage_sha256",
-            "source-audit V6 union-root stage",
+            "source-audit V7 union-root stage",
         ),
         (
             "union_stage_path", "union_stage_sha256",
-            "source-audit V6 union stage",
+            "source-audit V7 union stage",
         ),
         (
             "candidate_stage_path", "candidate_stage_sha256",
-            "source-audit V6 candidate stage",
+            "source-audit V7 candidate stage",
         ),
         (
             "attestation_stage_path", "attestation_stage_sha256",
-            "source-audit V6 attestation stage",
+            "source-audit V7 attestation stage",
         ),
     ):
-        _add_binding(bindings, v6[path_field], v6[hash_field], label)
+        _add_binding(bindings, v7[path_field], v7[hash_field], label)
     _add_binding(
-        bindings, P.V6_CODE_MANIFEST_PATH, v6["code_manifest_sha256"],
-        "source-audit V6 code manifest",
+        bindings, P.V7_CODE_MANIFEST_PATH, v7["code_manifest_sha256"],
+        "source-audit V7 code manifest",
     )
     _add_binding(
-        bindings, P.V6_SLURM_PATH, v6["slurm_template_sha256"],
-        "source-audit V6 Slurm source",
+        bindings, P.V7_SLURM_PATH, v7["slurm_template_sha256"],
+        "source-audit V7 Slurm source",
     )
-    tracked = v6["tracked_file_sha256"]
-    if not isinstance(tracked, dict) or set(tracked) != set(P.V6_SCOPED_FILES):
-        raise FreezeError("source-audit V6 tracked closure changed")
-    for relative, digest in tracked.items():
-        _add_binding(
-            bindings, relative, digest,
-            "source-audit V6 tracked file {}".format(relative),
-        )
+    tracked = v7["tracked_file_sha256"]
+    if not isinstance(tracked, dict) or set(tracked) != set(P.V7_SCOPED_FILES):
+        raise FreezeError("source-audit V7 tracked closure changed")
+    # These hashes describe the historical V7 producer revision authenticated
+    # by snapshot_sealed_b. Descendant A/B/direct code and paper edits are
+    # bound at their own freeze revision and need not retain those live bytes.
     return dict(sorted(bindings.items()))
 
 
@@ -305,8 +303,8 @@ def _require_ancestors(snapshot: dict, revision: str) -> None:
     ancestors = (
         P.REQUIRED_PLANNER_REVISION,
         snapshot["base_b_freeze_repository_revision"],
-        snapshot["source_audit_v6"]["repository_commit_id"],
-        snapshot["source_audit_v6"][
+        snapshot["source_audit_v7"]["repository_commit_id"],
+        snapshot["source_audit_v7"][
             "pre_diagnosis_repository_commit_id"
         ],
     )
@@ -315,7 +313,7 @@ def _require_ancestors(snapshot: dict, revision: str) -> None:
             JJ.require_ancestor(P.REPO, ancestor, revision)
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "planner, Confirmation B, or V6 producer is not an ancestor"
+            "planner, Confirmation B, or V7 producer is not an ancestor"
         ) from err
 
 
@@ -358,7 +356,7 @@ def freeze(
     )):
         raise FreezeError("campaign freeze input/output path changed")
     revision = _require_clean_parent(freeze_repository_revision)
-    # Calibration is opened and completely validated before any A/B/V6
+    # Calibration is opened and completely validated before any A/B/V7
     # verifier or evidence path is touched.
     calibration_raw, calibration = P.load_canonical(
         calibration_path, "calibration receipt",

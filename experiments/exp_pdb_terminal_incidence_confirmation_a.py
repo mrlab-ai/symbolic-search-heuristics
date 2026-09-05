@@ -192,7 +192,7 @@ def configure() -> None:
         "source_audit_repository_commit_id": (
             P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
         ),
-        "source_audit_campaign": "v6-selective-repair",
+        "source_audit_campaign": "v7-selective-repair",
         "source_audit_terminal_diagnostic_sha256": (
             P.SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256
         ),
@@ -205,8 +205,11 @@ def configure() -> None:
         "source_audit_union_sources_sha256": (
             P.SOURCE_AUDIT_UNION_SOURCES_SHA256
         ),
-        "source_audit_v6_output_tree_sha256": (
-            P.SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256
+        "source_audit_v5_reusable_tree_sha256": (
+            P.SOURCE_AUDIT_V5_REUSABLE_TREE_SHA256
+        ),
+        "source_audit_v7_output_tree_sha256": (
+            P.SOURCE_AUDIT_V7_OUTPUT_TREE_SHA256
         ),
         "source_audit_pre_diagnosis_repository_commit_id": (
             P.SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID
@@ -267,7 +270,7 @@ def configure() -> None:
         "source_audit_repository_commit_id": (
             P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
         ),
-        "source_audit_campaign": "v6-selective-repair",
+        "source_audit_campaign": "v7-selective-repair",
         "source_audit_terminal_diagnostic_sha256": (
             P.SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256
         ),
@@ -280,8 +283,11 @@ def configure() -> None:
         "source_audit_union_sources_sha256": (
             P.SOURCE_AUDIT_UNION_SOURCES_SHA256
         ),
-        "source_audit_v6_output_tree_sha256": (
-            P.SOURCE_AUDIT_V6_OUTPUT_TREE_SHA256
+        "source_audit_v5_reusable_tree_sha256": (
+            P.SOURCE_AUDIT_V5_REUSABLE_TREE_SHA256
+        ),
+        "source_audit_v7_output_tree_sha256": (
+            P.SOURCE_AUDIT_V7_OUTPUT_TREE_SHA256
         ),
         "source_audit_pre_diagnosis_repository_commit_id": (
             P.SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID

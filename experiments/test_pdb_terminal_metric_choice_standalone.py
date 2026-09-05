@@ -80,7 +80,7 @@ class StandaloneTest(unittest.TestCase):
                         "terminal_incidence_confirmation_source",
                     )
                     if any(token in fullname for token in forbidden):
-                        raise RuntimeError("A/B/V5 imported before calibration")
+                        raise RuntimeError("A/B/V7 imported before calibration")
                     return None
             sys.meta_path.insert(0, BlockEvidence())
             real_open = os.open
@@ -110,7 +110,7 @@ class StandaloneTest(unittest.TestCase):
         """).format(
             path=str(P.SCRIPT_DIR.resolve()),
             blocked={
-                str(P.V6_ATTESTATION_PATH.resolve()),
+                str(P.V7_ATTESTATION_PATH.resolve()),
                 str(P.BASE_B_PROPERTIES_PATH.resolve()),
                 str((
                     P.SCRIPT_DIR / "data" /
@@ -121,7 +121,7 @@ class StandaloneTest(unittest.TestCase):
             blocked_prefixes={
                 str(P.ARTIFACT_DIR.resolve()),
                 str(P.BASE_CONFIRMATION_ARTIFACT_DIR.resolve()),
-                str(P.V6_ARTIFACT_DIR.resolve()),
+                str(P.V7_ARTIFACT_DIR.resolve()),
             },
         )
         completed = subprocess.run(
