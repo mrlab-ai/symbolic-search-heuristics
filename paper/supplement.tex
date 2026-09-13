@@ -721,7 +721,7 @@ experiment, leaving 1,733 paths.
 Equal problem hashes are then collected into an alias group with one
 deterministically chosen canonical path; a duplicate hash crossing two
 normalized families invalidates the inventory.
-This produces the immutable V10 inventory of exactly 1,640 canonical candidates
+This produces the immutable V11 inventory of exactly 1,640 canonical candidates
 in 78 directories and 43 normalized families.
 A conservative directory-to-family map collapses benchmark-track and
 encoding variants of the same planning domain.
@@ -748,18 +748,18 @@ It then tops up the reserved guided-B cohort from the remaining tasks by
 lexicographic-family round robin under a separate B-top-up rank, toward a
 target of 300 tasks and with at most 12 tasks per family.
 The A and guided-B records are disjoint in canonical identity and problem hash.
-The V10 source gate requires exactly 650 A tasks, at least 28 A families, at
+The V11 source gate requires exactly 650 A tasks, at least 28 A families, at
 least 12 shadow-unrepresented A families and at least 100 A tasks from ten
 all-prior-unrepresented families.
-For guided B, the V10 source gate requires at least 200 tasks, at least 30
+For guided B, the V11 source gate requires at least 200 tasks, at least 30
 families, at least 12 shadow-unrepresented families and at least 50 tasks from
 ten all-prior-unrepresented families.
 The later Confirmation-B freeze additionally requires the 300-task target; a
 sealed audit with 200--299 guided-B tasks may authorize A but cannot authorize
 B.
 
-% ================= RESULT_INSERT_SOURCE_AUDIT_V10_BEGIN ================
-% Replace this prospective V10 account with the sealed audit outcome, exact A/B
+% ================= RESULT_INSERT_SOURCE_AUDIT_V11_BEGIN ================
+% Replace this prospective V11 account with the sealed audit outcome, exact A/B
 % cohort support, outcome counts and source/environment/scheduler provenance.
 Campaigns v1--v5 increased infrastructure ceilings while preserving the fixed
 1,640-candidate inventory, but none passed a complete all-success gate.
@@ -786,13 +786,29 @@ The failure recorder opened no worker shard, stream, task environment,
 temporary directory or scientific payload, and it authorized no payload reuse.
 V9 failed its all-success gate and its namespace is permanently burned.
 
-V10 freshly attempts every inventory candidate once under the limits of a
+V10 introduced the fresh full-census path and passed its controller publication
+canary on the repository's Lustre filesystem.
+The outer scheduler row of its one-row compute canary reached
+\texttt{COMPLETED} with exit \texttt{0:0} and zero scheduler restarts, but
+Slurm reported that row under the bare parent job ID rather than an
+\texttt{\_0}-suffixed array ID.
+The frozen V10 controller admitted only the latter representation and therefore
+failed closed after retaining the single accounting query.
+After the required one-hour interval, the stranded attempt was closed without
+another query and V10 was burned.
+No compute-canary payload was opened or reused, and the full census was never
+launched.
+
+V11 freshly attempts every inventory candidate once under the limits of a
 Confirmation-A cell: 1,800 seconds and 24,576~MiB.
 It reads or reuses no runtime byte, task log, scheduler row, shard, temporary
-file, translated task or scientific payload from V1--V9.
+file, translated task or scientific payload from V1--V10.
 Before the full run, a controller canary exercises the production publisher on
 the repository's Lustre filesystem, and a one-row compute canary processes two
 synthetic inputs through the same child and publisher paths as the census.
+Both the launcher and an independent consumer accept a bare parent job ID only
+for this one-row array and map it to task zero; every multirow census record
+must retain its explicit array index.
 The complete preflight namespace must then be committed and independently
 validated from that exact repository snapshot.
 Only this validation can authorize one unthrottled 820-element array, which
@@ -804,10 +820,10 @@ Input rejection records unsupported language, while a resource exclusion has
 indeterminate source support and cannot enter either cohort.
 Every other child outcome is campaign-fatal.
 
-The controller may open no full-run V10 worker shard, worker stream,
+The controller may open no full-run V11 worker shard, worker stream,
 environment record or outcome until all 820 outer rows are exactly
 \texttt{COMPLETED}/\texttt{0:0} with zero scheduler restarts.
-Any other terminal outer state permanently burns the namespace; V10 has no
+Any other terminal outer state permanently burns the namespace; V11 has no
 selective recovery and no partial-row reuse.
 After the scheduler gate, the seal revalidates the committed code manifest,
 launch journal, executable identities, complete candidate order, exact
@@ -823,7 +839,7 @@ revision before it may expose either cohort to a downstream freeze, paper
 renderer or discretionary outcome analysis.
 Neither cohort exists for a confirmation launch until that committed-seal
 validation passes every original task, family, novelty and disjointness floor.
-% ================= RESULT_INSERT_SOURCE_AUDIT_V10_END ==================
+% ================= RESULT_INSERT_SOURCE_AUDIT_V11_END ==================
 
 \begin{table}[htbp]
 \centering
