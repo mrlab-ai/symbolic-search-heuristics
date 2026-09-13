@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import freeze_pdb_terminal_incidence_confirmation_a as Freeze
@@ -142,6 +144,74 @@ class ConfirmationAV10FreezeTests(unittest.TestCase):
                 value, source_seal_revision=Fixture.FULL_REVISION,
                 freeze_repository_revision=FREEZE_REVISION,
             )
+
+    def test_v10_experiment_sources_are_bound_at_freeze_revision(self):
+        digests = {
+            relative: "{:064x}".format(index + 1)
+            for index, relative in enumerate(P.EXPERIMENT_SOURCE_FILES)
+        }
+        with (
+            mock.patch.object(
+                P, "sha256_file",
+                side_effect=lambda path: digests[
+                    Path(path).relative_to(Freeze.REPO).as_posix()
+                ],
+            ),
+            mock.patch.object(Freeze, "_attest_tracked_file") as attest,
+        ):
+            self.assertEqual(Freeze._source_hashes(FREEZE_REVISION), digests)
+        self.assertEqual(attest.call_count, len(P.EXPERIMENT_SOURCE_FILES))
+        self.assertTrue(all(
+            call.args[2] == FREEZE_REVISION for call in attest.call_args_list
+        ))
+
+    def test_v10_freeze_round_trip_rejects_embedded_and_source_tamper(self):
+        value = {
+            "schema": P.FREEZE_SCHEMA,
+            "freeze_repository_revision": FREEZE_REVISION,
+            "source_audit": copy.deepcopy(self.materials.source_audit),
+            "planner": {
+                "revision": P.PLANNER_REVISION_REQUIRED,
+                "cache_name": "synthetic-cache",
+                "build_options": list(P.BUILD_OPTIONS),
+                "downward_sha256": "a" * 64,
+                "preprocess_sha256": "b" * 64,
+                "tree_manifest_sha256": "c" * 64,
+            },
+            "design": {
+                "protocol_sha256": P.sha256_file(P.PROTOCOL_PATH),
+                "option_matrix_sha256": P.option_matrix_digest(),
+                "cohort_tasks": P.COHORT_TASKS,
+                "configs": P.CONFIG_COUNT,
+                "cells": P.CELL_COUNT,
+                "horizon": P.HORIZON,
+                "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
+                "bootstrap_seed": P.BOOTSTRAP_SEED,
+            },
+            "experiment_source_sha256": {
+                relative: P.sha256_file(P.REPO / relative)
+                for relative in P.EXPERIMENT_SOURCE_FILES
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "freeze.json"
+            path.write_bytes(P.canonical_json_line(value))
+            loaded, materials = P._load_freeze(path)
+            self.assertEqual(loaded, value)
+            self.assertEqual(len(materials.tasks), P.COHORT_TASKS)
+
+            changed = copy.deepcopy(value)
+            changed["source_audit"]["unexpected"] = True
+            path.write_bytes(P.canonical_json_line(changed))
+            with self.assertRaisesRegex(P.ProtocolError, "source shape"):
+                P._load_freeze(path)
+
+            changed = copy.deepcopy(value)
+            relative = P.EXPERIMENT_SOURCE_FILES[0]
+            changed["experiment_source_sha256"][relative] = "f" * 64
+            path.write_bytes(P.canonical_json_line(changed))
+            with self.assertRaisesRegex(P.ProtocolError, "source changed"):
+                P._load_freeze(path)
 
 
 if __name__ == "__main__":

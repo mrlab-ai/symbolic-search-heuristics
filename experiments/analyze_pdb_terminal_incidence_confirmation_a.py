@@ -46,6 +46,30 @@ CERTIFICATE_DIAGNOSTIC_PREDICTORS = (
     P.PRIMARY_PREDICTOR,
     *P.CERTIFICATE_BASELINES,
 )
+LEGACY_SOURCE_PROPERTIES = frozenset({
+    "source_audit_job_id",
+    "source_audit_terminal_diagnostic_sha256",
+    "source_audit_v5_launch_receipt_sha256",
+    "source_audit_v5_code_manifest_sha256",
+    "source_audit_union_sources_sha256",
+    "source_audit_v5_reusable_tree_sha256",
+    "source_audit_v7_output_tree_sha256",
+    "source_audit_pre_diagnosis_repository_commit_id",
+    "source_audit_pre_diagnosis_files_sha256",
+    "source_audit_seal_plan_sha256",
+    "source_audit_union_root_stage_sha256",
+    "source_audit_union_stage_sha256",
+    "source_audit_candidate_stage_sha256",
+    "source_audit_attestation_stage_sha256",
+    "source_audit_output_tree_sha256",
+    "source_audit_slurm_sha256",
+    "source_audit_intent_sha256",
+    "source_attestation_path",
+    "source_terminal_diagnostic_path",
+    "source_launch_intent_path",
+    "source_execution_receipt_path",
+    "source_launch_receipt_path",
+})
 
 
 def _configure_original() -> None:
@@ -227,6 +251,20 @@ def _projected_attestation() -> bytes:
         "problem_source_sha256": task["problem_sha256"],
     } for task in materials.tasks]
     return P.canonical_json_line({"tasks": tasks})
+
+
+def _validate_v10_run_provenance(records: list[dict]) -> None:
+    """Require every sealed cell to carry the complete V10 source chain."""
+    expected = P.v10_run_provenance()
+    for record in records:
+        if any(record.get(key) != value for key, value in expected.items()):
+            raise ConfirmationAnalysisError(
+                "sealed cell has inconsistent V10 source provenance"
+            )
+        if LEGACY_SOURCE_PROPERTIES.intersection(record):
+            raise ConfirmationAnalysisError(
+                "sealed cell retains obsolete V5/V7 source provenance"
+            )
 
 
 @contextlib.contextmanager
@@ -668,6 +706,7 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str, str, dict]:
         raise ConfirmationAnalysisError(
             "sealed properties must contain a matrix of objects"
         )
+    _validate_v10_run_provenance(records)
     return records, properties_sha, fetch_sha, execution_sha, execution[
         "hardware"
     ]

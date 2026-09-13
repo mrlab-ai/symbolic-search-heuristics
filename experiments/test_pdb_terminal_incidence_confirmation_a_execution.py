@@ -32,6 +32,73 @@ HARDWARE = {
 }
 
 
+class V10ProvenanceIntegrationTest(unittest.TestCase):
+    def test_source_names_need_no_live_v10_artifact_paths(self):
+        with mock.patch.object(
+            P, "_load_freeze", return_value=({}, SimpleNamespace(tasks=())),
+        ):
+            names = Runner._source_names()
+        self.assertEqual(
+            names[:-1],
+            tuple(
+                Path(relative).relative_to("experiments").as_posix()
+                for relative in P.EXPERIMENT_SOURCE_FILES
+            ),
+        )
+        self.assertEqual(
+            names[-1], P.FREEZE_PATH.relative_to(Runner.SCRIPT_DIR).as_posix()
+        )
+
+    def test_configure_emits_v10_and_no_legacy_source_properties(self):
+        provenance = {
+            "source_audit_campaign": "v10-full-census",
+            "source_audit_source_repository_commit_id": "1" * 40,
+            "source_audit_preflight_seal_repository_commit_id": "2" * 40,
+            "source_audit_seal_repository_commit_id": "3" * 40,
+            "confirmation_a_freeze_sha256": "4" * 64,
+        }
+        with (
+            mock.patch.object(P, "validate_protocol_without_sources"),
+            mock.patch.object(
+                P, "_load_freeze",
+                return_value=({"design": {}}, SimpleNamespace(tasks=())),
+            ),
+            mock.patch.object(P, "v10_run_provenance", return_value=provenance),
+            mock.patch.object(Runner, "_source_names", return_value=("runner.py",)),
+        ):
+            Runner.configure()
+        for properties in (
+            Runner.Base.EXTRA_RUN_PROPERTIES,
+            Runner.Base.EXTRA_RECEIPT_PROPERTIES,
+        ):
+            self.assertTrue(provenance.items() <= properties.items())
+            self.assertFalse(Analyze.LEGACY_SOURCE_PROPERTIES.intersection(
+                properties
+            ))
+
+    def test_analyzer_requires_exact_v10_provenance(self):
+        provenance = {
+            "source_audit_campaign": "v10-full-census",
+            "source_audit_seal_repository_commit_id": "3" * 40,
+        }
+        with mock.patch.object(
+            P, "v10_run_provenance", return_value=provenance,
+        ):
+            Analyze._validate_v10_run_provenance([dict(provenance)])
+            changed = dict(provenance)
+            changed["source_audit_seal_repository_commit_id"] = "4" * 40
+            with self.assertRaisesRegex(
+                Analyze.ConfirmationAnalysisError, "V10 source provenance"
+            ):
+                Analyze._validate_v10_run_provenance([changed])
+            legacy = dict(provenance)
+            legacy["source_audit_v7_output_tree_sha256"] = "5" * 64
+            with self.assertRaisesRegex(
+                Analyze.ConfirmationAnalysisError, "obsolete V5/V7"
+            ):
+                Analyze._validate_v10_run_provenance([legacy])
+
+
 class PrepareJobTest(unittest.TestCase):
     def test_base_renderer_writes_one_job_without_submission(self):
         class FakeEnvironment:

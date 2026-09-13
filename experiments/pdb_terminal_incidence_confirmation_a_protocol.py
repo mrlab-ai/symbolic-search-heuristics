@@ -2932,6 +2932,78 @@ def _installed_values() -> dict:
 globals().update(_installed_values())
 
 
+def v10_run_provenance() -> dict:
+    """Return the one canonical V10 provenance projection for every A cell."""
+    if not FREEZE_PATH.exists():
+        raise ProtocolError("Confirmation A freeze is not installed")
+    return {
+        "source_audit_campaign": "v10-full-census",
+        "source_audit_launch_receipt_sha256": (
+            SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256
+        ),
+        "source_audit_execution_receipt_sha256": (
+            SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
+        ),
+        "source_audit_code_manifest_sha256": (
+            SOURCE_AUDIT_CODE_MANIFEST_SHA256
+        ),
+        "source_audit_repository_commit_id": (
+            SOURCE_AUDIT_REPOSITORY_COMMIT_ID
+        ),
+        "source_audit_source_repository_commit_id": (
+            SOURCE_AUDIT_SOURCE_REPOSITORY_COMMIT_ID
+        ),
+        "source_audit_preflight_seal_repository_commit_id": (
+            SOURCE_AUDIT_PREFLIGHT_SEAL_REPOSITORY_COMMIT_ID
+        ),
+        "source_audit_seal_repository_commit_id": (
+            SOURCE_AUDIT_SEAL_REPOSITORY_COMMIT_ID
+        ),
+        "source_audit_inventory_sha256": SOURCE_AUDIT_INVENTORY_SHA256,
+        "source_audit_preflight_authorization_sha256": (
+            SOURCE_AUDIT_PREFLIGHT_AUTHORIZATION_SHA256
+        ),
+        "source_audit_controller_canary_sha256": (
+            SOURCE_AUDIT_CONTROLLER_CANARY_SHA256
+        ),
+        "source_audit_compute_canary_launch_sha256": (
+            SOURCE_AUDIT_COMPUTE_CANARY_LAUNCH_SHA256
+        ),
+        "source_audit_compute_canary_terminal_poll_receipt_sha256": (
+            SOURCE_AUDIT_COMPUTE_CANARY_TERMINAL_SHA256
+        ),
+        "source_audit_compute_canary_seal_sha256": (
+            SOURCE_AUDIT_COMPUTE_CANARY_SEAL_SHA256
+        ),
+        "source_audit_compute_canary_attestation_sha256": (
+            SOURCE_AUDIT_COMPUTE_CANARY_ATTESTATION_SHA256
+        ),
+        "source_audit_full_tracked_closure_sha256": (
+            SOURCE_AUDIT_FULL_TRACKED_CLOSURE_SHA256
+        ),
+        "source_audit_preflight_tracked_closure_sha256": (
+            SOURCE_AUDIT_PREFLIGHT_TRACKED_CLOSURE_SHA256
+        ),
+        "source_audit_combined_tracked_closure_sha256": (
+            SOURCE_AUDIT_COMBINED_TRACKED_CLOSURE_SHA256
+        ),
+        "source_audit_all_records_sha256": SOURCE_AUDIT_ALL_RECORDS_SHA256,
+        "source_audit_confirmation_a_indices_sha256": (
+            SOURCE_AUDIT_CONFIRMATION_A_INDICES_SHA256
+        ),
+        "source_audit_confirmation_a_projection_sha256": (
+            SOURCE_AUDIT_CONFIRMATION_A_PROJECTION_SHA256
+        ),
+        "source_audit_guided_b_indices_sha256": (
+            SOURCE_AUDIT_GUIDED_B_INDICES_SHA256
+        ),
+        "source_audit_guided_b_projection_sha256": (
+            SOURCE_AUDIT_GUIDED_B_PROJECTION_SHA256
+        ),
+        "confirmation_a_freeze_sha256": sha256_file(FREEZE_PATH),
+    }
+
+
 def load_cohort(benchmarks, *, validate_costs=True):
     del validate_costs
     _, materials = _load_freeze(FREEZE_PATH)

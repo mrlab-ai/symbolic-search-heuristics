@@ -116,8 +116,7 @@ def _load_json(path: Path, label: str) -> tuple[bytes, dict]:
 
 
 def _source_names() -> tuple[str, ...]:
-    freeze, materials = P._load_freeze(P.FREEZE_PATH)
-    del freeze
+    P._load_freeze(P.FREEZE_PATH)
     names = []
     for relative in P.EXPERIMENT_SOURCE_FILES:
         path = Path(relative)
@@ -125,18 +124,6 @@ def _source_names() -> tuple[str, ...]:
             raise ConfirmationLaunchError("executed source path changed")
         names.append(Path(*path.parts[1:]).as_posix())
     names.append(P.FREEZE_PATH.relative_to(SCRIPT_DIR).as_posix())
-    for path in (
-        materials.attestation_path,
-        materials.intent_path,
-        materials.execution_receipt_path,
-        materials.launch_receipt_path,
-    ):
-        try:
-            names.append(path.relative_to(SCRIPT_DIR).as_posix())
-        except ValueError as err:
-            raise ConfirmationLaunchError(
-                "source audit artifact is outside experiments"
-            ) from err
     if len(names) != len(set(names)):
         raise ConfirmationLaunchError("executed source list has duplicates")
     return tuple(names)
@@ -174,62 +161,14 @@ def configure() -> None:
     Base.BENCHMARK_SOURCE_VALIDATOR = lambda cohort: (
         P.validate_benchmark_sources(cohort, BENCHMARKS)
     )
+    provenance = P.v10_run_provenance()
     Base.EXTRA_RUN_PROPERTIES = {
         "benchmark_revision": P.BENCHMARK_REVISION,
         "planner_cache_name": P.PLANNER_CACHE_NAME,
         "freeze_repository_revision": P.FREEZE_REPOSITORY_REVISION,
         "translator_source_sha256": P.TRANSLATOR_SOURCE_SHA256,
         "cost_attestation_sha256": P.COST_ATTESTATION_SHA256,
-        "source_audit_launch_receipt_sha256": (
-            P.SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256
-        ),
-        "source_audit_execution_receipt_sha256": (
-            P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
-        ),
-        "source_audit_code_manifest_sha256": (
-            P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
-        ),
-        "source_audit_repository_commit_id": (
-            P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
-        ),
-        "source_audit_campaign": "v7-selective-repair",
-        "source_audit_terminal_diagnostic_sha256": (
-            P.SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256
-        ),
-        "source_audit_v5_launch_receipt_sha256": (
-            P.SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256
-        ),
-        "source_audit_v5_code_manifest_sha256": (
-            P.SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256
-        ),
-        "source_audit_union_sources_sha256": (
-            P.SOURCE_AUDIT_UNION_SOURCES_SHA256
-        ),
-        "source_audit_v5_reusable_tree_sha256": (
-            P.SOURCE_AUDIT_V5_REUSABLE_TREE_SHA256
-        ),
-        "source_audit_v7_output_tree_sha256": (
-            P.SOURCE_AUDIT_V7_OUTPUT_TREE_SHA256
-        ),
-        "source_audit_pre_diagnosis_repository_commit_id": (
-            P.SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID
-        ),
-        "source_audit_pre_diagnosis_files_sha256": (
-            P.SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256
-        ),
-        "source_audit_seal_plan_sha256": P.SOURCE_AUDIT_SEAL_PLAN_SHA256,
-        "source_audit_union_root_stage_sha256": (
-            P.SOURCE_AUDIT_UNION_ROOT_STAGE_SHA256
-        ),
-        "source_audit_union_stage_sha256": (
-            P.SOURCE_AUDIT_UNION_STAGE_SHA256
-        ),
-        "source_audit_candidate_stage_sha256": (
-            P.SOURCE_AUDIT_CANDIDATE_STAGE_SHA256
-        ),
-        "source_audit_attestation_stage_sha256": (
-            P.SOURCE_AUDIT_ATTESTATION_STAGE_SHA256
-        ),
+        **provenance,
         "cohort_seed": P.COHORT_SEED,
         "cohort_family_count": P.COHORT_FAMILIES,
         "cohort_directory_family_sha256": hashlib.sha256(
@@ -240,7 +179,6 @@ def configure() -> None:
         "intervention_label": P.INTERVENTION_LABEL,
         "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
         "bootstrap_seed": P.BOOTSTRAP_SEED,
-        "confirmation_a_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
         "all_prior_unrepresented_families": list(
             P.ALL_PRIOR_UNREPRESENTED_FAMILIES
         ),
@@ -257,68 +195,7 @@ def configure() -> None:
         "cost_attestation_records_sha256": (
             P.COST_ATTESTATION_RECORDS_SHA256
         ),
-        "source_audit_job_id": P.SOURCE_AUDIT_JOB_ID,
-        "source_audit_launch_receipt_sha256": (
-            P.SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256
-        ),
-        "source_audit_execution_receipt_sha256": (
-            P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
-        ),
-        "source_audit_code_manifest_sha256": (
-            P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
-        ),
-        "source_audit_repository_commit_id": (
-            P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
-        ),
-        "source_audit_campaign": "v7-selective-repair",
-        "source_audit_terminal_diagnostic_sha256": (
-            P.SOURCE_AUDIT_TERMINAL_DIAGNOSTIC_SHA256
-        ),
-        "source_audit_v5_launch_receipt_sha256": (
-            P.SOURCE_AUDIT_V5_LAUNCH_RECEIPT_SHA256
-        ),
-        "source_audit_v5_code_manifest_sha256": (
-            P.SOURCE_AUDIT_V5_CODE_MANIFEST_SHA256
-        ),
-        "source_audit_union_sources_sha256": (
-            P.SOURCE_AUDIT_UNION_SOURCES_SHA256
-        ),
-        "source_audit_v5_reusable_tree_sha256": (
-            P.SOURCE_AUDIT_V5_REUSABLE_TREE_SHA256
-        ),
-        "source_audit_v7_output_tree_sha256": (
-            P.SOURCE_AUDIT_V7_OUTPUT_TREE_SHA256
-        ),
-        "source_audit_pre_diagnosis_repository_commit_id": (
-            P.SOURCE_AUDIT_PRE_DIAGNOSIS_REPOSITORY_COMMIT_ID
-        ),
-        "source_audit_pre_diagnosis_files_sha256": (
-            P.SOURCE_AUDIT_PRE_DIAGNOSIS_FILES_SHA256
-        ),
-        "source_audit_seal_plan_sha256": P.SOURCE_AUDIT_SEAL_PLAN_SHA256,
-        "source_audit_union_root_stage_sha256": (
-            P.SOURCE_AUDIT_UNION_ROOT_STAGE_SHA256
-        ),
-        "source_audit_union_stage_sha256": (
-            P.SOURCE_AUDIT_UNION_STAGE_SHA256
-        ),
-        "source_audit_candidate_stage_sha256": (
-            P.SOURCE_AUDIT_CANDIDATE_STAGE_SHA256
-        ),
-        "source_audit_attestation_stage_sha256": (
-            P.SOURCE_AUDIT_ATTESTATION_STAGE_SHA256
-        ),
-        "source_audit_output_tree_sha256": (
-            P.SOURCE_AUDIT_OUTPUT_TREE_SHA256
-        ),
-        "source_audit_slurm_sha256": P.SOURCE_AUDIT_SLURM_SHA256,
-        "source_audit_intent_sha256": P.SOURCE_AUDIT_INTENT_SHA256,
-        "confirmation_a_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
-        "source_attestation_path": str(materials.attestation_path),
-        "source_terminal_diagnostic_path": str(materials.diagnostic_path),
-        "source_launch_intent_path": str(materials.intent_path),
-        "source_execution_receipt_path": str(materials.execution_receipt_path),
-        "source_launch_receipt_path": str(materials.launch_receipt_path),
+        **provenance,
         "cohort_seed": P.COHORT_SEED,
         "cohort_task_name_sha256": P.TASK_NAME_SHA256,
         "cohort_family_count": P.COHORT_FAMILIES,
