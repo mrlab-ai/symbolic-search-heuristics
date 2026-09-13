@@ -264,17 +264,25 @@ def _source_hashes(revision: str) -> dict[str, str]:
 
 def _require_ancestors(snapshot: dict, revision: str) -> None:
     bindings = snapshot["source_audit_v11"]["bindings"]
-    ancestors = (
-        P.REQUIRED_PLANNER_REVISION,
+    chain = (
         bindings["preflight_source_repository_commit_id"],
         bindings["preflight_seal_repository_commit_id"],
         bindings["seal_repository_commit_id"],
         snapshot["confirmation_a_freeze"]["repository_revision"],
         snapshot["base_b_freeze_repository_revision"],
+        revision,
     )
+    for value in chain:
+        try:
+            P._require_commit40(value, "freeze ancestry")
+        except P.ProtocolError as err:
+            raise FreezeError("freeze ancestry revision is invalid") from err
+    if len(set(chain)) != len(chain):
+        raise FreezeError("freeze ancestry revisions are not strictly ordered")
     try:
-        for ancestor in ancestors:
-            JJ.require_ancestor(P.REPO, ancestor, revision)
+        for ancestor, descendant in zip(chain, chain[1:]):
+            JJ.require_ancestor(P.REPO, ancestor, descendant)
+        JJ.require_ancestor(P.REPO, P.REQUIRED_PLANNER_REVISION, revision)
     except JJ.JjCacheError as err:
         raise FreezeError(
             "planner or sealed V11 A/B producer is not an ancestor"

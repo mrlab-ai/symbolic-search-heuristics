@@ -570,11 +570,7 @@ def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
     }
 
 def load_and_build(freeze_path: Path = P.FREEZE_PATH) -> dict:
-    freeze = P.load_authorized_freeze(freeze_path)
-    # Revalidate the bound receipts and the live A-authorized B cohort before
-    # a transport is allowed to consume the manifest.
-    P.load_bound_calibration(freeze)
-    P.load_bound_standalone(freeze)
+    freeze = P.load_freeze(freeze_path)
     return build_manifest(freeze, _freeze_sha256(freeze_path))
 
 
@@ -607,18 +603,6 @@ def _source_names(freeze: dict, freeze_path: Path) -> tuple[str, ...]:
         names.append(freeze_path.relative_to(P.SCRIPT_DIR).as_posix())
     except ValueError as err:
         raise RunnerError("campaign freeze is outside experiments") from err
-    for path_value in (
-        P.PLANNER_MANIFEST_PATH.relative_to(P.REPO).as_posix(),
-        freeze["base_confirmation_b"]["base_b_freeze_path"],
-        freeze["calibration"]["receipt_path"],
-        freeze["standalone_k32"]["evidence_path"],
-        freeze["standalone_k32"]["sealed_b_input"]["parse_receipt_path"],
-        freeze["standalone_k32"]["sealed_b_input"]["fetch_receipt_path"],
-    ):
-        path = Path(path_value)
-        if path.parts[:1] != ("experiments",):
-            raise RunnerError("bound runner evidence is outside experiments")
-        names.append(Path(*path.parts[1:]).as_posix())
     if len(names) != len(set(names)):
         raise RunnerError("runner source list contains duplicates")
     return tuple(names)
@@ -626,9 +610,7 @@ def _source_names(freeze: dict, freeze_path: Path) -> tuple[str, ...]:
 
 def configure_lab_transport(freeze_path: Path = P.FREEZE_PATH):
     """Configure the existing generic transport without editing shared files."""
-    freeze = P.load_authorized_freeze(freeze_path)
-    P.load_bound_calibration(freeze)
-    P.load_bound_standalone(freeze)
+    freeze = P.load_freeze(freeze_path)
     if Path(freeze_path) != P.FREEZE_PATH:
         raise RunnerError("campaign freeze path changed")
     freeze_sha = P.sha256_file(
@@ -792,7 +774,7 @@ def main(argv=None) -> None:
             if path != expected:
                 raise RunnerError("rendered primary job path changed")
             _, digest = Execution.validate_primary_job(
-                P.load_authorized_freeze(P.FREEZE_PATH)
+                P.load_freeze(P.FREEZE_PATH)
             )
             result = {
                 "job_file": str(path), "job_file_sha256": digest,

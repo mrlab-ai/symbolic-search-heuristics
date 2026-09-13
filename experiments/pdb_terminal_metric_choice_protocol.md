@@ -84,6 +84,14 @@ V11 census payload. Repository closure construction also binds every V11
 combined-closure path. If that path is independently bound by a later A, B, or
 direct source manifest, the digests must agree; conflicting historical and
 descendant bytes fail closed rather than receiving precedence.
+The direct validator reconstructs the translator-source digest from exactly
+the 38 `src/translate/*.py` entries in that committed closure and requires the
+two authorized Confirmation A analyses to have identical SHA-256 digests.
+Every recorded repository revision is exactly 40 lowercase hexadecimal
+characters. At freeze time, ancestry is checked on each adjacent edge in the
+ordered chain V11 source to preflight seal to full seal to Confirmation A
+freeze to Confirmation B freeze to direct freeze; planner ancestry to the
+direct freeze is checked separately.
 
 ## Execution
 
@@ -102,6 +110,13 @@ experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pd
 experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py launch
 experiments/data/pdb-terminal-incidence-shadow-venv/bin/python -B experiments/pdb_terminal_metric_choice_runner.py status
 ```
+
+All production runner, cohort, audit, execution, and analysis entry points
+consume the embedded direct freeze. They derive the 300 tasks from its exact
+guided-B projection and validate the benchmark bytes against the embedded
+domain/problem hashes; they never reopen or recompute live Confirmation A/B
+artifacts. Live A/B verification is restricted to construction of the direct
+freeze.
 
 The launch likewise requires a clean working copy. Its commit must descend
 from the exact planner, V11 preflight source, preflight seal, full seal, sealed

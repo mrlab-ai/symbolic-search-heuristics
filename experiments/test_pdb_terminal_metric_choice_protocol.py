@@ -63,8 +63,16 @@ def _projection(role, tasks):
 
 
 def _v11_bindings(confirmation, guided):
-    full = {"experiments/v11-full.py": _digest("full")}
-    preflight = {"experiments/v11-preflight.py": _digest("preflight")}
+    translator = {
+        "src/translate/module_{:02d}.py".format(index): _digest(
+            "translator-{:02d}".format(index)
+        )
+        for index in range(P.V11_TRANSLATOR_FILE_COUNT)
+    }
+    full = {**translator, "experiments/v11-full.py": _digest("full")}
+    preflight = {
+        **translator, "experiments/v11-preflight.py": _digest("preflight")
+    }
     combined = dict(sorted({**full, **preflight}.items()))
     outcomes = {
         "input-rejected": 690, "resource-excluded": 0, "success": 950,
@@ -85,6 +93,10 @@ def _v11_bindings(confirmation, guided):
         "preflight_full_launch_authorized": True,
         "code_manifest_sha256": _digest("code"),
         "preflight_code_manifest_sha256": _digest("code"),
+        "translator_source_sha256": _digest(P.canonical_json([
+            {"path": path, "sha256": translator[path]}
+            for path in sorted(translator)
+        ]).decode("ascii")),
         "all_records_count": 1640,
         "eligible_records_count": 950,
         "confirmation_a_count": 650,
@@ -325,7 +337,7 @@ def fake_freeze():
     calibration = fake_calibration()
     standalone = fake_standalone(snapshot)
     return P.build_freeze(
-        freeze_repository_revision="4" * 40,
+        freeze_repository_revision="6" * 40,
         base_snapshot=snapshot, calibration_receipt=calibration,
         calibration_receipt_path=P.CALIBRATION_RECEIPT_PATH.relative_to(
             P.REPO
@@ -558,6 +570,62 @@ class ProtocolTest(unittest.TestCase):
         ] = 300
         with self.assertRaises(P.ProtocolError):
             P.validate_base_snapshot(changed)
+
+    def test_v11_translator_digest_is_recomputed(self):
+        snapshot = fake_snapshot()
+        snapshot["source_audit_v11"]["bindings"][
+            "translator_source_sha256"
+        ] = "0" * 64
+        with self.assertRaisesRegex(P.ProtocolError, "translator source"):
+            P.validate_base_snapshot(snapshot)
+
+    def test_v11_translator_closure_is_identical_in_both_runs(self):
+        snapshot = fake_snapshot()
+        bindings = snapshot["source_audit_v11"]["bindings"]
+        preflight = bindings["preflight_tracked_file_sha256"]
+        preflight.pop(next(
+            path for path in preflight if path.startswith("src/translate/")
+        ))
+        bindings["preflight_tracked_file_sha256_digest"] = hashlib.sha256(
+            P.canonical_json(dict(sorted(preflight.items())))
+        ).hexdigest()
+        with self.assertRaisesRegex(P.ProtocolError, "translator source"):
+            P.validate_base_snapshot(snapshot)
+
+    def test_confirmation_a_outputs_must_be_byte_identical(self):
+        snapshot = fake_snapshot()
+        snapshot["confirmation_a_authorization"][
+            "second_output_sha256"
+        ] = "0" * 64
+        with self.assertRaisesRegex(P.ProtocolError, "metadata"):
+            P.validate_base_snapshot(snapshot)
+
+    def test_all_embedded_revisions_are_exactly_40_hex(self):
+        paths = (
+            ("base_b_freeze_repository_revision",),
+            ("confirmation_a_freeze", "repository_revision"),
+            ("source_audit_v11", "bindings",
+             "preflight_source_repository_commit_id"),
+            ("source_audit_v11", "bindings",
+             "preflight_seal_repository_commit_id"),
+            ("source_audit_v11", "bindings", "seal_repository_commit_id"),
+        )
+        for path in paths:
+            for length in (39, 41):
+                snapshot = fake_snapshot()
+                target = snapshot
+                for field in path[:-1]:
+                    target = target[field]
+                target[path[-1]] = "a" * length
+                with self.subTest(path=path, length=length), self.assertRaises(
+                    P.ProtocolError
+                ):
+                    P.validate_base_snapshot(snapshot)
+        for length in (39, 41):
+            freeze = fake_freeze()
+            freeze["freeze_repository_revision"] = "a" * length
+            with self.subTest(direct=length), self.assertRaises(P.ProtocolError):
+                P.validate_freeze(freeze, verify_live_sources=False)
 
     def test_standalone_sealed_b_paths_are_exact(self):
         evidence = fake_standalone()

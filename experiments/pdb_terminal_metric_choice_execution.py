@@ -109,7 +109,7 @@ def _write_bytes(path: Path, raw: bytes, label: str) -> str:
 
 
 def _load_freeze() -> tuple[dict, str]:
-    freeze = P.load_authorized_freeze(P.FREEZE_PATH)
+    freeze = P.load_freeze(P.FREEZE_PATH)
     digest = P.sha256_file(
         P.FREEZE_PATH, expected_path=P.FREEZE_PATH, label="campaign freeze"
     )
@@ -283,13 +283,13 @@ def _required_launch_ancestors(freeze: dict) -> tuple[str, ...]:
     base = freeze["base_confirmation_b"]
     bindings = base["source_audit_v11"]["bindings"]
     return (
-        freeze["planner"]["revision"],
         bindings["preflight_source_repository_commit_id"],
         bindings["preflight_seal_repository_commit_id"],
         bindings["seal_repository_commit_id"],
         base["confirmation_a_freeze"]["repository_revision"],
         base["base_b_freeze_repository_revision"],
         freeze["freeze_repository_revision"],
+        freeze["planner"]["revision"],
     )
 
 
@@ -298,9 +298,15 @@ def _validate_repository_commit(
 ) -> None:
     if P.COMMIT_RE.fullmatch(commit or "") is None:
         raise ExecutionError("launch repository commit is invalid")
+    ancestors = _required_launch_ancestors(freeze)
+    chain, planner = ancestors[:-1], ancestors[-1]
+    if len(set(chain)) != len(chain):
+        raise ExecutionError("launch ancestry revisions are not strictly ordered")
     try:
-        for ancestor in _required_launch_ancestors(freeze):
-            JJ.require_ancestor(P.REPO, ancestor, commit)
+        for ancestor, descendant in zip(chain, chain[1:]):
+            JJ.require_ancestor(P.REPO, ancestor, descendant)
+        JJ.require_ancestor(P.REPO, planner, chain[-1])
+        JJ.require_ancestor(P.REPO, chain[-1], commit)
     except JJ.JjCacheError as err:
         raise ExecutionError("launch commit ancestry changed") from err
     try:

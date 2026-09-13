@@ -415,10 +415,16 @@ class ExecutionTest(unittest.TestCase):
             Coordinator._validate_repository_commit(
                 freeze, commit, FREEZE_SHA
             )
-        self.assertEqual(
-            [call.args[1] for call in ancestor.call_args_list],
-            list(Coordinator._required_launch_ancestors(freeze)),
-        )
+        chain = Coordinator._required_launch_ancestors(freeze)
+        source_chain, planner = chain[:-1], chain[-1]
+        self.assertEqual(ancestor.call_args_list, [
+            *(
+                mock.call(P.REPO, parent, child)
+                for parent, child in zip(source_chain, source_chain[1:])
+            ),
+            mock.call(P.REPO, planner, source_chain[-1]),
+            mock.call(P.REPO, source_chain[-1], commit),
+        ])
         build_closure.assert_called_once_with(freeze, FREEZE_SHA)
         attest.assert_called_once_with(commit, bindings)
         with mock.patch.object(
@@ -431,6 +437,16 @@ class ExecutionTest(unittest.TestCase):
             side_effect=Coordinator.Freeze.FreezeError("mismatch"),
         ), self.assertRaisesRegex(Coordinator.ExecutionError, "closure changed"):
             Coordinator._validate_repository_commit(freeze, commit, FREEZE_SHA)
+
+    def test_launch_rejects_short_and_long_repository_revisions(self):
+        freeze = fake_freeze()
+        for length in (39, 41):
+            with self.subTest(length=length), self.assertRaisesRegex(
+                Coordinator.ExecutionError, "commit is invalid"
+            ):
+                Coordinator._validate_repository_commit(
+                    freeze, "a" * length, FREEZE_SHA
+                )
 
     def test_launch_uses_live_snapshot_and_rejects_dirty_working_copy(self):
         freeze = fake_freeze()

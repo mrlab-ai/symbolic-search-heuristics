@@ -366,7 +366,7 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser()
     args = parser.parse_args(argv)
     del args
-    freeze = P.load_authorized_freeze(P.FREEZE_PATH)
+    freeze = P.load_freeze(P.FREEZE_PATH)
     standalone = P.load_bound_standalone(freeze)
     freeze_sha = P.sha256_file(P.FREEZE_PATH, expected_path=P.FREEZE_PATH)
     try:

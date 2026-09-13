@@ -891,7 +891,7 @@ def _load_inputs() -> tuple[
     import pdb_terminal_metric_choice_execution as Execution
 
     freeze_path = P.FREEZE_PATH
-    freeze = P.load_authorized_freeze(freeze_path)
+    freeze = P.load_freeze(freeze_path)
     standalone = P.load_bound_standalone(freeze)
     freeze_sha = P.sha256_file(
         freeze_path, expected_path=P.FREEZE_PATH, label="campaign freeze"

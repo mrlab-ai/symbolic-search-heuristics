@@ -2,9 +2,9 @@
 """Frozen, outcome-blind protocol for the dual terminal-metric campaign.
 
 Importing this module is side-effect free.  In particular, it does not inspect
-the sealed Confirmation A/B artifacts.  The existing Confirmation B verifier
-is imported only by :func:`snapshot_sealed_b` or :func:`load_cohort`, both of
-which are explicit post-authorization operations.
+the sealed Confirmation A/B artifacts.  The Confirmation B verifier is
+imported only by :func:`snapshot_sealed_b` while constructing the direct
+freeze; production cohort loading uses only the embedded guided-B projection.
 """
 
 from __future__ import annotations
@@ -130,7 +130,8 @@ CALIBRATION_TASK_SPECS = (
 )
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-COMMIT_RE = re.compile(r"^[0-9a-f]{40,64}$")
+COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+V11_TRANSLATOR_FILE_COUNT = 38
 
 V11_BINDING_FIELDS = (
     "schema", "campaign", "benchmark_revision", "seal_repository_commit_id",
@@ -689,6 +690,27 @@ def _validate_v11_bindings(bindings: dict) -> None:
         combined[relative] = digest
     if dict(sorted(combined.items())) != tracked["combined_tracked_file_sha256"]:
         raise ProtocolError("V11 combined tracked closure changed")
+    full_translator = {
+        relative: digest
+        for relative, digest in tracked["full_tracked_file_sha256"].items()
+        if relative.startswith("src/translate/") and relative.endswith(".py")
+    }
+    preflight_translator = {
+        relative: digest
+        for relative, digest in tracked["preflight_tracked_file_sha256"].items()
+        if relative.startswith("src/translate/") and relative.endswith(".py")
+    }
+    translator = [
+        {"path": relative, "sha256": digest}
+        for relative, digest in sorted(full_translator.items())
+    ]
+    if (
+        len(full_translator) != V11_TRANSLATOR_FILE_COUNT
+        or full_translator != preflight_translator
+        or hashlib.sha256(canonical_json(translator)).hexdigest()
+        != bindings["translator_source_sha256"]
+    ):
+        raise ProtocolError("V11 translator source digest changed")
 
 
 def _validate_v11_source_task(task: dict) -> None:
@@ -990,6 +1012,8 @@ def validate_base_snapshot(snapshot: dict) -> None:
         authorization.get("benchmark_revision") != snapshot["benchmark_revision"],
         authorization.get("receipt_schema") != BASE_A_RECEIPT_SCHEMA,
         authorization.get("analysis_protocol") != BASE_A_ANALYSIS_PROTOCOL,
+        authorization.get("first_output_sha256")
+        != authorization.get("second_output_sha256"),
         authorization.get("cost_attestation_sha256")
         != bindings["attestation_sha256"],
         authorization.get("source_audit_launch_receipt_sha256")
@@ -1563,11 +1587,9 @@ def build_freeze(
     validate_base_snapshot(base_snapshot)
     validate_calibration_receipt(calibration_receipt)
     validate_planner_manifest(planner_manifest)
-    if (
-        COMMIT_RE.fullmatch(freeze_repository_revision or "") is None
-        or planner_identity(planner_manifest) != base_snapshot["base_b_planner"]
-    ):
+    if planner_identity(planner_manifest) != base_snapshot["base_b_planner"]:
         raise ProtocolError("campaign freeze repository/planner binding changed")
+    _require_commit40(freeze_repository_revision, "campaign freeze repository")
     validate_calibration_exclusion(calibration_receipt, base_snapshot)
     validate_standalone_evidence(
         standalone_evidence, base_snapshot, planner_manifest
@@ -1674,8 +1696,9 @@ def validate_freeze(freeze: dict, *, verify_live_sources: bool = True) -> None:
         "experiment_source_sha256",
     } or freeze.get("schema") != FREEZE_SCHEMA:
         raise ProtocolError("dual metric freeze schema changed")
-    if COMMIT_RE.fullmatch(freeze.get("freeze_repository_revision", "")) is None:
-        raise ProtocolError("dual metric freeze repository revision changed")
+    _require_commit40(
+        freeze.get("freeze_repository_revision"), "dual metric freeze repository"
+    )
     validate_base_snapshot(freeze["base_confirmation_b"])
     validate_planner_manifest(freeze["planner"])
     if planner_identity(freeze["planner"]) != freeze["base_confirmation_b"][
@@ -1773,28 +1796,6 @@ def load_freeze(path: Path = FREEZE_PATH, *, verify_live_sources=True) -> dict:
     return freeze
 
 
-def load_authorized_freeze(
-    path: Path = FREEZE_PATH, *, verify_live_sources=True,
-) -> dict:
-    """Validate calibration before opening any live V11 A/B evidence."""
-    calibration_raw, calibration = load_canonical(
-        CALIBRATION_RECEIPT_PATH, "calibration receipt",
-        expected_path=CALIBRATION_RECEIPT_PATH,
-    )
-    validate_calibration_receipt(calibration)
-    snapshot = snapshot_sealed_b(calibration)
-    freeze = load_freeze(path, verify_live_sources=verify_live_sources)
-    if canonical_json(snapshot) != canonical_json(freeze["base_confirmation_b"]):
-        raise ProtocolError("live sealed B snapshot changed")
-    if hashlib.sha256(calibration_raw).hexdigest() != freeze["calibration"][
-        "receipt_sha256"
-    ] or canonical_json(calibration["planner"]) != canonical_json(
-        freeze["planner"]
-    ):
-        raise ProtocolError("pre-authorized calibration binding changed")
-    return freeze
-
-
 def load_bound_calibration(freeze: dict) -> dict:
     binding = freeze["calibration"]
     value = _load_bound_file(
@@ -1842,32 +1843,27 @@ class CohortTask:
 
 
 def load_cohort(benchmarks, *, freeze_path: Path = FREEZE_PATH):
-    freeze = load_authorized_freeze(freeze_path)
-    base = _lazy_base_protocol()
-    try:
-        base_tasks = base.load_cohort(benchmarks)
-    except Exception as err:
-        raise ProtocolError("cannot validate sealed B benchmark cohort") from err
-    expected = [
-        _task_identity(task)
-        for task in guided_b_tasks(freeze["base_confirmation_b"])
-    ]
-    actual = [_task_identity(task) for task in base_tasks]
-    if sorted(actual) != sorted(expected):
-        raise ProtocolError("live B cohort differs from dual campaign freeze")
-    records = {
-        (record.get("directory", record.get("domain")), record["problem"]): record
-        for record in guided_b_tasks(freeze["base_confirmation_b"])
-    }
-    return tuple(CohortTask(
-        domain=task.domain,
-        problem=task.problem,
-        family=task.family,
-        domain_file=records[(task.domain, task.problem)]["domain_file"],
-        problem_file=records[(task.domain, task.problem)]["problem_file"],
-        domain_sha256=records[(task.domain, task.problem)]["domain_sha256"],
-        problem_sha256=records[(task.domain, task.problem)]["problem_sha256"],
-    ) for task in base_tasks)
+    freeze = load_freeze(freeze_path)
+    root = Path(benchmarks).resolve()
+    tasks = []
+    for record in guided_b_tasks(freeze["base_confirmation_b"]):
+        for field, hash_field in (
+            ("domain_file", "domain_sha256"),
+            ("problem_file", "problem_sha256"),
+        ):
+            path = root / record[field]
+            if sha256_file(
+                path, expected_path=path, root=root, label="benchmark source",
+            ) != record[hash_field]:
+                raise ProtocolError("embedded guided-B source bytes changed")
+        tasks.append(CohortTask(
+            domain=record["directory"], problem=record["problem"],
+            family=record["family"], domain_file=record["domain_file"],
+            problem_file=record["problem_file"],
+            domain_sha256=record["domain_sha256"],
+            problem_sha256=record["problem_sha256"],
+        ))
+    return tuple(tasks)
 
 
 validate_static_design()

@@ -307,13 +307,34 @@ class HardeningTest(unittest.TestCase):
         with mock.patch.object(Freeze.JJ, "require_ancestor") as require:
             Freeze._require_ancestors(snapshot, revision)
         self.assertEqual(require.call_args_list, [
-            mock.call(P.REPO, P.REQUIRED_PLANNER_REVISION, revision),
-            mock.call(P.REPO, "1" * 40, revision),
-            mock.call(P.REPO, "2" * 40, revision),
-            mock.call(P.REPO, "3" * 40, revision),
-            mock.call(P.REPO, "4" * 40, revision),
+            mock.call(P.REPO, "1" * 40, "2" * 40),
+            mock.call(P.REPO, "2" * 40, "3" * 40),
+            mock.call(P.REPO, "3" * 40, "4" * 40),
+            mock.call(P.REPO, "4" * 40, "5" * 40),
             mock.call(P.REPO, "5" * 40, revision),
+            mock.call(P.REPO, P.REQUIRED_PLANNER_REVISION, revision),
         ])
+
+    def test_freeze_rejects_v11_ancestry_branch(self):
+        snapshot = fake_snapshot()
+
+        def require(repo, ancestor, descendant):
+            del repo
+            if (ancestor, descendant) == ("3" * 40, "4" * 40):
+                raise Freeze.JJ.JjCacheError("branch")
+
+        with mock.patch.object(
+            Freeze.JJ, "require_ancestor", side_effect=require
+        ), self.assertRaisesRegex(Freeze.FreezeError, "not an ancestor"):
+            Freeze._require_ancestors(snapshot, "d" * 40)
+
+    def test_freeze_rejects_equal_adjacent_revisions(self):
+        snapshot = fake_snapshot()
+        snapshot["base_b_freeze_repository_revision"] = snapshot[
+            "confirmation_a_freeze"
+        ]["repository_revision"]
+        with self.assertRaisesRegex(Freeze.FreezeError, "strictly ordered"):
+            Freeze._require_ancestors(snapshot, "d" * 40)
 
     def test_freeze_rebuild_rejects_fabricated_standalone_with_real_hashes(self):
         snapshot = fake_snapshot()
@@ -381,30 +402,66 @@ class HardeningTest(unittest.TestCase):
                         path, expected=path, label="raced input"
                     )
 
-    def test_authorized_freeze_opens_calibration_before_a_b(self):
-        calibration = fake_calibration()
+    def test_runtime_freeze_does_not_reopen_live_a_b(self):
         freeze = fake_freeze()
-        order = []
 
-        def load_calibration(path, label, *, expected_path):
-            self.assertEqual(path, P.CALIBRATION_RECEIPT_PATH)
-            order.append("calibration")
-            return P.canonical_json_line(calibration), calibration
+        def direct_only(path, label, *, expected_path):
+            self.assertEqual((path, expected_path), (P.FREEZE_PATH, P.FREEZE_PATH))
+            self.assertEqual(label, "dual metric freeze")
+            return P.canonical_json_line(freeze), freeze
 
-        def snapshot(receipt):
-            self.assertIs(receipt, calibration)
-            order.append("a_b")
-            return freeze["base_confirmation_b"]
+        with mock.patch.object(
+            P, "load_canonical", side_effect=direct_only
+        ) as embedded, mock.patch.object(
+            P, "snapshot_sealed_b",
+            side_effect=AssertionError("live A/B artifacts disappeared"),
+        ), mock.patch.object(
+            P, "_lazy_base_protocol",
+            side_effect=AssertionError("live A/B protocol reopened"),
+        ):
+            self.assertEqual(
+                P.load_freeze(P.FREEZE_PATH, verify_live_sources=False), freeze
+            )
+        self.assertEqual(embedded.call_count, 1)
 
-        def load_freeze(path, *, verify_live_sources):
-            order.append("freeze")
-            return freeze
+    def test_runtime_rejects_malformed_embedded_guided_b(self):
+        freeze = fake_freeze()
+        del P.guided_b_tasks(freeze["base_confirmation_b"])[0]["aliases"]
+        with mock.patch.object(
+            P, "load_canonical",
+            return_value=(P.canonical_json_line(freeze), freeze),
+        ), self.assertRaisesRegex(P.ProtocolError, "task shape"):
+            P.load_freeze(P.FREEZE_PATH, verify_live_sources=False)
 
-        with mock.patch.object(P, "load_canonical", side_effect=load_calibration), \
-             mock.patch.object(P, "snapshot_sealed_b", side_effect=snapshot), \
-             mock.patch.object(P, "load_freeze", side_effect=load_freeze):
-            P.load_authorized_freeze(P.FREEZE_PATH, verify_live_sources=False)
-        self.assertEqual(order, ["calibration", "a_b", "freeze"])
+    def test_runtime_cohort_is_derived_from_embedded_guided_b(self):
+        freeze = fake_freeze()
+        records = P.guided_b_tasks(freeze["base_confirmation_b"])
+        expected_hashes = {
+            record[field]: record[hash_field]
+            for record in records
+            for field, hash_field in (
+                ("domain_file", "domain_sha256"),
+                ("problem_file", "problem_sha256"),
+            )
+        }
+
+        def source_hash(path, **unused):
+            return expected_hashes[path.relative_to(Path("/benchmarks")).as_posix()]
+
+        with mock.patch.object(
+            P, "load_freeze", return_value=freeze
+        ), mock.patch.object(
+            P, "sha256_file", side_effect=source_hash
+        ), mock.patch.object(
+            P, "_lazy_base_protocol",
+            side_effect=AssertionError("live B protocol reopened"),
+        ):
+            tasks = P.load_cohort("/benchmarks")
+        self.assertEqual(len(tasks), P.COHORT_TASKS)
+        self.assertEqual(
+            [(task.domain, task.problem) for task in tasks],
+            [(row["directory"], row["problem"]) for row in records],
+        )
 
     def test_calibration_exclusion_checks_both_cohorts(self):
         receipt = fake_calibration()
