@@ -1222,11 +1222,11 @@ class ConfirmationAProtocolTest(unittest.TestCase):
             P.SourceV7.CODE_MANIFEST_FILES,
         )
 
-    def test_v10_source_consumer_adapter_and_8148_planner_are_bound(self):
+    def test_v11_source_consumer_adapter_and_8148_planner_are_bound(self):
         self.assertTrue({
-            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v10.py",
-            "experiments/pdb_terminal_incidence_confirmation_v10_adapter.py",
-            "experiments/pdb_terminal_incidence_v10_snapshot_reader.py",
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v11.py",
+            "experiments/pdb_terminal_incidence_confirmation_v11_adapter.py",
+            "experiments/pdb_terminal_incidence_v11_snapshot_reader.py",
         }.issubset(P.EXPERIMENT_SOURCE_FILES))
         self.assertEqual(
             P.PLANNER_REVISION_REQUIRED,

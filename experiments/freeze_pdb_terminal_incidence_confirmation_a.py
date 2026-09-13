@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the one prospective V10 source/planner freeze for Confirmation A."""
+"""Create the one prospective V11 source/planner freeze for Confirmation A."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def _require_source_ancestry(bindings: dict, revision: str) -> None:
         JJ.require_ancestor(REPO, P.PLANNER_REVISION_REQUIRED, revision)
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "V10 S-to-P-to-Q chain or planner is not ancestral to the freeze"
+            "V11 S-to-P-to-Q chain or planner is not ancestral to the freeze"
         ) from err
 
 
@@ -160,7 +160,7 @@ def _revalidate_before_write(
         raise FreezeError("freeze revision changed during planner caching")
     bindings = value.get("source_audit", {}).get("bindings")
     if not isinstance(bindings, dict):
-        raise FreezeError("built V10 source provenance is incomplete")
+        raise FreezeError("built V11 source provenance is incomplete")
     _require_source_ancestry(bindings, freeze_repository_revision)
     if value.get("freeze_repository_revision") != freeze_repository_revision:
         raise FreezeError("freeze repository revision changed during caching")
@@ -168,7 +168,7 @@ def _revalidate_before_write(
         freeze_repository_revision
     ):
         raise FreezeError("experiment sources changed during planner caching")
-    # This is the second and final V10 payload consumption.  The caller writes
+    # This is the second and final V11 payload consumption.  The caller writes
     # immediately after this exact canonical comparison.
     materials = P.load_source_materials(source_seal_revision)
     if (
@@ -177,7 +177,7 @@ def _revalidate_before_write(
         or P.canonical_json(value.get("source_audit"))
         != P.canonical_json(materials.source_audit)
     ):
-        raise FreezeError("V10 source changed during planner caching")
+        raise FreezeError("V11 source changed during planner caching")
 
 
 def _write_exclusive(path: Path, value: dict) -> str:

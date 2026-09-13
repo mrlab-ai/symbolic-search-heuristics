@@ -253,13 +253,13 @@ def _projected_attestation() -> bytes:
     return P.canonical_json_line({"tasks": tasks})
 
 
-def _validate_v10_run_provenance(records: list[dict]) -> None:
-    """Require every sealed cell to carry the complete V10 source chain."""
-    expected = P.v10_run_provenance()
+def _validate_v11_run_provenance(records: list[dict]) -> None:
+    """Require every sealed cell to carry the complete V11 source chain."""
+    expected = P.v11_run_provenance()
     for record in records:
         if any(record.get(key) != value for key, value in expected.items()):
             raise ConfirmationAnalysisError(
-                "sealed cell has inconsistent V10 source provenance"
+                "sealed cell has inconsistent V11 source provenance"
             )
         if LEGACY_SOURCE_PROPERTIES.intersection(record):
             raise ConfirmationAnalysisError(
@@ -706,7 +706,7 @@ def _load_sealed_input(path: Path) -> tuple[list[dict], str, str, str, dict]:
         raise ConfirmationAnalysisError(
             "sealed properties must contain a matrix of objects"
         )
-    _validate_v10_run_provenance(records)
+    _validate_v11_run_provenance(records)
     return records, properties_sha, fetch_sha, execution_sha, execution[
         "hardware"
     ]
