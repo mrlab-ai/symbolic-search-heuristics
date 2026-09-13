@@ -145,7 +145,7 @@ def audit_records(
     expected_cells = {
         (row["algorithm"], row["domain"], row["problem"]): row
         for row in P.task_major_cell_mapping(
-            freeze["base_confirmation_b"]["cohort"]["tasks"]
+            P.guided_b_tasks(freeze["base_confirmation_b"])
         )
     }
     expected_properties = expected_run_properties(freeze, freeze_sha256)
@@ -155,7 +155,7 @@ def audit_records(
     }
     source_by_task = {
         (row["directory"], row["problem"]): row
-        for row in freeze["base_confirmation_b"]["cohort"]["tasks"]
+        for row in P.guided_b_tasks(freeze["base_confirmation_b"])
     }
     groups = defaultdict(list)
     seen = set()

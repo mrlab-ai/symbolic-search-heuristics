@@ -15,179 +15,193 @@ import pdb_terminal_metric_choice_protocol as P
 SHA = "a" * 64
 
 
-def fake_tasks():
-    return [
-        {
-            "directory": "domain-{:03d}".format(index // 10),
-            "problem": "p{:03d}.pddl".format(index),
+def _digest(label):
+    return hashlib.sha256(label.encode("ascii")).hexdigest()
+
+
+def fake_tasks(start=0, count=P.COHORT_TASKS):
+    tasks = []
+    for index in range(start, start + count):
+        directory = "domain-{:03d}".format(index // 10)
+        problem = "p{:03d}.pddl".format(index)
+        domain_file = directory + "/domain.pddl"
+        problem_file = directory + "/" + problem
+        task = {
+            "candidate_index": index,
+            "directory": directory,
             "family": "family-{:02d}".format(index // 10),
-            "domain_file": "benchmarks/d{:03d}/domain.pddl".format(index),
-            "problem_file": "benchmarks/d{:03d}/p.pddl".format(index),
-            "domain_sha256": "b" * 64,
-            "problem_sha256": "c" * 64,
+            "problem": problem,
+            "domain_file": domain_file,
+            "problem_file": problem_file,
+            "domain_sha256": _digest(directory),
+            "problem_sha256": _digest("problem-{}".format(index)),
+            "canonical_path": problem_file,
+            "is_shadow_family": index % 2 == 0,
+            "is_shadow_unrepresented": index % 2 != 0,
+            "is_all_prior_represented": index % 3 == 0,
+            "is_all_prior_unrepresented": index % 3 != 0,
         }
-        for index in range(P.COHORT_TASKS)
-    ]
+        task["aliases"] = [{
+            field: task[field] for field in P.V11_ALIAS_FIELDS
+        }]
+        tasks.append(task)
+    return tasks
+
+
+def _projection(role, tasks):
+    indices = [task["candidate_index"] for task in tasks]
+    return {
+        "role": role,
+        "records": tasks,
+        "candidate_indices_sha256": _digest(
+            P.canonical_json(indices).decode("ascii")
+        ),
+        "source_projection_sha256": _digest(
+            P.canonical_json(tasks).decode("ascii")
+        ),
+    }
+
+
+def _v11_bindings(confirmation, guided):
+    full = {"experiments/v11-full.py": _digest("full")}
+    preflight = {"experiments/v11-preflight.py": _digest("preflight")}
+    combined = dict(sorted({**full, **preflight}.items()))
+    outcomes = {
+        "input-rejected": 690, "resource-excluded": 0, "success": 950,
+    }
+    exclusions = {}
+    values = {
+        field: _digest(field) for field in P.V11_BINDING_FIELDS
+        if field.endswith("_sha256") or field.endswith("_sha256_digest")
+    }
+    values.update({
+        "schema": P.V11_ADAPTER_SCHEMA,
+        "campaign": "v11-full-census",
+        "benchmark_revision": "48d6a00d482de2384a9e751f9343df58bf5582be",
+        "seal_repository_commit_id": "3" * 40,
+        "preflight_campaign": "v11-preflight",
+        "preflight_source_repository_commit_id": "1" * 40,
+        "preflight_seal_repository_commit_id": "2" * 40,
+        "preflight_full_launch_authorized": True,
+        "code_manifest_sha256": _digest("code"),
+        "preflight_code_manifest_sha256": _digest("code"),
+        "all_records_count": 1640,
+        "eligible_records_count": 950,
+        "confirmation_a_count": 650,
+        "guided_b_count": P.COHORT_TASKS,
+        "outcome_counts": outcomes,
+        "outcome_counts_sha256": _digest(
+            P.canonical_json(outcomes).decode("ascii")
+        ),
+        "resource_exclusions_by_family": exclusions,
+        "resource_exclusions_by_family_sha256": _digest(
+            P.canonical_json(exclusions).decode("ascii")
+        ),
+        "full_tracked_file_sha256": full,
+        "full_tracked_file_sha256_digest": _digest(
+            P.canonical_json(full).decode("ascii")
+        ),
+        "preflight_tracked_file_sha256": preflight,
+        "preflight_tracked_file_sha256_digest": _digest(
+            P.canonical_json(preflight).decode("ascii")
+        ),
+        "combined_tracked_file_sha256": combined,
+        "combined_tracked_file_sha256_digest": _digest(
+            P.canonical_json(combined).decode("ascii")
+        ),
+        "confirmation_a_candidate_indices_sha256": confirmation[
+            "candidate_indices_sha256"
+        ],
+        "confirmation_a_source_projection_sha256": confirmation[
+            "source_projection_sha256"
+        ],
+        "guided_b_candidate_indices_sha256": guided[
+            "candidate_indices_sha256"
+        ],
+        "guided_b_source_projection_sha256": guided[
+            "source_projection_sha256"
+        ],
+    })
+    return values
 
 
 def fake_snapshot():
-    tasks = fake_tasks()
-    tasks_sha = P.cohort_digest(tasks)
+    guided = _projection("guided-b", fake_tasks())
+    confirmation = _projection("confirmation-a", fake_tasks(300, 650))
+    bindings = _v11_bindings(confirmation, guided)
     planner = fake_planner()
-    base_source_files = P.BASE_B_EXPERIMENT_SOURCE_FILES
-    v7_tracked = {relative: "4" * 64 for relative in P.V7_SCOPED_FILES}
-    v7_tracked[P.V7_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()] = (
-        "1" * 64
-    )
-    v7_tracked[P.V7_SLURM_PATH.relative_to(P.REPO).as_posix()] = "3" * 64
-    v7_tracked[P.V7_DIAGNOSTIC_PATH.relative_to(P.REPO).as_posix()] = "7" * 64
+    a_freeze_sha = _digest("a-freeze")
+    authorization = {
+        "guided_study_authorized": True,
+        "receipt_sha256": _digest("a-receipt"),
+        "first_output_sha256": _digest("a-output"),
+        "second_output_sha256": _digest("a-output"),
+        "input_properties_sha256": _digest("a-properties"),
+        "fetch_receipt_sha256": _digest("a-fetch"),
+        "execution_receipt_sha256": _digest("a-execution"),
+        "hardware": {
+            "hardware_attestation_schema": (
+                "symbolic-search-heuristics/execution-hardware/v1"
+            ),
+            "hardware_attestation_files": P.BASE_A_CELL_COUNT,
+            "hardware_records_sha256": _digest("hardware"),
+            "processor_model_counts": {"Synthetic CPU": P.BASE_A_CELL_COUNT},
+            "architecture_counts": {"x86_64": P.BASE_A_CELL_COUNT},
+        },
+        "receipt_schema": P.BASE_A_RECEIPT_SCHEMA,
+        "analysis_protocol": P.BASE_A_ANALYSIS_PROTOCOL,
+        "benchmark_revision": bindings["benchmark_revision"],
+        "cost_attestation_sha256": bindings["attestation_sha256"],
+        "source_audit_launch_receipt_sha256": bindings["launch_receipt_sha256"],
+        "source_audit_execution_receipt_sha256": bindings[
+            "execution_receipt_sha256"
+        ],
+        "receipt_path": P.BASE_A_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
+        "receipt_pin_path": P.BASE_A_RECEIPT_PIN_PATH.relative_to(
+            P.REPO
+        ).as_posix(),
+        "first_output_path": P.BASE_A_FIRST_OUTPUT_PATH.relative_to(
+            P.REPO
+        ).as_posix(),
+        "second_output_path": P.BASE_A_SECOND_OUTPUT_PATH.relative_to(
+            P.REPO
+        ).as_posix(),
+        "confirmation_a_freeze_path": P.BASE_A_FREEZE_PATH.relative_to(
+            P.REPO
+        ).as_posix(),
+        "confirmation_a_freeze_repository_revision": "4" * 40,
+        "confirmation_a_cohort_manifest_sha256": confirmation[
+            "source_projection_sha256"
+        ],
+        "source_audit_provenance": P._expected_v11_run_provenance(
+            bindings, a_freeze_sha
+        ),
+        "planner_identity": P.planner_identity(planner),
+    }
     return {
         "schema": P.BASE_SNAPSHOT_SCHEMA,
         "base_b_freeze_path": P.BASE_B_FREEZE_PATH.relative_to(P.REPO).as_posix(),
-        "base_b_freeze_sha256": "1" * 64,
-        "base_b_freeze_repository_revision": "1" * 40,
+        "base_b_freeze_sha256": _digest("b-freeze"),
+        "base_b_freeze_repository_revision": "5" * 40,
         "base_b_experiment_source_sha256": {
-            relative: v7_tracked.get(relative, SHA)
-            for relative in base_source_files
+            relative: SHA for relative in P.BASE_B_EXPERIMENT_SOURCE_FILES
         },
         "base_b_planner": P.planner_identity(planner),
-        "benchmark_revision": "2" * 40,
-        "confirmation_a_authorization": {
-            "guided_study_authorized": True,
-            "receipt_sha256": "3" * 64,
-            "first_output_sha256": "4" * 64,
-            "second_output_sha256": "5" * 64,
-            "input_properties_sha256": "6" * 64,
-            "fetch_receipt_sha256": "7" * 64,
-            "execution_receipt_sha256": "0" * 64,
-            "hardware": {
-                "hardware_attestation_schema": (
-                    "symbolic-search-heuristics/execution-hardware/v1"
-                ),
-                "hardware_attestation_files": P.BASE_A_CELL_COUNT,
-                "hardware_records_sha256": "1" * 64,
-                "processor_model_counts": {
-                    "Synthetic CPU": P.BASE_A_CELL_COUNT,
-                },
-                "architecture_counts": {
-                    "x86_64": P.BASE_A_CELL_COUNT,
-                },
-            },
-            "receipt_schema": P.BASE_A_RECEIPT_SCHEMA,
-            "analysis_protocol": P.BASE_A_ANALYSIS_PROTOCOL,
-            "benchmark_revision": "2" * 40,
-            "cost_attestation_sha256": "8" * 64,
-            "source_audit_launch_receipt_sha256": "9" * 64,
-            "source_audit_execution_receipt_sha256": "a" * 64,
-            "receipt_path": P.BASE_A_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
-            "receipt_pin_path": P.BASE_A_RECEIPT_PIN_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "first_output_path": P.BASE_A_FIRST_OUTPUT_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "second_output_path": P.BASE_A_SECOND_OUTPUT_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "confirmation_a_cohort_manifest_sha256": "f" * 64,
-            "planner_identity": P.planner_identity(planner),
+        "benchmark_revision": bindings["benchmark_revision"],
+        "confirmation_a_authorization": authorization,
+        "confirmation_a_freeze": {
+            "path": P.BASE_A_FREEZE_PATH.relative_to(P.REPO).as_posix(),
+            "sha256": a_freeze_sha,
+            "repository_revision": "4" * 40,
         },
-        "source_audit_v7": {
-            "campaign": "v7-selective-repair",
-            "attestation_path": P.V7_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
-            "terminal_diagnostic_path": P.V7_DIAGNOSTIC_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "execution_receipt_path": P.V7_EXECUTION_RECEIPT_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "launch_receipt_path": P.V7_LAUNCH_RECEIPT_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "launch_intent_path": P.V7_INTENT_PATH.relative_to(P.REPO).as_posix(),
-            "attestation_sha256": "8" * 64,
-            "terminal_diagnostic_sha256": "7" * 64,
-            "execution_receipt_sha256": "a" * 64,
-            "launch_receipt_sha256": "9" * 64,
-            "launch_intent_sha256": "b" * 64,
-            "cohort_manifest_sha256": tasks_sha,
-            "confirmation_a_cohort_manifest_sha256": "f" * 64,
-            "attestation_records_sha256": "d" * 64,
-            "translator_source_sha256": "e" * 64,
-            "job_id": "12345", "code_manifest_sha256": "1" * 64,
-            "repository_commit_id": "3" * 40,
-            "union_tree_sha256": "2" * 64,
-            "union_sources_sha256": "5" * 64,
-            "v5_reusable_tree_sha256": "4" * 64,
-            "v7_output_tree_sha256": "6" * 64,
-            "v5_launch_receipt_sha256": "7" * 64,
-            "v5_code_manifest_sha256": "0" * 64,
-            "reused_v5_shards": 819,
-            "repaired_v5_shards": 1,
-            "reused_v6_shards": 0,
-            "source_support_outcome_blind_selective_repair": True,
-            "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
-                True
-            ),
-            "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
-                False
-            ),
-            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": True,
-            "scheduler_membership_affects_execution_origin_only": True,
-            "v6_runtime_artifacts_used": False,
-            "accepted_translation_statuses": ["input-rejected", "success"],
-            "translator_timeout_is_infrastructure_failure": True,
-            "resource_ceiling_changes_accepted_outcome_classes": False,
-            "slurm_template_sha256": "3" * 64,
-            "seal_recovery_protocol": (
-                "deterministic-exclusive-hash-chain-v1"
-            ),
-            "pre_diagnosis_repository_commit_id": "4" * 40,
-            "pre_diagnosis_files_sha256": "4" * 64,
-            "seal_plan_path": P.V7_SEAL_PLAN_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "seal_plan_sha256": "5" * 64,
-            "union_root_stage_path": P.V7_UNION_ROOT_STAGE_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "union_root_stage_sha256": "6" * 64,
-            "union_stage_path": P.V7_UNION_STAGE_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "union_stage_sha256": "7" * 64,
-            "candidate_stage_path": P.V7_CANDIDATE_STAGE_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "candidate_stage_sha256": "8" * 64,
-            "attestation_stage_path": P.V7_ATTESTATION_STAGE_PATH.relative_to(
-                P.REPO
-            ).as_posix(),
-            "attestation_stage_sha256": "9" * 64,
-            "tracked_file_sha256": v7_tracked,
+        "source_audit_v11": {
+            "schema": P.V11_SOURCE_SCHEMA,
+            "source_seal_revision": bindings["seal_repository_commit_id"],
+            "bindings": bindings,
+            "guided_b": guided,
         },
-        "confirmation_a_cohort": {
-            "role": "confirmation-a", "full_tasks_sha256": "f" * 64,
-            "identities": [{
-                "directory": "confirmation-a-domain",
-                "problem": "confirmation-a-problem.pddl",
-                "domain_sha256": "d" * 64,
-                "problem_sha256": "e" * 64,
-            }],
-            "identities_sha256": hashlib.sha256(P.canonical_json([{
-                "directory": "confirmation-a-domain",
-                "problem": "confirmation-a-problem.pddl",
-                "domain_sha256": "d" * 64,
-                "problem_sha256": "e" * 64,
-            }])).hexdigest(),
-        },
-        "cohort": {
-            "role": "source-disjoint-universal-confirmation-b",
-            "tasks": tasks, "tasks_sha256": tasks_sha,
-            "task_name_sha256": P.task_name_digest(tasks),
-        },
+        "confirmation_a_cohort": confirmation,
     }
-
 
 def fake_calibration(planner=None):
     rows = []
@@ -270,11 +284,11 @@ def fake_standalone(snapshot=None):
             P.canonical_json(representatives)
         ).hexdigest(),
         "normalized_pool": pool, "normalized_pool_sha256": pool_sha,
-    } for row in snapshot["cohort"]["tasks"]]
+    } for row in P.guided_b_tasks(snapshot)]
     return {
         "schema": P.STANDALONE_SCHEMA,
         "base_b_freeze_sha256": snapshot["base_b_freeze_sha256"],
-        "cohort_manifest_sha256": snapshot["cohort"]["tasks_sha256"],
+        "cohort_manifest_sha256": P.guided_b_projection_sha256(snapshot),
         "producer": {
             "planner_manifest": fake_planner(),
             "planner_manifest_sha256": hashlib.sha256(
@@ -450,63 +464,31 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "planner manifest"):
             P.validate_planner_manifest(planner)
 
-    def test_v7_paths_scope_and_authorization_links_are_exact(self):
-        import pdb_terminal_incidence_confirmation_source_consumer_v7 as SourceV7
-
-        self.assertEqual(P.V7_CODE_MANIFEST_FILES, SourceV7.CODE_MANIFEST_FILES)
-        self.assertEqual(P.V7_SCOPED_FILES, SourceV7.SCOPED_FILES)
-        path_fields = (
-            "attestation_path", "terminal_diagnostic_path", "execution_receipt_path",
-            "launch_receipt_path", "launch_intent_path",
-        )
-        for field in path_fields:
-            snapshot = fake_snapshot()
-            snapshot["source_audit_v7"][field] = "experiments/elsewhere.json"
-            with self.subTest(path=field), self.assertRaises(P.ProtocolError):
-                P.validate_base_snapshot(snapshot)
-        link_fields = (
-            "attestation_sha256", "launch_receipt_sha256",
-            "execution_receipt_sha256", "confirmation_a_cohort_manifest_sha256",
-            "cohort_manifest_sha256",
-        )
-        for field in link_fields:
-            snapshot = fake_snapshot()
-            snapshot["source_audit_v7"][field] = "0" * 64
-            with self.subTest(link=field), self.assertRaises(P.ProtocolError):
-                P.validate_base_snapshot(snapshot)
+    def test_v11_projection_and_authorization_links_are_exact(self):
         snapshot = fake_snapshot()
-        snapshot["source_audit_v7"]["tracked_file_sha256"].pop(
-            P.V7_SCOPED_FILES[0]
+        P.validate_base_snapshot(snapshot)
+        mutations = (
+            ("guided_b_source_projection_sha256", "0" * 64),
+            ("confirmation_a_source_projection_sha256", "0" * 64),
+            ("combined_tracked_file_sha256_digest", "0" * 64),
         )
-        with self.assertRaisesRegex(P.ProtocolError, "tracked source"):
-            P.validate_base_snapshot(snapshot)
-        for field, value in (
-            ("reused_v6_shards", 1),
-            ("v6_runtime_artifacts_used", True),
-            ("source_support_outcome_blind_selective_repair", False),
-            (
-                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
-                False,
-            ),
-            (
-                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
-                True,
-            ),
-            (
-                "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
-                False,
-            ),
-            ("scheduler_membership_affects_execution_origin_only", False),
-            ("accepted_translation_statuses", ["success"]),
-            ("translator_timeout_is_infrastructure_failure", False),
-            ("resource_ceiling_changes_accepted_outcome_classes", True),
-        ):
-            snapshot = fake_snapshot()
-            snapshot["source_audit_v7"][field] = value
-            with self.subTest(validity=field), self.assertRaisesRegex(
-                P.ProtocolError, "origin/validity"
-            ):
-                P.validate_base_snapshot(snapshot)
+        for field, value in mutations:
+            changed = copy.deepcopy(snapshot)
+            changed["source_audit_v11"]["bindings"][field] = value
+            with self.subTest(field=field), self.assertRaises(P.ProtocolError):
+                P.validate_base_snapshot(changed)
+        changed = copy.deepcopy(snapshot)
+        changed["confirmation_a_authorization"]["source_audit_provenance"][
+            "source_audit_campaign"
+        ] = "historical-reuse"
+        with self.assertRaisesRegex(P.ProtocolError, "metadata"):
+            P.validate_base_snapshot(changed)
+        changed = copy.deepcopy(snapshot)
+        changed["source_audit_v11"]["guided_b"]["records"][0][
+            "candidate_index"
+        ] = 300
+        with self.assertRaises(P.ProtocolError):
+            P.validate_base_snapshot(changed)
 
     def test_standalone_sealed_b_paths_are_exact(self):
         evidence = fake_standalone()

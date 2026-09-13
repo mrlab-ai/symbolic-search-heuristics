@@ -119,23 +119,26 @@ def _add_binding(
 def _base_snapshot_bindings(
     snapshot: dict, standalone_binding: dict,
 ) -> dict[str, str]:
-    """Return every in-repository A/B/V7 artifact bound by the snapshot."""
+    """Return every in-repository artifact bound by the sealed V11 snapshot."""
     try:
         P.validate_base_snapshot(snapshot)
         P.validate_standalone_source_binding(standalone_binding)
     except P.ProtocolError as err:
-        raise FreezeError("sealed A/B/V7 binding is invalid") from err
+        raise FreezeError("sealed V11 A/B binding is invalid") from err
     bindings: dict[str, str] = {}
     _add_binding(
         bindings, snapshot["base_b_freeze_path"],
         snapshot["base_b_freeze_sha256"], "Confirmation B freeze",
     )
-    base_sources = snapshot["base_b_experiment_source_sha256"]
-    for relative, digest in base_sources.items():
-        _add_binding(
-            bindings, relative, digest,
-            "Confirmation B source {}".format(relative),
-        )
+    _add_binding(
+        bindings, snapshot["confirmation_a_freeze"]["path"],
+        snapshot["confirmation_a_freeze"]["sha256"], "Confirmation A freeze",
+    )
+    for relative, digest in snapshot[
+        "base_b_experiment_source_sha256"
+    ].items():
+        _add_binding(bindings, relative, digest, "Confirmation B source")
+
     for path_field, hash_field, label in (
         ("parse_receipt_path", "parse_receipt_sha256", "Confirmation B parse"),
         ("fetch_receipt_path", "fetch_receipt_sha256", "Confirmation B fetch"),
@@ -183,52 +186,12 @@ def _base_snapshot_bindings(
         bindings, BASE_A_PROPERTIES_PATH,
         authorization["input_properties_sha256"], "Confirmation A properties",
     )
-
-    v7 = snapshot["source_audit_v7"]
-    for path_field, hash_field, label in (
-        ("attestation_path", "attestation_sha256", "source-audit V7 attestation"),
-        ("terminal_diagnostic_path", "terminal_diagnostic_sha256", "source-audit V7 diagnostic"),
-        ("launch_intent_path", "launch_intent_sha256", "source-audit V7 intent"),
-        ("launch_receipt_path", "launch_receipt_sha256", "source-audit V7 launch"),
-        (
-            "execution_receipt_path", "execution_receipt_sha256",
-            "source-audit V7 execution",
-        ),
-        ("seal_plan_path", "seal_plan_sha256", "source-audit V7 seal plan"),
-        (
-            "union_root_stage_path", "union_root_stage_sha256",
-            "source-audit V7 union-root stage",
-        ),
-        (
-            "union_stage_path", "union_stage_sha256",
-            "source-audit V7 union stage",
-        ),
-        (
-            "candidate_stage_path", "candidate_stage_sha256",
-            "source-audit V7 candidate stage",
-        ),
-        (
-            "attestation_stage_path", "attestation_stage_sha256",
-            "source-audit V7 attestation stage",
-        ),
-    ):
-        _add_binding(bindings, v7[path_field], v7[hash_field], label)
-    _add_binding(
-        bindings, P.V7_CODE_MANIFEST_PATH, v7["code_manifest_sha256"],
-        "source-audit V7 code manifest",
-    )
-    _add_binding(
-        bindings, P.V7_SLURM_PATH, v7["slurm_template_sha256"],
-        "source-audit V7 Slurm source",
-    )
-    tracked = v7["tracked_file_sha256"]
-    if not isinstance(tracked, dict) or set(tracked) != set(P.V7_SCOPED_FILES):
-        raise FreezeError("source-audit V7 tracked closure changed")
-    # These hashes describe the historical V7 producer revision authenticated
-    # by snapshot_sealed_b. Descendant A/B/direct code and paper edits are
-    # bound at their own freeze revision and need not retain those live bytes.
+    tracked = snapshot["source_audit_v11"]["bindings"][
+        "combined_tracked_file_sha256"
+    ]
+    for relative, digest in tracked.items():
+        _add_binding(bindings, relative, digest, "V11 committed source")
     return dict(sorted(bindings.items()))
-
 
 def _freeze_closure_bindings(
     snapshot: dict, *, calibration_sha256: str, planner_sha256: str,
@@ -300,20 +263,21 @@ def _source_hashes(revision: str) -> dict[str, str]:
 
 
 def _require_ancestors(snapshot: dict, revision: str) -> None:
+    bindings = snapshot["source_audit_v11"]["bindings"]
     ancestors = (
         P.REQUIRED_PLANNER_REVISION,
+        bindings["preflight_source_repository_commit_id"],
+        bindings["preflight_seal_repository_commit_id"],
+        bindings["seal_repository_commit_id"],
+        snapshot["confirmation_a_freeze"]["repository_revision"],
         snapshot["base_b_freeze_repository_revision"],
-        snapshot["source_audit_v7"]["repository_commit_id"],
-        snapshot["source_audit_v7"][
-            "pre_diagnosis_repository_commit_id"
-        ],
     )
     try:
         for ancestor in ancestors:
             JJ.require_ancestor(P.REPO, ancestor, revision)
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "planner, Confirmation B, or V7 producer is not an ancestor"
+            "planner or sealed V11 A/B producer is not an ancestor"
         ) from err
 
 

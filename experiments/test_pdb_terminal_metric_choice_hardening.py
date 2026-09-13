@@ -27,13 +27,6 @@ class HardeningTest(unittest.TestCase):
     @staticmethod
     def closure_ready_freeze():
         freeze = fake_freeze()
-        v7 = freeze["base_confirmation_b"]["source_audit_v7"]
-        v7["tracked_file_sha256"][
-            P.V7_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix()
-        ] = v7["code_manifest_sha256"]
-        v7["tracked_file_sha256"][
-            P.V7_SLURM_PATH.relative_to(P.REPO).as_posix()
-        ] = v7["slurm_template_sha256"]
         base_sources = freeze["base_confirmation_b"][
             "base_b_experiment_source_sha256"
         ]
@@ -43,80 +36,43 @@ class HardeningTest(unittest.TestCase):
                 campaign_sources[relative] = digest
         return freeze
 
-    def test_repository_closure_covers_b_properties_and_live_a_v7(self):
+    def test_repository_closure_covers_v11_a_b_inputs(self):
         freeze = self.closure_ready_freeze()
         bindings = Freeze._launch_closure_bindings(freeze, "f" * 64)
+        snapshot = freeze["base_confirmation_b"]
         expected = {
             P.FREEZE_PATH.relative_to(P.REPO).as_posix(),
+            snapshot["base_b_freeze_path"],
+            snapshot["confirmation_a_freeze"]["path"],
             P.BASE_B_PROPERTIES_PATH.relative_to(P.REPO).as_posix(),
             P.BASE_B_PARSE_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
             P.BASE_B_FETCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
-            Freeze.BASE_B_PARSE_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
-            Freeze.BASE_B_FETCH_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
             P.BASE_A_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
             P.BASE_A_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
             P.BASE_A_FIRST_OUTPUT_PATH.relative_to(P.REPO).as_posix(),
             P.BASE_A_SECOND_OUTPUT_PATH.relative_to(P.REPO).as_posix(),
-            Freeze.BASE_A_FETCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
-            Freeze.BASE_A_FETCH_RECEIPT_PIN_PATH.relative_to(P.REPO).as_posix(),
-            Freeze.BASE_A_PROPERTIES_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_ATTESTATION_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_DIAGNOSTIC_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_INTENT_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_LAUNCH_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_EXECUTION_RECEIPT_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_SEAL_PLAN_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_UNION_ROOT_STAGE_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_UNION_STAGE_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_CANDIDATE_STAGE_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_ATTESTATION_STAGE_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_CODE_MANIFEST_PATH.relative_to(P.REPO).as_posix(),
-            P.V7_SLURM_PATH.relative_to(P.REPO).as_posix(),
             *P.SOURCE_FILES,
-            *freeze["base_confirmation_b"][
-                "base_b_experiment_source_sha256"
+            *snapshot["base_b_experiment_source_sha256"],
+            *snapshot["source_audit_v11"]["bindings"][
+                "combined_tracked_file_sha256"
             ],
         }
         self.assertTrue(expected <= set(bindings))
         self.assertNotIn("paper/paper.tex", bindings)
-        self.assertEqual(
-            bindings[P.BASE_B_PROPERTIES_PATH.relative_to(P.REPO).as_posix()],
-            freeze["standalone_k32"]["sealed_b_input"]["properties_sha256"],
-        )
         broken = copy.deepcopy(freeze)
         broken["experiment_source_sha256"].pop(next(iter(P.SOURCE_FILES)))
         with self.assertRaisesRegex(Freeze.FreezeError, "source closure"):
             Freeze._launch_closure_bindings(broken, "f" * 64)
 
-    def test_shared_b_source_uses_descendant_not_historical_v7_hash(self):
+    def test_v11_committed_source_is_in_repository_closure(self):
         freeze = self.closure_ready_freeze()
-        base_sources = freeze["base_confirmation_b"][
-            "base_b_experiment_source_sha256"
-        ]
-        shared = sorted(
-            set(base_sources) & set(P.V7_SCOPED_FILES) & set(P.SOURCE_FILES)
-        )[0]
-        raw = b"synthetic postseal B/direct dependency\n"
-        digest = hashlib.sha256(raw).hexdigest()
-        base_sources[shared] = digest
-        freeze["experiment_source_sha256"][shared] = digest
-        historical = freeze["base_confirmation_b"]["source_audit_v7"][
-            "tracked_file_sha256"
-        ][shared]
-        self.assertNotEqual(historical, digest)
+        tracked = freeze["base_confirmation_b"]["source_audit_v11"][
+            "bindings"
+        ]["combined_tracked_file_sha256"]
         bindings = Freeze._launch_closure_bindings(freeze, "f" * 64)
-        self.assertEqual(bindings[shared], digest)
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            path = root / shared
-            path.parent.mkdir(parents=True)
-            path.write_bytes(raw)
-            with mock.patch.object(Freeze.P, "REPO", root), mock.patch.object(
-                Freeze.JJ, "tracked_file_sha256", return_value="0" * 64,
-            ), self.assertRaisesRegex(Freeze.FreezeError, "differs"):
-                Freeze._attest_repository_closure(
-                    "9" * 40, {shared: digest}
-                )
+        self.assertEqual(
+            {path: bindings[path] for path in tracked}, tracked
+        )
 
     def test_live_jj_cleanliness_query_has_exact_non_ignored_command(self):
         with tempfile.TemporaryDirectory() as temporary:

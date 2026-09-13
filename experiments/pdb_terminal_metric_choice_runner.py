@@ -341,7 +341,7 @@ def _install_cell_mapping_properties(freeze: dict) -> None:
     _ACTIVE_CELL_MAPPING = {
         (row["algorithm"], row["domain"], row["problem"]): row
         for row in P.task_major_cell_mapping(
-            freeze["base_confirmation_b"]["cohort"]["tasks"]
+            P.guided_b_tasks(freeze["base_confirmation_b"])
         )
     }
     from downward.experiment import FastDownwardRun
@@ -405,7 +405,7 @@ def _install_hardened_deterministic_run_body() -> None:
 def build_manifest(freeze: dict, freeze_sha256: str) -> dict:
     P.validate_freeze(freeze, verify_live_sources=False)
     P._require_sha(freeze_sha256, "dual metric freeze")
-    tasks = freeze["base_confirmation_b"]["cohort"]["tasks"]
+    tasks = P.guided_b_tasks(freeze["base_confirmation_b"])
     cells = P.task_major_cell_mapping(tasks)
     task_sources = {
         (row["directory"], row["problem"]): row for row in tasks
@@ -451,11 +451,11 @@ def validate_manifest(manifest: dict, freeze: dict, freeze_sha256: str) -> None:
     if not isinstance(cells, list) or len(cells) != P.CELL_COUNT:
         raise RunnerError("runner cell cardinality changed")
     expected_cells = P.task_major_cell_mapping(
-        freeze["base_confirmation_b"]["cohort"]["tasks"]
+        P.guided_b_tasks(freeze["base_confirmation_b"])
     )
     sources = {
         (row["directory"], row["problem"]): row
-        for row in freeze["base_confirmation_b"]["cohort"]["tasks"]
+        for row in P.guided_b_tasks(freeze["base_confirmation_b"])
     }
     for cell in expected_cells:
         cell["search"] = P.SEARCHES[cell["algorithm"]]
@@ -481,66 +481,26 @@ def validate_manifest(manifest: dict, freeze: dict, freeze_sha256: str) -> None:
         raise RunnerError("runner provenance binding changed")
 
 
-V7_PROVENANCE_PROPERTY_FIELDS = (
-    "source_audit_v7_campaign",
-    "source_audit_v7_attestation_path",
-    "source_audit_v7_attestation_sha256",
-    "source_audit_v7_terminal_diagnostic_path",
-    "source_audit_v7_terminal_diagnostic_sha256",
-    "source_audit_v7_launch_intent_path",
-    "source_audit_v7_launch_intent_sha256",
-    "source_audit_v7_launch_receipt_path",
-    "source_audit_v7_launch_receipt_sha256",
-    "source_audit_v7_execution_receipt_path",
-    "source_audit_v7_execution_receipt_sha256",
-    "source_audit_v7_cohort_manifest_sha256",
-    "source_audit_v7_confirmation_a_cohort_manifest_sha256",
-    "source_audit_v7_attestation_records_sha256",
-    "source_audit_v7_code_manifest_sha256",
-    "source_audit_v7_repository_commit_id",
-    "source_audit_v7_job_id",
-    "source_audit_v7_union_tree_sha256",
-    "source_audit_v7_union_sources_sha256",
-    "source_audit_v7_v5_reusable_tree_sha256",
-    "source_audit_v7_v7_output_tree_sha256",
-    "source_audit_v7_v5_launch_receipt_sha256",
-    "source_audit_v7_v5_code_manifest_sha256",
-    "source_audit_v7_reused_v5_shards",
-    "source_audit_v7_repaired_v5_shards",
-    "source_audit_v7_reused_v6_shards",
-    "source_audit_v7_source_support_outcome_blind_selective_repair",
-    "source_audit_v7_v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
-    "source_audit_v7_v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
-    "source_audit_v7_v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
-    "source_audit_v7_scheduler_membership_affects_execution_origin_only",
-    "source_audit_v7_v6_runtime_artifacts_used",
-    "source_audit_v7_accepted_translation_statuses",
-    "source_audit_v7_translator_timeout_is_infrastructure_failure",
-    "source_audit_v7_resource_ceiling_changes_accepted_outcome_classes",
-    "source_audit_v7_slurm_template_sha256",
-    "source_audit_v7_seal_recovery_protocol",
-    "source_audit_v7_pre_diagnosis_repository_commit_id",
-    "source_audit_v7_pre_diagnosis_files_sha256",
-    "source_audit_v7_seal_plan_path",
-    "source_audit_v7_seal_plan_sha256",
-    "source_audit_v7_union_root_stage_path",
-    "source_audit_v7_union_root_stage_sha256",
-    "source_audit_v7_union_stage_path",
-    "source_audit_v7_union_stage_sha256",
-    "source_audit_v7_candidate_stage_path",
-    "source_audit_v7_candidate_stage_sha256",
-    "source_audit_v7_attestation_stage_path",
-    "source_audit_v7_attestation_stage_sha256",
-    "source_audit_v7_translator_source_sha256",
-    "source_audit_v7_tracked_manifest_sha256",
-    "source_audit_v7_provenance_sha256",
+V11_PROVENANCE_PROPERTY_FIELDS = (
+    "source_audit_v11_schema",
+    "source_audit_bindings_sha256",
+    *P.V11_RUN_PROVENANCE_FIELDS,
+    "confirmation_a_freeze_repository_revision",
 )
 
 
 def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
     base = freeze["base_confirmation_b"]
-    source = base["source_audit_v7"]
+    source = base["source_audit_v11"]
     standalone_source = freeze["standalone_k32"]["sealed_b_input"]
+    provenance = base["confirmation_a_authorization"][
+        "source_audit_provenance"
+    ]
+    expected = P._expected_v11_run_provenance(
+        source["bindings"], base["confirmation_a_freeze"]["sha256"]
+    )
+    if provenance != expected:
+        raise RunnerError("V11 run provenance differs from sealed source")
     return {
         "campaign_freeze_sha256": freeze_sha256,
         "campaign_freeze_repository_revision": freeze[
@@ -556,7 +516,7 @@ def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
         "confirmation_a_authorization_receipt_sha256": base[
             "confirmation_a_authorization"
         ]["receipt_sha256"],
-        "cohort_manifest_sha256": base["cohort"]["tasks_sha256"],
+        "cohort_manifest_sha256": P.guided_b_projection_sha256(base),
         "planner_revision": freeze["planner"]["revision"],
         "planner_cache_name": freeze["planner"]["cache_name"],
         "PLANNER_CACHE_NAME": freeze["planner"]["cache_name"],
@@ -576,9 +536,7 @@ def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
             "observations_sha256"
         ],
         "option_matrix_sha256": freeze["design"]["option_matrix_sha256"],
-        "run_cell_mapping_sha256": freeze["design"][
-            "run_cell_mapping_sha256"
-        ],
+        "run_cell_mapping_sha256": freeze["design"]["run_cell_mapping_sha256"],
         "standalone_k32_records_sha256": freeze["standalone_k32"][
             "records_sha256"
         ],
@@ -594,144 +552,14 @@ def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
         "standalone_b_properties_sha256": standalone_source[
             "properties_sha256"
         ],
-        "source_audit_v7_campaign": source["campaign"],
-        "source_audit_v7_attestation_path": source["attestation_path"],
-        "source_audit_v7_attestation_sha256": source["attestation_sha256"],
-        "source_audit_v7_terminal_diagnostic_path": source[
-            "terminal_diagnostic_path"
-        ],
-        "source_audit_v7_terminal_diagnostic_sha256": source[
-            "terminal_diagnostic_sha256"
-        ],
-        "source_audit_v7_launch_intent_path": source["launch_intent_path"],
-        "source_audit_v7_launch_intent_sha256": source[
-            "launch_intent_sha256"
-        ],
-        "source_audit_v7_launch_receipt_path": source["launch_receipt_path"],
-        "source_audit_v7_launch_receipt_sha256": source[
-            "launch_receipt_sha256"
-        ],
-        "source_audit_v7_execution_receipt_path": source[
-            "execution_receipt_path"
-        ],
-        "source_audit_v7_execution_receipt_sha256": source[
-            "execution_receipt_sha256"
-        ],
-        "source_audit_v7_cohort_manifest_sha256": source[
-            "cohort_manifest_sha256"
-        ],
-        "source_audit_v7_confirmation_a_cohort_manifest_sha256": source[
-            "confirmation_a_cohort_manifest_sha256"
-        ],
-        "source_audit_v7_attestation_records_sha256": source[
-            "attestation_records_sha256"
-        ],
-        "source_audit_v7_code_manifest_sha256": source[
-            "code_manifest_sha256"
-        ],
-        "source_audit_v7_repository_commit_id": source[
-            "repository_commit_id"
-        ],
-        "source_audit_v7_job_id": source["job_id"],
-        "source_audit_v7_union_tree_sha256": source[
-            "union_tree_sha256"
-        ],
-        "source_audit_v7_union_sources_sha256": source[
-            "union_sources_sha256"
-        ],
-        "source_audit_v7_v5_reusable_tree_sha256": source[
-            "v5_reusable_tree_sha256"
-        ],
-        "source_audit_v7_v7_output_tree_sha256": source[
-            "v7_output_tree_sha256"
-        ],
-        "source_audit_v7_v5_launch_receipt_sha256": source[
-            "v5_launch_receipt_sha256"
-        ],
-        "source_audit_v7_v5_code_manifest_sha256": source[
-            "v5_code_manifest_sha256"
-        ],
-        "source_audit_v7_reused_v5_shards": source["reused_v5_shards"],
-        "source_audit_v7_repaired_v5_shards": source[
-            "repaired_v5_shards"
-        ],
-        "source_audit_v7_reused_v6_shards": source["reused_v6_shards"],
-        "source_audit_v7_source_support_outcome_blind_selective_repair": source[
-            "source_support_outcome_blind_selective_repair"
-        ],
-        "source_audit_v7_v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
-            source[
-                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
-            ]
-        ),
-        "source_audit_v7_v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
-            source[
-                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
-            ]
-        ),
-        "source_audit_v7_v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": source[
-            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
-        ],
-        "source_audit_v7_scheduler_membership_affects_execution_origin_only": (
-            source["scheduler_membership_affects_execution_origin_only"]
-        ),
-        "source_audit_v7_v6_runtime_artifacts_used": source[
-            "v6_runtime_artifacts_used"
-        ],
-        "source_audit_v7_accepted_translation_statuses": source[
-            "accepted_translation_statuses"
-        ],
-        "source_audit_v7_translator_timeout_is_infrastructure_failure": source[
-            "translator_timeout_is_infrastructure_failure"
-        ],
-        "source_audit_v7_resource_ceiling_changes_accepted_outcome_classes": (
-            source["resource_ceiling_changes_accepted_outcome_classes"]
-        ),
-        "source_audit_v7_slurm_template_sha256": source[
-            "slurm_template_sha256"
-        ],
-        "source_audit_v7_seal_recovery_protocol": source[
-            "seal_recovery_protocol"
-        ],
-        "source_audit_v7_pre_diagnosis_repository_commit_id": source[
-            "pre_diagnosis_repository_commit_id"
-        ],
-        "source_audit_v7_pre_diagnosis_files_sha256": source[
-            "pre_diagnosis_files_sha256"
-        ],
-        "source_audit_v7_seal_plan_path": source["seal_plan_path"],
-        "source_audit_v7_seal_plan_sha256": source["seal_plan_sha256"],
-        "source_audit_v7_union_root_stage_path": source[
-            "union_root_stage_path"
-        ],
-        "source_audit_v7_union_root_stage_sha256": source[
-            "union_root_stage_sha256"
-        ],
-        "source_audit_v7_union_stage_path": source["union_stage_path"],
-        "source_audit_v7_union_stage_sha256": source[
-            "union_stage_sha256"
-        ],
-        "source_audit_v7_candidate_stage_path": source[
-            "candidate_stage_path"
-        ],
-        "source_audit_v7_candidate_stage_sha256": source[
-            "candidate_stage_sha256"
-        ],
-        "source_audit_v7_attestation_stage_path": source[
-            "attestation_stage_path"
-        ],
-        "source_audit_v7_attestation_stage_sha256": source[
-            "attestation_stage_sha256"
-        ],
-        "source_audit_v7_translator_source_sha256": source[
-            "translator_source_sha256"
-        ],
-        "source_audit_v7_tracked_manifest_sha256": hashlib.sha256(
-            P.canonical_json(source["tracked_file_sha256"])
+        "source_audit_v11_schema": source["schema"],
+        "source_audit_bindings_sha256": hashlib.sha256(
+            P.canonical_json(source["bindings"])
         ).hexdigest(),
-        "source_audit_v7_provenance_sha256": hashlib.sha256(
-            P.canonical_json(source)
-        ).hexdigest(),
+        **provenance,
+        "confirmation_a_freeze_repository_revision": base[
+            "confirmation_a_freeze"
+        ]["repository_revision"],
         "campaign_source_manifest_sha256": hashlib.sha256(P.canonical_json(
             freeze["experiment_source_sha256"]
         )).hexdigest(),
@@ -740,7 +568,6 @@ def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
         "run_order_protocol": P.RUN_ORDER_PROTOCOL,
         "scheduler_contract": Transport.scheduler_contract(freeze, P.ACCOUNT),
     }
-
 
 def load_and_build(freeze_path: Path = P.FREEZE_PATH) -> dict:
     freeze = P.load_authorized_freeze(freeze_path)
@@ -808,7 +635,7 @@ def configure_lab_transport(freeze_path: Path = P.FREEZE_PATH):
         freeze_path, expected_path=P.FREEZE_PATH, label="campaign freeze"
     )
     properties = build_manifest_properties(freeze, freeze_sha)
-    tasks = freeze["base_confirmation_b"]["cohort"]["tasks"]
+    tasks = P.guided_b_tasks(freeze["base_confirmation_b"])
     directories = {row["directory"] for row in tasks}
 
     source_adapter = SimpleNamespace(
@@ -829,9 +656,9 @@ def configure_lab_transport(freeze_path: Path = P.FREEZE_PATH):
         PLANNER_TREE_MANIFEST_SHA256=freeze["planner"]["tree_manifest_sha256"],
         BUILD_OPTIONS=P.BUILD_OPTIONS,
         CELL_COUNT=P.CELL_COUNT,
-        COHORT_MANIFEST_SHA256=freeze["base_confirmation_b"]["cohort"][
-            "tasks_sha256"
-        ],
+        COHORT_MANIFEST_SHA256=P.guided_b_projection_sha256(
+            freeze["base_confirmation_b"]
+        ),
         OPTION_MATRIX_SHA256=freeze["design"]["option_matrix_sha256"],
         PROTOCOL_SHA256=freeze["design"]["protocol_sha256"],
         REQUIRED_LAB_VERSION=P.REQUIRED_LAB_VERSION,

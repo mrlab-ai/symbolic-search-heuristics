@@ -280,13 +280,16 @@ def validate_primary_job(freeze: dict) -> tuple[bytes, str]:
 
 
 def _required_launch_ancestors(freeze: dict) -> tuple[str, ...]:
+    base = freeze["base_confirmation_b"]
+    bindings = base["source_audit_v11"]["bindings"]
     return (
         freeze["planner"]["revision"],
+        bindings["preflight_source_repository_commit_id"],
+        bindings["preflight_seal_repository_commit_id"],
+        bindings["seal_repository_commit_id"],
+        base["confirmation_a_freeze"]["repository_revision"],
+        base["base_b_freeze_repository_revision"],
         freeze["freeze_repository_revision"],
-        freeze["base_confirmation_b"]["base_b_freeze_repository_revision"],
-        freeze["base_confirmation_b"]["source_audit_v7"][
-            "repository_commit_id"
-        ],
     )
 
 

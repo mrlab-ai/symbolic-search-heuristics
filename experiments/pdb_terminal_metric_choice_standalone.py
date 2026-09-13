@@ -34,7 +34,7 @@ def _cap_parser():
 
 
 def plain_reference_rows(snapshot: dict) -> list[dict]:
-    identities = sorted(P._task_identity(task) for task in snapshot["cohort"]["tasks"])
+    identities = sorted(P._task_identity(task) for task in P.guided_b_tasks(snapshot))
     family_positions = {}
     rows = []
     for task_index, (domain, problem, family) in enumerate(identities):
@@ -226,7 +226,7 @@ def build_evidence(
     evidence = {
         "schema": P.STANDALONE_SCHEMA,
         "base_b_freeze_sha256": snapshot["base_b_freeze_sha256"],
-        "cohort_manifest_sha256": snapshot["cohort"]["tasks_sha256"],
+        "cohort_manifest_sha256": P.guided_b_projection_sha256(snapshot),
         "producer": {
             "planner_manifest": planner_manifest,
             "planner_manifest_sha256": hashlib.sha256(

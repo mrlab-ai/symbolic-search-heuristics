@@ -110,7 +110,6 @@ class StandaloneTest(unittest.TestCase):
         """).format(
             path=str(P.SCRIPT_DIR.resolve()),
             blocked={
-                str(P.V7_ATTESTATION_PATH.resolve()),
                 str(P.BASE_B_PROPERTIES_PATH.resolve()),
                 str((
                     P.SCRIPT_DIR / "data" /
@@ -121,7 +120,6 @@ class StandaloneTest(unittest.TestCase):
             blocked_prefixes={
                 str(P.ARTIFACT_DIR.resolve()),
                 str(P.BASE_CONFIRMATION_ARTIFACT_DIR.resolve()),
-                str(P.V7_ARTIFACT_DIR.resolve()),
             },
         )
         completed = subprocess.run(
