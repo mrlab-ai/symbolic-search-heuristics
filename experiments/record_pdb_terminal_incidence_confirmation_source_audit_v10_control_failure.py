@@ -31,6 +31,8 @@ def _artifact(path: Path, label: str) -> dict:
 
 
 def record_failure(path: Path = FAILURE_RECORD) -> dict:
+    recorder_path = Path(__file__).resolve()
+    recorder_raw = L._regular_bytes(recorder_path, "V10 failure recorder source")
     launch_sha, receipt, accepted = L._load_compute_launch()
     manifest_sha, _records = L._load_code_manifest()
     if manifest_sha != receipt["code_manifest_sha256"]:
@@ -130,6 +132,8 @@ def record_failure(path: Path = FAILURE_RECORD) -> dict:
         "job_id": receipt["job_id"],
         "source_repository_commit_id": receipt["repository_commit_id"],
         "code_manifest_sha256": manifest_sha,
+        "failure_recorder_path": recorder_path.relative_to(L.REPO).as_posix(),
+        "failure_recorder_sha256": hashlib.sha256(recorder_raw).hexdigest(),
         "compute_canary_launch_receipt_sha256": launch_sha,
         "abandoned_poll_receipt_sha256": previous_sha,
         "retained_poll_artifacts": artifacts,
@@ -140,7 +144,8 @@ def record_failure(path: Path = FAILURE_RECORD) -> dict:
         "scheduler_state": fields[7],
         "scheduler_exit_code": fields[8],
         "scheduler_restarts": 0,
-        "scientific_compute_completed_successfully": True,
+        "outer_scheduler_row_completed_successfully": True,
+        "scientific_compute_outcome_inspected": False,
         "determination": "controller-rejected-bare-singleton-job-id",
         "controller_parser_required_index_suffix": True,
         "scheduler_queries_total": 1,
