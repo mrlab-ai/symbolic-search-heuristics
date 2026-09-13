@@ -290,6 +290,7 @@ class V10SourceAuditTest(unittest.TestCase):
         output.mkdir()
         output.chmod(0o700)
         tmp_root.mkdir()
+        tmp_root.chmod(0o700)
         return SimpleNamespace(
             num_shards=V10.ARRAY_TASKS,
             shard_index=0,
@@ -717,6 +718,7 @@ class V10SourceAuditTest(unittest.TestCase):
             args = self._scan_args(root, inventory_raw)
             task_tmp = Path(args.tmp_root) / "task-779-0"
             task_tmp.mkdir()
+            task_tmp.chmod(0o700)
 
             def run_candidate(record, *, stage, **_kwargs):
                 index = record["candidate_index"]
@@ -725,7 +727,10 @@ class V10SourceAuditTest(unittest.TestCase):
                     V10.atomic_exclusive_bytes(
                         stage / name, (name + "\n").encode("ascii"), name
                     )
-                return {"status": "success"}
+                return {
+                    "status": "success",
+                    "candidate_origin": "v10-fresh",
+                }
 
             environment = {
                 "array_job_id": "779",
@@ -779,6 +784,101 @@ class V10SourceAuditTest(unittest.TestCase):
                     (final / V10.Publication.COMPLETION_NAME).read_bytes()
                 ).hexdigest(),
             )
+
+    def test_full_candidate_default_and_explicit_origin_have_same_projection(self):
+        benchmarks, record = self._gripper_record()
+        results = []
+        with tempfile.TemporaryDirectory(prefix="v10-origin-projection-") as tmp:
+            root = Path(tmp)
+            for index, explicit in enumerate((False, True)):
+                task_tmp = root / "task-{}".format(index)
+                stage = root / "stage-{}".format(index)
+                task_tmp.mkdir()
+                stage.mkdir()
+                kwargs = {}
+                if explicit:
+                    kwargs["candidate_origin"] = "v10-fresh"
+                results.append(V10._run_candidate(
+                    record, shard_index=0, position=0,
+                    benchmarks=benchmarks, task_tmp=task_tmp, stage=stage,
+                    code_manifest_sha256="1" * 64,
+                    repository_commit_id="2" * 40, **kwargs,
+                ))
+        stable_keys = {
+            *V10.INVENTORY_RECORD_KEYS, "schema", "logical_shard_index",
+            "position_in_shard", "candidate_origin", "translation_attempted",
+            "translator_command", "code_manifest_sha256",
+            "repository_commit_id", "resource_contract",
+            "resource_contract_sha256", "process_returncode",
+            "complete_process_group_reaped", "normalization", "sas",
+            "sas_bytes", "sas_sha256", "partial_sas_evidence", "status",
+            "resource_exclusion_kind", "support_determined", "supported",
+            "support_exclusion_reasons", "eligible_for_cohort",
+        }
+        self.assertEqual(
+            {key: results[0][key] for key in stable_keys},
+            {key: results[1][key] for key in stable_keys},
+        )
+
+    def test_compute_canary_uses_shared_runner_and_publisher(self):
+        with tempfile.TemporaryDirectory(prefix="v10-compute-canary-") as tmp:
+            root = Path(tmp)
+            output = root / "output"
+            temporary = root / "tmp"
+            output.mkdir()
+            temporary.mkdir()
+            output.chmod(0o700)
+            temporary.chmod(0o700)
+            task_tmp = temporary / "task-900-0"
+            task_tmp.mkdir()
+            task_tmp.chmod(0o700)
+            records = [
+                {"candidate_index": 0}, {"candidate_index": 1},
+            ]
+
+            def run_candidate(record, *, stage, candidate_origin, **_kwargs):
+                self.assertEqual(candidate_origin, V10.COMPUTE_CANARY_ORIGIN)
+                index = record["candidate_index"]
+                for stream in ("stdout", "stderr"):
+                    name = "candidate-{:04d}.{}.prefix".format(index, stream)
+                    V10.atomic_exclusive_bytes(
+                        stage / name, name.encode("ascii"), name
+                    )
+                return {
+                    "status": "success",
+                    "candidate_origin": candidate_origin,
+                }
+
+            args = SimpleNamespace(
+                output_dir=output, tmp_root=temporary,
+                code_manifest=root / "code.sha256",
+                code_manifest_sha256="1" * 64,
+                repository_commit_id="2" * 40,
+            )
+            environment = {
+                "array_job_id": "900", "array_task_id": 0,
+                "slurm_restart_count": 0,
+            }
+            with (
+                mock.patch.object(V10, "COMPUTE_CANARY_OUTPUT", output),
+                mock.patch.object(V10, "COMPUTE_CANARY_TMP_ROOT", temporary),
+                mock.patch.object(V10, "_compute_canary_records", return_value=records),
+                mock.patch.object(V10, "validate_code_manifest", return_value={}),
+                mock.patch.object(V10, "_execution_environment", return_value=environment),
+                mock.patch.object(V10, "_run_candidate", side_effect=run_candidate) as runner,
+                mock.patch.dict(os.environ, {"SLURM_ARRAY_JOB_ID": "900"}),
+            ):
+                summary = V10.compute_canary(args)
+            self.assertEqual(runner.call_count, 2)
+            final = V10.compute_canary_shard_path(output)
+            self.assertEqual(final.stat().st_mode & 0o777, 0o500)
+            self.assertEqual(len(list(final.iterdir())), 8)
+            result = json.loads((final / "result.json").read_text("ascii"))
+            self.assertEqual(
+                result["candidate_origin_counts"],
+                {V10.COMPUTE_CANARY_ORIGIN: 2},
+            )
+            self.assertRegex(summary["completion_sha256"], r"^[0-9a-f]{64}$")
 
     def test_producer_has_no_prior_campaign_import_or_runtime_path(self):
         source = Path(V10.__file__).read_text(encoding="utf-8")

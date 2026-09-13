@@ -78,6 +78,32 @@ class ImmutableShardPublicationTest(unittest.TestCase):
             receipt.final_directory_identity.inode, self.final.stat().st_ino
         )
 
+    def test_stage_parent_is_fsynced_after_stage_removal(self):
+        real_fsync = os.fsync
+        real_rmdir = os.rmdir
+        stage_removed = False
+        fsyncs_after_removal = 0
+
+        def tracked_rmdir(*args, **kwargs):
+            nonlocal stage_removed
+            result = real_rmdir(*args, **kwargs)
+            stage_removed = True
+            return result
+
+        def tracked_fsync(fd):
+            nonlocal fsyncs_after_removal
+            if stage_removed:
+                fsyncs_after_removal += 1
+            return real_fsync(fd)
+
+        with (
+            mock.patch.object(Publication.os, "rmdir", side_effect=tracked_rmdir),
+            mock.patch.object(Publication.os, "fsync", side_effect=tracked_fsync),
+        ):
+            self._publish()
+        self.assertTrue(stage_removed)
+        self.assertEqual(fsyncs_after_removal, 2)
+
     def test_existing_final_is_never_reused(self):
         self.final.mkdir()
         sentinel = self.final / "sentinel"

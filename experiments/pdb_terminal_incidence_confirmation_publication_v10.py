@@ -636,6 +636,14 @@ def publish_immutable_shard(
             os.rmdir(stage_name, dir_fd=stage_parent_fd)
         except OSError as err:
             raise PublicationError("cannot remove staging directory") from err
+        for parent_fd, label in (
+            (stage_parent_fd, "staging-directory cleanup"),
+            (final_parent_fd, "final-directory publication"),
+        ):
+            try:
+                os.fsync(parent_fd)
+            except OSError as err:
+                raise PublicationError("cannot persist " + label) from err
 
         if _directory_entries(final_fd, "final directory") != (
             set(opened_files) | {COMPLETION_NAME}

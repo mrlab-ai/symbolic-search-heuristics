@@ -50,6 +50,9 @@ SOURCE_SNAPSHOT_SCHEMA = SCHEMA + "/source-snapshot/v1"
 RESOURCE_CONTRACT_SCHEMA = SCHEMA + "/resource-contract/v1"
 SHARD_CLAIM_SCHEMA = SCHEMA + "/shard-claim/v1"
 SHARD_COMPLETION_METADATA_SCHEMA = SCHEMA + "/shard-completion-metadata/v1"
+COMPUTE_CANARY_SCHEMA = SCHEMA + "/compute-canary/v1"
+COMPUTE_CANARY_CAMPAIGN = "v10-compute-canary"
+COMPUTE_CANARY_ORIGIN = "v10-synthetic-canary"
 
 ARRAY_TASKS = 820
 CANDIDATE_COUNT = 1640
@@ -67,6 +70,26 @@ TMP_ROOT = (
 LOG_ROOT = (
     SCRIPT_DIR / "data" /
     "pdb-terminal-incidence-confirmation-source-audit-v10-logs"
+)
+COMPUTE_CANARY_OUTPUT = (
+    SCRIPT_DIR / "data" /
+    "pdb-terminal-incidence-confirmation-source-audit-v10-canary"
+)
+COMPUTE_CANARY_TMP_ROOT = (
+    SCRIPT_DIR / "data" /
+    "pdb-terminal-incidence-confirmation-source-audit-v10-canary-tmp"
+)
+COMPUTE_CANARY_LOG_ROOT = (
+    SCRIPT_DIR / "data" /
+    "pdb-terminal-incidence-confirmation-source-audit-v10-canary-logs"
+)
+CONTROLLER_CANARY_OUTPUT = (
+    SCRIPT_DIR / "data" /
+    "pdb-terminal-incidence-confirmation-publisher-canary-v10"
+)
+PREFLIGHT_ARTIFACT_DIR = (
+    SCRIPT_DIR / "artifacts" /
+    "pdb-terminal-incidence-confirmation-v10-preflight"
 )
 ARTIFACT_DIR = (
     SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation-v10"
@@ -96,6 +119,13 @@ TRANSLATOR_DRIVER = (
 )
 SLURM_PROGRAM = (
     SCRIPT_DIR / "pdb_terminal_incidence_confirmation_source_scan_v10.slurm"
+)
+COMPUTE_CANARY_SLURM_PROGRAM = (
+    SCRIPT_DIR /
+    "pdb_terminal_incidence_confirmation_source_compute_canary_v10.slurm"
+)
+COMPUTE_CANARY_FIXTURE_ROOT = (
+    SCRIPT_DIR / "fixtures" / "pdb-terminal-incidence-v10-canary"
 )
 PINNED_PYTHON = Path(
     "/home/jendrik/.local/share/uv/python/"
@@ -159,7 +189,9 @@ CODE_MANIFEST_FILES = tuple(sorted({
     "experiments/pdb_terminal_incidence_confirmation_source_audit_v10_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_source_consumer_v10.py",
     "experiments/pdb_terminal_incidence_confirmation_source_scan_v10.slurm",
+    "experiments/pdb_terminal_incidence_confirmation_source_compute_canary_v10.slurm",
     "experiments/pdb_terminal_incidence_confirmation_publication_v10.py",
+    "experiments/pdb_terminal_incidence_v10_snapshot_reader.py",
     "experiments/pdb_terminal_incidence_confirmation_translate_v10.py",
     "experiments/requirements-pdb-terminal-incidence-shadow.txt",
     "experiments/suite_wbh_operator_costs.json",
@@ -170,6 +202,10 @@ CODE_MANIFEST_FILES = tuple(sorted({
     "experiments/test_pdb_terminal_incidence_confirmation_source_consumer_v10.py",
     "experiments/test_pdb_terminal_incidence_confirmation_publication_v10.py",
     "experiments/test_pdb_terminal_incidence_confirmation_translate_v10.py",
+    "experiments/test_pdb_terminal_incidence_v10_snapshot_reader.py",
+    "experiments/fixtures/pdb-terminal-incidence-v10-canary/domain.pddl",
+    "experiments/fixtures/pdb-terminal-incidence-v10-canary/problem-0.pddl",
+    "experiments/fixtures/pdb-terminal-incidence-v10-canary/problem-1.pddl",
     *TRANSLATOR_FILES,
 }))
 
@@ -306,6 +342,7 @@ def sha256_file(path: Path, label: str = "file") -> str:
 
 def atomic_exclusive_bytes(path: Path, raw: bytes, label: str) -> str:
     path = Path(path)
+    directory_fd = None
     try:
         parent_info = path.parent.lstat()
     except OSError as err:
@@ -315,6 +352,17 @@ def atomic_exclusive_bytes(path: Path, raw: bytes, label: str) -> str:
         or parent_info.st_uid != os.getuid() or os.path.lexists(path)
     ):
         raise SourceAuditError("refusing to overwrite {}".format(label))
+    directory_flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
+    try:
+        directory_fd = os.open(path.parent, directory_flags)
+        if _identity(os.fstat(directory_fd)) != _identity(parent_info):
+            raise SourceAuditError("{} parent was replaced".format(label))
+    except OSError as err:
+        raise SourceAuditError("cannot open {} parent".format(label)) from err
     temporary = path.parent / ("." + path.name + ".new")
     if os.path.lexists(temporary):
         raise SourceAuditError("stale temporary {} exists".format(label))
@@ -331,11 +379,14 @@ def atomic_exclusive_bytes(path: Path, raw: bytes, label: str) -> str:
             os.fsync(stream.fileno())
         os.link(temporary, path, follow_symlinks=False)
         temporary.unlink()
+        os.fsync(directory_fd)
     except OSError as err:
         raise SourceAuditError("cannot publish {}".format(label)) from err
     finally:
         if descriptor is not None:
             os.close(descriptor)
+        if directory_fd is not None:
+            os.close(directory_fd)
     check, _ = _read_regular(path, label)
     if check != raw:
         raise SourceAuditError("{} changed after publication".format(label))
@@ -645,7 +696,11 @@ def _mkdir_private(path: Path, label: str) -> dict:
         info = path.lstat()
     except OSError as err:
         raise SourceAuditError("cannot create {}".format(label)) from err
-    if path.is_symlink() or not stat.S_ISDIR(info.st_mode):
+    if (
+        path.is_symlink() or not stat.S_ISDIR(info.st_mode)
+        or stat.S_IMODE(info.st_mode) != 0o700
+        or info.st_uid != os.getuid()
+    ):
         raise SourceAuditError("{} is not a private directory".format(label))
     return _identity(info)
 
@@ -850,7 +905,7 @@ def _parent_limit_observation(pid: int) -> dict:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=10,
-            env={"PATH": CONTROLLED_PATH},
+            env={"PATH": CONTROLLED_PATH, "LANG": "C", "LC_ALL": "C"},
         )
     except (OSError, subprocess.TimeoutExpired) as err:
         raise InfrastructureAuditError("cannot inspect child limits") from err
@@ -1474,12 +1529,15 @@ def _run_candidate(
     stage: Path,
     code_manifest_sha256: str,
     repository_commit_id: str,
+    candidate_origin: str = "v10-fresh",
 ) -> dict:
     try:
         import pdb_terminal_incidence_confirmation_translate_v10 as Translator
     except ImportError as err:
         raise SourceAuditError("V10 translator driver is unavailable") from err
 
+    if candidate_origin not in {"v10-fresh", COMPUTE_CANARY_ORIGIN}:
+        raise SourceAuditError("V10 candidate origin is not authorized")
     candidate_index = record["candidate_index"]
     expected_indices = candidate_indices_for_shard(shard_index)
     if (
@@ -1517,6 +1575,8 @@ def _run_candidate(
         ]
         child_env = {
             "PATH": CONTROLLED_PATH,
+            "LANG": "C",
+            "LC_ALL": "C",
             "PYTHONNOUSERSITE": "1",
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPYCACHEPREFIX": str(work / "pycache"),
@@ -1665,7 +1725,7 @@ def _run_candidate(
         **copy.deepcopy(record),
         "logical_shard_index": shard_index,
         "position_in_shard": position,
-        "candidate_origin": "v10-fresh",
+        "candidate_origin": candidate_origin,
         "translation_attempted": True,
         "translator_command": [
             "PINNED_PYTHON", "-B",
@@ -1724,6 +1784,9 @@ def _execution_environment(
         or not restart_text.isdigit()
         or int(restart_text) != 0
         or os.environ.get("TMPDIR") != str(task_tmp)
+        or os.environ.get("PATH") != CONTROLLED_PATH
+        or os.environ.get("LANG") != "C"
+        or os.environ.get("LC_ALL") != "C"
         or os.environ.get("PYTHONNOUSERSITE") != "1"
         or os.environ.get("PYTHONDONTWRITEBYTECODE") != "1"
         or os.environ.get("PYTHONPATH") is not None
@@ -1733,6 +1796,12 @@ def _execution_environment(
     ):
         raise InfrastructureAuditError("V10 task execution environment changed")
     task_identity = _directory_identity(task_tmp, "V10 task TMPDIR")
+    task_info = task_tmp.lstat()
+    if (
+        stat.S_IMODE(task_info.st_mode) != 0o700
+        or task_info.st_uid != os.getuid()
+    ):
+        raise InfrastructureAuditError("V10 task TMPDIR is not private and owned")
     if any(task_tmp.iterdir()):
         raise InfrastructureAuditError("V10 task TMPDIR is not initially empty")
     python_raw, python_identity = _read_regular(
@@ -1758,97 +1827,77 @@ def _execution_environment(
 
 def _require_output_root(path: Path) -> dict:
     identity = _directory_identity(path, "V10 output root")
-    if stat.S_IMODE(Path(path).lstat().st_mode) != 0o700:
-        raise InfrastructureAuditError("V10 output root mode changed")
+    info = Path(path).lstat()
+    if (
+        stat.S_IMODE(info.st_mode) != 0o700
+        or info.st_uid != os.getuid()
+    ):
+        raise InfrastructureAuditError("V10 output root mode or owner changed")
     return identity
 
 
-def scan(args) -> dict:
+def _publish_completed_shard(
+    *,
+    output_dir: Path,
+    final: Path,
+    stage: Path,
+    stage_identity: dict,
+    environment: dict,
+    manifest_evidence: dict,
+    candidates: list[dict],
+    candidate_indices: tuple[int, int],
+    shard_index: int,
+    array_task_count: int,
+    campaign: str,
+    candidate_origin: str,
+    source_inventory_sha256: str,
+    code_manifest_sha256: str,
+    repository_commit_id: str,
+    whole_campaign_rerun: bool,
+) -> dict:
+    """Publish one two-candidate shard through the shared V10 protocol."""
     if (
-        args.num_shards != ARRAY_TASKS
-        or type(args.shard_index) is not int
-        or not 0 <= args.shard_index < ARRAY_TASKS
-        or Path(args.output_dir).is_symlink()
-    ):
-        raise SourceAuditError("V10 scan mapping changed")
-    output_dir = Path(os.path.abspath(args.output_dir))
-    inventory_path = Path(os.path.abspath(args.inventory_manifest))
-    code_manifest = Path(os.path.abspath(args.code_manifest))
-    benchmarks = Path(os.path.abspath(args.benchmarks))
-    tmp_root = Path(os.path.abspath(args.tmp_root))
-    _require_output_root(output_dir)
-    _directory_identity(tmp_root, "V10 TMP root")
-    if not _is_sha256(args.inventory_sha256):
-        raise SourceAuditError("V10 inventory hash is invalid")
-    inventory_raw, inventory = _load_canonical_json(
-        inventory_path, "V10 source inventory"
-    )
-    if hashlib.sha256(inventory_raw).hexdigest() != args.inventory_sha256:
-        raise SourceAuditError("V10 source inventory hash changed")
-    records = validate_inventory_manifest(inventory)
-    manifest_evidence = validate_code_manifest(
-        code_manifest, args.code_manifest_sha256
-    )
-    job_id = os.environ.get("SLURM_ARRAY_JOB_ID", "")
-    task_tmp = tmp_root / "task-{}-{}".format(job_id, args.shard_index)
-    environment = _execution_environment(
-        shard_index=args.shard_index,
-        code_manifest_sha256=args.code_manifest_sha256,
-        inventory_sha256=args.inventory_sha256,
-        repository_commit_id=args.repository_commit_id,
-        task_tmp=task_tmp,
-    )
-    final = shard_path(output_dir, args.shard_index)
-    stage = output_dir / ".stage-{}-{:04d}".format(job_id, args.shard_index)
-    if os.path.lexists(final) or os.path.lexists(stage):
-        raise SourceAuditError("V10 shard namespace is not empty")
-    stage_identity = _mkdir_private(stage, "V10 shard staging directory")
-    candidate_indices = candidate_indices_for_shard(args.shard_index)
-    candidates = [
-        _run_candidate(
-            records[candidate_index],
-            shard_index=args.shard_index,
-            position=position,
-            benchmarks=benchmarks,
-            task_tmp=task_tmp,
-            stage=stage,
-            code_manifest_sha256=args.code_manifest_sha256,
-            repository_commit_id=args.repository_commit_id,
+        campaign not in {"v10-full-census", COMPUTE_CANARY_CAMPAIGN}
+        or candidate_origin not in {"v10-fresh", COMPUTE_CANARY_ORIGIN}
+        or (campaign == "v10-full-census") != (candidate_origin == "v10-fresh")
+        or (campaign == "v10-full-census") != whole_campaign_rerun
+        or len(candidates) != TASKS_PER_SHARD
+        or any(
+            candidate.get("candidate_origin") != candidate_origin
+            for candidate in candidates
         )
-        for position, candidate_index in enumerate(candidate_indices)
-    ]
-    if any(task_tmp.iterdir()):
-        raise SourceAuditError("candidate-private working directory leaked content")
+    ):
+        raise SourceAuditError("V10 shard campaign provenance changed")
     result = {
         "schema": SHARD_SCHEMA,
-        "campaign": "v10-full-census",
-        "whole_campaign_rerun": True,
-        "logical_shard_index": args.shard_index,
-        "array_task_count": ARRAY_TASKS,
+        "campaign": campaign,
+        "whole_campaign_rerun": whole_campaign_rerun,
+        "logical_shard_index": shard_index,
+        "array_task_count": array_task_count,
         "candidate_indices": list(candidate_indices),
         "candidate_count": TASKS_PER_SHARD,
         "candidates": candidates,
-        "candidate_origin_counts": {"v10-fresh": TASKS_PER_SHARD},
+        "candidate_origin_counts": {candidate_origin: TASKS_PER_SHARD},
         "prior_campaign_payloads_read": [],
         "prior_campaign_shards_used": 0,
-        "source_inventory_sha256": args.inventory_sha256,
-        "code_manifest_sha256": args.code_manifest_sha256,
-        "repository_commit_id": args.repository_commit_id,
+        "source_inventory_sha256": source_inventory_sha256,
+        "code_manifest_sha256": code_manifest_sha256,
+        "repository_commit_id": repository_commit_id,
         "resource_contract_sha256": _digest(resource_contract()),
     }
     claim = {
         "schema": SHARD_CLAIM_SCHEMA,
-        "campaign": "v10-full-census",
+        "campaign": campaign,
         "final_path": str(final),
-        "logical_shard_index": args.shard_index,
-        "array_task_count": ARRAY_TASKS,
+        "logical_shard_index": shard_index,
+        "array_task_count": array_task_count,
         "candidate_indices": list(candidate_indices),
         "array_job_id": environment["array_job_id"],
         "array_task_id": environment["array_task_id"],
         "slurm_restart_count": environment["slurm_restart_count"],
-        "source_inventory_sha256": args.inventory_sha256,
-        "code_manifest_sha256": args.code_manifest_sha256,
-        "repository_commit_id": args.repository_commit_id,
+        "source_inventory_sha256": source_inventory_sha256,
+        "code_manifest_sha256": code_manifest_sha256,
+        "repository_commit_id": repository_commit_id,
     }
     environment.update({
         "manifest_evidence": manifest_evidence,
@@ -1895,8 +1944,8 @@ def scan(args) -> dict:
     }
     completion_metadata = {
         "schema": SHARD_COMPLETION_METADATA_SCHEMA,
-        "campaign": "v10-full-census",
-        "logical_shard_index": args.shard_index,
+        "campaign": campaign,
+        "logical_shard_index": shard_index,
         "candidate_indices": list(candidate_indices),
         "claim_sha256": payload_sha256["claim.json"],
         "result_sha256": payload_sha256["result.json"],
@@ -1914,7 +1963,7 @@ def scan(args) -> dict:
     digest = hashlib.sha256(published_raw).hexdigest()
     summary = {
         "candidate_indices": list(candidate_indices),
-        "logical_shard_index": args.shard_index,
+        "logical_shard_index": shard_index,
         "claim_sha256": payload_sha256["claim.json"],
         "completion_sha256": publication.completion_sha256,
         "result_sha256": digest,
@@ -1924,6 +1973,201 @@ def scan(args) -> dict:
     }
     print(json.dumps(summary, sort_keys=True, indent=2))
     return summary
+
+
+def compute_canary_shard_path(directory: Path) -> Path:
+    return Path(directory) / "shard-0000-of-0001"
+
+
+def _compute_canary_records() -> list[dict]:
+    fixture_root = COMPUTE_CANARY_FIXTURE_ROOT
+    if fixture_root.is_symlink():
+        raise SourceAuditError("V10 compute-canary fixture root is a symlink")
+    _directory_identity(fixture_root, "V10 compute-canary fixture root")
+    domain = fixture_root / "domain.pddl"
+    domain_sha256 = sha256_file(domain, "V10 compute-canary domain")
+    records = []
+    for index in range(TASKS_PER_SHARD):
+        problem_name = "problem-{}.pddl".format(index)
+        problem = fixture_root / problem_name
+        records.append({
+            "candidate_index": index,
+            "directory": "v10-synthetic-canary",
+            "family": "v10-synthetic-canary",
+            "problem": problem_name,
+            "domain_file": "domain.pddl",
+            "problem_file": problem_name,
+            "domain_sha256": domain_sha256,
+            "problem_sha256": sha256_file(
+                problem, "V10 compute-canary problem"
+            ),
+            "canonical_path": problem_name,
+            "is_shadow_family": False,
+            "is_shadow_unrepresented": False,
+            "is_all_prior_represented": False,
+            "is_all_prior_unrepresented": False,
+            "aliases": [],
+        })
+    return records
+
+
+def compute_canary(args) -> dict:
+    """Run the one-row synthetic canary through the production child path."""
+    output_dir = Path(os.path.abspath(args.output_dir))
+    code_manifest = Path(os.path.abspath(args.code_manifest))
+    tmp_root = Path(os.path.abspath(args.tmp_root))
+    if (
+        output_dir != COMPUTE_CANARY_OUTPUT
+        or tmp_root != COMPUTE_CANARY_TMP_ROOT
+        or output_dir.is_symlink()
+    ):
+        raise SourceAuditError("V10 compute-canary namespace changed")
+    _require_output_root(output_dir)
+    tmp_root_identity = _directory_identity(tmp_root, "V10 canary TMP root")
+    if (
+        tmp_root_identity["mode"] != 0o700
+        or tmp_root_identity["uid"] != os.getuid()
+    ):
+        raise InfrastructureAuditError(
+            "V10 canary TMP root is not private and owned"
+        )
+    manifest_evidence = validate_code_manifest(
+        code_manifest, args.code_manifest_sha256
+    )
+    records = _compute_canary_records()
+    fixture_sha256 = _digest(records)
+    job_id = os.environ.get("SLURM_ARRAY_JOB_ID", "")
+    task_tmp = tmp_root / "task-{}-0".format(job_id)
+    environment = _execution_environment(
+        shard_index=0,
+        code_manifest_sha256=args.code_manifest_sha256,
+        inventory_sha256=fixture_sha256,
+        repository_commit_id=args.repository_commit_id,
+        task_tmp=task_tmp,
+    )
+    final = compute_canary_shard_path(output_dir)
+    stage = output_dir / ".stage-{}-0000".format(job_id)
+    if os.path.lexists(final) or os.path.lexists(stage):
+        raise SourceAuditError("V10 compute-canary namespace is not empty")
+    stage_identity = _mkdir_private(
+        stage, "V10 compute-canary staging directory"
+    )
+    candidate_indices = (0, 1)
+    candidates = [
+        _run_candidate(
+            records[candidate_index],
+            shard_index=0,
+            position=position,
+            benchmarks=COMPUTE_CANARY_FIXTURE_ROOT,
+            task_tmp=task_tmp,
+            stage=stage,
+            code_manifest_sha256=args.code_manifest_sha256,
+            repository_commit_id=args.repository_commit_id,
+            candidate_origin=COMPUTE_CANARY_ORIGIN,
+        )
+        for position, candidate_index in enumerate(candidate_indices)
+    ]
+    if any(task_tmp.iterdir()):
+        raise SourceAuditError("compute-canary private work leaked content")
+    return _publish_completed_shard(
+        output_dir=output_dir,
+        final=final,
+        stage=stage,
+        stage_identity=stage_identity,
+        environment=environment,
+        manifest_evidence=manifest_evidence,
+        candidates=candidates,
+        candidate_indices=candidate_indices,
+        shard_index=0,
+        array_task_count=1,
+        campaign=COMPUTE_CANARY_CAMPAIGN,
+        candidate_origin=COMPUTE_CANARY_ORIGIN,
+        source_inventory_sha256=fixture_sha256,
+        code_manifest_sha256=args.code_manifest_sha256,
+        repository_commit_id=args.repository_commit_id,
+        whole_campaign_rerun=False,
+    )
+
+
+def scan(args) -> dict:
+    if (
+        args.num_shards != ARRAY_TASKS
+        or type(args.shard_index) is not int
+        or not 0 <= args.shard_index < ARRAY_TASKS
+        or Path(args.output_dir).is_symlink()
+    ):
+        raise SourceAuditError("V10 scan mapping changed")
+    output_dir = Path(os.path.abspath(args.output_dir))
+    inventory_path = Path(os.path.abspath(args.inventory_manifest))
+    code_manifest = Path(os.path.abspath(args.code_manifest))
+    benchmarks = Path(os.path.abspath(args.benchmarks))
+    tmp_root = Path(os.path.abspath(args.tmp_root))
+    _require_output_root(output_dir)
+    tmp_root_identity = _directory_identity(tmp_root, "V10 TMP root")
+    if (
+        tmp_root_identity["mode"] != 0o700
+        or tmp_root_identity["uid"] != os.getuid()
+    ):
+        raise InfrastructureAuditError("V10 TMP root is not private and owned")
+    if not _is_sha256(args.inventory_sha256):
+        raise SourceAuditError("V10 inventory hash is invalid")
+    inventory_raw, inventory = _load_canonical_json(
+        inventory_path, "V10 source inventory"
+    )
+    if hashlib.sha256(inventory_raw).hexdigest() != args.inventory_sha256:
+        raise SourceAuditError("V10 source inventory hash changed")
+    records = validate_inventory_manifest(inventory)
+    manifest_evidence = validate_code_manifest(
+        code_manifest, args.code_manifest_sha256
+    )
+    job_id = os.environ.get("SLURM_ARRAY_JOB_ID", "")
+    task_tmp = tmp_root / "task-{}-{}".format(job_id, args.shard_index)
+    environment = _execution_environment(
+        shard_index=args.shard_index,
+        code_manifest_sha256=args.code_manifest_sha256,
+        inventory_sha256=args.inventory_sha256,
+        repository_commit_id=args.repository_commit_id,
+        task_tmp=task_tmp,
+    )
+    final = shard_path(output_dir, args.shard_index)
+    stage = output_dir / ".stage-{}-{:04d}".format(job_id, args.shard_index)
+    if os.path.lexists(final) or os.path.lexists(stage):
+        raise SourceAuditError("V10 shard namespace is not empty")
+    stage_identity = _mkdir_private(stage, "V10 shard staging directory")
+    candidate_indices = candidate_indices_for_shard(args.shard_index)
+    candidates = [
+        _run_candidate(
+            records[candidate_index],
+            shard_index=args.shard_index,
+            position=position,
+            benchmarks=benchmarks,
+            task_tmp=task_tmp,
+            stage=stage,
+            code_manifest_sha256=args.code_manifest_sha256,
+            repository_commit_id=args.repository_commit_id,
+        )
+        for position, candidate_index in enumerate(candidate_indices)
+    ]
+    if any(task_tmp.iterdir()):
+        raise SourceAuditError("candidate-private working directory leaked content")
+    return _publish_completed_shard(
+        output_dir=output_dir,
+        final=final,
+        stage=stage,
+        stage_identity=stage_identity,
+        environment=environment,
+        manifest_evidence=manifest_evidence,
+        candidates=candidates,
+        candidate_indices=candidate_indices,
+        shard_index=args.shard_index,
+        array_task_count=ARRAY_TASKS,
+        campaign="v10-full-census",
+        candidate_origin="v10-fresh",
+        source_inventory_sha256=args.inventory_sha256,
+        code_manifest_sha256=args.code_manifest_sha256,
+        repository_commit_id=args.repository_commit_id,
+        whole_campaign_rerun=True,
+    )
 
 
 INVENTORY_RECORD_KEYS = frozenset({
@@ -1966,6 +2210,57 @@ def _valid_identity(value, *, expected_mode: int | None) -> bool:
             or value["mode"] == expected_mode
         )
     )
+
+
+def _output_tree_directory_record(
+    relative_path: str, observed: os.stat_result,
+) -> dict:
+    if (
+        type(relative_path) is not str
+        or not relative_path
+        or "/" in relative_path
+        or not stat.S_ISDIR(observed.st_mode)
+        or stat.S_IMODE(observed.st_mode) != 0o500
+        or observed.st_uid != os.getuid()
+    ):
+        raise SourceAuditError("V10 shard directory identity changed")
+    return {
+        "path": relative_path,
+        "device": observed.st_dev,
+        "inode": observed.st_ino,
+        "uid": observed.st_uid,
+        "gid": observed.st_gid,
+        "mode": "0500",
+    }
+
+
+def _output_tree_file_record(
+    relative_path: str,
+    raw: bytes,
+    identity: dict,
+    observed: os.stat_result,
+) -> dict:
+    if (
+        type(relative_path) is not str
+        or not relative_path
+        or not stat.S_ISREG(observed.st_mode)
+        or identity != _identity(observed)
+        or stat.S_IMODE(observed.st_mode) != 0o400
+        or observed.st_uid != os.getuid()
+        or observed.st_nlink != 1
+    ):
+        raise SourceAuditError("V10 output-tree file identity changed")
+    return {
+        "path": relative_path,
+        "device": observed.st_dev,
+        "inode": observed.st_ino,
+        "uid": observed.st_uid,
+        "gid": observed.st_gid,
+        "mode": "0400",
+        "nlink": 1,
+        "bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
 
 
 def _validate_stream_evidence(
@@ -2275,7 +2570,7 @@ def _load_shard_directory(
     code_manifest_sha256: str,
     inventory_sha256: str,
     repository_commit_id: str,
-) -> tuple[list[dict], dict, list[dict]]:
+) -> tuple[list[dict], dict, list[dict], dict]:
     info = Path(directory).lstat()
     if (
         Path(directory).is_symlink()
@@ -2422,6 +2717,7 @@ def _load_shard_directory(
         entry for entry in entries if entry.name != Publication.COMPLETION_NAME
     ]
     payload_manifest = []
+    tree_records = []
     for entry in sorted(payload_entries, key=lambda path: path.name):
         raw, identity = _read_regular(entry, "V10 shard payload")
         observed = entry.lstat()
@@ -2444,9 +2740,25 @@ def _load_shard_directory(
             "size": len(raw),
             "uid": identity["uid"],
         })
-    completion_raw, _ = _read_regular(
-        Path(directory) / Publication.COMPLETION_NAME,
+        tree_records.append(_output_tree_file_record(
+            "{}/{}".format(Path(directory).name, entry.name),
+            raw,
+            identity,
+            observed,
+        ))
+    completion_path = Path(directory) / Publication.COMPLETION_NAME
+    completion_raw, completion_identity = _read_regular(
+        completion_path,
         "V10 shard completion marker",
+    )
+    completion_observed = completion_path.lstat()
+    completion_tree_record = _output_tree_file_record(
+        "{}/{}".format(
+            Path(directory).name, Publication.COMPLETION_NAME
+        ),
+        completion_raw,
+        completion_identity,
+        completion_observed,
     )
     try:
         completion = json.loads(completion_raw.decode("ascii"))
@@ -2482,17 +2794,12 @@ def _load_shard_directory(
         or completion.get("final_directory") != expected_directory_identity
     ):
         raise SourceAuditError("V10 shard completion marker changed")
-    tree_records = []
-    for entry in sorted(entries, key=lambda path: path.name):
-        raw, identity = _read_regular(entry, "V10 shard tree file")
-        if identity["mode"] != 0o400:
-            raise SourceAuditError("V10 shard file mode changed")
-        tree_records.append({
-            "path": "{}/{}".format(Path(directory).name, entry.name),
-            "bytes": len(raw),
-            "sha256": hashlib.sha256(raw).hexdigest(),
-        })
-    return tasks, environment, tree_records
+    tree_records.append(completion_tree_record)
+    tree_records.sort(key=lambda record: record["path"])
+    directory_record = _output_tree_directory_record(
+        Path(directory).name, info
+    )
+    return tasks, environment, tree_records, directory_record
 
 
 def _publish_or_match(path: Path, value: dict, label: str) -> str:
@@ -2544,14 +2851,14 @@ def _live_launch_root(path: Path, label: str) -> dict:
 
 def _validate_launch_receipt(launch_sha: str, launch_receipt: dict) -> None:
     receipt_keys = {
-        "schema", "campaign", "job_id", "submission_token",
+        "schema", "campaign", "job_id", "submission_token", "accepted_utc",
         "repository_commit_id", "source_inventory_sha256",
         "code_manifest_sha256", "launch_intent_sha256",
         "sbatch_result_sha256", "resource_profile", "root_identities",
         "slurm_program", "launch_recovered", "recovery_evidence",
         "prior_runtime_payloads_read", "prior_runtime_payload_bytes_read",
         "prior_runtime_payloads_reused", "selective_recovery_authorized",
-        "whole_campaign_fresh",
+        "whole_campaign_fresh", "preflight_authorization",
     }
     roots = {
         "artifact_dir": ARTIFACT_DIR,
@@ -2563,6 +2870,18 @@ def _validate_launch_receipt(launch_sha: str, launch_receipt: dict) -> None:
     slurm = launch_receipt.get("slurm_program")
     recovered = launch_receipt.get("launch_recovered")
     recovery = launch_receipt.get("recovery_evidence")
+    preflight = launch_receipt.get("preflight_authorization")
+    accepted_text = launch_receipt.get("accepted_utc")
+    try:
+        accepted = datetime.datetime.fromisoformat(accepted_text)
+    except (TypeError, ValueError) as err:
+        raise SourceAuditError("V10 launch acceptance timestamp changed") from err
+    if (
+        accepted.tzinfo is None
+        or accepted.utcoffset() != datetime.timedelta(0)
+        or accepted.isoformat(timespec="seconds") != accepted_text
+    ):
+        raise SourceAuditError("V10 launch acceptance timestamp changed")
     if (
         not _is_sha256(launch_sha)
         or type(launch_receipt) is not dict
@@ -2579,6 +2898,28 @@ def _validate_launch_receipt(launch_sha: str, launch_receipt: dict) -> None:
         or not _is_sha256(launch_receipt.get("code_manifest_sha256"))
         or not _is_sha256(launch_receipt.get("launch_intent_sha256"))
         or not _is_sha256(launch_receipt.get("sbatch_result_sha256"))
+        or type(preflight) is not dict
+        or set(preflight) != {
+            "seal_repository_commit_id", "authorization_sha256",
+            "compute_canary_attestation_sha256",
+            "controller_publisher_canary_receipt_sha256",
+            "code_manifest_sha256", "snapshot_consumed",
+            "full_launch_authorized",
+        }
+        or not _valid_revision(preflight.get("seal_repository_commit_id"))
+        or preflight.get("seal_repository_commit_id")
+        != launch_receipt.get("repository_commit_id")
+        or not _is_sha256(preflight.get("authorization_sha256"))
+        or not _is_sha256(
+            preflight.get("compute_canary_attestation_sha256")
+        )
+        or not _is_sha256(
+            preflight.get("controller_publisher_canary_receipt_sha256")
+        )
+        or preflight.get("code_manifest_sha256")
+        != launch_receipt.get("code_manifest_sha256")
+        or preflight.get("snapshot_consumed") is not True
+        or preflight.get("full_launch_authorized") is not True
         or launch_receipt.get("resource_profile") != _launch_resource_profile()
         or type(root_values) is not dict
         or set(root_values) != set(roots)
@@ -2798,21 +3139,28 @@ def _verify_output_tree_stable(output_tree: dict, launch_receipt: dict) -> None:
         raise SourceAuditError("V10 output root was replaced during seal")
     for directory in output_tree["directories"]:
         path = DEFAULT_OUTPUT / directory["path"]
-        info = path.lstat()
-        if (
-            path.is_symlink() or not stat.S_ISDIR(info.st_mode)
-            or stat.S_IMODE(info.st_mode) != 0o500
-            or info.st_uid != os.getuid()
-        ):
+        try:
+            info = path.lstat()
+        except OSError as err:
+            raise SourceAuditError(
+                "cannot inspect V10 shard directory during seal"
+            ) from err
+        if path.is_symlink() or _output_tree_directory_record(
+            directory["path"], info
+        ) != directory:
             raise SourceAuditError("V10 shard directory changed during seal")
     for item in output_tree["files"]:
         path = DEFAULT_OUTPUT / item["path"]
         raw, identity = _read_regular(path, "V10 output-tree file")
-        if (
-            identity["mode"] != 0o400
-            or len(raw) != item["bytes"]
-            or hashlib.sha256(raw).hexdigest() != item["sha256"]
-        ):
+        try:
+            observed = path.lstat()
+        except OSError as err:
+            raise SourceAuditError(
+                "cannot inspect V10 output-tree file during seal"
+            ) from err
+        if _output_tree_file_record(
+            item["path"], raw, identity, observed
+        ) != item:
             raise SourceAuditError("V10 output-tree file changed during seal")
 
 
@@ -2822,12 +3170,19 @@ def seal_campaign(
     launch_receipt: dict,
     scheduler_rows: list[dict],
     scheduler_contract_rows: list[dict],
+    scheduler_terminal_receipt_sha256: str,
+    terminal_poll_receipt_sha256: str,
 ) -> dict:
     """Seal V10 only after the launcher has passed both scheduler gates."""
     _validate_launch_receipt(launch_sha, launch_receipt)
     _validate_scheduler_evidence(
         launch_receipt, scheduler_rows, scheduler_contract_rows
     )
+    if (
+        not _is_sha256(scheduler_terminal_receipt_sha256)
+        or not _is_sha256(terminal_poll_receipt_sha256)
+    ):
+        raise SourceAuditError("V10 retained scheduler receipt hash changed")
     _existing_seal_prefix_is_valid()
     if any(TMP_ROOT.iterdir()):
         raise SourceAuditError("V10 task TMP root is not empty after success")
@@ -2848,6 +3203,10 @@ def seal_campaign(
         "scheduler_rows_sha256": _digest(scheduler_rows),
         "scheduler_contract_rows": copy.deepcopy(scheduler_contract_rows),
         "scheduler_contract_rows_sha256": _digest(scheduler_contract_rows),
+        "scheduler_terminal_receipt_sha256": (
+            scheduler_terminal_receipt_sha256
+        ),
+        "terminal_poll_receipt_sha256": terminal_poll_receipt_sha256,
         "scheduler_gate_passed": True,
         "scheduler_gate_passed_before_payload_read": True,
         "scheduler_restarts": 0,
@@ -2860,6 +3219,9 @@ def seal_campaign(
         ),
         "log_payloads_read": 0,
         "prior_runtime_payloads_read": 0,
+        "preflight_authorization": copy.deepcopy(
+            launch_receipt["preflight_authorization"]
+        ),
     }
     seal_plan_sha = _publish_or_match(SEAL_PLAN, seal_plan, "V10 seal plan")
 
@@ -2875,13 +3237,20 @@ def seal_campaign(
     inventory_records = validate_inventory_manifest(inventory)
     all_candidates = []
     environments = []
-    tree_records = [{
-        "path": "source-inventory-v10.json",
-        "bytes": len(inventory_raw),
-        "sha256": inventory_sha,
-    }]
+    inventory_check, inventory_identity = _read_regular(
+        DEFAULT_INVENTORY, "sealed V10 source inventory identity"
+    )
+    if inventory_check != inventory_raw:
+        raise SourceAuditError("sealed V10 source inventory changed")
+    tree_records = [_output_tree_file_record(
+        "source-inventory-v10.json",
+        inventory_raw,
+        inventory_identity,
+        DEFAULT_INVENTORY.lstat(),
+    )]
+    directories = []
     for shard_index in range(ARRAY_TASKS):
-        tasks, environment, shard_tree = _load_shard_directory(
+        tasks, environment, shard_tree, directory_record = _load_shard_directory(
             shard_path(DEFAULT_OUTPUT, shard_index),
             inventory_records,
             shard_index=shard_index,
@@ -2893,6 +3262,7 @@ def seal_campaign(
         all_candidates.extend(tasks)
         environments.append(environment)
         tree_records.extend(shard_tree)
+        directories.append(directory_record)
     if (
         len(all_candidates) != CANDIDATE_COUNT
         or [record["candidate_index"] for record in all_candidates]
@@ -2902,10 +3272,6 @@ def seal_campaign(
     ):
         raise SourceAuditError("V10 full-census assembly changed")
     tree_records.sort(key=lambda record: record["path"])
-    directories = [
-        {"path": shard_path(DEFAULT_OUTPUT, index).name, "mode": "0500"}
-        for index in range(ARRAY_TASKS)
-    ]
     root_identity = copy.deepcopy(
         launch_receipt["root_identities"]["output_dir"]
     )
@@ -3045,6 +3411,10 @@ def seal_campaign(
         "scheduler_contract_rows_sha256": seal_plan[
             "scheduler_contract_rows_sha256"
         ],
+        "scheduler_terminal_receipt_sha256": (
+            scheduler_terminal_receipt_sha256
+        ),
+        "terminal_poll_receipt_sha256": terminal_poll_receipt_sha256,
         "scheduler_gate_passed": True,
         "scheduler_gate_passed_before_payload_read": True,
         "output_tree": output_tree,
@@ -3053,7 +3423,7 @@ def seal_campaign(
             "environment_records_sha256"
         ],
         "prior_runtime_payload": {
-            "campaigns": ["v{}".format(index) for index in range(1, 9)],
+            "campaigns": ["v{}".format(index) for index in range(1, 10)],
             "paths_read": [],
             "bytes_read": 0,
             "records_read": 0,
@@ -3062,6 +3432,9 @@ def seal_campaign(
             "reuse_authorized": False,
         },
         "partial_v10_reuse_authorized": False,
+        "preflight_authorization": copy.deepcopy(
+            launch_receipt["preflight_authorization"]
+        ),
         "seal_recovery_protocol": "exclusive-five-stage-hash-chain-v1",
         "seal_plan_sha256": seal_plan_sha,
         "tree_stage_sha256": tree_stage_sha,
@@ -3110,6 +3483,12 @@ def parse_args(argv=None):
     scan_parser.add_argument(
         "--benchmarks", type=Path, default=DEFAULT_BENCHMARKS
     )
+    canary_parser = subparsers.add_parser("compute-canary")
+    canary_parser.add_argument("--output-dir", required=True, type=Path)
+    canary_parser.add_argument("--code-manifest", required=True, type=Path)
+    canary_parser.add_argument("--code-manifest-sha256", required=True)
+    canary_parser.add_argument("--repository-commit-id", required=True)
+    canary_parser.add_argument("--tmp-root", required=True, type=Path)
     inventory_parser = subparsers.add_parser("inventory")
     inventory_parser.add_argument(
         "--benchmarks", type=Path, default=DEFAULT_BENCHMARKS
@@ -3121,6 +3500,8 @@ def main(argv=None) -> int:
     args = parse_args(argv)
     if args.command == "scan":
         scan(args)
+    elif args.command == "compute-canary":
+        compute_canary(args)
     elif args.command == "inventory":
         print(canonical_json(build_inventory_manifest(args.benchmarks)).decode("ascii"))
     else:
