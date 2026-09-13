@@ -165,6 +165,15 @@ V11_B_MIN_SHADOW_UNREPRESENTED_FAMILIES = 12
 V11_B_MIN_ALL_PRIOR_UNREPRESENTED_TASKS = 50
 V11_B_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
 V11_B_MAX_TASKS_PER_FAMILY = 12
+V11_SUPPORT_STATUS_KEYS = (
+    "indeterminate", "supported", "unsupported",
+)
+V11_SUPPORT_EXCLUSION_REASONS = (
+    "translation-input-rejected", "no-serialized-operators",
+    "nonpositive-serialized-operator-cost", "serialized-axioms",
+    "serialized-conditional-effects", "normalized-axioms",
+)
+V11_RESOURCE_EXCLUSION_KEYS = ("memory", "time")
 
 V11_BINDING_FIELDS = (
     "schema", "campaign", "benchmark_revision", "seal_repository_commit_id",
@@ -178,14 +187,18 @@ V11_BINDING_FIELDS = (
     "compute_canary_launch_receipt_sha256",
     "compute_canary_terminal_poll_receipt_sha256",
     "compute_canary_seal_plan_sha256", "compute_canary_attestation_sha256",
-    "translator_source_sha256", "all_records_count", "all_records_sha256",
+    "translator_source_sha256", "inventory_families_count",
+    "translation_attempts_count", "all_records_count", "all_records_sha256",
     "all_source_projection_sha256", "eligible_records_count",
     "eligible_records_sha256", "eligible_candidate_indices_sha256",
     "eligible_source_projection_sha256", "confirmation_a_count",
     "confirmation_a_candidate_indices_sha256",
     "confirmation_a_source_projection_sha256", "guided_b_count",
     "guided_b_candidate_indices_sha256", "guided_b_source_projection_sha256",
-    "outcome_counts", "outcome_counts_sha256", "resource_exclusions_by_family",
+    "outcome_counts", "outcome_counts_sha256", "support_status_counts",
+    "support_status_counts_sha256", "support_exclusion_counts",
+    "support_exclusion_counts_sha256", "resource_exclusion_counts",
+    "resource_exclusion_counts_sha256", "resource_exclusions_by_family",
     "resource_exclusions_by_family_sha256", "full_tracked_file_sha256",
     "full_tracked_file_sha256_digest", "preflight_tracked_file_sha256",
     "preflight_tracked_file_sha256_digest", "combined_tracked_file_sha256",
@@ -668,6 +681,10 @@ def _validate_v11_bindings(bindings: dict) -> None:
         != bindings.get("preflight_code_manifest_sha256"),
         type(bindings.get("all_records_count")) is not int,
         bindings.get("all_records_count") != 1640,
+        type(bindings.get("inventory_families_count")) is not int,
+        not 1 <= bindings.get("inventory_families_count", 0) <= 1640,
+        type(bindings.get("translation_attempts_count")) is not int,
+        bindings.get("translation_attempts_count") != 1640,
         type(bindings.get("eligible_records_count")) is not int,
         not 950 <= bindings.get("eligible_records_count", -1) <= 1640,
         bindings.get("confirmation_a_count") != 650,
@@ -685,10 +702,25 @@ def _validate_v11_bindings(bindings: dict) -> None:
         != bindings["outcome_counts_sha256"]
     ):
         raise ProtocolError("V11 source outcome summary changed")
-    if bindings["eligible_records_count"] != outcome_counts["success"]:
-        raise ProtocolError("V11 eligible/success count changed")
+    summary_keys = {
+        "support_status_counts": set(V11_SUPPORT_STATUS_KEYS),
+        "support_exclusion_counts": set(V11_SUPPORT_EXCLUSION_REASONS),
+        "resource_exclusion_counts": set(V11_RESOURCE_EXCLUSION_KEYS),
+    }
+    for name, keys in summary_keys.items():
+        value = bindings.get(name)
+        if (
+            not isinstance(value, dict) or set(value) != keys
+            or any(type(value[key]) is not int or value[key] < 0 for key in keys)
+            or hashlib.sha256(canonical_json(value)).hexdigest()
+            != bindings[name + "_sha256"]
+        ):
+            raise ProtocolError("V11 source classification summary changed")
     exclusions = bindings.get("resource_exclusions_by_family")
-    if not isinstance(exclusions, dict):
+    if (
+        not isinstance(exclusions, dict)
+        or len(exclusions) > bindings["inventory_families_count"]
+    ):
         raise ProtocolError("V11 resource-exclusion summary changed")
     excluded = 0
     for family, counts in exclusions.items():
@@ -709,6 +741,34 @@ def _validate_v11_bindings(bindings: dict) -> None:
         != bindings["resource_exclusions_by_family_sha256"]
     ):
         raise ProtocolError("V11 resource-exclusion summary changed")
+    support_status = bindings["support_status_counts"]
+    support_exclusions = bindings["support_exclusion_counts"]
+    resource_counts = bindings["resource_exclusion_counts"]
+    unsupported_success = (
+        support_status["unsupported"] - outcome_counts["input-rejected"]
+    )
+    structural_counts = [
+        support_exclusions[reason]
+        for reason in V11_SUPPORT_EXCLUSION_REASONS[1:]
+    ]
+    aggregated_resource_counts = {
+        key: sum(counts[key] for counts in exclusions.values())
+        for key in V11_RESOURCE_EXCLUSION_KEYS
+    }
+    if any((
+        sum(support_status.values()) != bindings["all_records_count"],
+        support_status["supported"] != bindings["eligible_records_count"],
+        support_status["indeterminate"]
+        != outcome_counts["resource-excluded"],
+        support_exclusions["translation-input-rejected"]
+        != outcome_counts["input-rejected"],
+        unsupported_success < 0,
+        any(count > unsupported_success for count in structural_counts),
+        sum(structural_counts) < unsupported_success,
+        sum(resource_counts.values()) != outcome_counts["resource-excluded"],
+        resource_counts != aggregated_resource_counts,
+    )):
+        raise ProtocolError("V11 source classification summary is incoherent")
     tracked = {
         field: _validate_v11_tracked(bindings[field], "V11 " + field)
         for field in V11_TRACKED_BINDING_FIELDS

@@ -83,8 +83,20 @@ def _v11_bindings(confirmation, guided):
     }
     combined = dict(sorted({**full, **preflight}.items()))
     outcomes = {
-        "input-rejected": 690, "resource-excluded": 0, "success": 950,
+        "input-rejected": 689, "resource-excluded": 0, "success": 951,
     }
+    support_status = {
+        "indeterminate": 0, "supported": 950, "unsupported": 690,
+    }
+    support_exclusions = {
+        reason: (
+            689 if reason == "translation-input-rejected"
+            else 1 if reason == "no-serialized-operators"
+            else 0
+        )
+        for reason in P.V11_SUPPORT_EXCLUSION_REASONS
+    }
+    resource_counts = {"memory": 0, "time": 0}
     exclusions = {}
     values = {
         field: _digest(field) for field in P.V11_BINDING_FIELDS
@@ -105,6 +117,8 @@ def _v11_bindings(confirmation, guided):
             {"path": path, "sha256": translator[path]}
             for path in sorted(translator)
         ]).decode("ascii")),
+        "inventory_families_count": 95,
+        "translation_attempts_count": 1640,
         "all_records_count": 1640,
         "eligible_records_count": 950,
         "confirmation_a_count": 650,
@@ -112,6 +126,18 @@ def _v11_bindings(confirmation, guided):
         "outcome_counts": outcomes,
         "outcome_counts_sha256": _digest(
             P.canonical_json(outcomes).decode("ascii")
+        ),
+        "support_status_counts": support_status,
+        "support_status_counts_sha256": _digest(
+            P.canonical_json(support_status).decode("ascii")
+        ),
+        "support_exclusion_counts": support_exclusions,
+        "support_exclusion_counts_sha256": _digest(
+            P.canonical_json(support_exclusions).decode("ascii")
+        ),
+        "resource_exclusion_counts": resource_counts,
+        "resource_exclusion_counts_sha256": _digest(
+            P.canonical_json(resource_counts).decode("ascii")
         ),
         "resource_exclusions_by_family": exclusions,
         "resource_exclusions_by_family_sha256": _digest(
@@ -645,13 +671,68 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "translator source"):
             P.validate_base_snapshot(snapshot)
 
-    def test_v11_eligible_count_must_equal_success_count(self):
+    def test_v11_eligible_count_tracks_supported_not_success(self):
         snapshot = fake_snapshot()
-        snapshot["source_audit_v11"]["bindings"][
-            "eligible_records_count"
-        ] += 1
-        with self.assertRaisesRegex(P.ProtocolError, "eligible/success"):
-            P.validate_base_snapshot(snapshot)
+        bindings = snapshot["source_audit_v11"]["bindings"]
+        self.assertEqual(bindings["eligible_records_count"], 950)
+        self.assertEqual(bindings["support_status_counts"]["supported"], 950)
+        self.assertEqual(bindings["outcome_counts"]["success"], 951)
+        self.assertEqual(
+            bindings["support_exclusion_counts"]["no-serialized-operators"],
+            1,
+        )
+        P.validate_base_snapshot(snapshot)
+
+    def test_v11_classification_binding_fields_are_mandatory(self):
+        fields = {
+            "inventory_families_count", "translation_attempts_count",
+            "support_status_counts", "support_status_counts_sha256",
+            "support_exclusion_counts", "support_exclusion_counts_sha256",
+            "resource_exclusion_counts", "resource_exclusion_counts_sha256",
+        }
+        self.assertTrue(fields <= set(P.V11_BINDING_FIELDS))
+        for field in fields:
+            snapshot = fake_snapshot()
+            del snapshot["source_audit_v11"]["bindings"][field]
+            with self.subTest(field=field), self.assertRaisesRegex(
+                P.ProtocolError, "binding shape"
+            ):
+                P.validate_base_snapshot(snapshot)
+
+    def test_v11_classification_binding_counts_are_exact(self):
+        for field, value in (
+            ("inventory_families_count", 0),
+            ("translation_attempts_count", 1639),
+        ):
+            snapshot = fake_snapshot()
+            snapshot["source_audit_v11"]["bindings"][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                P.ProtocolError, "source authorization"
+            ):
+                P.validate_base_snapshot(snapshot)
+
+    def test_v11_classification_summaries_are_recomputed_and_coherent(self):
+        mutations = {
+            "support_status_counts": {
+                "indeterminate": 0, "supported": 949, "unsupported": 691,
+            },
+            "support_exclusion_counts": {
+                reason: 689 if reason == "translation-input-rejected" else 0
+                for reason in P.V11_SUPPORT_EXCLUSION_REASONS
+            },
+            "resource_exclusion_counts": {"memory": 1, "time": 0},
+        }
+        for field, value in mutations.items():
+            snapshot = fake_snapshot()
+            bindings = snapshot["source_audit_v11"]["bindings"]
+            bindings[field] = value
+            bindings[field + "_sha256"] = hashlib.sha256(
+                P.canonical_json(value)
+            ).hexdigest()
+            with self.subTest(field=field), self.assertRaisesRegex(
+                P.ProtocolError, "classification summary is incoherent"
+            ):
+                P.validate_base_snapshot(snapshot)
 
     def test_v11_code_manifest_is_bound_in_both_tracked_closures(self):
         tracked_fields = (
