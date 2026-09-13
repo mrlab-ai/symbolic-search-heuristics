@@ -33,6 +33,30 @@ DEFAULT_OUTPUT = ARTIFACT_DIR / "analysis-v3.json"
 DEFAULT_REPEAT_OUTPUT = ARTIFACT_DIR / "analysis-v3-repeat.json"
 DEFAULT_RECEIPT = ARTIFACT_DIR / "analysis-execution-receipt-v3.json"
 DEFAULT_RECEIPT_PIN = ARTIFACT_DIR / "analysis-execution-receipt-v3.sha256"
+LEGACY_SOURCE_PROPERTIES = frozenset({
+    "source_audit_job_id",
+    "source_audit_terminal_diagnostic_sha256",
+    "source_audit_v5_launch_receipt_sha256",
+    "source_audit_v5_code_manifest_sha256",
+    "source_audit_union_sources_sha256",
+    "source_audit_v5_reusable_tree_sha256",
+    "source_audit_v7_output_tree_sha256",
+    "source_audit_pre_diagnosis_repository_commit_id",
+    "source_audit_pre_diagnosis_files_sha256",
+    "source_audit_seal_plan_sha256",
+    "source_audit_union_root_stage_sha256",
+    "source_audit_union_stage_sha256",
+    "source_audit_candidate_stage_sha256",
+    "source_audit_attestation_stage_sha256",
+    "source_audit_output_tree_sha256",
+    "source_audit_slurm_sha256",
+    "source_audit_intent_sha256",
+    "source_attestation_path",
+    "source_terminal_diagnostic_path",
+    "source_launch_intent_path",
+    "source_execution_receipt_path",
+    "source_launch_receipt_path",
+})
 
 
 def _fraction_record(value: Fraction | None):
@@ -100,18 +124,7 @@ def _fixed_properties() -> dict:
         "planner_cache_name": P.PLANNER_CACHE_NAME,
         "translator_source_sha256": P.TRANSLATOR_SOURCE_SHA256,
         "cost_attestation_sha256": P.COST_ATTESTATION_SHA256,
-        "source_audit_launch_receipt_sha256": (
-            P.SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256
-        ),
-        "source_audit_execution_receipt_sha256": (
-            P.SOURCE_AUDIT_EXECUTION_RECEIPT_SHA256
-        ),
-        "source_audit_code_manifest_sha256": (
-            P.SOURCE_AUDIT_CODE_MANIFEST_SHA256
-        ),
-        "source_audit_repository_commit_id": (
-            P.SOURCE_AUDIT_REPOSITORY_COMMIT_ID
-        ),
+        **P.v11_run_provenance(),
         "cohort_seed": P.COHORT_SEED,
         "cohort_family_count": P.COHORT_FAMILIES,
         "incidence_probe_layers": P.PROBE_LAYERS,
@@ -123,13 +136,13 @@ def _fixed_properties() -> dict:
         "bootstrap_seed": P.BOOTSTRAP_SEED,
         "run_order_protocol": P.RUN_ORDER_PROTOCOL,
         "run_cell_mapping_sha256": P.RUN_CELL_MAPPING_SHA256,
-        "confirmation_b_freeze_sha256": P.sha256_file(P.FREEZE_PATH),
         "confirmation_a_authorization_receipt_sha256": (
             P.CONFIRMATION_A_AUTHORIZATION_RECEIPT_SHA256
         ),
         "confirmation_a_cohort_manifest_sha256": (
             P.CONFIRMATION_A_COHORT_MANIFEST_SHA256
         ),
+        "confirmation_a_freeze_sha256": P.CONFIRMATION_A_FREEZE_SHA256,
     }
 
 
@@ -422,8 +435,23 @@ def _plain_reference_identity(record: dict) -> dict:
     return _plain_reference_evidence(record)["identity"]
 
 
+def _validate_v11_run_provenance(records: list[dict]) -> None:
+    """Require every sealed cell to carry the complete V11 source chain."""
+    expected = P.v11_run_provenance()
+    for record in records:
+        if any(record.get(key) != value for key, value in expected.items()):
+            raise ConfirmationBAnalysisError(
+                "sealed cell has inconsistent V11 source provenance"
+            )
+        if LEGACY_SOURCE_PROPERTIES.intersection(record):
+            raise ConfirmationBAnalysisError(
+                "sealed cell retains obsolete V5/V7 source provenance"
+            )
+
+
 def validate_matrix(records: list[dict]):
     P.validate_protocol_without_sources()
+    _validate_v11_run_provenance(records)
     if len(records) != P.CELL_COUNT:
         raise ConfirmationBAnalysisError(
             "matrix has {} records, expected {}".format(

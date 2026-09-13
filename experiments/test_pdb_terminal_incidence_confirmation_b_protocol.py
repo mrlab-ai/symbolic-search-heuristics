@@ -192,21 +192,19 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             "analysis-v4-repeat.json",
         )
 
-    def test_v7_manifest_contract_has_exact_order_and_cardinality(self):
-        source = P.SourceValidation.SourceV7
-        self.assertGreater(len(source.CODE_MANIFEST_FILES), 50)
-        self.assertEqual(
-            len(source.SCOPED_FILES), len(source.CODE_MANIFEST_FILES) + 1
-        )
-        self.assertEqual(
-            tuple(sorted(source.CODE_MANIFEST_FILES)), source.CODE_MANIFEST_FILES
-        )
-
-    def test_b_uses_a_shared_v7_consumer_and_8148_planner(self):
+    def test_b_uses_the_v11_adapter_and_8148_planner(self):
         self.assertIn(
-            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v7.py",
+            "experiments/pdb_terminal_incidence_confirmation_v11_adapter.py",
             P.EXPERIMENT_SOURCE_FILES,
         )
+        self.assertIn(
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v11.py",
+            P.EXPERIMENT_SOURCE_FILES,
+        )
+        self.assertFalse(any(
+            "source_consumer_v7" in relative
+            for relative in P.EXPERIMENT_SOURCE_FILES
+        ))
         self.assertEqual(
             P.PLANNER_REVISION_REQUIRED,
             "8148f798f13059ee881ad2471bd20cdd61d2ec18",
@@ -286,53 +284,6 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                         fixture.attestation, fixture.execution, fixture.launch
                     )
 
-    def test_v7_producer_revision_tracks_all_bound_files(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            fixture = SourceFixture(Path(tmp))
-            materials = fixture.load()
-            revisions = []
-
-            def tracked(repo, revision, relative):
-                revisions.append(revision)
-                return materials.tracked_file_sha256[relative]
-
-            with mock.patch.object(Freeze, "REPO", fixture.repo), \
-                    mock.patch.object(
-                        Freeze.JJ,
-                        "tracked_file_sha256",
-                        side_effect=tracked,
-                    ):
-                self.assertEqual(
-                    Freeze._tracked_source_v7_hashes(materials, "8" * 40),
-                    materials.tracked_file_sha256,
-                )
-            self.assertEqual(
-                set(revisions),
-                {materials.launch_receipt["repository_commit_id"]},
-            )
-            first = next(iter(materials.tracked_file_sha256))
-            with mock.patch.object(Freeze, "REPO", fixture.repo), \
-                    mock.patch.object(
-                        Freeze.JJ,
-                        "tracked_file_sha256",
-                        side_effect=lambda repo, revision, relative: (
-                            "9" * 64 if relative == first
-                            else materials.tracked_file_sha256[relative]
-                        ),
-                    ), self.assertRaisesRegex(
-                        Freeze.FreezeError, "producer revision"
-                    ):
-                Freeze._tracked_source_v7_hashes(materials, "8" * 40)
-
-    def test_freeze_requires_source_revision_ancestor(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            materials = SourceFixture(Path(tmp)).load()
-        with mock.patch.object(
-                Freeze.JJ, "require_ancestor",
-                side_effect=Freeze.JJ.JjCacheError("divergent"),
-        ), self.assertRaisesRegex(Freeze.FreezeError, "not an ancestor"):
-            Freeze._require_source_ancestor(materials, "4" * 40)
-
     def test_freeze_clean_parent_uses_live_working_copy_snapshot(self):
         revision = "4" * 40
         with mock.patch.object(
@@ -363,65 +314,6 @@ class ConfirmationBProtocolTest(unittest.TestCase):
         ):
             shared._repository_snapshot_files("4" * 40, ["file"])
         query.assert_called_once()
-
-    def test_postseal_live_edit_keeps_pinned_v7_producer_hashes(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            fixture = SourceFixture(Path(tmp))
-            materials = fixture.load()
-            first = next(iter(materials.tracked_file_sha256))
-            target = fixture.repo / first
-            target.write_bytes(target.read_bytes() + b"postseal-edit\n")
-            self.assertNotEqual(
-                P.sha256_file(target), materials.tracked_file_sha256[first]
-            )
-
-            with mock.patch.object(Freeze, "REPO", fixture.repo), \
-                    mock.patch.object(
-                        Freeze.JJ, "tracked_file_sha256",
-                        side_effect=lambda repo, revision, relative: (
-                            materials.tracked_file_sha256[relative]
-                        ),
-                    ):
-                self.assertEqual(
-                    Freeze._tracked_source_v7_hashes(materials, "8" * 40),
-                    materials.tracked_file_sha256,
-                )
-
-    def test_freeze_reloads_source_after_mocked_planner_cache(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            fixture = SourceFixture(Path(tmp))
-
-            def mocked_cache():
-                fixture.attestation.write_bytes(
-                    fixture.attestation.read_bytes() + b"changed-in-cache\n"
-                )
-
-            with fixture.patch(), mock.patch.object(
-                    Freeze, "REPO", fixture.repo
-            ), mock.patch.object(
-                    Freeze, "_require_clean_parent", return_value="4" * 40
-            ), mock.patch.object(
-                    Freeze, "_require_source_ancestor", return_value=None
-            ):
-                mocked_cache()
-                with self.assertRaises(P.ProtocolError):
-                    Freeze._revalidate_before_write(
-                        {},
-                        attestation=fixture.attestation,
-                        execution_receipt=fixture.execution,
-                        launch_receipt=fixture.launch,
-                        confirmation_a_receipt=P.CONFIRMATION_A_RECEIPT_PATH,
-                        confirmation_a_receipt_pin=(
-                            P.CONFIRMATION_A_RECEIPT_PIN_PATH
-                        ),
-                        confirmation_a_first_output=(
-                            P.CONFIRMATION_A_FIRST_OUTPUT_PATH
-                        ),
-                        confirmation_a_second_output=(
-                            P.CONFIRMATION_A_SECOND_OUTPUT_PATH
-                        ),
-                        freeze_repository_revision="4" * 40,
-                    )
 
     def test_freeze_rejects_live_tamper_and_symlink_for_sealed_artifact(self):
         for mutation in ("tamper", "symlink"):
@@ -821,32 +713,6 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             with self.assertRaises(P.ProtocolError):
                 fixture.load()
 
-    def test_confirmation_a_authorization_is_linked_to_same_source_chain(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            materials = SourceFixture(Path(tmp)).load()
-        authorization = {
-            "benchmark_revision": P.BENCHMARK_REVISION,
-            "cost_attestation_sha256": materials.attestation_sha256,
-            "source_audit_launch_receipt_sha256": (
-                materials.launch_receipt_sha256
-            ),
-            "source_audit_execution_receipt_sha256": (
-                materials.execution_receipt_sha256
-            ),
-            "confirmation_a_cohort_manifest_sha256": (
-                materials.confirmation_a_cohort_manifest_sha256
-            ),
-        }
-        P._validate_confirmation_a_source_link(authorization, materials)
-        for field in tuple(authorization):
-            with self.subTest(field=field):
-                changed = dict(authorization)
-                changed[field] = (
-                    "wrong" if field == "benchmark_revision" else "9" * 64
-                )
-                with self.assertRaisesRegex(P.ProtocolError, "not linked"):
-                    P._validate_confirmation_a_source_link(changed, materials)
-
     def test_confirmation_a_authorization_paths_are_fixed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -916,6 +782,19 @@ class ConfirmationBProtocolTest(unittest.TestCase):
                 "analyze_records",
                 return_value=base_analysis,
             ),
+            mock.patch.object(
+                ConfirmationA.P,
+                "v11_run_provenance",
+                return_value={
+                    "source_audit_campaign": "v11-full-census",
+                    "confirmation_a_freeze_sha256": "8" * 64,
+                },
+            ),
+            mock.patch.object(
+                ConfirmationA.P,
+                "FREEZE_REPOSITORY_REVISION",
+                "9" * 40,
+            ),
         ):
             authorization = P.load_confirmation_a_authorization(
                 P.CONFIRMATION_A_RECEIPT_PATH,
@@ -927,6 +806,10 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             authorization["execution_receipt_sha256"], execution_sha
         )
         self.assertEqual(authorization["hardware"], hardware)
+        self.assertEqual(
+            authorization["source_audit_provenance"]["source_audit_campaign"],
+            "v11-full-census",
+        )
 
     def test_missing_freeze_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:

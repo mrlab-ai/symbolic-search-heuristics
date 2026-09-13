@@ -8,73 +8,60 @@ its pin, both byte-identical A outputs, the sealed source-audit artifacts, the
 planner identity, every executed Python source, and the option matrix. The A
 authorization exports `{revision, cache_name, build_options, downward_sha256,
 preprocess_sha256, tree_manifest_sha256}` and B requires exact equality.
-The shared source chain is the source-support-outcome-blind campaign-V7 repair
-of terminal V5. Unknown prospective diagnostic, job, artifact, and union hashes
-are derived dynamically from the canonical sealed chain. The same shared A/B
-consumer validates exact V7 paths and schemas, the producer closure, rendered
-Slurm bytes, scheduler/resource rows, task environments, the selected V5 tree,
-the V7 repair tree, the union tree, no-outcome flags, and every scoped byte at
-both producer revisions. V6 contributes byte-pinned streaming and recovery
-code only; no V6 runtime artifact or V6 shard is consumed.
+The shared source chain is the fresh campaign-V11 full census. It attempts all
+1,640 candidates as 820 two-candidate shards and reads or reuses no V1--V10
+task log, scheduler row, shard, temporary file, translated task, or scientific
+payload. Its compute canary and full census run on `fat` with normal QoS, no
+array throttle or requeue, one CPU, 26 GiB, and one uniform 01:10:00 resource
+profile. Every candidate uses the same pinned translation implementation,
+24,576-MiB address-space limit, 1,800/1,801-second CPU limits, process-group
+watchdog, bounded streams, source snapshot, and process-creation-denying
+isolation. The only source classifications are `input-rejected`,
+`resource-excluded`, and `success`; only records independently certified as
+eligible successes may enter either cohort.
 
-V7 reuses only V5 array tasks recorded exactly `COMPLETED` with exit `0:0` and
-repairs every other terminal row as a complete original two-candidate shard.
-The repair runs on `fat` with normal QoS, no throttle, and one uniform resource
-profile frozen before the scheduler-only diagnosis. Reuse from V1 through V4
-and V6 is zero, partial output from every noncompleted V5 task is unusable, and
-the seal requires every repair task to complete with exit `0:0`. It validates
-exactly the scheduler-selected V5 and repaired V7 environment records and
-binds an ordered 820-shard, 1,640-candidate union. Every shard has origin
-`v5-completed` or `v7-repair` and equal source/union hashes.
-The reusable V5 selected tree was not contemporaneously externally committed
-when V5 completed; the sealed V7 execution receipt attests that its bytes were
-read only after the V7 all-success gate and that the selected tree was first
-separately recorded at the V7 seal.
-The only accepted translation statuses are `input-rejected` and `success`;
-translator timeout is an infrastructure failure, and the larger V7 resource
-ceiling does not change the accepted source-outcome classes.
+V11 first commits its source closure at revision S. A controller publication
+canary and an independent one-row compute canary then establish the filesystem,
+publisher, execution, and scheduler contracts. Their complete append-only
+evidence and preflight authorization are committed at revision P. Only an
+independent committed-snapshot read of P may authorize the full census. The
+full launch is fresh and single-shot. Its hourly, one-query polls retain the
+exact scheduler evidence, and its seal validates all 820 rows as
+`COMPLETED`/`0:0`, with the frozen resources and zero restarts, before opening
+any worker payload. The full seal and all authenticated source records are
+committed at revision Q. Failed canaries or census rows cannot be selectively
+repaired; they require a new versioned campaign.
 
-Before reading any V5 output byte, V7 freezes the exact committed
-source-support-outcome-free design. Its deterministic crash-recovery chain
-exclusively binds the seal plan, union root, complete union, candidate, and
-frozen attestation. The shared consumer reopens all five stages, the selected
-V5 and V7 per-task Slurm-log hashes, and the V7 elapsed-time resource rows; the
-B freeze records every stage path/hash and the pre-diagnosis repository/file-
-set ancestry. The consumer authenticates this complete pre-diagnosis closure
-at the retained V7 producer revision. Only after the V7 seal may a descendant
-revision insert the B freeze constants or result text and revise the paper or
-renderer; the B freeze binds those descendant edits. No current-live equality
-to the historical V7 paper or renderer is required.
+The independent V11 consumer and committed-snapshot reader authenticate the
+entire S-to-P-to-Q control chain, both canaries, the inventory, source and
+translator closures, launch and execution receipts, scheduler gate,
+attestation, all 1,640 records, eligibility, and cohort disjointness. The
+freeze-time adapter exposes no worker payload: it returns immutable A and B
+source projections containing exactly the 14 native source-identity fields,
+plus hashes that bind both projections and the authenticated V11 closure. B
+uses the adapter's exact `guided_b` projection from the same Q that seeded A;
+neither the B freeze nor its runtime loader reconstructs the split.
 
-The source launch passes the exact in-memory Slurm bytes on standard input to
-hash-pinned `/usr/bin/sbatch` under a controlled `C` environment. Its command
-contains options only and no script path; hash-pinned `/usr/bin/sacct` must
-reproduce the exact `SubmitLine`, unique job, and complete array. The consumer
-verifies the canonical launch intent, Slurm script, exact manifest,
-amendment protocol, inventory, every listed producer file, and all bytes at the
-source repository commit. The B freeze records and checks the complete
-historical `tracked_file_sha256` proof at the retained V7 producer revision.
-Neither B
-freezing nor launching is possible until the canonical V7 diagnostic, intent,
-attestation, launch receipt, and execution receipt exist
-and validate completely.
-The exact attestation envelope is required, and the manifest-verified producer
-is replayed over all 1,640 source records; its gate and complete A/B split must
-be byte-identical to the sealed values. The planner revision is exactly
-`8148f798f13059ee881ad2471bd20cdd61d2ec18`. The later clean
-`freeze_repository_revision` independently binds Python/protocol/V7 artifacts
-and must descend from 8148 and both the V7 producer and pre-diagnosis
-revisions; launch must descend from both frozen revisions. After cache
-validation and immediately before the
-exclusive freeze write, B repeats the clean-parent, source-chain,
-live/tracked byte, executed-source, and canonical Confirmation A authorization
-checks.
+The planner revision is exactly
+`8148f798f13059ee881ad2471bd20cdd61d2ec18`. After A completes, B reopens A's
+canonical receipt, pin, and two byte-identical outputs through A's verifier,
+recomputes the complete A result from its sealed matrix, and requires explicit
+guided-study authorization. The authorization must name the identical planner,
+benchmark, Q seal, A projection, and guided-B projection and must bind A's
+freeze. B's later clean `freeze_repository_revision` must descend in order from
+S, P, Q, and the A-freeze revision, and independently from the planner
+revision. It binds the embedded V11 source projection, the complete A
+authorization, and every executed B source. After planner caching and
+immediately before the exclusive freeze write, B repeats the clean-parent,
+same-Q source consumption, A authorization, ancestry, and live/tracked-source
+checks. Runtime and analysis validate only that immutable B freeze and never
+reopen V11 or authorize from mutable A artifacts.
+
 All canonical protocol, authorization, launch, audit, and analysis inputs are
-lexically validated before filesystem I/O and are read and hashed from one
-`O_NOFOLLOW` descriptor, with regular-file and stable-identity checks before
-and after the read. Symlinks, directories, FIFOs, and identity-changing races
-fail closed. In particular, analysis accepts only the exact lexical sealed
-properties path, not a resolving or symlink alias.
+lexically validated before filesystem I/O and read and hashed through stable
+regular-file identities. Symlinks, directories, FIFOs, and identity-changing
+races fail closed. In particular, analysis accepts only the exact lexical
+sealed properties path, not a resolving or symlink alias.
 
 ## Cohort and matrix
 
@@ -84,9 +71,11 @@ normalized benchmark families, at least 12 shadow-unrepresented families, and
 at least 50 tasks from at least 10 all-prior-unrepresented families. It is
 source-identity- and problem-hash-disjoint from Confirmation A. No outcome can
 change membership.
-Every task retains the producer's exact record schema, canonical alias group,
-candidate index, and seed-derived split rank. Candidate indices are unique and
-no family may contribute more than the attested maximum of 12 tasks.
+Every task retains the adapter's exact native 14-field source projection:
+candidate index; directory, family, and problem; domain/problem paths and
+hashes; canonical path; four representation flags; and the canonical alias
+group. Candidate indices, source identities, and problem hashes are unique,
+and no family may contribute more than the attested maximum of 12 tasks.
 
 Each sealed task is run once under exactly nine configurations:
 

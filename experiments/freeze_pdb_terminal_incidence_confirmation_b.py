@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the one prospective source/planner freeze for Confirmation B."""
+"""Create the prospective V11 source/planner freeze for Confirmation B."""
 
 from __future__ import annotations
 
@@ -24,15 +24,15 @@ REVISION_CACHE = SCRIPT_DIR / "data" / "revision-cache"
 
 def _relative(path: Path) -> str:
     try:
-        lexical = Path(os.path.abspath(path))
-        root = Path(os.path.abspath(REPO))
-        return lexical.relative_to(root).as_posix()
+        return Path(os.path.abspath(path)).relative_to(
+            Path(os.path.abspath(REPO))
+        ).as_posix()
     except ValueError as err:
         raise FreezeError("freeze input escapes the repository") from err
 
 
 def _attest_tracked_file(
-    path: Path, expected: str, revision: str, label: str
+    path: Path, expected: str, revision: str, label: str,
 ) -> str:
     relative = _relative(path)
     try:
@@ -44,9 +44,9 @@ def _attest_tracked_file(
     try:
         tracked = JJ.tracked_file_sha256(REPO, revision, relative)
     except JJ.JjCacheError as err:
-        raise FreezeError("{} is not committed at the freeze revision".format(
-            label
-        )) from err
+        raise FreezeError(
+            "{} is not committed at the freeze revision".format(label)
+        ) from err
     if tracked != expected:
         raise FreezeError("{} differs from the freeze revision".format(label))
     try:
@@ -64,7 +64,7 @@ def _source_hashes(revision: str) -> dict[str, str]:
         path = REPO / relative
         live = P.sha256_file(path)
         _attest_tracked_file(
-            path, live, revision, "experiment source {}".format(relative)
+            path, live, revision, "experiment source {}".format(relative),
         )
         hashes[relative] = live
     return hashes
@@ -86,210 +86,53 @@ def _require_clean_parent(revision: str | None) -> str:
     return revision
 
 
-def _tracked_source_v7_hashes(materials, revision: str) -> dict[str, str]:
-    hashes = dict(materials.tracked_file_sha256)
-    producer_revision = materials.launch_receipt.get("repository_commit_id")
-    if (
-        set(hashes) != set(P.SourceValidation.SourceV7.SCOPED_FILES)
-        or P.COMMIT_RE.fullmatch(revision or "") is None
-        or P.COMMIT_RE.fullmatch(producer_revision or "") is None
-    ):
-        raise FreezeError("source-audit V7 bound file set changed")
-    for relative, expected in hashes.items():
-        try:
-            tracked = JJ.tracked_file_sha256(
-                REPO, producer_revision, relative
-            )
-        except JJ.JjCacheError as err:
-            raise FreezeError(
-                "source-audit V7 bound file is absent from the producer revision"
-            ) from err
-        if tracked != expected:
-            raise FreezeError(
-                "source-audit V7 bound file differs from the producer revision"
-            )
-    return hashes
-
-
-def _require_source_ancestor(materials, revision: str) -> None:
+def _require_source_ancestry(
+    bindings: dict, authorization: dict, revision: str,
+) -> None:
+    source = bindings["preflight_source_repository_commit_id"]
+    preflight = bindings["preflight_seal_repository_commit_id"]
+    seal = bindings["seal_repository_commit_id"]
+    confirmation_a_freeze = authorization[
+        "confirmation_a_freeze_repository_revision"
+    ]
     try:
+        JJ.require_ancestor(REPO, source, preflight)
+        JJ.require_ancestor(REPO, preflight, seal)
+        JJ.require_ancestor(REPO, seal, confirmation_a_freeze)
+        JJ.require_ancestor(REPO, confirmation_a_freeze, revision)
         JJ.require_ancestor(REPO, P.PLANNER_REVISION_REQUIRED, revision)
-        JJ.require_ancestor(
-            REPO, materials.launch_receipt["repository_commit_id"], revision
-        )
-        JJ.require_ancestor(
-            REPO,
-            materials.execution_receipt["pre_diagnosis_freeze"][
-                "repository_commit_id"
-            ],
-            revision,
-        )
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "planner 8148 or V7 producer is not an ancestor of the freeze"
+            "V11 S-to-P-to-Q-to-A-to-B chain or planner is not ancestral"
         ) from err
 
 
-def build_freeze(
-    *,
-    attestation: Path,
-    execution_receipt: Path,
-    launch_receipt: Path,
-    confirmation_a_receipt: Path,
-    confirmation_a_receipt_pin: Path,
-    confirmation_a_first_output: Path,
-    confirmation_a_second_output: Path,
-    freeze_repository_revision: str,
-) -> dict:
-    P.validate_static_design()
-    materials = P.load_source_materials(
-        attestation, execution_receipt, launch_receipt
-    )
-    _require_source_ancestor(materials, freeze_repository_revision)
-    authorization = P.load_confirmation_a_authorization(
-        confirmation_a_receipt,
-        confirmation_a_receipt_pin,
-        confirmation_a_first_output,
-        confirmation_a_second_output,
-    )
-    P._validate_confirmation_a_source_link(authorization, materials)
-    for path, expected in (
-        (materials.attestation_path, materials.attestation_sha256),
-        (materials.diagnostic_path, materials.diagnostic_sha256),
-        (materials.intent_path, materials.intent_sha256),
-        (materials.execution_receipt_path, materials.execution_receipt_sha256),
-        (materials.launch_receipt_path, materials.launch_receipt_sha256),
-        *P.SourceValidation.v7_recovery_artifacts(
-            materials.execution_receipt
-        ),
-    ):
-        _attest_tracked_file(
-            path, expected, freeze_repository_revision, "sealed V7 source artifact"
-        )
-    tracked_file_sha256 = _tracked_source_v7_hashes(
-        materials, freeze_repository_revision
-    )
-    authorization_hashes = {
-        authorization["receipt_path"]: authorization["receipt_sha256"],
-        authorization["first_output_path"]: authorization[
-            "first_output_sha256"
-        ],
-        authorization["second_output_path"]: authorization[
-            "second_output_sha256"
-        ],
-        authorization["receipt_pin_path"]: hashlib.sha256(
-            (authorization["receipt_sha256"] + "\n").encode("ascii")
-        ).hexdigest(),
-    }
-    for path, expected in authorization_hashes.items():
-        _attest_tracked_file(
-            path, expected, freeze_repository_revision,
-            "Confirmation A authorization"
-        )
+def _planner_freeze() -> dict:
     cached = JJ.JjCachedFastDownwardRevision(
         REVISION_CACHE, REPO, P.PLANNER_REVISION_REQUIRED,
-        list(P.BUILD_OPTIONS)
+        list(P.BUILD_OPTIONS),
     )
     cached.cache()
     planner = cached.attest()
-    expected_planner = {
-        "revision": P.PLANNER_REVISION_REQUIRED,
-        "build_options": list(P.BUILD_OPTIONS),
-    }
-    if any(planner.get(key) != value for key, value in expected_planner.items()):
-        raise FreezeError("planner cache identifies the wrong revision")
-    required_hashes = (
-        "downward_sha256", "preprocess_sha256", "tree_manifest_sha256"
-    )
-    if any(
-        P.SHA256_RE.fullmatch(planner.get(field, "")) is None
-        for field in required_hashes
+    if (
+        planner.get("revision") != P.PLANNER_REVISION_REQUIRED
+        or planner.get("build_options") != list(P.BUILD_OPTIONS)
     ):
+        raise FreezeError("planner cache identifies the wrong revision")
+    required = ("downward_sha256", "preprocess_sha256", "tree_manifest_sha256")
+    if any(P.SHA256_RE.fullmatch(planner.get(name, "")) is None
+           for name in required):
         raise FreezeError("planner cache attestation is incomplete")
-    planner_identity = {
+    return {
         "revision": P.PLANNER_REVISION_REQUIRED,
         "cache_name": cached.name,
         "build_options": list(P.BUILD_OPTIONS),
-        **{field: planner[field] for field in required_hashes},
+        **{name: planner[name] for name in required},
     }
-    if authorization.get("planner_identity") != planner_identity:
-        raise FreezeError(
-            "Confirmation A and B do not use the exact same planner"
-        )
-    source_launch = materials.launch_receipt
-    source_execution = materials.execution_receipt
-    source_provenance = {
-        "campaign": source_execution["campaign"],
-        "attestation_path": _relative(materials.attestation_path),
-        "terminal_diagnostic_path": _relative(materials.diagnostic_path),
-        "execution_receipt_path": _relative(materials.execution_receipt_path),
-        "launch_receipt_path": _relative(materials.launch_receipt_path),
-        "launch_intent_path": _relative(materials.intent_path),
-        "attestation_sha256": materials.attestation_sha256,
-        "terminal_diagnostic_sha256": materials.diagnostic_sha256,
-        "execution_receipt_sha256": materials.execution_receipt_sha256,
-        "launch_receipt_sha256": materials.launch_receipt_sha256,
-        "launch_intent_sha256": materials.intent_sha256,
-        "cohort_manifest_sha256": materials.cohort_manifest_sha256,
-        "confirmation_a_cohort_manifest_sha256": (
-            materials.confirmation_a_cohort_manifest_sha256
-        ),
-        "attestation_records_sha256": materials.records_sha256,
-        "translator_source_sha256": materials.translator_source_sha256,
-        "job_id": source_launch["job_id"],
-        "code_manifest_sha256": source_execution["v7_code_manifest_sha256"],
-        "repository_commit_id": source_launch["repository_commit_id"],
-        "union_tree_sha256": source_execution["union_tree"]["sha256"],
-        "union_sources_sha256": source_execution["union_sources_sha256"],
-        "v5_reusable_tree_sha256": source_execution[
-            "v5_reusable_tree"
-        ]["sha256"],
-        "v7_output_tree_sha256": source_execution["v7_output_tree"]["sha256"],
-        "v5_launch_receipt_sha256": source_execution[
-            "v5_launch_receipt_sha256"
-        ],
-        "v5_code_manifest_sha256": source_execution[
-            "v5_code_manifest_sha256"
-        ],
-        "reused_v5_shards": source_execution["reused_v5_shards"],
-        "repaired_v5_shards": source_execution["repaired_v5_shards"],
-        "reused_v6_shards": source_execution["reused_v6_shards"],
-        "source_support_outcome_blind_selective_repair": source_execution[
-            "source_support_outcome_blind_selective_repair"
-        ],
-        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
-            source_execution[
-                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
-            ]
-        ),
-        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
-            source_execution[
-                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
-            ]
-        ),
-        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": source_execution[
-            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
-        ],
-        "scheduler_membership_affects_execution_origin_only": source_execution[
-            "scheduler_membership_affects_execution_origin_only"
-        ],
-        "v6_runtime_artifacts_used": source_execution[
-            "v6_runtime_artifacts_used"
-        ],
-        "accepted_translation_statuses": source_execution[
-            "accepted_translation_statuses"
-        ],
-        "translator_timeout_is_infrastructure_failure": source_execution[
-            "translator_timeout_is_infrastructure_failure"
-        ],
-        "resource_ceiling_changes_accepted_outcome_classes": source_execution[
-            "resource_ceiling_changes_accepted_outcome_classes"
-        ],
-        "slurm_template_sha256": source_launch["slurm_template_sha256"],
-        **P.SourceValidation.v7_recovery_provenance(source_execution),
-        "tracked_file_sha256": tracked_file_sha256,
-    }
-    authorization_provenance = {
+
+
+def _authorization_provenance(authorization: dict) -> dict:
+    return {
         **{
             key: _relative(value)
             for key, value in authorization.items()
@@ -301,84 +144,24 @@ def build_freeze(
             if not key.endswith("_path")
         },
     }
-    cohort_tasks = len(materials.tasks)
-    cells = cohort_tasks * P.CONFIG_COUNT
-    array_tasks = (cells + P.RUNS_PER_ARRAY_TASK - 1) // P.RUNS_PER_ARRAY_TASK
-    return {
-        "schema": P.FREEZE_SCHEMA,
-        "freeze_repository_revision": freeze_repository_revision,
-        "source_audit": source_provenance,
-        "confirmation_a_authorization": authorization_provenance,
-        "planner": planner_identity,
-        "design": {
-            "protocol_sha256": P.sha256_file(P.PROTOCOL_PATH),
-            "option_matrix_sha256": P.option_matrix_digest(),
-            "cohort_tasks": cohort_tasks,
-            "target_cohort_tasks": P.TARGET_COHORT_TASKS,
-            "minimum_cohort_tasks": P.MIN_COHORT_TASKS,
-            "maximum_cohort_tasks": P.MAX_COHORT_TASKS,
-            "configs": P.CONFIG_COUNT,
-            "cells": cells,
-            "expected_array_tasks": array_tasks,
-            "runs_per_array_task": P.RUNS_PER_ARRAY_TASK,
-            "run_order_protocol": P.RUN_ORDER_PROTOCOL,
-            "run_cell_mapping_sha256": P.run_cell_mapping_digest(
-                materials.tasks
-            ),
-            "probe_layers": P.PROBE_LAYERS,
-            "par2_seconds": P.PAR2_SECONDS,
-            "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
-            "bootstrap_seed": P.BOOTSTRAP_SEED,
-            "minimum_mechanism_tasks": P.MIN_MECHANISM_TASKS,
-            "minimum_mechanism_families": P.MIN_MECHANISM_FAMILIES,
-            "non_gating_reference_labels": list(
-                P.NON_GATING_REFERENCE_LABELS
-            ),
-        },
-        "experiment_source_sha256": _source_hashes(freeze_repository_revision),
-    }
 
 
-def _revalidate_before_write(
-    value: dict,
-    *,
-    attestation: Path,
-    execution_receipt: Path,
-    launch_receipt: Path,
-    confirmation_a_receipt: Path,
+def _load_authorization(
+    *, confirmation_a_receipt: Path,
     confirmation_a_receipt_pin: Path,
     confirmation_a_first_output: Path,
     confirmation_a_second_output: Path,
-    freeze_repository_revision: str,
-) -> None:
-    if _require_clean_parent(freeze_repository_revision) != freeze_repository_revision:
-        raise FreezeError("freeze revision changed during planner caching")
-    materials = P.load_source_materials(
-        attestation, execution_receipt, launch_receipt
-    )
-    _require_source_ancestor(materials, freeze_repository_revision)
-    authorization = P.load_confirmation_a_authorization(
+) -> dict:
+    return P.load_confirmation_a_authorization(
         confirmation_a_receipt,
         confirmation_a_receipt_pin,
         confirmation_a_first_output,
         confirmation_a_second_output,
     )
-    P._validate_confirmation_a_source_link(authorization, materials)
-    for path, expected in (
-        (materials.attestation_path, materials.attestation_sha256),
-        (materials.diagnostic_path, materials.diagnostic_sha256),
-        (materials.intent_path, materials.intent_sha256),
-        (materials.execution_receipt_path, materials.execution_receipt_sha256),
-        (materials.launch_receipt_path, materials.launch_receipt_sha256),
-        *P.SourceValidation.v7_recovery_artifacts(
-            materials.execution_receipt
-        ),
-    ):
-        _attest_tracked_file(
-            path, expected, freeze_repository_revision, "sealed V7 source artifact"
-        )
-    tracked = _tracked_source_v7_hashes(materials, freeze_repository_revision)
-    authorization_hashes = {
+
+
+def _attest_authorization(authorization: dict, revision: str) -> None:
+    hashes = {
         authorization["receipt_path"]: authorization["receipt_sha256"],
         authorization["first_output_path"]: authorization[
             "first_output_sha256"
@@ -389,100 +172,121 @@ def _revalidate_before_write(
         authorization["receipt_pin_path"]: hashlib.sha256(
             (authorization["receipt_sha256"] + "\n").encode("ascii")
         ).hexdigest(),
+        authorization["confirmation_a_freeze_path"]: authorization[
+            "source_audit_provenance"
+        ]["confirmation_a_freeze_sha256"],
     }
-    for path, expected in authorization_hashes.items():
+    for path, expected in hashes.items():
         _attest_tracked_file(
-            path, expected, freeze_repository_revision,
-            "Confirmation A authorization"
+            path, expected, revision, "Confirmation A authorization",
         )
-    launch = materials.launch_receipt
-    execution = materials.execution_receipt
-    expected_sources = {
-        "campaign": execution["campaign"],
-        "attestation_path": _relative(materials.attestation_path),
-        "terminal_diagnostic_path": _relative(materials.diagnostic_path),
-        "execution_receipt_path": _relative(materials.execution_receipt_path),
-        "launch_receipt_path": _relative(materials.launch_receipt_path),
-        "launch_intent_path": _relative(materials.intent_path),
-        "attestation_sha256": materials.attestation_sha256,
-        "terminal_diagnostic_sha256": materials.diagnostic_sha256,
-        "execution_receipt_sha256": materials.execution_receipt_sha256,
-        "launch_receipt_sha256": materials.launch_receipt_sha256,
-        "launch_intent_sha256": materials.intent_sha256,
-        "cohort_manifest_sha256": materials.cohort_manifest_sha256,
-        "confirmation_a_cohort_manifest_sha256": (
-            materials.confirmation_a_cohort_manifest_sha256
-        ),
-        "attestation_records_sha256": materials.records_sha256,
-        "translator_source_sha256": materials.translator_source_sha256,
-        "job_id": launch["job_id"],
-        "code_manifest_sha256": execution["v7_code_manifest_sha256"],
-        "repository_commit_id": launch["repository_commit_id"],
-        "union_tree_sha256": execution["union_tree"]["sha256"],
-        "union_sources_sha256": execution["union_sources_sha256"],
-        "v5_reusable_tree_sha256": execution["v5_reusable_tree"]["sha256"],
-        "v7_output_tree_sha256": execution["v7_output_tree"]["sha256"],
-        "v5_launch_receipt_sha256": execution["v5_launch_receipt_sha256"],
-        "v5_code_manifest_sha256": execution["v5_code_manifest_sha256"],
-        "reused_v5_shards": execution["reused_v5_shards"],
-        "repaired_v5_shards": execution["repaired_v5_shards"],
-        "reused_v6_shards": execution["reused_v6_shards"],
-        "source_support_outcome_blind_selective_repair": execution[
-            "source_support_outcome_blind_selective_repair"
-        ],
-        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
-            execution[
-                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
-            ]
-        ),
-        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
-            execution[
-                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
-            ]
-        ),
-        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": execution[
-            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
-        ],
-        "scheduler_membership_affects_execution_origin_only": execution[
-            "scheduler_membership_affects_execution_origin_only"
-        ],
-        "v6_runtime_artifacts_used": execution["v6_runtime_artifacts_used"],
-        "accepted_translation_statuses": execution[
-            "accepted_translation_statuses"
-        ],
-        "translator_timeout_is_infrastructure_failure": execution[
-            "translator_timeout_is_infrastructure_failure"
-        ],
-        "resource_ceiling_changes_accepted_outcome_classes": execution[
-            "resource_ceiling_changes_accepted_outcome_classes"
-        ],
-        "slurm_template_sha256": launch["slurm_template_sha256"],
-        **P.SourceValidation.v7_recovery_provenance(execution),
-        "tracked_file_sha256": tracked,
+
+
+def _design(materials: P.SourceMaterials) -> dict:
+    cohort_tasks = len(materials.tasks)
+    cells = cohort_tasks * P.CONFIG_COUNT
+    array_tasks = (cells + P.RUNS_PER_ARRAY_TASK - 1) // P.RUNS_PER_ARRAY_TASK
+    return {
+        "protocol_sha256": P.sha256_file(P.PROTOCOL_PATH),
+        "option_matrix_sha256": P.option_matrix_digest(),
+        "cohort_tasks": cohort_tasks,
+        "target_cohort_tasks": P.TARGET_COHORT_TASKS,
+        "minimum_cohort_tasks": P.MIN_COHORT_TASKS,
+        "maximum_cohort_tasks": P.MAX_COHORT_TASKS,
+        "configs": P.CONFIG_COUNT,
+        "cells": cells,
+        "expected_array_tasks": array_tasks,
+        "runs_per_array_task": P.RUNS_PER_ARRAY_TASK,
+        "run_order_protocol": P.RUN_ORDER_PROTOCOL,
+        "run_cell_mapping_sha256": P.run_cell_mapping_digest(materials.tasks),
+        "probe_layers": P.PROBE_LAYERS,
+        "par2_seconds": P.PAR2_SECONDS,
+        "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
+        "bootstrap_seed": P.BOOTSTRAP_SEED,
+        "minimum_mechanism_tasks": P.MIN_MECHANISM_TASKS,
+        "minimum_mechanism_families": P.MIN_MECHANISM_FAMILIES,
+        "non_gating_reference_labels": list(P.NON_GATING_REFERENCE_LABELS),
     }
-    expected_authorization = {
-        **{
-            key: _relative(item)
-            for key, item in authorization.items()
-            if key.endswith("_path")
-        },
-        **{
-            key: item
-            for key, item in authorization.items()
-            if not key.endswith("_path")
-        },
+
+
+def build_freeze(
+    *, source_seal_revision: str,
+    confirmation_a_receipt: Path,
+    confirmation_a_receipt_pin: Path,
+    confirmation_a_first_output: Path,
+    confirmation_a_second_output: Path,
+    freeze_repository_revision: str,
+) -> dict:
+    P.validate_static_design()
+    materials = P.load_source_materials(source_seal_revision)
+    authorization = _load_authorization(
+        confirmation_a_receipt=confirmation_a_receipt,
+        confirmation_a_receipt_pin=confirmation_a_receipt_pin,
+        confirmation_a_first_output=confirmation_a_first_output,
+        confirmation_a_second_output=confirmation_a_second_output,
+    )
+    P._validate_confirmation_a_source_link(authorization, materials)
+    _require_source_ancestry(
+        materials.bindings, authorization, freeze_repository_revision,
+    )
+    _attest_authorization(authorization, freeze_repository_revision)
+    planner = _planner_freeze()
+    if authorization.get("planner_identity") != planner:
+        raise FreezeError("Confirmation A and B do not use the exact same planner")
+    return {
+        "schema": P.FREEZE_SCHEMA,
+        "freeze_repository_revision": freeze_repository_revision,
+        "source_audit": materials.source_audit,
+        "confirmation_a_authorization": _authorization_provenance(authorization),
+        "planner": planner,
+        "design": _design(materials),
+        "experiment_source_sha256": _source_hashes(
+            freeze_repository_revision
+        ),
     }
-    if value.get("source_audit") != expected_sources:
-        raise FreezeError("source provenance changed during planner caching")
-    if value.get("confirmation_a_authorization") != expected_authorization:
-        raise FreezeError("Confirmation A authorization changed during caching")
+
+
+def _revalidate_before_write(
+    value: dict, *, source_seal_revision: str,
+    confirmation_a_receipt: Path,
+    confirmation_a_receipt_pin: Path,
+    confirmation_a_first_output: Path,
+    confirmation_a_second_output: Path,
+    freeze_repository_revision: str,
+) -> None:
+    if _require_clean_parent(freeze_repository_revision) != freeze_repository_revision:
+        raise FreezeError("freeze revision changed during planner caching")
+    authorization = _load_authorization(
+        confirmation_a_receipt=confirmation_a_receipt,
+        confirmation_a_receipt_pin=confirmation_a_receipt_pin,
+        confirmation_a_first_output=confirmation_a_first_output,
+        confirmation_a_second_output=confirmation_a_second_output,
+    )
+    _attest_authorization(authorization, freeze_repository_revision)
     if authorization.get("planner_identity") != value.get("planner"):
         raise FreezeError("Confirmation A/B planner identity changed during caching")
     if value.get("freeze_repository_revision") != freeze_repository_revision:
         raise FreezeError("freeze repository revision changed during caching")
     if value.get("experiment_source_sha256") != _source_hashes(
-            freeze_repository_revision):
+        freeze_repository_revision
+    ):
         raise FreezeError("experiment sources changed during planner caching")
+    materials = P.load_source_materials(source_seal_revision)
+    P._validate_confirmation_a_source_link(authorization, materials)
+    _require_source_ancestry(
+        materials.bindings, authorization, freeze_repository_revision,
+    )
+    if (
+        materials.bindings["seal_repository_commit_id"]
+        != source_seal_revision
+        or P.canonical_json(value.get("source_audit"))
+        != P.canonical_json(materials.source_audit)
+    ):
+        raise FreezeError("V11 source changed during planner caching")
+    if P.canonical_json(value.get("confirmation_a_authorization")) != (
+        P.canonical_json(_authorization_provenance(authorization))
+    ):
+        raise FreezeError("Confirmation A authorization changed during caching")
 
 
 def _write_exclusive(path: Path, value: dict) -> str:
@@ -500,9 +304,7 @@ def _write_exclusive(path: Path, value: dict) -> str:
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--attestation", type=Path, required=True)
-    parser.add_argument("--execution-receipt", type=Path, required=True)
-    parser.add_argument("--launch-receipt", type=Path, required=True)
+    parser.add_argument("--source-seal-revision", required=True)
     parser.add_argument(
         "--confirmation-a-receipt", type=Path,
         default=P.CONFIRMATION_A_RECEIPT_PATH,
@@ -527,29 +329,17 @@ def parse_args(argv=None):
 def main(argv=None) -> int:
     args = parse_args(argv)
     revision = _require_clean_parent(args.freeze_repository_revision)
-    value = build_freeze(
-        attestation=args.attestation,
-        execution_receipt=args.execution_receipt,
-        launch_receipt=args.launch_receipt,
-        confirmation_a_receipt=args.confirmation_a_receipt,
-        confirmation_a_receipt_pin=args.confirmation_a_receipt_pin,
-        confirmation_a_first_output=args.confirmation_a_first_output,
-        confirmation_a_second_output=args.confirmation_a_second_output,
-        freeze_repository_revision=revision,
-    )
-    _revalidate_before_write(
-        value,
-        attestation=args.attestation,
-        execution_receipt=args.execution_receipt,
-        launch_receipt=args.launch_receipt,
-        confirmation_a_receipt=args.confirmation_a_receipt,
-        confirmation_a_receipt_pin=args.confirmation_a_receipt_pin,
-        confirmation_a_first_output=args.confirmation_a_first_output,
-        confirmation_a_second_output=args.confirmation_a_second_output,
-        freeze_repository_revision=revision,
-    )
+    inputs = {
+        "source_seal_revision": args.source_seal_revision,
+        "confirmation_a_receipt": args.confirmation_a_receipt,
+        "confirmation_a_receipt_pin": args.confirmation_a_receipt_pin,
+        "confirmation_a_first_output": args.confirmation_a_first_output,
+        "confirmation_a_second_output": args.confirmation_a_second_output,
+        "freeze_repository_revision": revision,
+    }
+    value = build_freeze(**inputs)
+    _revalidate_before_write(value, **inputs)
     digest = _write_exclusive(args.output, value)
-    # Re-open through the exact runtime path when the default location is used.
     if args.output.resolve() == P.FREEZE_PATH.resolve():
         P._load_freeze(P.FREEZE_PATH)
     print(json.dumps({
@@ -557,9 +347,16 @@ def main(argv=None) -> int:
         "freeze_sha256": digest,
         "planner_revision": P.PLANNER_REVISION_REQUIRED,
         "freeze_repository_revision": revision,
-        "cohort_manifest_sha256": value["source_audit"][
-            "cohort_manifest_sha256"
-        ],
+        "source_seal_revision": args.source_seal_revision,
+        "guided_b_candidate_indices_sha256": value["source_audit"][
+            "guided_b"
+        ]["candidate_indices_sha256"],
+        "guided_b_source_projection_sha256": value["source_audit"][
+            "guided_b"
+        ]["source_projection_sha256"],
+        "confirmation_a_authorization_receipt_sha256": value[
+            "confirmation_a_authorization"
+        ]["receipt_sha256"],
     }, sort_keys=True, indent=2))
     return 0
 
