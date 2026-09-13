@@ -55,7 +55,7 @@ class AnalyzerTest(unittest.TestCase):
         freeze = fake_freeze()
         task_families = {
             (row["directory"], row["problem"]): row["family"]
-            for row in freeze["base_confirmation_b"]["cohort"]["tasks"]
+            for row in P.guided_b_tasks(freeze["base_confirmation_b"])
         }
         matrix = {
             (row["algorithm"], (row["domain"], row["problem"])): row
@@ -461,10 +461,12 @@ class AnalyzerTest(unittest.TestCase):
             freeze, FREEZE_SHA
         )
         keys = set(properties)
-        self.assertFalse(any("source_audit_v7" in key for key in keys))
-        self.assertTrue(set(
-            Analyzer.Runner.V11_PROVENANCE_PROPERTY_FIELDS
-        ).issubset(keys))
+        expected_v11 = set(Analyzer.Runner.V11_PROVENANCE_PROPERTY_FIELDS)
+        self.assertTrue(expected_v11.issubset(keys))
+        self.assertEqual(
+            {key for key in keys if key.startswith("source_audit")},
+            {key for key in expected_v11 if key.startswith("source_audit")},
+        )
         self.assertEqual(
             properties["source_audit_v11_schema"], P.V11_SOURCE_SCHEMA
         )

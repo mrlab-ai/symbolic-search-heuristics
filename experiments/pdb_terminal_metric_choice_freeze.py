@@ -320,7 +320,7 @@ def freeze(
     )):
         raise FreezeError("campaign freeze input/output path changed")
     revision = _require_clean_parent(freeze_repository_revision)
-    # Calibration is opened and completely validated before any A/B/V7
+    # Calibration is opened and completely validated before any V11 A/B
     # verifier or evidence path is touched.
     calibration_raw, calibration = P.load_canonical(
         calibration_path, "calibration receipt",

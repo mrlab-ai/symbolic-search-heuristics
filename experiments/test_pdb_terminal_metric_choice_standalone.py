@@ -80,7 +80,7 @@ class StandaloneTest(unittest.TestCase):
                         "terminal_incidence_confirmation_source",
                     )
                     if any(token in fullname for token in forbidden):
-                        raise RuntimeError("A/B/V7 imported before calibration")
+                        raise RuntimeError("V11 A/B imported before calibration")
                     return None
             sys.meta_path.insert(0, BlockEvidence())
             real_open = os.open

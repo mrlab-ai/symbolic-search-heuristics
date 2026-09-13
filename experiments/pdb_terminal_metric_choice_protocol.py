@@ -1037,9 +1037,13 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
 
     authorization = {}
     for field, value in live_authorization.items():
-        if isinstance(value, Path):
+        if field.endswith("_path"):
+            if not isinstance(value, Path):
+                raise ProtocolError("A authorization path is not canonical")
             try:
-                value = value.relative_to(REPO).as_posix()
+                value = Path(os.path.abspath(value)).relative_to(
+                    Path(os.path.abspath(REPO))
+                ).as_posix()
             except ValueError as err:
                 raise ProtocolError(
                     "A authorization path escaped repository"
@@ -1772,7 +1776,7 @@ def load_freeze(path: Path = FREEZE_PATH, *, verify_live_sources=True) -> dict:
 def load_authorized_freeze(
     path: Path = FREEZE_PATH, *, verify_live_sources=True,
 ) -> dict:
-    """Validate calibration before opening any live A/B/V7 evidence."""
+    """Validate calibration before opening any live V11 A/B evidence."""
     calibration_raw, calibration = load_canonical(
         CALIBRATION_RECEIPT_PATH, "calibration receipt",
         expected_path=CALIBRATION_RECEIPT_PATH,

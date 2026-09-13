@@ -445,6 +445,75 @@ class ProtocolTest(unittest.TestCase):
         ), self.assertRaisesRegex(P.ProtocolError, "contract drifted"):
             P.snapshot_sealed_b(fake_calibration())
 
+    def test_snapshot_uses_canonical_embedded_v11_a_b_materials(self):
+        expected = fake_snapshot()
+        source = expected["source_audit_v11"]
+        authorization = copy.deepcopy(expected["confirmation_a_authorization"])
+        live_authorization = copy.deepcopy(authorization)
+        for field in tuple(live_authorization):
+            if field.endswith("_path"):
+                live_authorization[field] = P.REPO / live_authorization[field]
+        b_freeze = {
+            "freeze_repository_revision": expected[
+                "base_b_freeze_repository_revision"
+            ],
+            "experiment_source_sha256": expected[
+                "base_b_experiment_source_sha256"
+            ],
+            "planner": expected["base_b_planner"],
+            "confirmation_a_authorization": authorization,
+            "source_audit": source,
+        }
+        b_materials = SimpleNamespace(
+            source_audit=source,
+            bindings=source["bindings"],
+            confirmation_a_candidate_indices_sha256=source["bindings"][
+                "confirmation_a_candidate_indices_sha256"
+            ],
+            confirmation_a_source_projection_sha256=source["bindings"][
+                "confirmation_a_source_projection_sha256"
+            ],
+        )
+        a_freeze = {
+            "freeze_repository_revision": expected[
+                "confirmation_a_freeze"
+            ]["repository_revision"],
+            "source_audit": {
+                "confirmation_a": expected["confirmation_a_cohort"],
+            },
+            "planner": expected["base_b_planner"],
+        }
+        a_materials = SimpleNamespace(
+            bindings=source["bindings"],
+            candidate_indices_sha256=expected["confirmation_a_cohort"][
+                "candidate_indices_sha256"
+            ],
+            source_projection_sha256=expected["confirmation_a_cohort"][
+                "source_projection_sha256"
+            ],
+        )
+        base = SimpleNamespace(
+            EXPERIMENT_SOURCE_FILES=P.BASE_B_EXPERIMENT_SOURCE_FILES,
+            FREEZE_PATH=P.BASE_B_FREEZE_PATH,
+            BENCHMARK_REVISION=expected["benchmark_revision"],
+            validate_protocol_without_sources=lambda: None,
+            _load_freeze=lambda path: (b_freeze, b_materials),
+            load_confirmation_a_authorization=lambda *paths: live_authorization,
+            _validate_confirmation_a_source_link=lambda auth, materials: None,
+            SourceValidation=SimpleNamespace(
+                _load_freeze=lambda path: (a_freeze, a_materials)
+            ),
+            sha256_file=lambda path: (
+                expected["confirmation_a_freeze"]["sha256"]
+                if path == P.BASE_A_FREEZE_PATH
+                else expected["base_b_freeze_sha256"]
+            ),
+        )
+        with mock.patch.object(P, "_lazy_base_protocol", return_value=base):
+            self.assertEqual(
+                P.snapshot_sealed_b(fake_calibration()), expected
+            )
+
     def test_six_field_planner_identity_is_exactly_shared(self):
         mutations = {
             "revision": "0" * 40,

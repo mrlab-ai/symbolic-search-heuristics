@@ -74,6 +74,31 @@ class HardeningTest(unittest.TestCase):
             {path: bindings[path] for path in tracked}, tracked
         )
 
+    def test_v11_closure_overlap_requires_identical_bytes(self):
+        freeze = self.closure_ready_freeze()
+        snapshot = freeze["base_confirmation_b"]
+        bindings = snapshot["source_audit_v11"]["bindings"]
+        shared = next(
+            relative for relative in P.SOURCE_FILES
+            if relative in snapshot["base_b_experiment_source_sha256"]
+        )
+        conflicting = "0" * 64
+        bindings["full_tracked_file_sha256"][shared] = conflicting
+        bindings["combined_tracked_file_sha256"][shared] = conflicting
+        for field in (
+            "full_tracked_file_sha256", "combined_tracked_file_sha256",
+        ):
+            bindings[field + "_digest"] = hashlib.sha256(
+                P.canonical_json(dict(sorted(bindings[field].items())))
+            ).hexdigest()
+        snapshot["confirmation_a_authorization"][
+            "source_audit_provenance"
+        ] = P._expected_v11_run_provenance(
+            bindings, snapshot["confirmation_a_freeze"]["sha256"]
+        )
+        with self.assertRaisesRegex(Freeze.FreezeError, "conflicting bindings"):
+            Freeze._launch_closure_bindings(freeze, "f" * 64)
+
     def test_live_jj_cleanliness_query_has_exact_non_ignored_command(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
@@ -276,21 +301,18 @@ class HardeningTest(unittest.TestCase):
         exclusive.assert_called_once_with(P.FREEZE_PATH, built)
         self.assertEqual(events[-1], "write")
 
-    def test_freeze_requires_planner_b_and_v7_ancestors_in_exact_order(self):
+    def test_freeze_requires_v11_a_b_ancestors_in_exact_order(self):
         snapshot = fake_snapshot()
         revision = "d" * 40
-        snapshot["base_b_freeze_repository_revision"] = "b" * 40
-        snapshot["source_audit_v7"]["repository_commit_id"] = "c" * 40
-        snapshot["source_audit_v7"][
-            "pre_diagnosis_repository_commit_id"
-        ] = "e" * 40
         with mock.patch.object(Freeze.JJ, "require_ancestor") as require:
             Freeze._require_ancestors(snapshot, revision)
         self.assertEqual(require.call_args_list, [
             mock.call(P.REPO, P.REQUIRED_PLANNER_REVISION, revision),
-            mock.call(P.REPO, "b" * 40, revision),
-            mock.call(P.REPO, "c" * 40, revision),
-            mock.call(P.REPO, "e" * 40, revision),
+            mock.call(P.REPO, "1" * 40, revision),
+            mock.call(P.REPO, "2" * 40, revision),
+            mock.call(P.REPO, "3" * 40, revision),
+            mock.call(P.REPO, "4" * 40, revision),
+            mock.call(P.REPO, "5" * 40, revision),
         ])
 
     def test_freeze_rebuild_rejects_fabricated_standalone_with_real_hashes(self):
@@ -390,31 +412,35 @@ class HardeningTest(unittest.TestCase):
         P.validate_calibration_exclusion(receipt, snapshot)
         import pdb_terminal_metric_choice_calibration as Calibration
         digest = Calibration.development_manifest()["tasks"][0]["problem_sha256"]
-        for section, row in (
-            ("confirmation_a_cohort", snapshot["confirmation_a_cohort"]["identities"][0]),
-            ("cohort", snapshot["cohort"]["tasks"][0]),
-        ):
+        for role in ("confirmation-a", "guided-b"):
             mutated = copy.deepcopy(snapshot)
-            target = (
-                mutated[section]["identities"][0]
-                if section == "confirmation_a_cohort"
-                else mutated[section]["tasks"][0]
+            cohort = (
+                mutated["confirmation_a_cohort"]
+                if role == "confirmation-a"
+                else mutated["source_audit_v11"]["guided_b"]
             )
-            target["problem_sha256"] = digest
-            if section == "confirmation_a_cohort":
-                mutated[section]["identities_sha256"] = __import__("hashlib").sha256(
-                    P.canonical_json(mutated[section]["identities"])
-                ).hexdigest()
-            else:
-                mutated[section]["tasks_sha256"] = P.cohort_digest(
-                    mutated[section]["tasks"]
-                )
-                mutated["source_audit_v7"]["cohort_manifest_sha256"] = (
-                    mutated[section]["tasks_sha256"]
-                )
-            with self.subTest(section=section):
-                with self.assertRaisesRegex(P.ProtocolError, "overlaps"):
-                    P.validate_calibration_exclusion(receipt, mutated)
+            cohort["records"][0]["problem_sha256"] = digest
+            cohort["records"][0]["aliases"][0]["problem_sha256"] = digest
+            projection_sha = hashlib.sha256(
+                P.canonical_json(cohort["records"])
+            ).hexdigest()
+            cohort["source_projection_sha256"] = projection_sha
+            bindings = mutated["source_audit_v11"]["bindings"]
+            prefix = "confirmation_a" if role == "confirmation-a" else "guided_b"
+            bindings[prefix + "_source_projection_sha256"] = projection_sha
+            if role == "confirmation-a":
+                mutated["confirmation_a_authorization"][
+                    "confirmation_a_cohort_manifest_sha256"
+                ] = projection_sha
+            mutated["confirmation_a_authorization"][
+                "source_audit_provenance"
+            ] = P._expected_v11_run_provenance(
+                bindings, mutated["confirmation_a_freeze"]["sha256"]
+            )
+            with self.subTest(role=role), self.assertRaisesRegex(
+                P.ProtocolError, "overlaps"
+            ):
+                P.validate_calibration_exclusion(receipt, mutated)
 
     def test_k32_reference_is_reconstructed_not_pool_membership(self):
         snapshot = fake_snapshot()
