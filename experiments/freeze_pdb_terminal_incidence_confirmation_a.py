@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the one prospective source/planner freeze for Confirmation A."""
+"""Create the one prospective V10 source/planner freeze for Confirmation A."""
 
 from __future__ import annotations
 
@@ -24,15 +24,15 @@ REVISION_CACHE = SCRIPT_DIR / "data" / "revision-cache"
 
 def _relative(path: Path) -> str:
     try:
-        lexical = Path(os.path.abspath(path))
-        root = Path(os.path.abspath(REPO))
-        return lexical.relative_to(root).as_posix()
+        return Path(os.path.abspath(path)).relative_to(
+            Path(os.path.abspath(REPO))
+        ).as_posix()
     except ValueError as err:
         raise FreezeError("freeze input escapes the repository") from err
 
 
 def _attest_tracked_file(
-    path: Path, expected: str, revision: str, label: str
+    path: Path, expected: str, revision: str, label: str,
 ) -> str:
     relative = _relative(path)
     try:
@@ -44,9 +44,9 @@ def _attest_tracked_file(
     try:
         tracked = JJ.tracked_file_sha256(REPO, revision, relative)
     except JJ.JjCacheError as err:
-        raise FreezeError("{} is not committed at the freeze revision".format(
-            label
-        )) from err
+        raise FreezeError(
+            "{} is not committed at the freeze revision".format(label)
+        ) from err
     if tracked != expected:
         raise FreezeError("{} differs from the freeze revision".format(label))
     try:
@@ -64,7 +64,7 @@ def _source_hashes(revision: str) -> dict[str, str]:
         path = REPO / relative
         live = P.sha256_file(path)
         _attest_tracked_file(
-            path, live, revision, "experiment source {}".format(relative)
+            path, live, revision, "experiment source {}".format(relative),
         )
         hashes[relative] = live
     return hashes
@@ -86,176 +86,56 @@ def _require_clean_parent(revision: str | None) -> str:
     return revision
 
 
-def _tracked_source_v7_hashes(materials, revision: str) -> dict[str, str]:
-    hashes = dict(materials.tracked_file_sha256)
-    producer_revision = materials.launch_receipt.get("repository_commit_id")
-    if (
-        set(hashes) != set(P.SourceV7.SCOPED_FILES)
-        or P.COMMIT_RE.fullmatch(revision or "") is None
-        or P.COMMIT_RE.fullmatch(producer_revision or "") is None
-    ):
-        raise FreezeError("source-audit V7 bound file set changed")
-    for relative, expected in hashes.items():
-        try:
-            tracked = JJ.tracked_file_sha256(
-                REPO, producer_revision, relative
-            )
-        except JJ.JjCacheError as err:
-            raise FreezeError(
-                "source-audit V7 bound file is absent from the producer revision"
-            ) from err
-        if tracked != expected:
-            raise FreezeError(
-                "source-audit V7 bound file differs from the producer revision"
-            )
-    return hashes
-
-
-def _require_source_ancestor(materials, revision: str) -> None:
+def _require_source_ancestry(bindings: dict, revision: str) -> None:
+    source = bindings["preflight_source_repository_commit_id"]
+    preflight = bindings["preflight_seal_repository_commit_id"]
+    seal = bindings["seal_repository_commit_id"]
     try:
+        JJ.require_ancestor(REPO, source, preflight)
+        JJ.require_ancestor(REPO, preflight, seal)
+        JJ.require_ancestor(REPO, seal, revision)
         JJ.require_ancestor(REPO, P.PLANNER_REVISION_REQUIRED, revision)
-        JJ.require_ancestor(
-            REPO, materials.launch_receipt["repository_commit_id"], revision
-        )
-        JJ.require_ancestor(
-            REPO,
-            materials.execution_receipt["pre_diagnosis_freeze"][
-                "repository_commit_id"
-            ],
-            revision,
-        )
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "planner 8148 or V7 producer is not an ancestor of the freeze"
+            "V10 S-to-P-to-Q chain or planner is not ancestral to the freeze"
         ) from err
 
 
-def build_freeze(
-    *,
-    attestation: Path,
-    execution_receipt: Path,
-    launch_receipt: Path,
-    freeze_repository_revision: str,
-) -> dict:
-    P.validate_protocol_design()
-    materials = P.load_source_materials(
-        attestation, execution_receipt, launch_receipt
-    )
-    _require_source_ancestor(materials, freeze_repository_revision)
-    for path, expected in (
-        (materials.attestation_path, materials.attestation_sha256),
-        (materials.diagnostic_path, materials.diagnostic_sha256),
-        (materials.intent_path, materials.intent_sha256),
-        (materials.execution_receipt_path, materials.execution_receipt_sha256),
-        (materials.launch_receipt_path, materials.launch_receipt_sha256),
-        *P.v7_recovery_artifacts(materials.execution_receipt),
-    ):
-        _attest_tracked_file(
-            path, expected, freeze_repository_revision, "sealed V7 source artifact"
-        )
-    tracked_file_sha256 = _tracked_source_v7_hashes(
-        materials, freeze_repository_revision
-    )
+def _planner_freeze() -> dict:
     cached = JJ.JjCachedFastDownwardRevision(
         REVISION_CACHE, REPO, P.PLANNER_REVISION_REQUIRED,
-        list(P.BUILD_OPTIONS)
+        list(P.BUILD_OPTIONS),
     )
     cached.cache()
     planner = cached.attest()
-    expected_planner = {
-        "revision": P.PLANNER_REVISION_REQUIRED,
-        "build_options": list(P.BUILD_OPTIONS),
-    }
-    if any(planner.get(key) != value for key, value in expected_planner.items()):
-        raise FreezeError("planner cache identifies the wrong revision")
-    required_hashes = (
-        "downward_sha256", "preprocess_sha256", "tree_manifest_sha256"
-    )
-    if any(
-        P.SHA256_RE.fullmatch(planner.get(field, "")) is None
-        for field in required_hashes
+    if (
+        planner.get("revision") != P.PLANNER_REVISION_REQUIRED
+        or planner.get("build_options") != list(P.BUILD_OPTIONS)
     ):
+        raise FreezeError("planner cache identifies the wrong revision")
+    required = ("downward_sha256", "preprocess_sha256", "tree_manifest_sha256")
+    if any(P.SHA256_RE.fullmatch(planner.get(name, "")) is None
+           for name in required):
         raise FreezeError("planner cache attestation is incomplete")
-    source_launch = materials.launch_receipt
-    source_execution = materials.execution_receipt
-    source_provenance = {
-        "campaign": source_execution["campaign"],
-        "attestation_path": _relative(materials.attestation_path),
-        "terminal_diagnostic_path": _relative(materials.diagnostic_path),
-        "execution_receipt_path": _relative(materials.execution_receipt_path),
-        "launch_receipt_path": _relative(materials.launch_receipt_path),
-        "launch_intent_path": _relative(materials.intent_path),
-        "attestation_sha256": materials.attestation_sha256,
-        "terminal_diagnostic_sha256": materials.diagnostic_sha256,
-        "execution_receipt_sha256": materials.execution_receipt_sha256,
-        "launch_receipt_sha256": materials.launch_receipt_sha256,
-        "launch_intent_sha256": materials.intent_sha256,
-        "cohort_manifest_sha256": materials.cohort_manifest_sha256,
-        "attestation_records_sha256": materials.records_sha256,
-        "translator_source_sha256": materials.translator_source_sha256,
-        "job_id": source_launch["job_id"],
-        "code_manifest_sha256": source_execution["v7_code_manifest_sha256"],
-        "repository_commit_id": source_launch["repository_commit_id"],
-        "union_tree_sha256": source_execution["union_tree"]["sha256"],
-        "union_sources_sha256": source_execution["union_sources_sha256"],
-        "v5_reusable_tree_sha256": source_execution[
-            "v5_reusable_tree"
-        ]["sha256"],
-        "v7_output_tree_sha256": source_execution["v7_output_tree"]["sha256"],
-        "v5_launch_receipt_sha256": source_execution[
-            "v5_launch_receipt_sha256"
-        ],
-        "v5_code_manifest_sha256": source_execution[
-            "v5_code_manifest_sha256"
-        ],
-        "reused_v5_shards": source_execution["reused_v5_shards"],
-        "repaired_v5_shards": source_execution["repaired_v5_shards"],
-        "reused_v6_shards": source_execution["reused_v6_shards"],
-        "source_support_outcome_blind_selective_repair": source_execution[
-            "source_support_outcome_blind_selective_repair"
-        ],
-        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
-            source_execution[
-                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
-            ]
-        ),
-        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
-            source_execution[
-                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
-            ]
-        ),
-        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": source_execution[
-            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
-        ],
-        "scheduler_membership_affects_execution_origin_only": source_execution[
-            "scheduler_membership_affects_execution_origin_only"
-        ],
-        "v6_runtime_artifacts_used": source_execution[
-            "v6_runtime_artifacts_used"
-        ],
-        "accepted_translation_statuses": source_execution[
-            "accepted_translation_statuses"
-        ],
-        "translator_timeout_is_infrastructure_failure": source_execution[
-            "translator_timeout_is_infrastructure_failure"
-        ],
-        "resource_ceiling_changes_accepted_outcome_classes": source_execution[
-            "resource_ceiling_changes_accepted_outcome_classes"
-        ],
-        "slurm_template_sha256": source_launch["slurm_template_sha256"],
-        **P.v7_recovery_provenance(source_execution),
-        "tracked_file_sha256": tracked_file_sha256,
+    return {
+        "revision": P.PLANNER_REVISION_REQUIRED,
+        "cache_name": cached.name,
+        "build_options": list(P.BUILD_OPTIONS),
+        **{name: planner[name] for name in required},
     }
+
+
+def build_freeze(
+    *, source_seal_revision: str, freeze_repository_revision: str,
+) -> dict:
+    P.validate_protocol_design()
+    materials = P.load_source_materials(source_seal_revision)
+    _require_source_ancestry(materials.bindings, freeze_repository_revision)
     return {
         "schema": P.FREEZE_SCHEMA,
         "freeze_repository_revision": freeze_repository_revision,
-        "source_audit": source_provenance,
-        "planner": {
-            "revision": P.PLANNER_REVISION_REQUIRED,
-            "cache_name": cached.name,
-            "build_options": list(P.BUILD_OPTIONS),
-            **{field: planner[field] for field in required_hashes},
-        },
+        "source_audit": materials.source_audit,
+        "planner": _planner_freeze(),
         "design": {
             "protocol_sha256": P.sha256_file(P.PROTOCOL_PATH),
             "option_matrix_sha256": P.option_matrix_digest(),
@@ -266,105 +146,38 @@ def build_freeze(
             "bootstrap_replicates": P.BOOTSTRAP_REPLICATES,
             "bootstrap_seed": P.BOOTSTRAP_SEED,
         },
-        "experiment_source_sha256": _source_hashes(freeze_repository_revision),
+        "experiment_source_sha256": _source_hashes(
+            freeze_repository_revision
+        ),
     }
 
 
 def _revalidate_before_write(
-    value: dict,
-    *,
-    attestation: Path,
-    execution_receipt: Path,
-    launch_receipt: Path,
+    value: dict, *, source_seal_revision: str,
     freeze_repository_revision: str,
 ) -> None:
     if _require_clean_parent(freeze_repository_revision) != freeze_repository_revision:
         raise FreezeError("freeze revision changed during planner caching")
-    materials = P.load_source_materials(
-        attestation, execution_receipt, launch_receipt
-    )
-    _require_source_ancestor(materials, freeze_repository_revision)
-    for path, expected in (
-        (materials.attestation_path, materials.attestation_sha256),
-        (materials.diagnostic_path, materials.diagnostic_sha256),
-        (materials.intent_path, materials.intent_sha256),
-        (materials.execution_receipt_path, materials.execution_receipt_sha256),
-        (materials.launch_receipt_path, materials.launch_receipt_sha256),
-        *P.v7_recovery_artifacts(materials.execution_receipt),
-    ):
-        _attest_tracked_file(
-            path, expected, freeze_repository_revision, "sealed V7 source artifact"
-        )
-    tracked = _tracked_source_v7_hashes(materials, freeze_repository_revision)
-    launch = materials.launch_receipt
-    execution = materials.execution_receipt
-    expected_sources = {
-        "campaign": execution["campaign"],
-        "attestation_path": _relative(materials.attestation_path),
-        "terminal_diagnostic_path": _relative(materials.diagnostic_path),
-        "execution_receipt_path": _relative(materials.execution_receipt_path),
-        "launch_receipt_path": _relative(materials.launch_receipt_path),
-        "launch_intent_path": _relative(materials.intent_path),
-        "attestation_sha256": materials.attestation_sha256,
-        "terminal_diagnostic_sha256": materials.diagnostic_sha256,
-        "execution_receipt_sha256": materials.execution_receipt_sha256,
-        "launch_receipt_sha256": materials.launch_receipt_sha256,
-        "launch_intent_sha256": materials.intent_sha256,
-        "cohort_manifest_sha256": materials.cohort_manifest_sha256,
-        "attestation_records_sha256": materials.records_sha256,
-        "translator_source_sha256": materials.translator_source_sha256,
-        "job_id": launch["job_id"],
-        "code_manifest_sha256": execution["v7_code_manifest_sha256"],
-        "repository_commit_id": launch["repository_commit_id"],
-        "union_tree_sha256": execution["union_tree"]["sha256"],
-        "union_sources_sha256": execution["union_sources_sha256"],
-        "v5_reusable_tree_sha256": execution["v5_reusable_tree"]["sha256"],
-        "v7_output_tree_sha256": execution["v7_output_tree"]["sha256"],
-        "v5_launch_receipt_sha256": execution["v5_launch_receipt_sha256"],
-        "v5_code_manifest_sha256": execution["v5_code_manifest_sha256"],
-        "reused_v5_shards": execution["reused_v5_shards"],
-        "repaired_v5_shards": execution["repaired_v5_shards"],
-        "reused_v6_shards": execution["reused_v6_shards"],
-        "source_support_outcome_blind_selective_repair": execution[
-            "source_support_outcome_blind_selective_repair"
-        ],
-        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": (
-            execution[
-                "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate"
-            ]
-        ),
-        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": (
-            execution[
-                "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion"
-            ]
-        ),
-        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": execution[
-            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal"
-        ],
-        "scheduler_membership_affects_execution_origin_only": execution[
-            "scheduler_membership_affects_execution_origin_only"
-        ],
-        "v6_runtime_artifacts_used": execution["v6_runtime_artifacts_used"],
-        "accepted_translation_statuses": execution[
-            "accepted_translation_statuses"
-        ],
-        "translator_timeout_is_infrastructure_failure": execution[
-            "translator_timeout_is_infrastructure_failure"
-        ],
-        "resource_ceiling_changes_accepted_outcome_classes": execution[
-            "resource_ceiling_changes_accepted_outcome_classes"
-        ],
-        "slurm_template_sha256": launch["slurm_template_sha256"],
-        **P.v7_recovery_provenance(execution),
-        "tracked_file_sha256": tracked,
-    }
-    if value.get("source_audit") != expected_sources:
-        raise FreezeError("source provenance changed during planner caching")
+    bindings = value.get("source_audit", {}).get("bindings")
+    if not isinstance(bindings, dict):
+        raise FreezeError("built V10 source provenance is incomplete")
+    _require_source_ancestry(bindings, freeze_repository_revision)
     if value.get("freeze_repository_revision") != freeze_repository_revision:
         raise FreezeError("freeze repository revision changed during caching")
     if value.get("experiment_source_sha256") != _source_hashes(
-            freeze_repository_revision):
+        freeze_repository_revision
+    ):
         raise FreezeError("experiment sources changed during planner caching")
+    # This is the second and final V10 payload consumption.  The caller writes
+    # immediately after this exact canonical comparison.
+    materials = P.load_source_materials(source_seal_revision)
+    if (
+        materials.bindings["seal_repository_commit_id"]
+        != source_seal_revision
+        or P.canonical_json(value.get("source_audit"))
+        != P.canonical_json(materials.source_audit)
+    ):
+        raise FreezeError("V10 source changed during planner caching")
 
 
 def _write_exclusive(path: Path, value: dict) -> str:
@@ -382,9 +195,7 @@ def _write_exclusive(path: Path, value: dict) -> str:
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--attestation", type=Path, required=True)
-    parser.add_argument("--execution-receipt", type=Path, required=True)
-    parser.add_argument("--launch-receipt", type=Path, required=True)
+    parser.add_argument("--source-seal-revision", required=True)
     parser.add_argument("--freeze-repository-revision")
     parser.add_argument("--output", type=Path, default=P.FREEZE_PATH)
     return parser.parse_args(argv)
@@ -394,20 +205,15 @@ def main(argv=None) -> int:
     args = parse_args(argv)
     revision = _require_clean_parent(args.freeze_repository_revision)
     value = build_freeze(
-        attestation=args.attestation,
-        execution_receipt=args.execution_receipt,
-        launch_receipt=args.launch_receipt,
+        source_seal_revision=args.source_seal_revision,
         freeze_repository_revision=revision,
     )
     _revalidate_before_write(
         value,
-        attestation=args.attestation,
-        execution_receipt=args.execution_receipt,
-        launch_receipt=args.launch_receipt,
+        source_seal_revision=args.source_seal_revision,
         freeze_repository_revision=revision,
     )
     digest = _write_exclusive(args.output, value)
-    # Re-open through the exact runtime path when the default location is used.
     if args.output.resolve() == P.FREEZE_PATH.resolve():
         P._load_freeze(P.FREEZE_PATH)
     print(json.dumps({
@@ -415,9 +221,13 @@ def main(argv=None) -> int:
         "freeze_sha256": digest,
         "planner_revision": P.PLANNER_REVISION_REQUIRED,
         "freeze_repository_revision": revision,
-        "cohort_manifest_sha256": value["source_audit"][
-            "cohort_manifest_sha256"
-        ],
+        "source_seal_revision": args.source_seal_revision,
+        "confirmation_a_candidate_indices_sha256": value["source_audit"][
+            "confirmation_a"
+        ]["candidate_indices_sha256"],
+        "confirmation_a_source_projection_sha256": value["source_audit"][
+            "confirmation_a"
+        ]["source_projection_sha256"],
     }, sort_keys=True, indent=2))
     return 0
 
