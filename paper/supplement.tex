@@ -46,7 +46,7 @@
 \newcommand{\activecount}[2]{\ensuremath{k(#1,#2)}}
 \newcommand{\valuecount}{\ensuremath{N_{\mathrm{val}}}}
 \newcommand{\maskfun}[2]{\ensuremath{m_{#1,#2}}}
-\newcommand{\terminalset}[1]{\ensuremath{\mathcal{T}(#1)}}
+\newcommand{\terminalset}[1]{\ensuremath{\mathcal{T}_h(#1)}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
 \newcommand{\astar}{A\ensuremath{^{*}}}
 \newcommand{\ghseta}{GHSETA\ensuremath{^{*}}}
@@ -82,7 +82,7 @@ Supplementary Material}
 \paragraph{Guide.}
 The first part proves the terminal-incidence hierarchy, its exact separation,
 fixed-frontier contraction, the counterexample for exact partition effort and
-the incomparability of the cofactor and ADD branches.
+the incomparability of the masked-cofactor and standard-Apply certificates.
 The next part retains the detailed cofactor, search-effort, pruning, lower-bound
 and heuristic-family theory that led to the new metric.
 The final parts preserve the developmental experiments, including negative
@@ -110,8 +110,8 @@ Finite-valued functions use reduced ordered ADDs without complemented edges;
 $|\mathrm{ADD}_\pi(f)|$ also counts inner nodes.
 
 Let $S\ne\emptyset$ be a set of Boolean assignments and let $h$ be a total
-finite-valued function on the Boolean cube.
-The arguments extend unchanged when $\infty$ is one of its terminal labels.
+function on the Boolean cube with finitely many terminal labels, possibly
+including $\infty$.
 Write $\terminalset{S}=h(S)$ and $k=|\terminalset{S}|$.
 The exact cost of representing all value buckets separately is
 \begin{equation}
@@ -120,6 +120,7 @@ The exact cost of representing all value buckets separately is
  \label{eq:supp-exact-partition}
 \end{equation}
 This is a sum of reachable regular nodes per bucket root.
+The active set includes $\infty$ when attained on $S$.
 If several roots share a manager node, the sum counts it once for each root;
 it is not a claim about construction time, peak memory or the number of unique
 manager nodes.
@@ -135,6 +136,8 @@ Let $M=\mathrm{ADD}_\pi(\maskfun{S}{h})$, let
 $D=\maskednodes{S}{h}$ be its number of inner nodes and let
 $T_M(u)\subseteq\terminalset{S}$ be the active terminals reachable from an
 inner node $u$ of $M$.
+The fresh terminal $\bot$ is never active, whereas $\infty$ is active whenever
+it is attained on $S$.
 Per-node reachable-terminal sets themselves are established MTBDD operations
 \citep{duret-lutz-et-al-ciaa2025}; terminal incidence aggregates their
 cardinalities after frontier masking.
@@ -298,8 +301,8 @@ Summing over the $k$ active terminals gives
 Equation~\ref{eq:supp-add-branch}.
 \end{proof}
 
-The two branches deliberately share only the exact target and terminal
-incidence.
+The masked-cofactor and standard-Apply certificates deliberately share only
+the exact target and terminal incidence.
 In particular, Theorem~\ref{thm:supp-incidence-hierarchy} does not order the
 masked cofactor and ADD certificates.
 
@@ -646,9 +649,9 @@ The fixed-frontier contraction above is stronger than the older cofactor-only
 statement, but the counterexample prevents a monotonicity claim for exact
 partition effort.
 
-\subsection{Incomparability of the Cofactor and ADD Branches}
+\subsection{Incomparability of the Masked-Cofactor and Apply Certificates}
 
-\begin{proposition}[branch incomparability]
+\begin{proposition}[certificate incomparability]
 \label{prop:supp-branch-incomparability}
 Neither $k\cofcount(\maskfun{S}{h})$ nor
 $k(2(A+1)\bddsize{S}+A)$ is bounded by a constant multiple of the other over
@@ -706,20 +709,24 @@ its complete gate.
 
 \subsection{Source Audit, Families and Cohorts}
 
-The universal source inventory starts from 1,640 benchmark candidates at the
-pinned benchmark-repository revision recorded in the frozen protocol.
-It first removes every task identity and every problem-content hash used in a
-prior experiment.
+The universal source scan enumerates 4,088 benchmark task paths at benchmark
+revision
+\texttt{48d6a00d\allowbreak{}482de238\allowbreak{}4a9e751f\allowbreak{}9343df58\allowbreak{}bf5582be}.
+It removes every task identity and every problem-content hash used in a prior
+experiment, leaving 1,733 paths.
 Equal problem hashes are then collected into an alias group with one
 deterministically chosen canonical path; a duplicate hash crossing two
 normalized families invalidates the inventory.
+This produces the immutable V9 inventory of exactly 1,640 canonical candidates
+in 78 directories and 43 normalized families.
 A conservative directory-to-family map collapses benchmark-track and
 encoding variants of the same planning domain.
 
 A task is \emph{source-attested} if its canonical PDDL bytes and hashes match
-the inventory, translation and normalization finish successfully, the
-serialized task has at least one operator, all operator costs are positive,
-and the serialized and normalized task has no axioms or conditional effects.
+the inventory, translation finishes successfully, the serialized task has at
+least one operator, every serialized operator cost is positive, the serialized
+task has neither axioms nor conditional effects, and the same-pass
+normalization records no normalized axioms.
 Every candidate is classified, including unsupported ones.
 The \emph{shadow-unrepresented} stratum contains families absent from the
 earlier terminal-incidence shadow cohort.
@@ -731,102 +738,75 @@ Within every supported family, SHA-256 ranks derived from fixed role strings
 determine the split.
 For a family with $n_f$ supported tasks, the audit reserves the first
 $\min\{3,\lfloor n_f/2\rfloor\}$ tasks under the B-base rank.
-After removing those problem hashes, it draws exactly 650 A tasks by
+After removing those problem hashes, it draws up to 650 A tasks by
 lexicographic-family round robin under the A rank.
-It then tops up the reserved B cohort from the remaining tasks by
-lexicographic-family round robin under a separate B-top-up rank until B has
-exactly 300 tasks, with at most 12 B tasks per family.
-The A and B records are disjoint in canonical identity and problem hash.
-A is authorized only with exactly 650 tasks, at least 28 source families, at
-least 12 shadow-unrepresented families, and at least 100 tasks from ten
+It then tops up the reserved guided-B cohort from the remaining tasks by
+lexicographic-family round robin under a separate B-top-up rank, toward a
+target of 300 tasks and with at most 12 tasks per family.
+The A and guided-B records are disjoint in canonical identity and problem hash.
+The V9 source gate requires exactly 650 A tasks, at least 28 A families, at
+least 12 shadow-unrepresented A families and at least 100 A tasks from ten
 all-prior-unrepresented families.
-B is authorized only with exactly 300 tasks, at least 30 families, at least 12
-shadow-unrepresented families, and at least 50 tasks from ten
-all-prior-unrepresented families.
+For guided B, the V9 source gate requires at least 200 tasks, at least 30
+families, at least 12 shadow-unrepresented families and at least 50 tasks from
+ten all-prior-unrepresented families.
+The later Confirmation-B freeze additionally requires the 300-task target; a
+sealed audit with 200--299 guided-B tasks may authorize A but cannot authorize
+B.
 
-% ================= RESULT_INSERT_SOURCE_AUDIT_V7_BEGIN =================
-% Replace this prospective V7 account with the sealed audit outcome, exact A/B
-% cohort support, mixed-shard origins, and source/environment/scheduler status.
-Campaign v5 is the fourth infrastructure-ceiling amendment after the original
-scan.
-The first scan requested 26~GiB and had out-of-memory shards.
-The second reran all shards with 256~GiB and a 2,700-second translation limit,
-but still had timeouts and out-of-memory shards.
-The third reran all shards with 512~GiB and a 7,200-second per-task translation
-limit, but compute-node temporary-space exhaustion, out-of-memory conditions
-and producer timeouts prevented it from being sealed.
-Campaign v4 reran every one of the 820 two-task shards from scratch with
-project-backed temporary storage, 1,024~GiB and a 14,400-second per-candidate
-translation limit within an 08:20:00 Slurm limit. It ended naturally with 801
-scheduler-completed array elements, ten classified translator timeouts and
-nine classified out-of-memory failures, so it also cannot be sealed. Campaign
-v5 reruns all 820 shards with 2~TiB and a 28,800-second per-candidate limit,
-but its terminal scheduler summary contains 795 completed, 15 failed and ten
-out-of-memory elements and therefore makes v5 seal-ineligible.
+% ================= RESULT_INSERT_SOURCE_AUDIT_V9_BEGIN =================
+% Replace this prospective V9 account with the sealed audit outcome, exact A/B
+% cohort support, outcome counts and source/environment/scheduler provenance.
+Campaigns v1--v5 increased infrastructure ceilings while preserving the fixed
+1,640-candidate inventory, but none passed a complete all-success gate.
+The v5 scheduler summary contained 795 completed, 15 failed and ten
+out-of-memory array elements.
+The attempted v6 diagnostic failed closed before producing an artifact or
+reading any scientific payload.
 
-The attempted v6 diagnostic revalidated the already fixed v5 inventory and task
-metadata and transiently parsed scheduler elapsed fields before rejecting a
-\texttt{FAILED}/\texttt{2:0} result for array row~2.
-It produced no accepted diagnostic, manifest, launch, job or shard.
-No v5 shard, environment record, log or source-support classification was read.
+V7 fixed a historical newline-encoding mismatch, validated a scheduler-only
+795/25 v5 partition and exclusively recorded a launch intent.
+Its single \texttt{sbatch} call created no job because the requested 3,000~GiB
+exceeded the \texttt{fat} nodes' allocatable memory after the system reserve;
+the namespace was burned.
+V8 froze an exact 25-element whole-shard repair at 2,950~GiB.
+Its terminal scheduler summary contained eight completed and 17 out-of-memory
+elements, so V8 failed its all-success gate.
+No V8 worker shard, worker stream, environment record or source-support
+outcome was opened or reused.
 
-The first v7 diagnosis attempt, at revision
-\texttt{9c06f962627739d40d00cb2ef19525a80b2ca97f}, completed its freeze and
-validated the v5 intent, receipt, live executable identities, 38 manifest
-dependencies and historical v4-to-v5 diagnostic. It failed at four embedded
-list digests because their producer included a terminating line feed while the
-v5 consumer omitted it. It issued no scheduler query, read no scheduler row or
-v5 output, shard, environment, log or support result, and created no v7
-diagnostic, manifest, intent, receipt, job or output. A v7-local wrapper now
-invokes the unchanged v5 validator with the historical producer encoding and
-restores the consumer state on success or failure; v5 and v6 remain unchanged.
+V9 abandons selective repair and freshly attempts every inventory candidate
+once under the limits of a Confirmation-A cell: 1,800 seconds and 24,576~MiB.
+It reuses no runtime byte from v1--v8.
+One unthrottled 820-element array runs two candidates sequentially per element
+on the \texttt{fat} partition with normal QoS, one CPU, 26~GiB and a 01:10:00
+outer limit.
+The frozen candidate-level outcomes are validated success, documented input
+rejection and authoritative memory or CPU-time exclusion.
+Input rejection records unsupported language, while a resource exclusion has
+indeterminate source support and cannot enter either cohort.
+Every other child outcome is campaign-fatal.
 
-The amended prospective campaign v7 is frozen before its first
-scheduler-reaching diagnosis, after these disclosed operational facts but
-before any source-support outcome or repair output is inspected.
-Its diagnostic requests only array identity, state, exit code and partition.
-It reuses exactly the v5 shards whose scheduler state is \texttt{COMPLETED}
-with exit \texttt{0:0} and repairs every other recognized terminal row as a
-complete two-candidate shard under one fixed maximum profile on \texttt{fat}.
-Active, missing, duplicate, malformed or unknown rows abort, and no failure
-cause affects this exact partition.
-V7 reuses no v1--v4 or v6 shard and no file from a noncompleted v5 task.
-Launch rebuilds the canonical inventory independently and does not read the v5
-output namespace.
-Seal first requires every v7 repair row to complete with exit \texttt{0:0}; it
-then opens only the selected v5 shard, environment and success-log triplets and
-constructs the ordered 820-shard union with origins \texttt{v5-completed} and
-\texttt{v7-repair}.
-The reusable v5 triplet bytes were not externally committed when v5
-completed; their selected tree is first separately recorded by the digest
-published at v7 seal, which is not itself an external witness.
-The seal authenticates the v5 launch, code, inventory and root identities and
-checks scheduler success, triplet consistency and live semantic replay, but it
-cannot cryptographically exclude a coherent same-user replacement made before
-the sealed records receive their content-addressed commit. Immediately after
-seal and before discretionary outcome analysis or paper claims, the execution
-receipt, attestation and five seal-stage records are committed with
-Jujutsu and subsequently archived or uploaded when practical. This explicit
-historical-integrity limitation is distinct from outcome-based adaptation; a
-full v7 rerun would remove it.
-Controller-side v7 publications and private-root creation use retained
-directory descriptors and no-follow checks, but task scratch, snapshot,
-cleanup and Slurm-output paths remain pathname-based. We therefore assume no
-concurrent same-user pathname mutator during task execution and make no active
-same-user task-path containment claim; this trust boundary is recorded in the
-v7 diagnostic, launch record and execution receipt.
-The unchanged semantic producer accepts only translator statuses
-\texttt{success} and \texttt{input-rejected}; a timeout is an infrastructure
-exception that cannot enter a valid shard.
-Thus the 28,800-second v5 and 115,200-second v7 ceilings affect completion, not
-the accepted classification classes, and the audit records no runtime
-estimand or cross-campaign runtime comparison.
-Neither cohort exists for a confirmation launch until the complete v7 source,
-environment, scheduler, producer-revision and union chain verifies.
-The crash-resumable seal binds an exclusive five-stage
-plan--union--candidate--attestation hash chain that every downstream freeze
-reopens and records.
-% ================== RESULT_INSERT_SOURCE_AUDIT_V7_END ==================
+The controller may open no V9 worker shard, worker stream, environment record
+or outcome until all 820 outer rows are exactly
+\texttt{COMPLETED}/\texttt{0:0} with zero scheduler restarts.
+Any other terminal outer state permanently burns the namespace; V9 has no
+selective recovery and no partial-row reuse.
+After the scheduler gate, the seal revalidates the committed code manifest,
+launch journal, executable identities, complete candidate order, exact
+resource contract, outcome taxonomy and deterministic A/B split.
+It exclusively publishes the seal plan, tree, census, split and attestation
+stages, the attestation and the execution receipt.
+The launch intent, raw \texttt{sbatch} captures, \texttt{sbatch}-result record,
+launch receipt and all seven seal records must then occur byte-for-byte in a
+distinct content-addressed repository revision.
+An independent strict consumer additionally requires the complete source
+closure at that seal revision to equal its bytes at the prelaunch producer
+revision before it may expose either cohort to a downstream freeze, paper
+renderer or discretionary outcome analysis.
+Neither cohort exists for a confirmation launch until that committed-seal
+validation passes every original task, family, novelty and disjointness floor.
+% ================== RESULT_INSERT_SOURCE_AUDIT_V9_END ==================
 
 \begin{table}[htbp]
 \centering
@@ -968,9 +948,9 @@ frozen and launched.
 It contains one task-blocked triad per B task: incidence-guided,
 $mJ$-guided and matched $K=32$, for 900 fresh planner cells.
 Within each family, the three execution positions rotate cyclically by task.
-The task mapping, source-audit-v7 selective-repair provenance, planner revision, executable and
-preprocessor hashes, search strings, options, limits and trace schemas are
-bound before launch.
+The task mapping, committed full-census source provenance, planner revision,
+executable and preprocessor hashes, search strings, options, limits and trace
+schemas are bound before launch.
 
 On complete probes, all arms record the same 16 completed blind layers,
 construct the same normalized pattern pool and cap grid, and compute both

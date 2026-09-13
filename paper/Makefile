@@ -7,8 +7,8 @@ LATEXMK ?= latexmk
 LATEXFLAGS ?= -pdf -interaction=nonstopmode -halt-on-error
 PDFINFO ?= pdfinfo
 PAPER_PYTHON ?= python3
-# ICAPS 2027 has not published its page rule. Keep the preceding eight-page
-# content limit as an explicit project assumption until the call is available.
+# The ICAPS 2027 CFP fixes the long-paper limit at eight content pages plus
+# additional reference pages and requires AAAI format.
 ICAPS_TARGET_CONTENT_PAGES ?= 8
 AUTHOR_KIT_STYLE := aaai2027.sty
 AUTHOR_KIT_BST := aaai2027.bst
@@ -212,10 +212,11 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		$(SEED_RENDERER) --analysis $(SEED_ARTIFACT) \
 		--output $(SEED_GENERATED_RESULT) --check
 
-# Provisional project audit assumption only, not an ICAPS 2027 requirement:
-# audit a two-PDF review bundle until the venue publishes its rules. The
-# checker accepts exactly these two outputs; private manifests, generated
-# provenance, source, logs, and post-unblinding artifacts stay outside it.
+# Project review-bundle audit. The ICAPS 2027 CFP is silent about a separate
+# supplementary upload, so the submission form must be checked before treating
+# the supplement as a venue deliverable. The checker accepts exactly these two
+# internal review outputs; private manifests, generated provenance, source,
+# logs, and post-unblinding artifacts stay outside them.
 # Force both documents through LaTeX here: latexmk otherwise trusts its state
 # database even when a newer unrelated PDF has replaced an output file.
 submission-audit: submission-check author-kit-preflight

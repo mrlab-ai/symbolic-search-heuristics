@@ -52,7 +52,7 @@
 \newcommand{\activecount}[2]{\ensuremath{k(#1,#2)}}
 \newcommand{\valuecount}{\ensuremath{N_{\mathrm{val}}}}
 \newcommand{\maskfun}[2]{\ensuremath{m_{#1,#2}}}
-\newcommand{\terminalset}[1]{\ensuremath{\mathcal{T}(#1)}}
+\newcommand{\terminalset}[1]{\ensuremath{\mathcal{T}_h(#1)}}
 \newcommand{\effort}{\ensuremath{\mathit{effort}}}
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
 \newcommand{\astar}{A\ensuremath{^{*}}}
@@ -102,9 +102,9 @@ frontier into value buckets.
 Cofactor profiles and decision-diagram width bound the second effect, but they
 count residual combinations without recording which heuristic values remain
 reachable from each decision node.
-We define and study \emph{terminal incidence}, the number of reachable
-node--terminal pairs in the heuristic algebraic decision diagram (ADD) after
-masking it by a fixed frontier.
+We define and study \emph{terminal incidence}, the number of pairs between
+inner nodes and reachable active heuristic terminals in the algebraic decision
+diagram (ADD) after masking it by a fixed frontier.
 For the exact bucket-node sum $E$ of partitioning that frontier, we prove
 $E\leq I$ and place $I$ below cofactor-, width- and Apply-based certificates.
 An explicit decision-diagram family separates $I$ from all seven certificate
@@ -179,8 +179,9 @@ The product $kD$ of active terminals and masked ADD nodes fills the complete
 $k$-by-$D$ rectangle, while $I$ counts only its realized entries.
 Replacing masked ADD nodes by masked cofactors, then by co-occurring pairs,
 Cartesian pairs and width yields successively coarser certificates.
-An independent standard-Apply argument gives a total-ADD branch.
-We prove that neither branch dominates the other.
+An independent standard-Apply argument gives a total-ADD certificate.
+We prove that this certificate and the masked-cofactor certificate are
+incomparable.
 More strongly, one explicit decision-diagram family has exact counts
 $E=I=k(r+L)$ for $k=2^r$, while each preregistered certificate baseline is
 $\Theta(k^2L)$ when $L\geq r$.
@@ -267,6 +268,9 @@ The exact fixed-frontier partition effort is
 \]
 \end{definition}
 
+The active set includes $\infty$ when $h$ attains it on $S$ and excludes the
+fresh masking terminal $\bot$ introduced below.
+
 We use \emph{heuristic fragmentation} for the replacement of one frontier by
 these value buckets; $E$ is its unnormalized partition node sum.
 Earlier developmental studies divided this sum by the BDD size of the unsplit
@@ -276,8 +280,9 @@ the normalized and unnormalized pair orders agree; Confirmation A uses $E$.
 The sum counts nodes reachable from each bucket root separately and can
 therefore count a manager node shared by several roots more than once.
 If $S$ is the frontier presented to a product-at-evaluation step, $E$ is the
-exact number of regular inner nodes in the resulting value buckets before
-any later search operation changes them.
+exact rootwise node sum of the complete terminal-class partition before an
+infinite dead-end class, when present, is discarded and before any later
+search operation changes the finite buckets.
 Summing $E$ over common blind layers therefore gives a controlled measure of
 the partitioning effect.
 It does not measure how $h$ changes those layers in guided search, how long
@@ -296,6 +301,8 @@ Let $M$ be its reduced ADD and let $D=\maskednodes{S}{h}$ be the number of
 regular inner nodes of $M$.
 For an inner node $u$ of $M$, let $T_M(u)\subseteq\terminalset{S}$ contain
 the active nonbottom terminals reachable from $u$.
+Thus $T_M(u)$ includes $\infty$ when it is reachable and never includes
+$\bot$.
 
 \begin{definition}[terminal incidence]
 The \emph{terminal incidence} of $h$ on $S$ under $\pi$ is
@@ -346,8 +353,8 @@ $u_2$ &  & $\bullet$ \\
 
 $I=4$, while $kD=6$.
 \end{minipage}
-\caption{Terminal incidence counts the marked node--terminal pairs of a
-masked ADD instead of the full $k$-by-$D$ rectangle.}
+\caption{Terminal incidence counts the marked pairs between masked inner nodes
+and active terminals instead of the full $k$-by-$D$ rectangle.}
 \label{fig-incidence}
 \end{figure}
 \FloatBarrier
@@ -433,7 +440,7 @@ Equation~(2), not masked ADD size $D$ or total ADD size alone.
 Name & Quantity or relaxation \\
 \midrule
 $E$ & BDD nodes in realized value buckets (target). \\
-$I$ & Realized masked-node--terminal pairs. \\
+$I$ & Realized pairs of masked inner nodes and active terminals. \\
 $D$ & Masked ADD inner nodes (non-certificate baseline). \\
 \valuecount & Summed active heuristic values (non-certificate baseline). \\
 $kD$ & The full $k$-by-node rectangle. \\
@@ -529,7 +536,8 @@ They also give $B_\wedge=kD$.
 The supplement proves that reduction cannot merge any of the counted nodes.
 \end{proof}
 
-The cofactor and ADD branches remain incomparable.
+The masked-cofactor certificate $k\cofcount(\maskfun{S}{h})$ and the
+standard-Apply certificate remain incomparable.
 Parity combined with a modulo-three frontier has linear masked cofactor
 profile and a quadratic Apply certificate.
 Conversely, $h=x_1$ on $S=\{x_1=1\}$ has masked cofactor count $2n-1$ and
@@ -615,15 +623,17 @@ Every pattern has at most $100{,}000$ abstract states.
 For each nonempty raw PDB, we materialize caps
 $0,1,2,4,\ldots,256$ below its maximum finite value and the exact endpoint.
 The mandatory empty pattern has one exact width-one candidate and makes every
-budget feasible.
+width budget feasible.
 The pool generators, information score, cap grid, $K=32$ reference and
 16-layer horizon were fixed before A or B outcome access; the supplement
 records which choices were inherited from developmental protocols.
 
 The selector first records exactly the first 16 completed blind layers on a
 positive-cost task.
-It identifies the cap-aware cofactor-width reference with budget $K=32$ and
-measures every candidate's terminal incidence on these same layers.
+Within the same pool, the cap-aware cofactor-width reference retains each
+pattern's strongest candidate whose cofactor width is at most $K=32$, then
+selects among the retained candidates with the information score defined below.
+We measure every candidate's terminal incidence on the same probe layers.
 The reference's summed incidence becomes the candidate budget, so the
 reference itself remains feasible.
 For each pattern, the selector retains its strongest cap or exact endpoint
@@ -698,28 +708,17 @@ heuristic; the two winners may coincide.
 
 The evaluation separates ordinal-predictor confirmation from algorithm
 evaluation.
-Source-selection rules and family mappings are fixed before source
-classification.
-A change to the source definition or producer reruns the full inventory before
-either cohort exists.
-A frozen scheduler-defined recovery may instead rerun the exact whole-shard
-complement of array elements with state \texttt{COMPLETED} and exit
-\texttt{0:0} while preserving every inventory record; infrastructure ceilings
-affect completion but introduce no accepted translation class.
-Planner and search commands, limits, seeds, exclusions, metrics and decision
-thresholds are fixed before any corresponding benchmark search or performance
-outcome is read.
-Task membership and source bytes must be sealed before either confirmation
-freezes.
-Here source-disjoint means that A and B share neither a task identity nor a
-SHA-256 hash of the problem-file bytes; benchmark families may overlap.
-The separately reported all-prior-unrepresented stratum tests families absent
-from every developmental experiment, not a family holdout between A and B.
-The pending source audit will create disjoint A and B cohorts and retain a
-stricter all-prior-unrepresented stratum if its complete prospective campaign
-seals successfully.
-The supplement preserves the earlier cofactor experiments and the
-under-supported terminal-incidence shadow study as developmental evidence.
+Before reading any planner outcome, we freeze the source inventory, family
+mapping, task split, configurations, limits, metrics and decision thresholds.
+A full-census audit attempts all 1,640 source candidates under one fixed
+protocol; the cohorts exist only if the complete audit seals, and failures
+remain explicit rather than being selectively reused.
+Its deterministic split gives Confirmation A and the later guided studies
+cohorts that share neither task identities nor problem-file hashes.
+The all-prior-unrepresented stratum additionally excludes every family used in
+development.
+The supplement gives the execution and failure-handling protocol and preserves
+the developmental studies.
 
 \subsection{Confirmation A: Does Incidence Rank Partition Effort?}
 
@@ -917,7 +916,8 @@ PDB compression can merge entries or coarsen values
 The uniform cap used here is not a new compression primitive.
 Its role is to provide a certified nested candidate family whose incidence can
 be measured under the same fixed probe.
-Total ADD size is a separate representation budget, and the two branches of
+Total ADD size is a separate representation budget, and the masked-cofactor
+and standard-Apply certificates in
 Theorem~\ref{thm-incidence-hierarchy} are incomparable.
 
 \section{Limitations}

@@ -26,10 +26,13 @@ test. The repository vendors the untouched files `paper/aaai2027.sty`
 and `paper/aaai2027.bst` (SHA-256
 `5db7765ba99de5c1e4686f9b3940a0add9c5e702f2164514462bec130ccb6e3c`).
 Both the build and the standalone submission checker reject links or byte
-drift in these files. AAAI 2027's own page rule is not used as an ICAPS rule;
-until ICAPS 2027 publishes its author instructions, the project audit retains
-the preceding ICAPS eight-content-page assumption as an explicit configurable
-target.
+drift in these files.
+The ICAPS 2027 CFP published on 2026-09-06 independently requires AAAI format
+and fixes the long-paper limit at eight content pages plus additional reference
+pages; the project audit retains eight as an explicit configurable target.
+Because the CFP is silent about a separate supplementary upload, the two-PDF
+bundle remains an internal review artifact until the submission form confirms
+that attachment.
 
 ## Executable sources
 

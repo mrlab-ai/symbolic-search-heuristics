@@ -127,9 +127,9 @@ FORBIDDEN_AAAI_MAIN = (
     ),
 )
 
-# Provisional project audit assumption only, not an ICAPS 2027 requirement:
-# audit a two-PDF review bundle until the venue publishes its rules. Changing
-# this allowlist then requires an explicit reviewed edit.
+# Internal project audit allowlist. The ICAPS 2027 CFP fixes the main-paper
+# limit and format but is silent about a separate supplementary upload.
+# Changing this two-PDF review allowlist requires an explicit reviewed edit.
 REVIEW_BUNDLE_FILENAMES = (
     "paper.pdf",
     "supplement.pdf",
@@ -2284,7 +2284,7 @@ def main(argv=None):
         "--review-bundle",
         nargs="+",
         metavar="PDF",
-        help="Audit the provisional two-PDF double-blind review bundle.",
+        help="Audit the internal two-PDF double-blind review bundle.",
     )
     args = parser.parse_args(argv)
     if args.self_test:

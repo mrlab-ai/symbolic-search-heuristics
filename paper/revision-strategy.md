@@ -4,10 +4,12 @@
 
 - Target: ICAPS 2027 long paper.
 - Typesetting: official AAAI 2027 author kit in anonymous-submission mode.
-- Provisional length target: at most eight content pages plus references,
-  following the published ICAPS 2026 rule until ICAPS 2027 publishes its own
-  author instructions. AAAI 2027's separate seven-content-page rule is not
-  treated as an ICAPS rule.
+- Official length target: at most eight content pages plus additional reference
+  pages. The ICAPS 2027 CFP was published on September 6, 2026, and requires
+  AAAI format and double-blind review.
+- The project builds a separate anonymized supplement for internal review, but
+  the CFP is silent about supplementary uploads; verify the submission form
+  before treating that PDF as a venue deliverable.
 - Paper category: theoretical/algorithmic classical-planning paper with a
   fixed-census empirical evaluation.
 - Central question: which structural property explains why some heuristics
@@ -535,9 +537,10 @@ scalar.
 
 The empirical claim remains deliberately gated.  Confirmation A must show
 that incidence predicts fixed-frontier exact partition effort beyond the
-developmental predecessor and the denominator-only null; the direct selector
-then tests whether replacing the predecessor by incidence changes a final
-heuristic choice usefully.  The evaluation must also report the exact-effort
+noncertificate row and column controls $D$ and $N_{\mathrm{val}}$ and all
+seven certificate baselines; the direct selector then tests whether replacing
+the developmental predecessor by incidence changes a final heuristic choice
+usefully.  The evaluation must also report the exact-effort
 oracle regret and measurement cost, because a reviewer can otherwise ask why
 the selector does not optimize the target directly.  Study B is algorithmic
 evidence about representation-budgeted selection, not proof that incidence
