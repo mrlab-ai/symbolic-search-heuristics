@@ -132,6 +132,39 @@ CALIBRATION_TASK_SPECS = (
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 V11_TRANSLATOR_FILE_COUNT = 38
+V11_CODE_MANIFEST_RELATIVE = (
+    "experiments/"
+    "pdb_terminal_incidence_confirmation_source_audit_v11_code.sha256"
+)
+V11_SHADOW_FAMILIES = frozenset({
+    "agricola", "barman", "caldera", "cavediving", "childsnack",
+    "floortile", "hiking", "maintenance", "miconic", "nomystery",
+    "nurikabe", "openstacks", "organic-synthesis", "parking",
+    "quantum-layout", "rubiks-cube", "schedule", "slitherlink", "snake",
+    "termes", "tetris", "thoughtful", "tidybot", "transport", "visitall",
+    "woodworking",
+})
+V11_ALL_PRIOR_FAMILIES = frozenset({
+    "agricola", "airport", "barman", "blocks", "caldera", "cavediving",
+    "childsnack", "depot", "driverlog", "elevators", "floortile",
+    "freecell", "ged", "grid", "gripper", "hiking", "logistics",
+    "maintenance", "miconic", "movie", "mprime", "mystery", "nomystery",
+    "nurikabe", "openstacks", "organic-synthesis", "parcprinter", "parking",
+    "pathways", "pegsol", "pipesworld", "psr", "quantum-layout", "rovers",
+    "rubiks-cube", "satellite", "scanalyzer", "schedule", "slitherlink",
+    "snake", "sokoban", "storage", "termes", "tetris", "thoughtful",
+    "tidybot", "tpp", "transport", "trucks", "visitall", "woodworking",
+    "zenotravel",
+})
+V11_A_MIN_FAMILIES = 28
+V11_A_MIN_SHADOW_UNREPRESENTED_FAMILIES = 12
+V11_A_MIN_ALL_PRIOR_UNREPRESENTED_TASKS = 100
+V11_A_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
+V11_B_MIN_FAMILIES = 30
+V11_B_MIN_SHADOW_UNREPRESENTED_FAMILIES = 12
+V11_B_MIN_ALL_PRIOR_UNREPRESENTED_TASKS = 50
+V11_B_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
+V11_B_MAX_TASKS_PER_FAMILY = 12
 
 V11_BINDING_FIELDS = (
     "schema", "campaign", "benchmark_revision", "seal_repository_commit_id",
@@ -652,6 +685,8 @@ def _validate_v11_bindings(bindings: dict) -> None:
         != bindings["outcome_counts_sha256"]
     ):
         raise ProtocolError("V11 source outcome summary changed")
+    if bindings["eligible_records_count"] != outcome_counts["success"]:
+        raise ProtocolError("V11 eligible/success count changed")
     exclusions = bindings.get("resource_exclusions_by_family")
     if not isinstance(exclusions, dict):
         raise ProtocolError("V11 resource-exclusion summary changed")
@@ -678,6 +713,14 @@ def _validate_v11_bindings(bindings: dict) -> None:
         field: _validate_v11_tracked(bindings[field], "V11 " + field)
         for field in V11_TRACKED_BINDING_FIELDS
     }
+    if any(
+        tracked[field].get(V11_CODE_MANIFEST_RELATIVE)
+        != bindings["code_manifest_sha256"]
+        for field in (
+            "full_tracked_file_sha256", "preflight_tracked_file_sha256",
+        )
+    ):
+        raise ProtocolError("V11 code-manifest closure changed")
     for field in V11_TRACKED_BINDING_FIELDS:
         if hashlib.sha256(canonical_json(tracked[field])).hexdigest() != bindings[
             field + "_digest"
@@ -734,11 +777,20 @@ def _validate_v11_source_task(task: dict) -> None:
         ))
         or task["is_shadow_family"] == task["is_shadow_unrepresented"]
         or task["is_all_prior_represented"] == task["is_all_prior_unrepresented"]
+        or task["is_shadow_family"] is not (
+            task["family"] in V11_SHADOW_FAMILIES
+        )
+        or task["is_all_prior_represented"] is not (
+            task["family"] in V11_ALL_PRIOR_FAMILIES
+        )
     ):
         raise ProtocolError("V11 source task changed")
-    for field in ("domain_file", "problem_file"):
+    for field in ("directory", "domain_file", "problem_file"):
         path = Path(task[field])
-        if path.is_absolute() or ".." in path.parts or path.as_posix() != task[field]:
+        if (
+            path.is_absolute() or path == Path(".") or ".." in path.parts
+            or path.as_posix() != task[field] or task[field].startswith("./")
+        ):
             raise ProtocolError("V11 source task path is unsafe")
     if (
         Path(task["problem_file"]) != Path(task["directory"]) / task["problem"]
@@ -761,6 +813,20 @@ def _validate_v11_source_task(task: dict) -> None:
             or alias["problem_sha256"] != task["problem_sha256"]
         ):
             raise ProtocolError("V11 source aliases changed")
+        for field in ("directory", "domain_file", "problem_file"):
+            path = Path(alias[field])
+            if (
+                path.is_absolute() or path == Path(".") or ".." in path.parts
+                or path.as_posix() != alias[field]
+                or alias[field].startswith("./")
+            ):
+                raise ProtocolError("V11 source alias path is unsafe")
+        if (
+            Path(alias["problem_file"])
+            != Path(alias["directory"]) / alias["problem"]
+            or Path(alias["domain_file"]).parent != Path(alias["directory"])
+        ):
+            raise ProtocolError("V11 source alias identity changed")
         identities.append((
             alias["directory"], alias["problem"], alias["problem_file"],
             alias["domain_file"],
@@ -774,7 +840,9 @@ def _validate_v11_source_task(task: dict) -> None:
         raise ProtocolError("V11 source alias order changed")
 
 
-def _validate_v11_cohort(cohort: dict, role: str, count: int) -> list[dict]:
+def _validate_v11_cohort(
+    cohort: dict, role: str, count: int,
+) -> tuple[list[dict], dict[str, str]]:
     if not isinstance(cohort, dict) or set(cohort) != {
         "role", "records", "candidate_indices_sha256", "source_projection_sha256",
     } or cohort.get("role") != role:
@@ -797,7 +865,55 @@ def _validate_v11_cohort(cohort: dict, role: str, count: int) -> list[dict]:
         != hashlib.sha256(canonical_json(tasks)).hexdigest()
     ):
         raise ProtocolError("{} cohort digest changed".format(role))
-    return tasks
+    directory_to_family = {}
+    for task in tasks:
+        for source in (task, *task["aliases"]):
+            previous = directory_to_family.setdefault(
+                source["directory"], source["family"]
+            )
+            if previous != source["family"]:
+                raise ProtocolError(
+                    "{} directory-to-family ledger changed".format(role)
+                )
+    families = {task["family"] for task in tasks}
+    per_family = Counter(task["family"] for task in tasks)
+    shadow_unrepresented = {
+        task["family"] for task in tasks
+        if task["is_shadow_unrepresented"]
+    }
+    all_prior_unrepresented = [
+        task for task in tasks if task["is_all_prior_unrepresented"]
+    ]
+    all_prior_unrepresented_families = {
+        task["family"] for task in all_prior_unrepresented
+    }
+    if role == "confirmation-a":
+        passed = all((
+            len(families) >= V11_A_MIN_FAMILIES,
+            len(shadow_unrepresented)
+            >= V11_A_MIN_SHADOW_UNREPRESENTED_FAMILIES,
+            len(all_prior_unrepresented)
+            >= V11_A_MIN_ALL_PRIOR_UNREPRESENTED_TASKS,
+            len(all_prior_unrepresented_families)
+            >= V11_A_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES,
+        ))
+    elif role == "guided-b":
+        passed = all((
+            len(families) >= V11_B_MIN_FAMILIES,
+            max(per_family.values(), default=0)
+            <= V11_B_MAX_TASKS_PER_FAMILY,
+            len(shadow_unrepresented)
+            >= V11_B_MIN_SHADOW_UNREPRESENTED_FAMILIES,
+            len(all_prior_unrepresented)
+            >= V11_B_MIN_ALL_PRIOR_UNREPRESENTED_TASKS,
+            len(all_prior_unrepresented_families)
+            >= V11_B_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES,
+        ))
+    else:
+        raise ProtocolError("unknown V11 cohort role")
+    if not passed:
+        raise ProtocolError("{} family/novelty floor changed".format(role))
+    return tasks, dict(sorted(directory_to_family.items()))
 
 
 def _expected_v11_run_provenance(
@@ -920,7 +1036,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
         or snapshot["benchmark_revision"] != bindings["benchmark_revision"]
     ):
         raise ProtocolError("sealed V11 revision binding changed")
-    tasks_b = _validate_v11_cohort(
+    tasks_b, directory_families_b = _validate_v11_cohort(
         source.get("guided_b"), "guided-b", COHORT_TASKS
     )
     if (
@@ -943,7 +1059,9 @@ def validate_base_snapshot(snapshot: dict) -> None:
         confirmation_freeze.get("repository_revision"), "Confirmation A freeze",
     )
     confirmation = snapshot.get("confirmation_a_cohort")
-    tasks_a = _validate_v11_cohort(confirmation, "confirmation-a", 650)
+    tasks_a, directory_families_a = _validate_v11_cohort(
+        confirmation, "confirmation-a", 650
+    )
     if (
         confirmation["candidate_indices_sha256"]
         != bindings["confirmation_a_candidate_indices_sha256"]
@@ -951,6 +1069,13 @@ def validate_base_snapshot(snapshot: dict) -> None:
         != bindings["confirmation_a_source_projection_sha256"]
     ):
         raise ProtocolError("Confirmation A projection binding changed")
+    if (
+        any(
+            directory_families_a[directory] != directory_families_b[directory]
+            for directory in set(directory_families_a) & set(directory_families_b)
+        )
+    ):
+        raise ProtocolError("sealed A/B directory-to-family ledgers disagree")
     if (
         {task["candidate_index"] for task in tasks_a}
         & {task["candidate_index"] for task in tasks_b}

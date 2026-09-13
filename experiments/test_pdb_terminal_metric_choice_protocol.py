@@ -24,22 +24,25 @@ def fake_tasks(start=0, count=P.COHORT_TASKS):
     for index in range(start, start + count):
         directory = "domain-{:03d}".format(index // 10)
         problem = "p{:03d}.pddl".format(index)
+        family = "family-{:02d}".format(index // 10)
         domain_file = directory + "/domain.pddl"
         problem_file = directory + "/" + problem
         task = {
             "candidate_index": index,
             "directory": directory,
-            "family": "family-{:02d}".format(index // 10),
+            "family": family,
             "problem": problem,
             "domain_file": domain_file,
             "problem_file": problem_file,
             "domain_sha256": _digest(directory),
             "problem_sha256": _digest("problem-{}".format(index)),
             "canonical_path": problem_file,
-            "is_shadow_family": index % 2 == 0,
-            "is_shadow_unrepresented": index % 2 != 0,
-            "is_all_prior_represented": index % 3 == 0,
-            "is_all_prior_unrepresented": index % 3 != 0,
+            "is_shadow_family": family in P.V11_SHADOW_FAMILIES,
+            "is_shadow_unrepresented": family not in P.V11_SHADOW_FAMILIES,
+            "is_all_prior_represented": family in P.V11_ALL_PRIOR_FAMILIES,
+            "is_all_prior_unrepresented": (
+                family not in P.V11_ALL_PRIOR_FAMILIES
+            ),
         }
         task["aliases"] = [{
             field: task[field] for field in P.V11_ALIAS_FIELDS
@@ -63,15 +66,20 @@ def _projection(role, tasks):
 
 
 def _v11_bindings(confirmation, guided):
+    code_manifest = _digest("code")
     translator = {
         "src/translate/module_{:02d}.py".format(index): _digest(
             "translator-{:02d}".format(index)
         )
         for index in range(P.V11_TRANSLATOR_FILE_COUNT)
     }
-    full = {**translator, "experiments/v11-full.py": _digest("full")}
+    full = {
+        **translator, P.V11_CODE_MANIFEST_RELATIVE: code_manifest,
+        "experiments/v11-full.py": _digest("full"),
+    }
     preflight = {
-        **translator, "experiments/v11-preflight.py": _digest("preflight")
+        **translator, P.V11_CODE_MANIFEST_RELATIVE: code_manifest,
+        "experiments/v11-preflight.py": _digest("preflight"),
     }
     combined = dict(sorted({**full, **preflight}.items()))
     outcomes = {
@@ -91,8 +99,8 @@ def _v11_bindings(confirmation, guided):
         "preflight_source_repository_commit_id": "1" * 40,
         "preflight_seal_repository_commit_id": "2" * 40,
         "preflight_full_launch_authorized": True,
-        "code_manifest_sha256": _digest("code"),
-        "preflight_code_manifest_sha256": _digest("code"),
+        "code_manifest_sha256": code_manifest,
+        "preflight_code_manifest_sha256": code_manifest,
         "translator_source_sha256": _digest(P.canonical_json([
             {"path": path, "sha256": translator[path]}
             for path in sorted(translator)
@@ -214,6 +222,51 @@ def fake_snapshot():
         },
         "confirmation_a_cohort": confirmation,
     }
+
+
+def rebind_v11_cohort(snapshot, role):
+    if role == "guided-b":
+        cohort = snapshot["source_audit_v11"]["guided_b"]
+        binding_prefix = "guided_b"
+    elif role == "confirmation-a":
+        cohort = snapshot["confirmation_a_cohort"]
+        binding_prefix = "confirmation_a"
+    else:
+        raise AssertionError("unknown test cohort role")
+    cohort["source_projection_sha256"] = hashlib.sha256(
+        P.canonical_json(cohort["records"])
+    ).hexdigest()
+    snapshot["source_audit_v11"]["bindings"][
+        binding_prefix + "_source_projection_sha256"
+    ] = cohort["source_projection_sha256"]
+    if role == "confirmation-a":
+        snapshot["confirmation_a_authorization"][
+            "confirmation_a_cohort_manifest_sha256"
+        ] = cohort["source_projection_sha256"]
+
+
+def set_v11_task_family(task, family):
+    task["family"] = family
+    task["is_shadow_family"] = family in P.V11_SHADOW_FAMILIES
+    task["is_shadow_unrepresented"] = family not in P.V11_SHADOW_FAMILIES
+    task["is_all_prior_represented"] = family in P.V11_ALL_PRIOR_FAMILIES
+    task["is_all_prior_unrepresented"] = (
+        family not in P.V11_ALL_PRIOR_FAMILIES
+    )
+    for alias in task["aliases"]:
+        alias["family"] = family
+
+
+def set_v11_task_directory(task, directory):
+    task["directory"] = directory
+    task["domain_file"] = directory + "/domain.pddl"
+    task["problem_file"] = directory + "/" + task["problem"]
+    task["canonical_path"] = task["problem_file"]
+    task["domain_sha256"] = _digest(directory)
+    task["aliases"] = [{
+        field: task[field] for field in P.V11_ALIAS_FIELDS
+    }]
+
 
 def fake_calibration(planner=None):
     rows = []
@@ -590,6 +643,157 @@ class ProtocolTest(unittest.TestCase):
             P.canonical_json(dict(sorted(preflight.items())))
         ).hexdigest()
         with self.assertRaisesRegex(P.ProtocolError, "translator source"):
+            P.validate_base_snapshot(snapshot)
+
+    def test_v11_eligible_count_must_equal_success_count(self):
+        snapshot = fake_snapshot()
+        snapshot["source_audit_v11"]["bindings"][
+            "eligible_records_count"
+        ] += 1
+        with self.assertRaisesRegex(P.ProtocolError, "eligible/success"):
+            P.validate_base_snapshot(snapshot)
+
+    def test_v11_code_manifest_is_bound_in_both_tracked_closures(self):
+        tracked_fields = (
+            "full_tracked_file_sha256",
+            "preflight_tracked_file_sha256",
+        )
+        for field in tracked_fields:
+            snapshot = fake_snapshot()
+            snapshot["source_audit_v11"]["bindings"][field][
+                P.V11_CODE_MANIFEST_RELATIVE
+            ] = "0" * 64
+            with self.subTest(field=field), self.assertRaisesRegex(
+                P.ProtocolError, "code-manifest closure"
+            ):
+                P.validate_base_snapshot(snapshot)
+
+    def test_v11_fixed_family_ledgers_define_projection_flags(self):
+        flag_pairs = (
+            ("is_shadow_family", "is_shadow_unrepresented"),
+            ("is_all_prior_represented", "is_all_prior_unrepresented"),
+        )
+        for first, second in flag_pairs:
+            snapshot = fake_snapshot()
+            task = P.guided_b_tasks(snapshot)[0]
+            task[first] = not task[first]
+            task[second] = not task[second]
+            rebind_v11_cohort(snapshot, "guided-b")
+            with self.subTest(flags=(first, second)), self.assertRaisesRegex(
+                P.ProtocolError, "source task changed"
+            ):
+                P.validate_base_snapshot(snapshot)
+
+    def test_v11_cohort_directory_family_ledger_is_consistent(self):
+        snapshot = fake_snapshot()
+        guided = P.guided_b_tasks(snapshot)
+        set_v11_task_directory(guided[10], guided[0]["directory"])
+        rebind_v11_cohort(snapshot, "guided-b")
+        with self.assertRaisesRegex(
+            P.ProtocolError, "guided-b directory-to-family ledger"
+        ):
+            P.validate_base_snapshot(snapshot)
+
+    def test_v11_task_and_alias_directories_are_canonical_safe_relative(self):
+        invalid_directories = (
+            "domain-000/.",
+            "./domain-000",
+            "domain-000/",
+            "domain-000//nested",
+            "domain-000/../domain-000",
+            "/domain-000",
+            ".",
+        )
+        for location, error in (
+            ("task", "source task path is unsafe"),
+            ("alias", "source alias path is unsafe"),
+        ):
+            for directory in invalid_directories:
+                snapshot = fake_snapshot()
+                task = P.guided_b_tasks(snapshot)[0]
+                source = task if location == "task" else task["aliases"][0]
+                source["directory"] = directory
+                rebind_v11_cohort(snapshot, "guided-b")
+                with self.subTest(
+                    location=location, directory=directory
+                ), self.assertRaisesRegex(P.ProtocolError, error):
+                    P.validate_base_snapshot(snapshot)
+
+    def test_v11_a_b_directory_family_ledgers_agree(self):
+        snapshot = fake_snapshot()
+        a_task = snapshot["confirmation_a_cohort"]["records"][0]
+        b_task = P.guided_b_tasks(snapshot)[0]
+        set_v11_task_directory(a_task, b_task["directory"])
+        rebind_v11_cohort(snapshot, "confirmation-a")
+        with self.assertRaisesRegex(P.ProtocolError, "A/B directory-to-family"):
+            P.validate_base_snapshot(snapshot)
+
+    def test_v11_confirmation_a_family_and_novelty_floors(self):
+        snapshot = fake_snapshot()
+        tasks = snapshot["confirmation_a_cohort"]["records"]
+        for position, task in enumerate(tasks):
+            set_v11_task_family(task, "a-floor-{:02d}".format(position % 27))
+            set_v11_task_directory(task, "a-floor-dir-{:03d}".format(position))
+        rebind_v11_cohort(snapshot, "confirmation-a")
+        with self.assertRaisesRegex(
+            P.ProtocolError, "confirmation-a family/novelty floor"
+        ):
+            P.validate_base_snapshot(snapshot)
+
+        snapshot = fake_snapshot()
+        tasks = snapshot["confirmation_a_cohort"]["records"]
+        families = sorted(P.V11_SHADOW_FAMILIES) + [
+            "a-novel-00", "a-novel-01",
+        ]
+        for position, task in enumerate(tasks):
+            set_v11_task_family(task, families[position % len(families)])
+            set_v11_task_directory(task, "a-novel-dir-{:03d}".format(position))
+        rebind_v11_cohort(snapshot, "confirmation-a")
+        with self.assertRaisesRegex(
+            P.ProtocolError, "confirmation-a family/novelty floor"
+        ):
+            P.validate_base_snapshot(snapshot)
+
+    def test_v11_guided_b_family_and_novelty_floors(self):
+        snapshot = fake_snapshot()
+        tasks = P.guided_b_tasks(snapshot)
+        for position, task in enumerate(tasks):
+            set_v11_task_family(task, "b-floor-{:02d}".format(position % 29))
+            set_v11_task_directory(task, "b-floor-dir-{:03d}".format(position))
+        rebind_v11_cohort(snapshot, "guided-b")
+        with self.assertRaisesRegex(
+            P.ProtocolError, "guided-b family/novelty floor"
+        ):
+            P.validate_base_snapshot(snapshot)
+
+        snapshot = fake_snapshot()
+        tasks = P.guided_b_tasks(snapshot)
+        families = sorted(P.V11_SHADOW_FAMILIES) + [
+            "b-novel-00", "b-novel-01", "b-novel-02", "b-novel-03",
+        ]
+        for position, task in enumerate(tasks):
+            set_v11_task_family(task, families[position % len(families)])
+            set_v11_task_directory(task, "b-novel-dir-{:03d}".format(position))
+        rebind_v11_cohort(snapshot, "guided-b")
+        with self.assertRaisesRegex(
+            P.ProtocolError, "guided-b family/novelty floor"
+        ):
+            P.validate_base_snapshot(snapshot)
+
+    def test_v11_guided_b_per_family_cap_is_enforced(self):
+        snapshot = fake_snapshot()
+        tasks = P.guided_b_tasks(snapshot)
+        for position, task in enumerate(tasks):
+            family = (
+                "b-cap-00" if position < 13
+                else "b-cap-{:02d}".format(1 + (position - 13) % 29)
+            )
+            set_v11_task_family(task, family)
+            set_v11_task_directory(task, "b-cap-dir-{:03d}".format(position))
+        rebind_v11_cohort(snapshot, "guided-b")
+        with self.assertRaisesRegex(
+            P.ProtocolError, "guided-b family/novelty floor"
+        ):
             P.validate_base_snapshot(snapshot)
 
     def test_confirmation_a_outputs_must_be_byte_identical(self):
