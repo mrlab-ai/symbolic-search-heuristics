@@ -39,6 +39,21 @@ ARTIFACT_DIR = (
 FAILURE_RECEIPT = (
     ARTIFACT_DIR / "source-audit-terminal-failure-receipt-v9.json"
 )
+PRIOR_QUERY_ATTEMPT_RELATIVE = (
+    "experiments/artifacts/pdb-terminal-incidence-confirmation-v9/"
+    "source-audit-scheduler-query-attempt-v9-001.json"
+)
+PRIOR_QUERY_ATTEMPT = REPO / PRIOR_QUERY_ATTEMPT_RELATIVE
+QUERY_INTENT = (
+    ARTIFACT_DIR / "source-audit-scheduler-query-intent-v9-002.json"
+)
+SCHEDULER_STDOUT = (
+    ARTIFACT_DIR / "source-audit-scheduler-stdout-v9-002.bin"
+)
+EXPECTED_PRIOR_QUERY_ATTEMPT_SHA256 = (
+    "36aa3614f25f93471869e9e3420e6ee084fe517b9245c7b616a6b3b9e4f0f04c"
+)
+EARLIEST_SECOND_RECORDER_QUERY_UTC = "2026-09-13T18:00:36+00:00"
 SCHEMA = (
     "symbolic-search-heuristics/"
     "universal-unseen-confirmation-source-audit/v1/campaign-v9/"
@@ -103,6 +118,7 @@ SOURCE_MANIFEST_PATH = (
 RECORDER_BOUND_PATHS = (
     "experiments/record_pdb_terminal_incidence_confirmation_source_audit_v9_failure.py",
     "experiments/pdb_terminal_incidence_v9_snapshot_reader.py",
+    PRIOR_QUERY_ATTEMPT_RELATIVE,
 )
 REQUIRED_SOURCE_PATHS = frozenset({
     "experiments/audit_pdb_terminal_incidence_confirmation_sources_v9.py",
@@ -124,8 +140,7 @@ FORBIDDEN_SEAL_ARTIFACTS = tuple(
 
 SACCT_COMMAND = Path("/usr/bin/sacct")
 SACCT_FIELDS = (
-    "JobIDRaw%64,State%64,ExitCode%32,Reason%512,ElapsedRaw,"
-    "Partition%64,Restarts"
+    "JobID,State,ExitCode,Reason,ElapsedRaw,Partition,Restarts"
 )
 CONTROLLED_ENVIRONMENT = {
     "LANG": "C",
@@ -466,7 +481,7 @@ def _parse_terminal_rows(raw: bytes) -> tuple[list[dict], dict]:
         raise FailureRecorderError("V9 terminal scheduler census is malformed") from err
     rows = []
     for line in lines:
-        fields = line.split("|")
+        fields = [field.strip() for field in line.split("|")]
         if len(fields) != 7:
             raise FailureRecorderError("V9 terminal scheduler census is malformed")
         task_id, state_raw, exit_code, reason, elapsed, partition, restarts = fields
@@ -561,8 +576,19 @@ def _assert_failure_namespace_clear() -> None:
         )
 
 
-def _publish_receipt(receipt: dict) -> str:
-    raw = _canonical_json(receipt)
+def _assert_query_namespace_clear() -> None:
+    for path in (QUERY_INTENT, SCHEDULER_STDOUT):
+        if Path(os.path.abspath(path.parent)) != Path(os.path.abspath(ARTIFACT_DIR)):
+            raise FailureRecorderError("V9 query artifact escaped its namespace")
+        if os.path.lexists(path):
+            raise FailureRecorderError("V9 second query artifact already exists")
+
+
+def _publish_exclusive(path: Path, raw: bytes, label: str) -> str:
+    if type(raw) is not bytes:
+        raise FailureRecorderError(label + " is not immutable bytes")
+    if Path(os.path.abspath(path.parent)) != Path(os.path.abspath(ARTIFACT_DIR)):
+        raise FailureRecorderError(label + " escaped the V9 artifact namespace")
     try:
         parent = ARTIFACT_DIR.lstat()
     except OSError as err:
@@ -574,29 +600,118 @@ def _publish_receipt(receipt: dict) -> str:
         | getattr(os, "O_NOFOLLOW", 0)
     )
     try:
-        descriptor = os.open(FAILURE_RECEIPT, flags, 0o400)
+        descriptor = os.open(path, flags, 0o400)
     except OSError as err:
-        raise FailureRecorderError(
-            "refusing to overwrite V9 terminal-failure receipt"
-        ) from err
+        raise FailureRecorderError("refusing to overwrite " + label) from err
     try:
         view = memoryview(raw)
         while view:
             written = os.write(descriptor, view)
             if written <= 0:
-                raise FailureRecorderError("cannot publish V9 failure receipt")
+                raise FailureRecorderError("cannot publish " + label)
             view = view[written:]
         os.fsync(descriptor)
         os.fchmod(descriptor, 0o400)
     except FailureRecorderError:
         raise
     except OSError as err:
-        raise FailureRecorderError("cannot publish V9 failure receipt") from err
+        raise FailureRecorderError("cannot publish " + label) from err
     finally:
         os.close(descriptor)
-    if FAILURE_RECEIPT.read_bytes() != raw:
-        raise FailureRecorderError("V9 failure receipt changed after publication")
+    try:
+        observed = path.lstat()
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+        parent_fd = os.open(ARTIFACT_DIR, directory_flags)
+        try:
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+    except OSError as err:
+        raise FailureRecorderError("cannot persist " + label) from err
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(observed.st_mode)
+        or stat.S_IMODE(observed.st_mode) != 0o400
+        or observed.st_nlink != 1
+        or observed.st_uid != os.getuid()
+        or observed.st_size != len(raw)
+        or path.read_bytes() != raw
+    ):
+        raise FailureRecorderError(label + " changed after publication")
     return hashlib.sha256(raw).hexdigest()
+
+
+def _publish_receipt(receipt: dict) -> str:
+    return _publish_exclusive(
+        FAILURE_RECEIPT, _canonical_json(receipt), "V9 terminal-failure receipt"
+    )
+
+
+def _load_prior_query_attempt() -> dict:
+    raw = _live_source(PRIOR_QUERY_ATTEMPT)
+    try:
+        value = json.loads(raw.decode("ascii"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as err:
+        raise FailureRecorderError(
+            "prior V9 scheduler-query attempt is not canonical JSON"
+        ) from err
+    if (
+        type(value) is not dict
+        or hashlib.sha256(raw).hexdigest() != EXPECTED_PRIOR_QUERY_ATTEMPT_SHA256
+        or value.get("campaign") != "v9-full-census"
+        or value.get("job_id") != EXPECTED_JOB_ID
+        or value.get("failure_recorder_query_ordinal") != 1
+        or value.get("scheduler_query_ordinal_after_launch") != 2
+        or value.get("earliest_next_scheduler_query_utc")
+        != EARLIEST_SECOND_RECORDER_QUERY_UTC
+        or value.get("scheduler_raw_stdout_recorded") is not False
+        or value.get("v9_runtime_namespace_enumerated") is not False
+        or value.get("v9_scientific_payload_read") is not False
+    ):
+        raise FailureRecorderError("prior V9 scheduler-query attempt changed")
+    return _material(PRIOR_QUERY_ATTEMPT_RELATIVE, raw)
+
+
+def _parse_utc(value: str, label: str) -> datetime.datetime:
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except (TypeError, ValueError) as err:
+        raise FailureRecorderError(label + " is malformed") from err
+    if parsed.tzinfo is None:
+        raise FailureRecorderError(label + " lacks a timezone")
+    return parsed.astimezone(datetime.timezone.utc)
+
+
+def _prepare_second_query(prior_attempt: dict, command: list[str]) -> dict:
+    recorded_utc = _utc_now()
+    if _parse_utc(recorded_utc, "current UTC time") < _parse_utc(
+        EARLIEST_SECOND_RECORDER_QUERY_UTC, "V9 query cadence boundary"
+    ):
+        raise FailureRecorderError("V9 scheduler query would violate hourly cadence")
+    intent = {
+        "schema": SCHEMA + "/scheduler-query-intent/v2",
+        "campaign": "v9-full-census",
+        "job_id": EXPECTED_JOB_ID,
+        "recorded_utc": recorded_utc,
+        "scheduler_query_ordinal_after_launch": 3,
+        "failure_recorder_query_ordinal": 2,
+        "earliest_query_utc": EARLIEST_SECOND_RECORDER_QUERY_UTC,
+        "command": command,
+        "prior_attempt": prior_attempt,
+        "stdout_capture_path": str(SCHEDULER_STDOUT),
+        "query_may_have_occurred_if_only_this_intent_exists": True,
+        "v9_runtime_payload_access_authorized": False,
+    }
+    raw = _canonical_json(intent)
+    digest = _publish_exclusive(
+        QUERY_INTENT, raw, "V9 second scheduler-query intent"
+    )
+    return {
+        "path": str(QUERY_INTENT.relative_to(REPO)),
+        "bytes": len(raw),
+        "sha256": digest,
+    }
 
 
 def _utc_now() -> str:
@@ -611,11 +726,14 @@ def record_failure(
     scheduler_query: SchedulerQuery | None = None,
 ) -> tuple[str, dict]:
     _assert_failure_namespace_clear()
+    _assert_query_namespace_clear()
     recorder_revision = _require_committed_recorder(snapshot_reader)
     authenticated = _load_authenticated_launch_materials(snapshot_reader)
     _require_lineage(recorder_revision)
 
     command = _sacct_command()
+    prior_attempt = _load_prior_query_attempt()
+    query_intent = _prepare_second_query(prior_attempt, command)
     query = _run_sacct if scheduler_query is None else scheduler_query
     try:
         raw_scheduler_output = query(command)
@@ -623,6 +741,16 @@ def record_failure(
         raise
     except Exception as err:
         raise FailureRecorderError("cannot query V9 accounting") from err
+    scheduler_stdout_sha = _publish_exclusive(
+        SCHEDULER_STDOUT,
+        raw_scheduler_output,
+        "V9 second scheduler stdout",
+    )
+    scheduler_stdout = {
+        "path": str(SCHEDULER_STDOUT.relative_to(REPO)),
+        "bytes": len(raw_scheduler_output),
+        "sha256": scheduler_stdout_sha,
+    }
     rows, aggregate = _parse_terminal_rows(raw_scheduler_output)
     _assert_failure_namespace_clear()
 
@@ -646,11 +774,16 @@ def record_failure(
             "launch_materials_sha256": authenticated["launch_materials_sha256"],
         },
         "scheduler_query_count": 1,
+        "scheduler_query_ordinal_after_launch": 3,
+        "failure_recorder_query_ordinal": 2,
+        "prior_scheduler_query_attempt": prior_attempt,
+        "scheduler_query_intent": query_intent,
         "scheduler_command": command,
         "scheduler_fields": SACCT_FIELDS.split(","),
         "scheduler_stdout_bytes": len(raw_scheduler_output),
         "scheduler_stdout_sha256": hashlib.sha256(raw_scheduler_output).hexdigest(),
-        "scheduler_raw_stdout_recorded": False,
+        "scheduler_raw_stdout_recorded": True,
+        "scheduler_stdout_capture": scheduler_stdout,
         "scheduler_rows": rows,
         "scheduler_rows_sha256": _digest(rows),
         "scheduler_aggregate": aggregate,

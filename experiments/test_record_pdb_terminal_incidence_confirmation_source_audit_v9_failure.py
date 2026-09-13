@@ -66,11 +66,15 @@ class FailureRecorderTests(unittest.TestCase):
         artifact_dir = root / "experiments" / "artifacts" / "campaign"
         artifact_dir.mkdir(parents=True, mode=0o700)
         receipt = artifact_dir / "failure.json"
+        query_intent = artifact_dir / "query-intent.json"
+        scheduler_stdout = artifact_dir / "scheduler-stdout.bin"
         seal = tuple(artifact_dir / "seal-{}.json".format(i) for i in range(7))
         stack = ExitStack()
         stack.enter_context(mock.patch.object(R, "REPO", root))
         stack.enter_context(mock.patch.object(R, "ARTIFACT_DIR", artifact_dir))
         stack.enter_context(mock.patch.object(R, "FAILURE_RECEIPT", receipt))
+        stack.enter_context(mock.patch.object(R, "QUERY_INTENT", query_intent))
+        stack.enter_context(mock.patch.object(R, "SCHEDULER_STDOUT", scheduler_stdout))
         stack.enter_context(mock.patch.object(R, "FORBIDDEN_SEAL_ARTIFACTS", seal))
         stack.enter_context(
             mock.patch.object(
@@ -85,15 +89,26 @@ class FailureRecorderTests(unittest.TestCase):
         )
         stack.enter_context(mock.patch.object(R, "_require_lineage"))
         stack.enter_context(
-            mock.patch.object(R, "_utc_now", return_value="2026-09-13T16:00:00+00:00")
+            mock.patch.object(
+                R,
+                "_load_prior_query_attempt",
+                return_value={
+                    "path": R.PRIOR_QUERY_ATTEMPT_RELATIVE,
+                    "bytes": 1,
+                    "sha256": R.EXPECTED_PRIOR_QUERY_ATTEMPT_SHA256,
+                },
+            )
         )
-        return stack, receipt, seal
+        stack.enter_context(
+            mock.patch.object(R, "_utc_now", return_value="2026-09-13T18:01:00+00:00")
+        )
+        return stack, receipt, seal, query_intent, scheduler_stdout
 
     def test_records_one_scheduler_census_and_one_exclusive_artifact(self):
         with tempfile.TemporaryDirectory(prefix="v9-failure-record-") as tmp:
             root = Path(tmp) / "repo"
             root.mkdir(mode=0o700)
-            stack, path, _seal = self._context(root)
+            stack, path, _seal, query_intent, scheduler_stdout = self._context(root)
             calls = []
 
             def query(command):
@@ -125,12 +140,19 @@ class FailureRecorderTests(unittest.TestCase):
                 receipt["scheduler_stdout_sha256"],
                 hashlib.sha256(_scheduler_output()).hexdigest(),
             )
-            self.assertFalse(receipt["scheduler_raw_stdout_recorded"])
+            self.assertTrue(receipt["scheduler_raw_stdout_recorded"])
+            self.assertEqual(scheduler_stdout.read_bytes(), _scheduler_output())
+            self.assertEqual(
+                receipt["scheduler_query_intent"]["sha256"],
+                hashlib.sha256(query_intent.read_bytes()).hexdigest(),
+            )
             self.assertFalse(receipt["v9_runtime_namespace_enumerated"])
             self.assertFalse(receipt["v9_payload_reused"])
             self.assertTrue(receipt["v9_burned"])
             created = [entry.name for entry in path.parent.iterdir()]
-            self.assertEqual(created, [path.name])
+            self.assertEqual(
+                created, [query_intent.name, scheduler_stdout.name, path.name]
+            )
 
     def test_rejects_active_missing_duplicate_malformed_and_all_success_rows(self):
         valid = _scheduler_output().decode("ascii").splitlines()
@@ -154,7 +176,7 @@ class FailureRecorderTests(unittest.TestCase):
             ) as tmp:
                 root = Path(tmp) / "repo"
                 root.mkdir(mode=0o700)
-                stack, path, _seal = self._context(root)
+                stack, path, _seal, query_intent, scheduler_stdout = self._context(root)
                 calls = []
 
                 def query(command, payload=("\n".join(lines) + "\n").encode("ascii")):
@@ -165,6 +187,8 @@ class FailureRecorderTests(unittest.TestCase):
                     R.record_failure(scheduler_query=query)
                 self.assertEqual(len(calls), 1)
                 self.assertFalse(path.exists())
+                self.assertTrue(query_intent.exists())
+                self.assertTrue(scheduler_stdout.exists())
 
     def test_accepts_exact_all_failed_publication_exit_census(self):
         raw = "".join(
@@ -187,6 +211,35 @@ class FailureRecorderTests(unittest.TestCase):
         self.assertTrue(aggregate["all_terminal"])
         self.assertFalse(aggregate["all_success"])
 
+    def test_parser_accepts_sacct_width_padding_without_changing_values(self):
+        padded = []
+        for line in _scheduler_output().decode("ascii").splitlines():
+            padded.append("|".join("  " + field + "  " for field in line.split("|")))
+        rows, aggregate = R._parse_terminal_rows(
+            ("\n".join(padded) + "\n").encode("ascii")
+        )
+        self.assertEqual(len(rows), R.EXPECTED_ARRAY_TASKS)
+        self.assertEqual(aggregate["failed_rows"], 1)
+
+    def test_hourly_boundary_blocks_before_intent_or_scheduler_query(self):
+        with tempfile.TemporaryDirectory(prefix="v9-failure-cadence-") as tmp:
+            root = Path(tmp) / "repo"
+            root.mkdir(mode=0o700)
+            stack, path, _seal, query_intent, scheduler_stdout = self._context(root)
+            query = mock.Mock(side_effect=AssertionError("scheduler queried"))
+            with (
+                stack,
+                mock.patch.object(
+                    R, "_utc_now", return_value="2026-09-13T18:00:35+00:00"
+                ),
+                self.assertRaisesRegex(R.FailureRecorderError, "hourly cadence"),
+            ):
+                R.record_failure(scheduler_query=query)
+            query.assert_not_called()
+            self.assertFalse(path.exists())
+            self.assertFalse(query_intent.exists())
+            self.assertFalse(scheduler_stdout.exists())
+
     def test_existing_failure_or_seal_blocks_scheduler_query(self):
         for kind in ("failure", "seal"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory(
@@ -194,7 +247,7 @@ class FailureRecorderTests(unittest.TestCase):
             ) as tmp:
                 root = Path(tmp) / "repo"
                 root.mkdir(mode=0o700)
-                stack, path, seal = self._context(root)
+                stack, path, seal, _query_intent, _scheduler_stdout = self._context(root)
                 target = path if kind == "failure" else seal[0]
                 target.write_bytes(b"existing")
                 query = mock.Mock(side_effect=AssertionError("scheduler queried"))
@@ -208,12 +261,20 @@ class FailureRecorderTests(unittest.TestCase):
         self.assertEqual(command.count(str(R.SACCT_COMMAND)), 1)
         self.assertIn(R.EXPECTED_JOB_ID, command)
         field = next(value for value in command if value.startswith("--format="))
+        self.assertNotIn("%", field)
         for required in (
-            "JobIDRaw", "State", "ExitCode", "Reason", "ElapsedRaw",
+            "JobID", "State", "ExitCode", "Reason", "ElapsedRaw",
             "Partition", "Restarts",
         ):
             self.assertIn(required, field)
         self.assertNotIn("NodeList", field)
+
+    def test_committed_prior_attempt_is_exactly_hash_bound(self):
+        material = R._load_prior_query_attempt()
+        self.assertEqual(material["path"], R.PRIOR_QUERY_ATTEMPT_RELATIVE)
+        self.assertEqual(
+            material["sha256"], R.EXPECTED_PRIOR_QUERY_ATTEMPT_SHA256
+        )
 
     def test_authenticates_temporary_committed_launch_and_source_closures(self):
         with tempfile.TemporaryDirectory(prefix="v9-committed-fixture-") as tmp:
