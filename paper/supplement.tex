@@ -83,9 +83,10 @@ Supplementary Material}
 The first part proves the terminal-incidence hierarchy, its exact separation,
 fixed-frontier contraction, the counterexample for exact partition effort and
 the incomparability of the masked-cofactor and standard-Apply certificates.
-The next part retains the detailed cofactor, search-effort, pruning, lower-bound
-and heuristic-family theory that led to the new metric.
-The final parts preserve the developmental experiments, including negative
+The next part archives the detailed cofactor, search-effort, pruning,
+lower-bound and heuristic-family theory that led to the new metric; it is
+developmental provenance rather than a second current contribution.
+The final parts archive the developmental experiments, including negative
 results, and expand the related-work comparison.
 
 \section{Terminal Incidence on a Fixed Frontier}
@@ -113,7 +114,7 @@ Let $S\ne\emptyset$ be a set of Boolean assignments and let $h$ be a total
 function on the Boolean cube with finitely many terminal labels, possibly
 including $\infty$.
 Write $\terminalset{S}=h(S)$ and $k=|\terminalset{S}|$.
-The exact cost of representing all value buckets separately is
+The exact fixed-frontier partition effort is
 \begin{equation}
  \partcost{S}{h}=\sum_{v\in\terminalset{S}}
  \bddsize{S\cap h^{-1}(v)}.
@@ -328,6 +329,9 @@ W&=&\displaystyle\sum_{g\in G}k_g\width_\pi(h)\cofcount(\chi_{S_g}),
 k_g\bigl(2(A+1)\bddsize{S_g}+A\bigr).
 \end{array}
 \]
+Here $J$ in the legacy name $mJ$ abbreviates the co-occurring residual profile,
+while $m$ denotes multiplication by the layerwise active-value count $k_g$.
+Thus $mJ$ is a certificate score rather than the profile itself.
 The strongest direct combination of the two certificate branches is their
 layerwise meet
 \[
@@ -717,7 +721,7 @@ experiment, leaving 1,733 paths.
 Equal problem hashes are then collected into an alias group with one
 deterministically chosen canonical path; a duplicate hash crossing two
 normalized families invalidates the inventory.
-This produces the immutable V9 inventory of exactly 1,640 canonical candidates
+This produces the immutable V10 inventory of exactly 1,640 canonical candidates
 in 78 directories and 43 normalized families.
 A conservative directory-to-family map collapses benchmark-track and
 encoding variants of the same planning domain.
@@ -744,18 +748,18 @@ It then tops up the reserved guided-B cohort from the remaining tasks by
 lexicographic-family round robin under a separate B-top-up rank, toward a
 target of 300 tasks and with at most 12 tasks per family.
 The A and guided-B records are disjoint in canonical identity and problem hash.
-The V9 source gate requires exactly 650 A tasks, at least 28 A families, at
+The V10 source gate requires exactly 650 A tasks, at least 28 A families, at
 least 12 shadow-unrepresented A families and at least 100 A tasks from ten
 all-prior-unrepresented families.
-For guided B, the V9 source gate requires at least 200 tasks, at least 30
+For guided B, the V10 source gate requires at least 200 tasks, at least 30
 families, at least 12 shadow-unrepresented families and at least 50 tasks from
 ten all-prior-unrepresented families.
 The later Confirmation-B freeze additionally requires the 300-task target; a
 sealed audit with 200--299 guided-B tasks may authorize A but cannot authorize
 B.
 
-% ================= RESULT_INSERT_SOURCE_AUDIT_V9_BEGIN =================
-% Replace this prospective V9 account with the sealed audit outcome, exact A/B
+% ================= RESULT_INSERT_SOURCE_AUDIT_V10_BEGIN ================
+% Replace this prospective V10 account with the sealed audit outcome, exact A/B
 % cohort support, outcome counts and source/environment/scheduler provenance.
 Campaigns v1--v5 increased infrastructure ceilings while preserving the fixed
 1,640-candidate inventory, but none passed a complete all-success gate.
@@ -775,22 +779,35 @@ elements, so V8 failed its all-success gate.
 No V8 worker shard, worker stream, environment record or source-support
 outcome was opened or reused.
 
-V9 abandons selective repair and freshly attempts every inventory candidate
-once under the limits of a Confirmation-A cell: 1,800 seconds and 24,576~MiB.
-It reuses no runtime byte from v1--v8.
-One unthrottled 820-element array runs two candidates sequentially per element
-on the \texttt{fat} partition with normal QoS, one CPU, 26~GiB and a 01:10:00
-outer limit.
+V9 abandoned selective repair and attempted all 1,640 inventory candidates.
+Its committed terminal scheduler receipt records all 820 array rows as
+\texttt{FAILED}/\texttt{2:0}, with zero scheduler restarts.
+The failure recorder opened no worker shard, stream, task environment,
+temporary directory or scientific payload, and it authorized no payload reuse.
+V9 failed its all-success gate and its namespace is permanently burned.
+
+V10 freshly attempts every inventory candidate once under the limits of a
+Confirmation-A cell: 1,800 seconds and 24,576~MiB.
+It reads or reuses no runtime byte, task log, scheduler row, shard, temporary
+file, translated task or scientific payload from V1--V9.
+Before the full run, a controller canary exercises the production publisher on
+the repository's Lustre filesystem, and a one-row compute canary processes two
+synthetic inputs through the same child and publisher paths as the census.
+The complete preflight namespace must then be committed and independently
+validated from that exact repository snapshot.
+Only this validation can authorize one unthrottled 820-element array, which
+runs two candidates sequentially per element on the \texttt{fat} partition
+with normal QoS, one CPU, 26~GiB and a 01:10:00 outer limit.
 The frozen candidate-level outcomes are validated success, documented input
 rejection and authoritative memory or CPU-time exclusion.
 Input rejection records unsupported language, while a resource exclusion has
 indeterminate source support and cannot enter either cohort.
 Every other child outcome is campaign-fatal.
 
-The controller may open no V9 worker shard, worker stream, environment record
-or outcome until all 820 outer rows are exactly
+The controller may open no full-run V10 worker shard, worker stream,
+environment record or outcome until all 820 outer rows are exactly
 \texttt{COMPLETED}/\texttt{0:0} with zero scheduler restarts.
-Any other terminal outer state permanently burns the namespace; V9 has no
+Any other terminal outer state permanently burns the namespace; V10 has no
 selective recovery and no partial-row reuse.
 After the scheduler gate, the seal revalidates the committed code manifest,
 launch journal, executable identities, complete candidate order, exact
@@ -806,7 +823,7 @@ revision before it may expose either cohort to a downstream freeze, paper
 renderer or discretionary outcome analysis.
 Neither cohort exists for a confirmation launch until that committed-seal
 validation passes every original task, family, novelty and disjointness floor.
-% ================== RESULT_INSERT_SOURCE_AUDIT_V9_END ==================
+% ================= RESULT_INSERT_SOURCE_AUDIT_V10_END ==================
 
 \begin{table}[htbp]
 \centering
@@ -1140,16 +1157,15 @@ planner time.
 % and final execution-receipt identifiers with the sealed A/B results; report
 % the direct campaign's calibration-frozen scheduler resources separately.
 
-\section{Legacy Search and Cofactor Theory}
+\section{Archived Developmental Search and Cofactor Theory}
 \label{sec:supp-legacy-theory}
 
-The remainder of the theoretical supplement preserves the earlier analysis
-that motivated terminal incidence.
-Its co-occurring profile is the $mJ$ relaxation in
-Theorem~\ref{thm:supp-incidence-hierarchy}.
-These results remain useful as frontier-independent safeguards and as
-guarantees for complete forward product-at-evaluation search, but they are not
-presented as the strongest fixed-frontier ordinal predictor.
+This archive preserves the earlier analysis that motivated terminal incidence;
+it is developmental provenance rather than a second current predictor claim.
+Its co-occurring residual profile is the $J$ component of the developmental
+$mJ$ certificate in Theorem~\ref{thm:supp-incidence-hierarchy}.
+The archived results remain useful as frontier-independent safeguards and as
+guarantees for complete forward product-at-evaluation search.
 
 \section{Search Setup and Bucket Identity}
 
@@ -1338,7 +1354,7 @@ The maximum number of distinct residual functions at a fixed-order cut is the
 standard width measure for ordered branching programs and MTBDDs
 \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}. We use
 \emph{cofactor width} as a planning-facing name for this existing measure.
-This legacy section studies its application to heuristic fragmentation and
+This archived section studies its application to heuristic fragmentation and
 forward product-at-evaluation search, its separation constructions and the
 planning-heuristic family bounds; the width definition itself is standard.
 

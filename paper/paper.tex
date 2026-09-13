@@ -112,13 +112,15 @@ baselines by a factor $\Theta(k)$, and an exact-PDB witness shows that the
 missing relation can decide a strict partition-effort order on a planning
 frontier.
 Terminal relabeling, including safe heuristic caps, cannot increase terminal
-incidence, although it can increase exact partition cost.
+incidence, although it can increase exact partition effort.
 We use these results to define an incidence-guided pattern-database selector.
 A source-disjoint confirmation first tests whether incidence ranks exact
 fixed-frontier partition effort better than masked ADD size, active-value count
-and seven certificate baselines; only success authorizes two end-to-end tests,
-including a controlled ablation against the otherwise identical selector
-guided by its co-occurring-profile predecessor.
+and seven certificate baselines; only success authorizes two complementary
+end-to-end tests on the same frozen guided cohort, including a controlled
+ablation against an otherwise identical selector guided by the developmental
+predecessor $mJ$, which multiplies the co-occurring residual profile by the
+active-value count.
 % RESULT_INSERT_ABSTRACT_A: insert the sealed Confirmation A result and scope.
 % RESULT_INSERT_ABSTRACT_METRIC: insert the predecessor-ablation result only if
 % A authorized it and the campaign sealed.
@@ -215,10 +217,12 @@ Second, Confirmation A tests whether $I$ ranks exact partition effort better
 than masked ADD size, active-value count and seven certificate baselines on
 common frontiers.
 Third, only a successful confirmation authorizes fresh guided runs: a
-controlled predecessor ablation changes whether $I$ or the co-occurring
-profile $mJ$ determines the selected candidate, while Confirmation B compares
-the incidence-guided selector with the cap-aware reference, a matched-work
-control and existing alternatives.
+controlled predecessor ablation changes whether $I$ or the developmental
+co-occurring-profile certificate $mJ$ determines the selected candidate, while
+Confirmation B compares the incidence-guided selector with the cap-aware
+reference, a matched-work control and existing alternatives.
+The two guided studies execute different cells on the same frozen B task
+cohort and provide complementary tests rather than independent replications.
 This staging prevents the selector from validating its own predictor.
 
 \section{Fixed-Frontier Partitioning}
@@ -397,8 +401,10 @@ Relabel the terminals of $M$ by one exactly at value $v$ and by zero
 elsewhere.
 Reduction produces the BDD of $S\cap h^{-1}(v)$ without creating a decision
 node.
-Every surviving node can therefore be charged to a distinct ancestor of $v$
-in $M$; summing over $v$ proves $E\leq I$.
+For each fixed $v$, every surviving node can therefore be charged injectively
+to an ancestor of $v$ in $M$.
+Summing these per-terminal injections counts a node once for each reachable
+active terminal and proves $E\leq I$.
 Every inner node reaches an active terminal, and no node reaches more than
 $k$, which gives $D\leq I\leq kD$.
 An inner ADD node is witnessed by a residual at its own cut.
@@ -421,11 +427,16 @@ and column counts of the incidence relation, respectively.
 
 Table~\ref{tab-information-loss} names the quantities used in the experiments
 and shows what each relaxation discards.
-The old co-occurring certificate is $mJ$: it preserves which state and
-heuristic residuals share a prefix, but its factor $k$ still assigns every
-active terminal to every such pair.
+The developmental predecessor $mJ$ is a certificate, not the co-occurring
+profile $\jointprofile{S}{h}$ itself: $J$ abbreviates this profile in the
+legacy artifact name, and the multiplier $m$ is the layerwise active-value
+count $k$.
+At one frontier, $mJ=k\jointprofile{S}{h}$ assigns every active terminal to
+every co-occurring pair.
 Terminal incidence retains this missing node--terminal relation.
-The legacy artifact names $mQ$ and $mJ$ use $m$ for the layerwise count $k$.
+We selected $mJ$ from the developmental analysis and do not present it as a
+field-wide consensus explanation.
+The legacy artifact name $mQ$ uses the same multiplier $m=k$.
 The legacy artifact key ADD denotes the standard-Apply certificate in
 Equation~(2), not masked ADD size $D$ or total ADD size alone.
 
@@ -500,8 +511,8 @@ reduction constants.
 \begin{theorem}[incidence separation]
 \label{thm-incidence-separation}
 Let $k=2^r$ and $L\geq r\geq1$.
-There are a set $S$ and a $k$-valued heuristic $h$ over $r+L$ variables for
-which
+There exist a set $S$ and a $k$-valued total function $h$ over $r+L$ variables
+for which
 \[
  \partcost{S}{h}=\incidence{S}{h}=k(r+L),
 \]
@@ -600,7 +611,7 @@ $h_\kappa(s)=\min\{h(s),\kappa\}$ and preserve $h(s)=\infty$.
 The cap preserves admissibility and consistency, and smaller caps contract
 every fixed-frontier certificate.
 Proposition~\ref{prop-incidence-contraction} does not claim that caps reduce
-the exact partition cost of every frontier or the cost of a complete search.
+the exact partition effort of every frontier or the cost of a complete search.
 The supplement proves the proposition, including the incidence contraction,
 and verifies the seven-node union in the counterexample.
 
@@ -624,9 +635,9 @@ For each nonempty raw PDB, we materialize caps
 $0,1,2,4,\ldots,256$ below its maximum finite value and the exact endpoint.
 The mandatory empty pattern has one exact width-one candidate and makes every
 width budget feasible.
-The pool generators, information score, cap grid, $K=32$ reference and
-16-layer horizon were fixed before A or B outcome access; the supplement
-records which choices were inherited from developmental protocols.
+These choices, together with the cap grid, $K=32$ reference and 16-layer
+horizon, were fixed before A or B outcome access; the supplement records which
+ones were inherited from developmental protocols.
 
 The selector first records exactly the first 16 completed blind layers on a
 positive-cost task.
@@ -670,13 +681,16 @@ candidate.
 The selector is not an oracle: its probe consists only of the first 16
 completed blind layers on a positive-cost task and does not use the exact
 target $E$.
-In our implementation, evaluating $E$ online would add a reduced-bucket
-computation for each active value of every candidate on every probe layer.
-More importantly, $E$-feasibility is not closed under terminal maps: a further
-cap can increase exact partition effort.  In contrast,
-Proposition~\ref{prop-incidence-contraction} guarantees that every
-terminal map of an incidence-feasible candidate remains within the incidence
-budget.
+For every candidate and probe layer, computing $E$ would materialize and
+reduce one BDD for each active value, whereas computing $I$ reuses the masked
+ADD and its reverse-edge traversal.
+A finite $E$-guided selector is nevertheless possible in principle.
+The registered A diagnostics therefore compare measurement times and report
+the exact-$E$ regret of each predictor's top choice.
+Incidence additionally supplies closure that $E$ lacks: a further cap can
+increase exact partition effort, while
+Proposition~\ref{prop-incidence-contraction} guarantees that every terminal
+map of an incidence-feasible candidate remains within the incidence budget.
 A matched-work control performs the identical probe, pool construction,
 candidate materialization and incidence measurement, then executes the fixed
 reference.
@@ -713,8 +727,9 @@ mapping, task split, configurations, limits, metrics and decision thresholds.
 A full-census audit attempts all 1,640 source candidates under one fixed
 protocol; the cohorts exist only if the complete audit seals, and failures
 remain explicit rather than being selectively reused.
-Its deterministic split gives Confirmation A and the later guided studies
-cohorts that share neither task identities nor problem-file hashes.
+Its deterministic split gives Confirmation A one cohort and both later guided
+studies a common B cohort; the A and B cohorts share neither task identities
+nor problem-file hashes.
 The all-prior-unrepresented stratum additionally excludes every family used in
 development.
 The supplement gives the execution and failure-handling protocol and preserves
@@ -779,9 +794,10 @@ Failure of any support or effect clause is a failed confirmation.
 \subsection{Controlled Predecessor Ablation: $I$ versus $mJ$}
 
 This campaign is authorized only if Confirmation A passes.
-The co-occurring profile $mJ$ is the developmental structural predecessor of
-terminal incidence: it preserves which state and heuristic residuals share a
-prefix, but its factor $k$ assigns every active value to every pair.
+The co-occurring-profile certificate $mJ$ is the developmental structural
+predecessor of terminal incidence: it preserves which state and heuristic
+residuals share a prefix, but its factor $k$ assigns every active value to
+every pair.
 It was selected for this ablation before Confirmation A and is not presented
 as a field-wide consensus explanation.
 It uses the frozen 300-task Confirmation B cohort, but executes fresh runs in
@@ -928,9 +944,10 @@ It does not predict which states a heuristic causes the search to reach.
 Its target is BDD-node partition effort rather than runtime or peak memory,
 and it omits symbolic image operations, heuristic construction and evaluator
 overhead.
-The certificate is one-sided: small incidence bounds partition effort, while
-large incidence need not make a reduced bucket large or determine the ordinal
-ranking of two heuristics.
+The certificate is one-sided: small incidence bounds partition effort, but the
+bound provides no converse.
+A large incidence value alone neither certifies large reduced buckets nor
+determines the ordinal ranking of two heuristics.
 
 Confirmation A compares several PDBs on common blind frontiers.
 It can establish an ordinal predictor of fixed-frontier partition effort within
