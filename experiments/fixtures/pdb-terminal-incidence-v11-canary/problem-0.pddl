@@ -1,0 +1,5 @@
+(define (problem terminal-incidence-v11-canary-0)
+  (:domain terminal-incidence-v11-canary)
+  (:init (at-a) (= (total-cost) 0))
+  (:goal (at-b))
+  (:metric minimize (total-cost)))
