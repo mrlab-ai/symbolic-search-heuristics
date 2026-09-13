@@ -22,7 +22,7 @@ B_FREEZE_REVISION = "5" * 40
 
 
 def authorized_v11():
-    source = Fixture.authorized_confirmation()
+    source = Fixture.mixed_authorized_confirmation()
     for record in source.all_records:
         directory = record["directory"]
         record["domain_file"] = directory + "/domain.pddl"
@@ -109,6 +109,19 @@ class ConfirmationBV11FreezeTests(unittest.TestCase):
             materials.bindings["seal_repository_commit_id"],
             Fixture.FULL_REVISION,
         )
+        self.assertEqual(materials.bindings["inventory_families_count"], 32)
+        self.assertEqual(materials.bindings["translation_attempts_count"], 1640)
+        self.assertEqual(materials.bindings["support_status_counts"], {
+            "indeterminate": 2, "supported": 1636, "unsupported": 2,
+        })
+        self.assertEqual(
+            materials.bindings["support_exclusion_counts"],
+            {reason: 1 for reason in Adapter.SUPPORT_EXCLUSION_REASONS},
+        )
+        self.assertEqual(
+            materials.bindings["resource_exclusion_counts"],
+            {"memory": 1, "time": 1},
+        )
 
     def frozen_authorization(self) -> dict:
         return Freeze._authorization_provenance(self.authorization)
@@ -175,6 +188,14 @@ class ConfirmationBV11FreezeTests(unittest.TestCase):
         self.assertEqual(len(loaded.tasks), 300)
         self.assertEqual(
             set(loaded.tasks[0]), set(Adapter.SOURCE_PROJECTION_FIELDS),
+        )
+        self.assertEqual(
+            loaded.bindings["support_status_counts_sha256"],
+            self.materials.bindings["support_status_counts_sha256"],
+        )
+        self.assertEqual(
+            loaded.bindings["resource_exclusion_counts"],
+            self.materials.bindings["resource_exclusion_counts"],
         )
 
     def test_build_and_revalidation_consume_same_v11_seal_twice(self):
@@ -324,6 +345,22 @@ class ConfirmationBV11FreezeTests(unittest.TestCase):
             loaded, materials = P._load_freeze(path)
             self.assertEqual(loaded, value)
             self.assertEqual(len(materials.tasks), P.TARGET_COHORT_TASKS)
+            self.assertEqual(
+                materials.bindings["support_exclusion_counts"],
+                {reason: 1 for reason in Adapter.SUPPORT_EXCLUSION_REASONS},
+            )
+
+            changed = copy.deepcopy(value)
+            resources = changed["source_audit"]["bindings"][
+                "resource_exclusion_counts"
+            ]
+            resources.update(memory=2, time=0)
+            changed["source_audit"]["bindings"][
+                "resource_exclusion_counts_sha256"
+            ] = hashlib.sha256(P.canonical_json(resources)).hexdigest()
+            path.write_bytes(P.canonical_json_line(changed))
+            with self.assertRaisesRegex(P.ProtocolError, "summary"):
+                P._load_freeze(path)
 
             changed = copy.deepcopy(value)
             changed["source_audit"]["unexpected"] = True

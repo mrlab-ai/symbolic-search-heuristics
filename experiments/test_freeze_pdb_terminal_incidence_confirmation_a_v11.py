@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,7 +21,7 @@ FREEZE_REVISION = "4" * 40
 
 
 def authorized_v11():
-    source = Fixture.authorized_confirmation()
+    source = Fixture.mixed_authorized_confirmation()
     for record in source.all_records:
         directory = record["directory"]
         record["domain_file"] = directory + "/domain.pddl"
@@ -59,6 +60,19 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
             materials.bindings["seal_repository_commit_id"],
             Fixture.FULL_REVISION,
         )
+        self.assertEqual(materials.bindings["inventory_families_count"], 32)
+        self.assertEqual(materials.bindings["translation_attempts_count"], 1640)
+        self.assertEqual(materials.bindings["support_status_counts"], {
+            "indeterminate": 2, "supported": 1636, "unsupported": 2,
+        })
+        self.assertEqual(
+            materials.bindings["support_exclusion_counts"],
+            {reason: 1 for reason in Adapter.SUPPORT_EXCLUSION_REASONS},
+        )
+        self.assertEqual(
+            materials.bindings["resource_exclusion_counts"],
+            {"memory": 1, "time": 1},
+        )
 
     def test_cli_accepts_only_source_seal_and_freeze_inputs(self):
         parsed = Freeze.parse_args([
@@ -96,6 +110,18 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
         self.assertEqual(len(loaded.tasks), 650)
         self.assertEqual(
             set(loaded.tasks[0]), set(Adapter.SOURCE_PROJECTION_FIELDS),
+        )
+        self.assertEqual(
+            loaded.bindings["support_status_counts"],
+            self.materials.bindings["support_status_counts"],
+        )
+        self.assertEqual(
+            loaded.bindings["support_exclusion_counts_sha256"],
+            self.materials.bindings["support_exclusion_counts_sha256"],
+        )
+        self.assertEqual(
+            loaded.bindings["resource_exclusion_counts"],
+            self.materials.bindings["resource_exclusion_counts"],
         )
 
     def test_build_and_revalidation_consume_same_v11_seal_twice(self):
@@ -212,6 +238,66 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
             loaded, materials = P._load_freeze(path)
             self.assertEqual(loaded, value)
             self.assertEqual(len(materials.tasks), P.COHORT_TASKS)
+            self.assertEqual(
+                materials.bindings["support_status_counts"],
+                {"indeterminate": 2, "supported": 1636, "unsupported": 2},
+            )
+
+            semantic_tampers = []
+            changed = copy.deepcopy(value)
+            changed["source_audit"]["bindings"]["inventory_families_count"] = 0
+            semantic_tampers.append(changed)
+            changed = copy.deepcopy(value)
+            changed["source_audit"]["bindings"]["translation_attempts_count"] = 1639
+            semantic_tampers.append(changed)
+            changed = copy.deepcopy(value)
+            status = changed["source_audit"]["bindings"]["support_status_counts"]
+            status["supported"] -= 1
+            status["unsupported"] += 1
+            changed["source_audit"]["bindings"][
+                "support_status_counts_sha256"
+            ] = hashlib.sha256(P.canonical_json(status)).hexdigest()
+            semantic_tampers.append(changed)
+            changed = copy.deepcopy(value)
+            status = changed["source_audit"]["bindings"]["support_status_counts"]
+            del status["indeterminate"]
+            changed["source_audit"]["bindings"][
+                "support_status_counts_sha256"
+            ] = hashlib.sha256(P.canonical_json(status)).hexdigest()
+            semantic_tampers.append(changed)
+            changed = copy.deepcopy(value)
+            exclusions = changed["source_audit"]["bindings"][
+                "support_exclusion_counts"
+            ]
+            exclusions["unknown"] = 0
+            changed["source_audit"]["bindings"][
+                "support_exclusion_counts_sha256"
+            ] = hashlib.sha256(P.canonical_json(exclusions)).hexdigest()
+            semantic_tampers.append(changed)
+            changed = copy.deepcopy(value)
+            exclusions = changed["source_audit"]["bindings"][
+                "support_exclusion_counts"
+            ]
+            exclusions["translation-input-rejected"] = 0
+            changed["source_audit"]["bindings"][
+                "support_exclusion_counts_sha256"
+            ] = hashlib.sha256(P.canonical_json(exclusions)).hexdigest()
+            semantic_tampers.append(changed)
+            changed = copy.deepcopy(value)
+            resources = changed["source_audit"]["bindings"][
+                "resource_exclusion_counts"
+            ]
+            resources.update(memory=2, time=0)
+            changed["source_audit"]["bindings"][
+                "resource_exclusion_counts_sha256"
+            ] = hashlib.sha256(P.canonical_json(resources)).hexdigest()
+            semantic_tampers.append(changed)
+            for changed in semantic_tampers:
+                path.write_bytes(P.canonical_json_line(changed))
+                with self.assertRaisesRegex(
+                    P.ProtocolError, "authorization|summary",
+                ):
+                    P._load_freeze(path)
 
             changed = copy.deepcopy(value)
             changed["source_audit"]["unexpected"] = True

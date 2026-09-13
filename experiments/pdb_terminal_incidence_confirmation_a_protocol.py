@@ -395,6 +395,12 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
         or bindings.get("code_manifest_sha256")
         != bindings.get("preflight_code_manifest_sha256")
         or bindings.get("all_records_count") != 1640
+        or type(bindings.get("inventory_families_count")) is not int
+        or not 1 <= bindings["inventory_families_count"] <= 1640
+        or bindings.get("translation_attempts_count") != 1640
+        or type(bindings.get("translation_attempts_count")) is not int
+        or type(bindings.get("eligible_records_count")) is not int
+        or not 0 <= bindings["eligible_records_count"] <= 1640
         or bindings.get("confirmation_a_count") != COHORT_TASKS
         or bindings.get("guided_b_count") != 300
     ):
@@ -418,14 +424,76 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
         combined[path] = digest
     if combined != bindings["combined_tracked_file_sha256"]:
         raise ProtocolError("frozen V11 combined tracked closure changed")
-    for name in ("outcome_counts", "resource_exclusions_by_family"):
+    summary_keys = {
+        "outcome_counts": {"input-rejected", "resource-excluded", "success"},
+        "support_status_counts": set(SourceV11.SUPPORT_STATUS_KEYS),
+        "support_exclusion_counts": set(SourceV11.SUPPORT_EXCLUSION_REASONS),
+        "resource_exclusion_counts": set(SourceV11.RESOURCE_EXCLUSION_KEYS),
+    }
+    for name, keys in summary_keys.items():
         value = bindings.get(name)
         if (
             not isinstance(value, dict)
+            or set(value) != keys
+            or any(type(value[key]) is not int or value[key] < 0 for key in keys)
             or hashlib.sha256(canonical_json(value)).hexdigest()
             != bindings[name + "_sha256"]
         ):
             raise ProtocolError("frozen V11 summary changed")
+    resource_by_family = bindings.get("resource_exclusions_by_family")
+    if (
+        not isinstance(resource_by_family, dict)
+        or len(resource_by_family) > bindings["inventory_families_count"]
+        or any(
+            type(family) is not str
+            or not family
+            or not isinstance(counts, dict)
+            or set(counts) != {"memory", "time", "total"}
+            or any(
+                type(counts[key]) is not int or counts[key] < 0
+                for key in ("memory", "time", "total")
+            )
+            or counts["total"] != counts["memory"] + counts["time"]
+            or counts["total"] == 0
+            for family, counts in resource_by_family.items()
+        )
+        or hashlib.sha256(canonical_json(resource_by_family)).hexdigest()
+        != bindings["resource_exclusions_by_family_sha256"]
+    ):
+        raise ProtocolError("frozen V11 summary changed")
+    outcome_counts = bindings["outcome_counts"]
+    support_status_counts = bindings["support_status_counts"]
+    support_exclusion_counts = bindings["support_exclusion_counts"]
+    resource_exclusion_counts = bindings["resource_exclusion_counts"]
+    unsupported_success = (
+        support_status_counts["unsupported"]
+        - outcome_counts["input-rejected"]
+    )
+    structural_counts = [
+        support_exclusion_counts[reason]
+        for reason in SourceV11.SUPPORT_EXCLUSION_REASONS[1:]
+    ]
+    aggregated_resource_counts = {
+        key: sum(counts[key] for counts in resource_by_family.values())
+        for key in SourceV11.RESOURCE_EXCLUSION_KEYS
+    }
+    if (
+        sum(outcome_counts.values()) != bindings["all_records_count"]
+        or sum(support_status_counts.values()) != bindings["all_records_count"]
+        or support_status_counts["supported"]
+        != bindings["eligible_records_count"]
+        or support_status_counts["indeterminate"]
+        != outcome_counts["resource-excluded"]
+        or support_exclusion_counts["translation-input-rejected"]
+        != outcome_counts["input-rejected"]
+        or unsupported_success < 0
+        or any(count > unsupported_success for count in structural_counts)
+        or sum(structural_counts) < unsupported_success
+        or sum(resource_exclusion_counts.values())
+        != outcome_counts["resource-excluded"]
+        or resource_exclusion_counts != aggregated_resource_counts
+    ):
+        raise ProtocolError("frozen V11 summary is incoherent")
     translator = [
         {"path": path, "sha256": digest}
         for path, digest in sorted(bindings["full_tracked_file_sha256"].items())

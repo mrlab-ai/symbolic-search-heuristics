@@ -81,6 +81,7 @@ def candidate(index: int, family: str) -> dict:
         "is_all_prior_unrepresented": family not in SourceV11.ALL_PRIOR_FAMILIES,
         "aliases": [canonical],
         "status": "success",
+        "translation_attempted": True,
         "process_returncode": 0,
         "complete_process_group_reaped": True,
         "support_determined": True,
@@ -180,6 +181,52 @@ def changed_record(record: dict, **updates: object) -> dict:
     return result
 
 
+def mixed_authorized_confirmation() -> SourceV11.AuthorizedConfirmation:
+    source = authorized_confirmation()
+    records = list(source.all_records)
+    records[950] = changed_record(
+        records[950], supported=False, eligible_for_cohort=False,
+        support_exclusion_reasons=list(Adapter.SUPPORT_EXCLUSION_REASONS[1:]),
+    )
+    records[951] = changed_record(
+        records[951], status="input-rejected", process_returncode=31,
+        supported=False, eligible_for_cohort=False,
+        support_exclusion_reasons=["translation-input-rejected"],
+        normalization=None, sas=None, sas_bytes=None, sas_sha256=None,
+    )
+    for index, kind, returncode in ((952, "memory", 20), (953, "time", 21)):
+        records[index] = changed_record(
+            records[index], status="resource-excluded",
+            process_returncode=returncode, support_determined=False,
+            supported=None, eligible_for_cohort=False,
+            support_exclusion_reasons=None, resource_exclusion_kind=kind,
+            normalization=None, sas=None, sas_bytes=None, sas_sha256=None,
+        )
+    resource_exclusions_by_family = {}
+    for record in records:
+        kind = record["resource_exclusion_kind"]
+        if kind is None:
+            continue
+        counts = resource_exclusions_by_family.setdefault(
+            record["family"], {"memory": 0, "time": 0, "total": 0},
+        )
+        counts[kind] += 1
+        counts["total"] += 1
+    return dataclasses.replace(
+        source,
+        all_records=tuple(records),
+        eligible_records=tuple(
+            record for record in records if record["eligible_for_cohort"]
+        ),
+        outcome_counts={
+            "input-rejected": 1,
+            "resource-excluded": 2,
+            "success": SourceV11.CANDIDATE_COUNT - 3,
+        },
+        resource_exclusions_by_family=resource_exclusions_by_family,
+    )
+
+
 class V11AdapterTests(unittest.TestCase):
     def load(self, authorized: SourceV11.AuthorizedConfirmation):
         snapshot_reader = object()
@@ -239,6 +286,30 @@ class V11AdapterTests(unittest.TestCase):
         )
         self.assertEqual(bindings.confirmation_a_count, 650)
         self.assertEqual(bindings.guided_b_count, 300)
+        self.assertEqual(bindings.inventory_families_count, 32)
+        self.assertEqual(
+            bindings.translation_attempts_count, SourceV11.CANDIDATE_COUNT,
+        )
+        self.assertEqual(bindings.support_status_counts, {
+            "indeterminate": 0,
+            "supported": SourceV11.CANDIDATE_COUNT,
+            "unsupported": 0,
+        })
+        self.assertEqual(
+            bindings.support_exclusion_counts,
+            {reason: 0 for reason in Adapter.SUPPORT_EXCLUSION_REASONS},
+        )
+        self.assertEqual(
+            bindings.resource_exclusion_counts, {"memory": 0, "time": 0},
+        )
+        for name in (
+            "support_status_counts", "support_exclusion_counts",
+            "resource_exclusion_counts",
+        ):
+            self.assertEqual(
+                getattr(bindings, name + "_sha256"),
+                digest(dict(getattr(bindings, name))),
+            )
         translator_records = [
             {"path": path, "sha256": source.tracked_file_sha256[path]}
             for path in sorted(source.tracked_file_sha256)
@@ -267,6 +338,8 @@ class V11AdapterTests(unittest.TestCase):
             result.confirmation_a.records[0]["aliases"][0]["family"] = "changed"
         with self.assertRaises(TypeError):
             bindings.full_tracked_file_sha256["new"] = "0" * 64
+        with self.assertRaises(TypeError):
+            bindings.support_status_counts["supported"] = 0
         with self.assertRaises(dataclasses.FrozenInstanceError):
             bindings.campaign = "changed"
         source.confirmation_a[0]["family"] = "mutated-after-load"
@@ -278,6 +351,68 @@ class V11AdapterTests(unittest.TestCase):
             bindings.full_tracked_file_sha256[Adapter.CODE_MANIFEST_RELATIVE],
             CODE_MANIFEST_SHA256,
         )
+
+    def test_mixed_census_summary_is_dense_conserved_and_authenticated(self):
+        source = mixed_authorized_confirmation()
+        bindings = self.load(source).bindings
+        expected_status = {
+            "indeterminate": 2,
+            "supported": SourceV11.CANDIDATE_COUNT - 4,
+            "unsupported": 2,
+        }
+        expected_reasons = {
+            reason: 1 for reason in Adapter.SUPPORT_EXCLUSION_REASONS
+        }
+        expected_resource = {"memory": 1, "time": 1}
+        self.assertEqual(bindings.inventory_families_count, 32)
+        self.assertEqual(
+            bindings.translation_attempts_count, bindings.all_records_count,
+        )
+        self.assertEqual(bindings.eligible_records_count, 1636)
+        self.assertEqual(dict(bindings.support_status_counts), expected_status)
+        self.assertEqual(
+            set(bindings.support_status_counts), set(Adapter.SUPPORT_STATUS_KEYS),
+        )
+        self.assertEqual(
+            dict(bindings.support_exclusion_counts), expected_reasons,
+        )
+        self.assertEqual(
+            set(bindings.support_exclusion_counts),
+            set(Adapter.SUPPORT_EXCLUSION_REASONS),
+        )
+        self.assertEqual(
+            dict(bindings.resource_exclusion_counts), expected_resource,
+        )
+        self.assertEqual(
+            set(bindings.resource_exclusion_counts),
+            set(Adapter.RESOURCE_EXCLUSION_KEYS),
+        )
+        self.assertEqual(
+            sum(bindings.support_status_counts.values()),
+            bindings.all_records_count,
+        )
+        self.assertEqual(
+            bindings.support_status_counts["supported"],
+            bindings.eligible_records_count,
+        )
+        self.assertEqual(
+            bindings.support_status_counts["indeterminate"],
+            bindings.outcome_counts["resource-excluded"],
+        )
+        aggregated = {
+            key: sum(
+                counts[key]
+                for counts in bindings.resource_exclusions_by_family.values()
+            )
+            for key in Adapter.RESOURCE_EXCLUSION_KEYS
+        }
+        self.assertEqual(dict(bindings.resource_exclusion_counts), aggregated)
+        for name, expected in (
+            ("support_status_counts", expected_status),
+            ("support_exclusion_counts", expected_reasons),
+            ("resource_exclusion_counts", expected_resource),
+        ):
+            self.assertEqual(getattr(bindings, name + "_sha256"), digest(expected))
 
     def test_invalid_revision_is_rejected_before_consumer_or_paths(self):
         with (
@@ -351,6 +486,7 @@ class V11AdapterTests(unittest.TestCase):
         changed = changed_record(
             source.confirmation_a[0], eligible_for_cohort=False,
             supported=False,
+            support_exclusion_reasons=[Adapter.SUPPORT_EXCLUSION_REASONS[1]],
         )
         all_records = list(source.all_records)
         all_records[0] = changed
@@ -395,7 +531,50 @@ class V11AdapterTests(unittest.TestCase):
                         eligible_records=tuple(eligible),
                         confirmation_a=tuple(confirmation),
                     ),
-                    "native supported success",
+                    "classification|native supported success",
+                )
+
+    def test_census_classification_is_fail_closed(self):
+        cases = (
+            (
+                {"translation_attempted": False},
+                "translation attempt",
+            ),
+            (
+                {"supported": True, "eligible_for_cohort": False},
+                "classification",
+            ),
+            (
+                {
+                    "supported": False,
+                    "eligible_for_cohort": False,
+                    "support_exclusion_reasons": [
+                        Adapter.SUPPORT_EXCLUSION_REASONS[1],
+                        Adapter.SUPPORT_EXCLUSION_REASONS[1],
+                    ],
+                },
+                "classification",
+            ),
+            (
+                {
+                    "status": "resource-excluded",
+                    "support_determined": False,
+                    "supported": None,
+                    "eligible_for_cohort": False,
+                    "support_exclusion_reasons": None,
+                    "resource_exclusion_kind": "disk",
+                },
+                "classification",
+            ),
+        )
+        for updates, pattern in cases:
+            source = authorized_confirmation()
+            records = list(source.all_records)
+            records[950] = changed_record(records[950], **updates)
+            with self.subTest(updates=updates):
+                self.assert_rejected(
+                    dataclasses.replace(source, all_records=tuple(records)),
+                    pattern,
                 )
 
     def test_full_census_order_identity_and_eligible_projection_are_bound(self):
@@ -523,6 +702,18 @@ class V11AdapterTests(unittest.TestCase):
                 },
             ),
             "resource-exclusion total",
+        )
+        mixed = mixed_authorized_confirmation()
+        self.assert_rejected(
+            dataclasses.replace(
+                mixed,
+                resource_exclusions_by_family={
+                    mixed.all_records[0]["family"]: {
+                        "memory": 1, "time": 1, "total": 2,
+                    },
+                },
+            ),
+            "differs from census records",
         )
 
 

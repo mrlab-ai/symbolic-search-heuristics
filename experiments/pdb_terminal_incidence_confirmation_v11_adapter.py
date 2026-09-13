@@ -66,6 +66,16 @@ ALIAS_FIELDS = (
     "domain_sha256",
     "problem_sha256",
 )
+SUPPORT_STATUS_KEYS = ("indeterminate", "supported", "unsupported")
+SUPPORT_EXCLUSION_REASONS = (
+    "translation-input-rejected",
+    "no-serialized-operators",
+    "nonpositive-serialized-operator-cost",
+    "serialized-axioms",
+    "serialized-conditional-effects",
+    "normalized-axioms",
+)
+RESOURCE_EXCLUSION_KEYS = ("memory", "time")
 
 
 @dataclass(frozen=True)
@@ -99,6 +109,8 @@ class V11SourceBindings:
     compute_canary_seal_plan_sha256: str
     compute_canary_attestation_sha256: str
     translator_source_sha256: str
+    inventory_families_count: int
+    translation_attempts_count: int
     all_records_count: int
     all_records_sha256: str
     all_source_projection_sha256: str
@@ -114,6 +126,12 @@ class V11SourceBindings:
     guided_b_source_projection_sha256: str
     outcome_counts: Mapping[str, int]
     outcome_counts_sha256: str
+    support_status_counts: Mapping[str, int]
+    support_status_counts_sha256: str
+    support_exclusion_counts: Mapping[str, int]
+    support_exclusion_counts_sha256: str
+    resource_exclusion_counts: Mapping[str, int]
+    resource_exclusion_counts_sha256: str
     resource_exclusions_by_family: Mapping[str, Any]
     resource_exclusions_by_family_sha256: str
     full_tracked_file_sha256: Mapping[str, str]
@@ -281,7 +299,112 @@ def _validate_candidate_result(
         )
     ):
         raise V11AdapterError("V11 candidate authorization fields changed")
+    status = record.get("status")
+    supported = record.get("supported")
+    reasons = record.get("support_exclusion_reasons")
+    eligible = record.get("eligible_for_cohort")
+    resource_kind = record.get("resource_exclusion_kind")
+    if record.get("translation_attempted") is not True:
+        raise V11AdapterError("V11 candidate translation attempt changed")
+    if status == "success":
+        structural_reasons = SUPPORT_EXCLUSION_REASONS[1:]
+        valid_reasons = (
+            isinstance(reasons, (tuple, list))
+            and list(reasons) == [
+                reason for reason in structural_reasons if reason in reasons
+            ]
+        )
+        valid = (
+            record.get("support_determined") is True
+            and type(supported) is bool
+            and eligible is supported
+            and resource_kind is None
+            and valid_reasons
+            and ((supported is True and len(reasons) == 0)
+                 or (supported is False and len(reasons) > 0))
+        )
+    elif status == "input-rejected":
+        valid = (
+            record.get("support_determined") is True
+            and supported is False
+            and eligible is False
+            and reasons == ["translation-input-rejected"]
+            and resource_kind is None
+        )
+    elif status == "resource-excluded":
+        valid = (
+            record.get("support_determined") is False
+            and supported is None
+            and eligible is False
+            and reasons is None
+            and resource_kind in RESOURCE_EXCLUSION_KEYS
+        )
+    else:
+        valid = False
+    if not valid:
+        raise V11AdapterError("V11 candidate classification changed")
     return _plain(record), projection
+
+
+def _classification_summaries(records: list[dict[str, Any]]) -> dict[str, Any]:
+    outcomes = Counter(record["status"] for record in records)
+    outcome_counts = {
+        key: outcomes[key]
+        for key in ("input-rejected", "resource-excluded", "success")
+    }
+    support_labels = [
+        "supported" if record["supported"] is True else (
+            "unsupported" if record["supported"] is False else "indeterminate"
+        )
+        for record in records
+    ]
+    support_statuses = Counter(support_labels)
+    support_status_counts = {
+        key: support_statuses[key] for key in SUPPORT_STATUS_KEYS
+    }
+    support_reasons = Counter(
+        reason for record in records
+        for reason in (record["support_exclusion_reasons"] or [])
+    )
+    support_exclusion_counts = {
+        reason: support_reasons[reason] for reason in SUPPORT_EXCLUSION_REASONS
+    }
+    resource_records = [
+        record for record in records if record["status"] == "resource-excluded"
+    ]
+    resource_kinds = Counter(
+        record["resource_exclusion_kind"] for record in resource_records
+    )
+    resource_exclusion_counts = {
+        key: resource_kinds[key] for key in RESOURCE_EXCLUSION_KEYS
+    }
+    resource_exclusions_by_family = {}
+    for family in sorted({record["family"] for record in resource_records}):
+        selected = [
+            record for record in resource_records if record["family"] == family
+        ]
+        resource_exclusions_by_family[family] = {
+            "memory": sum(
+                record["resource_exclusion_kind"] == "memory"
+                for record in selected
+            ),
+            "time": sum(
+                record["resource_exclusion_kind"] == "time"
+                for record in selected
+            ),
+            "total": len(selected),
+        }
+    return {
+        "inventory_families_count": len({record["family"] for record in records}),
+        "translation_attempts_count": sum(
+            record["translation_attempted"] for record in records
+        ),
+        "outcome_counts": outcome_counts,
+        "support_status_counts": support_status_counts,
+        "support_exclusion_counts": support_exclusion_counts,
+        "resource_exclusion_counts": resource_exclusion_counts,
+        "resource_exclusions_by_family": resource_exclusions_by_family,
+    }
 
 
 def _validated_tracked(value: Any, label: str) -> dict[str, str]:
@@ -319,6 +442,7 @@ def _validate_outcome_counts(value: Any) -> dict[str, int]:
 
 def _validate_resource_exclusions(
     value: Any, *, census_families: set[str], expected_total: int,
+    expected_by_family: Mapping[str, Mapping[str, int]],
 ) -> dict[str, dict[str, int]]:
     if not isinstance(value, Mapping):
         raise V11AdapterError("V11 resource-exclusion summary changed")
@@ -338,7 +462,12 @@ def _validate_resource_exclusions(
         result[family] = {key: counts[key] for key in ("memory", "time", "total")}
     if sum(counts["total"] for counts in result.values()) != expected_total:
         raise V11AdapterError("V11 resource-exclusion total changed")
-    return dict(sorted(result.items()))
+    result = dict(sorted(result.items()))
+    if result != expected_by_family:
+        raise V11AdapterError(
+            "V11 resource-exclusion summary differs from census records"
+        )
+    return result
 
 
 def _validate_family_contract(
@@ -513,6 +642,8 @@ def _load_and_validate(seal_revision: str) -> AuthorizedV11Cohorts:
     if len(problem_hashes) != len(set(problem_hashes)) or len(sources) != len(set(sources)):
         raise V11AdapterError("V11 census contains duplicate source identities")
 
+    classification = _classification_summaries(all_plain)
+
     expected_eligible = [
         record for record in all_plain if record["eligible_for_cohort"] is True
     ]
@@ -586,17 +717,34 @@ def _load_and_validate(seal_revision: str) -> AuthorizedV11Cohorts:
     combined_tracked = dict(preflight_tracked)
     combined_tracked.update(full_tracked)
     outcome_counts = _validate_outcome_counts(authorized.outcome_counts)
-    observed_outcomes = Counter(record.get("status") for record in all_plain)
-    if outcome_counts != {
-        key: observed_outcomes[key]
-        for key in ("input-rejected", "resource-excluded", "success")
-    }:
+    if outcome_counts != classification["outcome_counts"]:
         raise V11AdapterError("V11 outcome summary differs from census records")
     resource_exclusions = _validate_resource_exclusions(
         authorized.resource_exclusions_by_family,
         census_families={record["family"] for record in all_projections},
         expected_total=outcome_counts["resource-excluded"],
+        expected_by_family=classification["resource_exclusions_by_family"],
     )
+    support_status_counts = classification["support_status_counts"]
+    support_exclusion_counts = classification["support_exclusion_counts"]
+    resource_exclusion_counts = classification["resource_exclusion_counts"]
+    aggregated_resource_counts = {
+        key: sum(counts[key] for counts in resource_exclusions.values())
+        for key in RESOURCE_EXCLUSION_KEYS
+    }
+    if (
+        classification["translation_attempts_count"] != len(all_plain)
+        or sum(support_status_counts.values()) != len(all_plain)
+        or support_status_counts["supported"] != len(expected_eligible)
+        or support_status_counts["indeterminate"]
+        != outcome_counts["resource-excluded"]
+        or support_exclusion_counts["translation-input-rejected"]
+        != outcome_counts["input-rejected"]
+        or sum(resource_exclusion_counts.values())
+        != outcome_counts["resource-excluded"]
+        or resource_exclusion_counts != aggregated_resource_counts
+    ):
+        raise V11AdapterError("V11 classification summary is incoherent")
     eligible_projections = [
         all_projections[record["candidate_index"]] for record in expected_eligible
     ]
@@ -628,6 +776,8 @@ def _load_and_validate(seal_revision: str) -> AuthorizedV11Cohorts:
         compute_canary_seal_plan_sha256=preflight.compute_canary_seal_plan_sha256,
         compute_canary_attestation_sha256=preflight.compute_canary_attestation_sha256,
         translator_source_sha256=_digest(translator_records),
+        inventory_families_count=classification["inventory_families_count"],
+        translation_attempts_count=classification["translation_attempts_count"],
         all_records_count=len(all_plain),
         all_records_sha256=_digest(all_plain),
         all_source_projection_sha256=_digest(all_projections),
@@ -649,6 +799,12 @@ def _load_and_validate(seal_revision: str) -> AuthorizedV11Cohorts:
         guided_b_source_projection_sha256=guided_b.source_projection_sha256,
         outcome_counts=_freeze(outcome_counts),
         outcome_counts_sha256=_digest(outcome_counts),
+        support_status_counts=_freeze(support_status_counts),
+        support_status_counts_sha256=_digest(support_status_counts),
+        support_exclusion_counts=_freeze(support_exclusion_counts),
+        support_exclusion_counts_sha256=_digest(support_exclusion_counts),
+        resource_exclusion_counts=_freeze(resource_exclusion_counts),
+        resource_exclusion_counts_sha256=_digest(resource_exclusion_counts),
         resource_exclusions_by_family=_freeze(resource_exclusions),
         resource_exclusions_by_family_sha256=_digest(resource_exclusions),
         full_tracked_file_sha256=_freeze(full_tracked),
@@ -669,6 +825,7 @@ def load_authorized_cohorts(seal_revision: str) -> AuthorizedV11Cohorts:
 
 
 __all__ = [
-    "AuthorizedV11Cohorts", "V11AdapterError", "V11CohortProjection",
-    "V11SourceBindings", "load_authorized_cohorts",
+    "AuthorizedV11Cohorts", "RESOURCE_EXCLUSION_KEYS", "SOURCE_PROJECTION_FIELDS",
+    "SUPPORT_EXCLUSION_REASONS", "SUPPORT_STATUS_KEYS", "V11AdapterError",
+    "V11CohortProjection", "V11SourceBindings", "load_authorized_cohorts",
 ]
