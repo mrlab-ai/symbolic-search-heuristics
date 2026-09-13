@@ -47,6 +47,19 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
         ):
             cls.materials = P.load_source_materials(Fixture.FULL_REVISION)
 
+    def test_exact_v11_seal_revision_path_is_green(self):
+        with mock.patch.object(
+            P.SourceV11,
+            "load_authorized_cohorts",
+            return_value=self.authorized,
+        ):
+            materials = P.load_source_materials(Fixture.FULL_REVISION)
+        self.assertEqual(len(materials.tasks), P.COHORT_TASKS)
+        self.assertEqual(
+            materials.bindings["seal_repository_commit_id"],
+            Fixture.FULL_REVISION,
+        )
+
     def test_cli_accepts_only_source_seal_and_freeze_inputs(self):
         parsed = Freeze.parse_args([
             "--source-seal-revision", Fixture.FULL_REVISION,

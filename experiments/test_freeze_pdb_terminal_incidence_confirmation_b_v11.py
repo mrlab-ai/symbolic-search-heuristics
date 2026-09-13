@@ -97,6 +97,19 @@ class ConfirmationBV11FreezeTests(unittest.TestCase):
         cls.planner = planner_identity()
         cls.authorization = live_authorization(cls.materials, cls.planner)
 
+    def test_exact_v11_seal_revision_path_is_green(self):
+        with mock.patch.object(
+            P.SourceV11,
+            "load_authorized_cohorts",
+            return_value=self.authorized,
+        ):
+            materials = P.load_source_materials(Fixture.FULL_REVISION)
+        self.assertEqual(len(materials.tasks), P.TARGET_COHORT_TASKS)
+        self.assertEqual(
+            materials.bindings["seal_repository_commit_id"],
+            Fixture.FULL_REVISION,
+        )
+
     def frozen_authorization(self) -> dict:
         return Freeze._authorization_provenance(self.authorization)
 
