@@ -711,6 +711,14 @@ class ProtocolTest(unittest.TestCase):
             ):
                 P.validate_base_snapshot(snapshot)
 
+    def test_v11_inventory_covers_all_embedded_canonical_families(self):
+        snapshot = fake_snapshot()
+        snapshot["source_audit_v11"]["bindings"][
+            "inventory_families_count"
+        ] = 94
+        with self.assertRaisesRegex(P.ProtocolError, "family count is too small"):
+            P.validate_base_snapshot(snapshot)
+
     def test_v11_classification_summaries_are_recomputed_and_coherent(self):
         mutations = {
             "support_status_counts": {

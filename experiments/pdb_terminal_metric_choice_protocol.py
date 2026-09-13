@@ -1129,6 +1129,10 @@ def validate_base_snapshot(snapshot: dict) -> None:
         != bindings["confirmation_a_source_projection_sha256"]
     ):
         raise ProtocolError("Confirmation A projection binding changed")
+    if bindings["inventory_families_count"] < len({
+        task["family"] for task in (*tasks_a, *tasks_b)
+    }):
+        raise ProtocolError("V11 inventory family count is too small")
     if (
         any(
             directory_families_a[directory] != directory_families_b[directory]
