@@ -363,6 +363,14 @@ class ConfirmationBV11FreezeTests(unittest.TestCase):
                 P._load_freeze(path)
 
             changed = copy.deepcopy(value)
+            changed["source_audit"]["bindings"][
+                "inventory_families_count"
+            ] = 31
+            path.write_bytes(P.canonical_json_line(changed))
+            with self.assertRaisesRegex(P.ProtocolError, "family floor"):
+                P._load_freeze(path)
+
+            changed = copy.deepcopy(value)
             changed["source_audit"]["unexpected"] = True
             path.write_bytes(P.canonical_json_line(changed))
             with self.assertRaisesRegex(P.ProtocolError, "source shape"):

@@ -328,7 +328,8 @@ def _validate_candidate_result(
             record.get("support_determined") is True
             and supported is False
             and eligible is False
-            and reasons == ["translation-input-rejected"]
+            and isinstance(reasons, (tuple, list))
+            and list(reasons) == ["translation-input-rejected"]
             and resource_kind is None
         )
     elif status == "resource-excluded":

@@ -181,6 +181,16 @@ def changed_record(record: dict, **updates: object) -> dict:
     return result
 
 
+def consumer_freeze(value: object) -> object:
+    if type(value) is dict:
+        return MappingProxyType({
+            key: consumer_freeze(item) for key, item in value.items()
+        })
+    if type(value) is list:
+        return tuple(consumer_freeze(item) for item in value)
+    return value
+
+
 def mixed_authorized_confirmation() -> SourceV11.AuthorizedConfirmation:
     source = authorized_confirmation()
     records = list(source.all_records)
@@ -224,6 +234,34 @@ def mixed_authorized_confirmation() -> SourceV11.AuthorizedConfirmation:
             "success": SourceV11.CANDIDATE_COUNT - 3,
         },
         resource_exclusions_by_family=resource_exclusions_by_family,
+    )
+
+
+def frozen_mixed_authorized_confirmation() -> SourceV11.AuthorizedConfirmation:
+    source = mixed_authorized_confirmation()
+    return dataclasses.replace(
+        source,
+        preflight=dataclasses.replace(
+            source.preflight,
+            tracked_file_sha256=consumer_freeze(
+                source.preflight.tracked_file_sha256
+            ),
+        ),
+        confirmation_a=tuple(
+            consumer_freeze(record) for record in source.confirmation_a
+        ),
+        guided_b=tuple(consumer_freeze(record) for record in source.guided_b),
+        eligible_records=tuple(
+            consumer_freeze(record) for record in source.eligible_records
+        ),
+        all_records=tuple(
+            consumer_freeze(record) for record in source.all_records
+        ),
+        outcome_counts=consumer_freeze(source.outcome_counts),
+        resource_exclusions_by_family=consumer_freeze(
+            source.resource_exclusions_by_family
+        ),
+        tracked_file_sha256=consumer_freeze(source.tracked_file_sha256),
     )
 
 
@@ -413,6 +451,16 @@ class V11AdapterTests(unittest.TestCase):
             ("resource_exclusion_counts", expected_resource),
         ):
             self.assertEqual(getattr(bindings, name + "_sha256"), digest(expected))
+
+    def test_recursively_frozen_consumer_shape_is_accepted(self):
+        source = frozen_mixed_authorized_confirmation()
+        self.assertIsInstance(source.all_records[951], MappingProxyType)
+        self.assertIsInstance(
+            source.all_records[951]["support_exclusion_reasons"], tuple,
+        )
+        bindings = self.load(source).bindings
+        self.assertEqual(bindings.translation_attempts_count, 1640)
+        self.assertEqual(bindings.support_status_counts["unsupported"], 2)
 
     def test_invalid_revision_is_rejected_before_consumer_or_paths(self):
         with (

@@ -495,6 +495,7 @@ def _materials_from_frozen_source(source: dict) -> SourceMaterials:
     all_prior = sorted({task["family"] for task in all_prior_tasks})
     if (
         len(families) < MIN_COHORT_FAMILIES
+        or bindings["inventory_families_count"] < len(families)
         or max(per_family.values(), default=0) > 12
         or len(shadow) < MIN_SHADOW_UNREPRESENTED_FAMILIES
         or len(all_prior_tasks) < MIN_ALL_PRIOR_UNREPRESENTED_TASKS

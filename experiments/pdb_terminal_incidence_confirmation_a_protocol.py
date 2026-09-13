@@ -403,6 +403,8 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
         or not 0 <= bindings["eligible_records_count"] <= 1640
         or bindings.get("confirmation_a_count") != COHORT_TASKS
         or bindings.get("guided_b_count") != 300
+        or bindings["eligible_records_count"]
+        < bindings["confirmation_a_count"] + bindings["guided_b_count"]
     ):
         raise ProtocolError("frozen V11 authorization changed")
     for prefix in ("full", "preflight", "combined"):
@@ -548,13 +550,15 @@ def _materials_from_frozen_source(source: dict) -> SourceMaterials:
         previous = directory_to_family.setdefault(task["directory"], task["family"])
         if previous != task["family"]:
             raise ProtocolError("Confirmation A directory maps to two families")
+    families = set(directory_to_family.values())
     shadow = sorted({task["family"] for task in tasks
                      if task["is_shadow_unrepresented"]})
     all_prior_tasks = [task for task in tasks
                        if task["is_all_prior_unrepresented"]]
     all_prior = sorted({task["family"] for task in all_prior_tasks})
     if (
-        len(set(directory_to_family.values())) < MIN_SOURCE_COHORT_FAMILIES
+        len(families) < MIN_SOURCE_COHORT_FAMILIES
+        or bindings["inventory_families_count"] < len(families)
         or len(shadow) < MIN_SOURCE_SHADOW_UNREPRESENTED_FAMILIES
         or len(all_prior_tasks) < MIN_SOURCE_ALL_PRIOR_UNREPRESENTED_TASKS
         or len(all_prior) < MIN_SOURCE_ALL_PRIOR_UNREPRESENTED_FAMILIES

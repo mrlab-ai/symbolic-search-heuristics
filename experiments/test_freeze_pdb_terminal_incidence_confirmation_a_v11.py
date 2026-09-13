@@ -245,7 +245,23 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
 
             semantic_tampers = []
             changed = copy.deepcopy(value)
-            changed["source_audit"]["bindings"]["inventory_families_count"] = 0
+            changed["source_audit"]["bindings"]["inventory_families_count"] = 31
+            semantic_tampers.append(changed)
+            changed = copy.deepcopy(value)
+            bindings = changed["source_audit"]["bindings"]
+            bindings["eligible_records_count"] = 949
+            status = bindings["support_status_counts"]
+            status.update(indeterminate=2, supported=949, unsupported=689)
+            bindings["support_status_counts_sha256"] = hashlib.sha256(
+                P.canonical_json(status)
+            ).hexdigest()
+            exclusions = bindings["support_exclusion_counts"]
+            exclusions.update({reason: 0 for reason in exclusions})
+            exclusions["translation-input-rejected"] = 1
+            exclusions[Adapter.SUPPORT_EXCLUSION_REASONS[1]] = 688
+            bindings["support_exclusion_counts_sha256"] = hashlib.sha256(
+                P.canonical_json(exclusions)
+            ).hexdigest()
             semantic_tampers.append(changed)
             changed = copy.deepcopy(value)
             changed["source_audit"]["bindings"]["translation_attempts_count"] = 1639
@@ -295,7 +311,7 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
             for changed in semantic_tampers:
                 path.write_bytes(P.canonical_json_line(changed))
                 with self.assertRaisesRegex(
-                    P.ProtocolError, "authorization|summary",
+                    P.ProtocolError, "authorization|summary|family floor",
                 ):
                     P._load_freeze(path)
 
