@@ -90,6 +90,10 @@ and existing effect thresholds. Remove the infeasible all-prior-unrepresented
 stratum and its claims explicitly. Freeze the finite instance configuration
 as a local reproducibility record, not a public preregistration. Do not tune
 generators, thresholds or heuristics after seeing confirmatory outcomes.
+Following the user's subsequent minimum-experiment instruction, generate and
+screen only A initially. B generation and source screening are deferred until
+the completed A result justifies a selector claim. Do not run exploratory
+heuristics, parameter sweeps or comparisons unrelated to the final claims.
 Preserve the staged A-to-selector decision: an A failure is an informative
 terminal result, not a reason to select a new favorable test set. A success
 authorizes the existing controlled selector comparisons on disjoint B tasks.

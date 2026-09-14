@@ -221,7 +221,7 @@ def _comparison(comparison, gate):
     }
 
 
-def normalize_a(analysis):
+def normalize_a(analysis, *, include_prior=True):
     primary = analysis["primary"]
     if set(primary["frontier_statuses"]) - set(R.A_FRONTIER_STATUSES):
         raise EvidenceError("unknown Confirmation A frontier status")
@@ -257,13 +257,19 @@ def normalize_a(analysis):
         {"numerator": exact_ratio.numerator, "denominator": exact_ratio.denominator}
         if exact_ratio is not None else None
     )
-    prior = analysis["strata"]["all_prior_unrepresented"]
-    return {
+    if include_prior:
+        eligible_tasks = primary.get("eligible_tasks")
+        eligible_families = primary.get("eligible_families")
+    else:
+        eligible_tasks = analysis.get("eligible_tasks")
+        eligible_families = analysis.get("eligible_families")
+    if type(eligible_tasks) is not int or type(eligible_families) is not int:
+        raise EvidenceError("Confirmation A eligible support is missing")
+    result = {
         "sealed": True,
-        "eligible_tasks": primary["eligible_tasks"],
-        "eligible_families": primary["eligible_families"],
+        "eligible_tasks": eligible_tasks,
+        "eligible_families": eligible_families,
         **_comparison(analysis["comparison"], analysis["gates"]["primary"]),
-        "all_prior": _comparison(prior["comparison"], prior["gate"]),
         "all_strict": {
             "comparison_tasks": strict["support"].get("tasks_with_shared_pairs", 0),
             "comparison_families": strict["support"].get("families_with_shared_pairs", 0),
@@ -295,6 +301,10 @@ def normalize_a(analysis):
         },
         "cegar_fallback_tasks": primary["cegar_fallback_tasks"],
     }
+    if include_prior:
+        prior = analysis["strata"]["all_prior_unrepresented"]
+        result["all_prior"] = _comparison(prior["comparison"], prior["gate"])
+    return result
 
 
 def _hardware(summary, cells):

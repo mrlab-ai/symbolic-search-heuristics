@@ -43,6 +43,46 @@ and receipts are retained under
 The monitor enforces at least 3,600 seconds between checks and preserves
 accounting, queue, and pipeline-log evidence. Submission is not completion.
 
+The user then explicitly restricted the work to the minimum publication-critical
+experiments and asked for cheaper subagents where useful. Consequently, only
+the predictor cohort will now be generated and screened: 650 target A tasks,
+plus one finite structural reserve per family/size level. B generation,
+translation, and selector runs are deferred until A's completed evidence
+justifies them. No additional exploratory runs or parameter sweeps are planned.
+A cheaper read-only subagent audited the minimum evidence for the paper's
+central claims without inspecting the still-unpolled pilot. It confirmed that
+A is sufficient for the predictor claim; direct and B are needed only to retain
+their respective selector-superiority claims. The existing 90-task technical
+pilot remains on the critical path to defining a supported source population.
+
+The fresh A execution path now passes 18 workflow tests, including a real
+synthetic task through all four frozen PDB configurations, the Lab parsers,
+two byte-identical analyses and a zero-query completion seal. The 21 existing
+shadow-analyzer tests also pass, and all V12 manifest-bound files remain
+unchanged. The test confirmed that the native preprocessor overwrites the
+translator's serialized task, so the execution guard verifies that task at
+the translator-to-preprocessor handoff. These synthetic checks are not
+scientific cohort measurements.
+
+The same test exposed a Lab parsing-context issue: dynamic properties start
+without the static run ID. New pipelines initialize that context before their
+custom parsers. The already-submitted pilot scripts remain unchanged. A
+separate parsing-only recovery is prepared, but may run only if the hourly
+accounting check proves all original translations completed successfully and
+the retained pipeline error is exactly the diagnosed missing-ID error. It
+reuses unchanged translation outputs in a new report directory; it neither
+reruns translations nor treats a failed pipeline as successful. At this
+checkpoint, no pilot status or output has yet been read.
+
+The experiment implementation is committed at
+`a35aad7d8d594feea711ce077f0bbad1e5e1a107`; its 36-file Python dependency
+closure was checked against that literal commit. The paper now discloses the
+original source-feasibility failure and the narrower generated-instance scope.
+A separate reporting branch consumes committed fresh-A evidence without
+inventing an unseen-family stratum or selector results. Production pins remain
+unset. The result-rendering suite passes 80 tests, and the submission checker
+passes its 166 source/result and 46 review-bundle adversarial checks.
+
 The manuscript update and replacement Drive upload remain pending the
 completed critical evidence. Earlier source campaigns and their seals remain
 unchanged.

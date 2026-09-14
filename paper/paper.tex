@@ -114,7 +114,7 @@ frontier.
 Terminal relabeling, including safe heuristic caps, cannot increase terminal
 incidence, although it can increase exact partition effort.
 We use these results to define an incidence-guided pattern-database selector.
-A source-disjoint confirmation first tests whether incidence ranks exact
+A fresh-instance confirmation within previously studied families tests whether incidence ranks exact
 fixed-frontier partition effort better than masked ADD size, active-value count
 and seven certificate baselines; only success authorizes two complementary
 end-to-end tests on the same frozen guided cohort, including a controlled
@@ -720,25 +720,27 @@ heuristic; the two winners may coincide.
 \section{Confirmatory Evaluation}
 \label{sec-confirmation}
 
-The evaluation separates ordinal-predictor confirmation from algorithm
-evaluation.
-Before reading any planner outcome, we freeze the source inventory, family
-mapping, task split, configurations, limits, metrics and decision thresholds.
-A full-census audit attempts all 1,640 source candidates under one fixed
-protocol; the cohorts exist only if the complete audit seals, and failures
-remain explicit rather than being selectively reused.
-Its deterministic split gives Confirmation A one cohort and both later guided
-studies a common B cohort; the A and B cohorts share neither task identities
-nor problem-file hashes.
-The all-prior-unrepresented stratum additionally excludes every family used in
-development.
-The supplement gives the execution and failure-handling protocol and preserves
-the developmental studies.
+The evaluation separates ordinal prediction from algorithm evaluation.
+Our original source census attempted translation of 1,640 unused benchmark candidates under
+fixed resource limits, but only 396 tasks from 19 previously studied families
+satisfied the planner's structural requirements.
+This was insufficient for the original unseen-family design; no heuristic
+performance was measured on those candidates.
+We therefore test fresh generated instances within previously studied families,
+using the PDDL generator collection of \citet{seipp-et-al-zenodo2022}.
+A translation-only pilot determines the supported families before heuristic
+outcomes are observed.
+We fix size grids, seeds, duplicate exclusions, configurations and analysis
+thresholds before the predictor runs.
+Selector tasks are generated only if Confirmation A passes, using disjoint
+seeds and problem inputs.
+This design tests new instances of the retained families, not transfer to
+unseen families; the supplement records the source audit and selection rules.
 
 \subsection{Confirmation A: Does Incidence Rank Partition Effort?}
 
-Confirmation A is frozen to require exactly 650 source-attested tasks from at
-least 28 source families.
+Confirmation A requires 650 source-attested tasks, balanced across the
+structurally supported families and five fixed size levels per family.
 Each task uses the BDD-prefix, goal-prefix, goal-fill and seeded CEGAR direct
 PDB generators with exact values, a $100{,}000$-state budget and one fixed BDD
 order.
@@ -775,11 +777,8 @@ For each of the nine baselines, the lower endpoint of the 95\% paired-family
 bootstrap
 reweighting interval with $100{,}000$ replicates must be positive, and every
 leave-one-family-out difference must be positive.
-The all-prior-unrepresented stratum additionally requires at least 100 source
-tasks in ten source families, 50 comparison tasks in ten comparison families
-and 100 target-strict pairs, and it must pass the same concordance, margin,
-bootstrap and leave-one-family-out clauses.
 Failure of any support or effect clause is a failed confirmation.
+The infeasible unseen-family stratum is not part of this within-family test.
 
 % ================= RESULT_INSERT_CONFIRMATION_A_BEGIN =================
 % Insert only the double-executed, sealed A analysis here.
@@ -952,6 +951,8 @@ determines the ordinal ranking of two heuristics.
 Confirmation A compares several PDBs on common blind frontiers.
 It can establish an ordinal predictor of fixed-frontier partition effort within
 that design, but it cannot establish a cause of overall heuristic performance.
+Its generated tasks come from previously studied families and fixed size grids;
+distinct input bytes do not exclude structurally isomorphic instances.
 The controlled predecessor-ablation campaign changes only which precomputed winner
 becomes the final heuristic, but reuses Confirmation B's task cohort and is
 therefore not an independent task holdout from that broader evaluation.

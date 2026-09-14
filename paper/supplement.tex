@@ -700,146 +700,94 @@ confirmatory analysis.
 \section{Frozen Confirmatory Protocols}
 \label{sec:supp-confirmatory-protocols}
 
-This section defines the terms abbreviated in the main paper and records the
-planner-outcome-independent execution and analysis contract.
-Confirmation A and Confirmation B use disjoint cohorts selected before any
-planner outcome is read.
-The controlled predecessor-ablation campaign executes fresh runs on the B
-cohort; it is
-therefore an intervention on the selector rule, not a third task holdout.
-The B launch additionally requires a pinned receipt showing that two fresh
-executions of the A analyzer produced byte-identical outputs and that A passed
-its complete gate.
+This section records the outcome-independent instance selection and analysis
+contract.
+Confirmation A is the first scientific test.
+Only a completed A result passing every support and effect clause can
+authorize the selector comparisons.
+Their instances must use separate generation seeds and nonduplicate problem
+inputs; they are not generated or screened in advance of that decision.
 
-\subsection{Source Audit, Families and Cohorts}
+\subsection{Original Source Census and Scope Change}
 
-The universal source scan enumerates 4,088 benchmark task paths at benchmark
-revision
+The original source scan enumerated 4,088 benchmark task paths at revision
 \texttt{48d6a00d\allowbreak{}482de238\allowbreak{}4a9e751f\allowbreak{}9343df58\allowbreak{}bf5582be}.
-It removes every task identity and every problem-content hash used in a prior
-experiment, leaving 1,733 paths.
-Equal problem hashes are then collected into an alias group with one
-deterministically chosen canonical path; a duplicate hash crossing two
-normalized families invalidates the inventory.
-This produces the immutable V11 inventory of exactly 1,640 canonical candidates
-in 78 directories and 43 normalized families.
-A conservative directory-to-family map collapses benchmark-track and
-encoding variants of the same planning domain.
+After excluding prior task identities and problem hashes and collapsing
+duplicate problem files, it retained 1,640 candidates in 43 normalized
+families.
+The complete census attempted every candidate afresh under the same
+1,800-second CPU and 24,576-MiB translation limits.
+All 820 two-candidate scheduler elements completed successfully.
+Translation succeeded for 1,590 candidates; 50 exceeded the memory limit.
+There were no time exclusions or input rejections.
 
-A task is \emph{source-attested} if its canonical PDDL bytes and hashes match
-the inventory, translation finishes successfully, the serialized task has at
-least one operator, every serialized operator cost is positive, the serialized
-task has neither axioms nor conditional effects, and the same-pass
-normalization records no normalized axioms.
-Every candidate is classified, including unsupported ones.
-The \emph{shadow-unrepresented} stratum contains families absent from the
-earlier terminal-incidence shadow cohort.
-The stricter \emph{all-prior-unrepresented} stratum contains families absent
-from the complete family-provenance ledger of all developmental experiments.
-These labels depend only on source identity, never on planner behavior.
+A task is \emph{source-attested} when its PDDL bytes match the inventory,
+translation succeeds, the serialized task has at least one operator, all
+operator costs are positive, and neither serialized axioms, conditional
+effects nor same-pass normalized axioms occur.
+Of the translated candidates, 396 tasks from 19 families satisfy these
+requirements; 1,194 do not.
+Unsupported reasons overlap: 514 tasks have nonpositive costs, 606 have
+normalized axioms, 606 have serialized axioms and 600 have conditional effects.
+The 50 memory exclusions have indeterminate structural support.
+The deterministic original split supplied 341 A tasks and 55 B tasks,
+all from families represented in prior experiments.
+It could therefore meet neither the original 650-task A requirement nor the
+unseen-family requirements.
+This is a source-feasibility failure, not a statistical failure of A.
+No A, B or direct metric-choice performance was measured under that design.
 
-Within every supported family, SHA-256 ranks derived from fixed role strings
-determine the split.
-For a family with $n_f$ supported tasks, the audit reserves the first
-$\min\{3,\lfloor n_f/2\rfloor\}$ tasks under the B-base rank.
-After removing those problem hashes, it draws up to 650 A tasks by
-lexicographic-family round robin under the A rank.
-It then tops up the reserved guided-B cohort from the remaining tasks by
-lexicographic-family round robin under a separate B-top-up rank, toward a
-target of 300 tasks and with at most 12 tasks per family.
-The A and guided-B records are disjoint in canonical identity and problem hash.
-The V11 source gate requires exactly 650 A tasks, at least 28 A families, at
-least 12 shadow-unrepresented A families and at least 100 A tasks from ten
-all-prior-unrepresented families.
-For guided B, the V11 source gate requires at least 200 tasks, at least 30
-families, at least 12 shadow-unrepresented families and at least 50 tasks from
-ten all-prior-unrepresented families.
-The later Confirmation-B freeze additionally requires the 300-task target; a
-sealed audit with 200--299 guided-B tasks may authorize A but cannot authorize
-B.
+Before observing new heuristic outcomes, we replaced that infeasible design
+with fresh generated instances within previously studied families.
+The completed source census and its failed feasibility gate remain in the
+artifact.
+The new test does not claim unseen-family generalization.
 
-% ================= RESULT_INSERT_SOURCE_AUDIT_V11_BEGIN ================
-% Replace this prospective V11 account with the sealed audit outcome, exact A/B
-% cohort support, outcome counts and source/environment/scheduler provenance.
-Campaigns v1--v5 increased infrastructure ceilings while preserving the fixed
-1,640-candidate inventory, but none passed a complete all-success gate.
-The v5 scheduler summary contained 795 completed, 15 failed and ten
-out-of-memory array elements.
-The attempted v6 diagnostic failed closed before producing an artifact or
-reading any scientific payload.
+\subsection{Generated Instances and Structural Screening}
 
-V7 fixed a historical newline-encoding mismatch, validated a scheduler-only
-795/25 v5 partition and exclusively recorded a launch intent.
-Its single \texttt{sbatch} call created no job because the requested 3,000~GiB
-exceeded the \texttt{fat} nodes' allocatable memory after the system reserve;
-the namespace was burned.
-V8 froze an exact 25-element whole-shard repair at 2,950~GiB.
-Its terminal scheduler summary contained eight completed and 17 out-of-memory
-elements, so V8 failed its all-success gate.
-No V8 worker shard, worker stream, environment record or source-support
-outcome was opened or reused.
+We pin the PDDL generator collection \citep{seipp-et-al-zenodo2022} at revision
+\texttt{d5c22c9a\allowbreak{}b21ecaf9\allowbreak{}0db82daf\allowbreak{}2a053797\allowbreak{}3c661009}.
+Each of 30 candidate families has five fixed size settings.
+A technical pilot generates the smallest, middle and largest settings twice,
+requiring byte-identical domain/problem pairs.
+All 90 generator-pilot tasks satisfy this repeatability check.
+The translation-only pilot determines structural compatibility without
+running heuristics.
+A family enters the candidate population only if all three pilot tasks are
+supported.
 
-V9 abandoned selective repair and attempted all 1,640 inventory candidates.
-Its committed terminal scheduler receipt records all 820 array rows as
-\texttt{FAILED}/\texttt{2:0}, with zero scheduler restarts.
-The failure recorder opened no worker shard, stream, task environment,
-temporary directory or scientific payload, and it authorized no payload reuse.
-V9 failed its all-success gate and its namespace is permanently burned.
+The A target is 650 tasks, allocated as evenly as possible across supported
+families and then across each family's five size settings.
+One additional seed per family and size setting is the finite reserve for
+structural exclusions.
+Translation attempts every candidate; the first supported candidates in the
+fixed seed order fill each quota.
+No performance-dependent replacement or parameter adjustment is allowed.
+Seeds are deterministic hashes of the role, family, instance index and
+duplicate-retry index.
+Every generated input is reproduced twice and checked against the prior
+source inventory, both generator pilots and earlier generated candidates.
+Duplicate checks use exact problem hashes and fingerprints that remove
+comments, whitespace and the problem name.
+These checks exclude trivial renaming of the problem but do not establish
+non-isomorphism under object renaming or reordering.
 
-V10 retained the fresh full-census path and passed its controller publication
-canary on the repository's Lustre filesystem.
-The outer scheduler row of its one-row compute canary reached
-\texttt{COMPLETED} with exit \texttt{0:0} and zero scheduler restarts, but
-Slurm reported that row under the bare parent job ID rather than an
-\texttt{\_0}-suffixed array ID.
-The frozen V10 controller admitted only the latter representation and therefore
-failed closed after retaining the single accounting query.
-After the required one-hour interval, the stranded attempt was closed without
-another query and V10 was burned.
-No compute-canary payload was opened or reused, and the full census was never
-launched.
-
-V11 freshly attempts every inventory candidate once under the limits of a
-Confirmation-A cell: 1,800 seconds and 24,576~MiB.
-It reads or reuses no runtime byte, task log, scheduler row, shard, temporary
-file, translated task or scientific payload from V1--V10.
-Before the full run, a controller canary exercises the production publisher on
-the repository's Lustre filesystem, and a one-row compute canary processes two
-synthetic inputs through the same child and publisher paths as the census.
-Both the launcher and an independent consumer accept a bare parent job ID only
-for this one-row array and map it to task zero; every multirow census record
-must retain its explicit array index.
-The complete preflight namespace must then be committed and independently
-validated from that exact repository snapshot.
-Only this validation can authorize one unthrottled 820-element array, which
-runs two candidates sequentially per element on the \texttt{fat} partition
-with normal QoS, one CPU, 26~GiB and a 01:10:00 outer limit.
-The frozen candidate-level outcomes are validated success, documented input
-rejection and authoritative memory or CPU-time exclusion.
-Input rejection records unsupported language, while a resource exclusion has
-indeterminate source support and cannot enter either cohort.
-Every other child outcome is campaign-fatal.
-
-The controller may open no full-run V11 worker shard, worker stream,
-environment record or outcome until all 820 outer rows are exactly
-\texttt{COMPLETED}/\texttt{0:0} with zero scheduler restarts.
-Any other terminal outer state permanently burns the namespace; V11 has no
-selective recovery and no partial-row reuse.
-After the scheduler gate, the seal revalidates the committed code manifest,
-launch journal, executable identities, complete candidate order, exact
-resource contract, outcome taxonomy and deterministic A/B split.
-It exclusively publishes the seal plan, tree, census, split and attestation
-stages, the attestation and the execution receipt.
-The launch intent, raw \texttt{sbatch} captures, \texttt{sbatch}-result record,
-launch receipt and all seven seal records must then occur byte-for-byte in a
-distinct content-addressed repository revision.
-An independent strict consumer additionally requires the complete source
-closure at that seal revision to equal its bytes at the prelaunch producer
-revision before it may expose either cohort to a downstream freeze, paper
-renderer or discretionary outcome analysis.
-Neither cohort exists for a confirmation launch until that committed-seal
-validation passes every original task, family, novelty and disjointness floor.
-% ================= RESULT_INSERT_SOURCE_AUDIT_V11_END ==================
+The analysis retains the original 25-family statistical support floor and all
+effect thresholds below; the unseen-family stratum is removed explicitly.
+The selected 650 inputs, translated-task hashes, configurations and local
+analysis-code closure are bound before the A runs.
+A uses the pinned planner revision
+\texttt{8148f798\allowbreak{}f13059ee\allowbreak{}881ad247\allowbreak{}1bd20cdd\allowbreak{}61d2ec18},
+1,800 CPU seconds and 24,576 MiB per cell.
+The scheduler allocates nine CPUs and 3 GiB per CPU on the \texttt{fat}
+partition to cover the memory limit and execution overhead.
+The planner is single-process; reserving CPUs does not change its CPU budget.
+A run guard verifies the input, translator, preprocessor and solver bytes
+and checks the translator's serialized output against the source audit
+before preprocessing can overwrite it.
+All four PDB cells must be accounted for, including resource-limited outcomes.
+Publication requires a completed scheduler audit and two byte-identical
+analyses of the complete parsed matrix.
 
 \begin{table}[htbp]
 \centering
@@ -866,10 +814,10 @@ $K=32$ reference & The largest prespecified width in the developmental
 five-budget grid, fixed as the cap-aware reference before either confirmation. \\
 A thresholds & The numeric 0.65 concordance and 0.02 margin thresholds and
 the numeric support cutoffs are inherited from the terminal-incidence shadow
-protocol. Confirmation A newly freezes a target-strict, tie-aware denominator,
-100,000 paired-family bootstrap replicates, and the all-prior-unrepresented
-gate; the $D$, $B_\wedge$ and \valuecount challenger margins are also
-prospective additions. \\
+protocol. The target-strict denominator, 100,000 paired-family bootstrap
+replicates and $D$, $B_\wedge$ and \valuecount challenger margins were fixed
+before A. The within-family redesign retains these choices and removes the
+infeasible all-prior-unrepresented gate. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -958,10 +906,8 @@ unseen benchmark families.
 Leave-one-family-out values repeat the equal-family macro average after
 removing each family in turn.
 All support and effect clauses in the main paper are conjunctive.
-The all-prior-unrepresented gate requires at least 50 comparison tasks in ten
-families and 100 target-strict pairs, in addition to the source floors above.
-It uses the same 0.65 concordance, nine 0.02 margins, paired-family reweighting and
-leave-one-family-out clauses as the primary gate.
+The original all-prior-unrepresented gate is not applied to this
+within-family design.
 The analysis is run twice from fresh loads of the sealed matrix; publication
 requires byte-identical canonical outputs.
 

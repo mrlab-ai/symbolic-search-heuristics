@@ -98,6 +98,12 @@ class FreshPredictionTests(unittest.TestCase):
             self.assertEqual(result["eligible_tasks"], 1)
             self.assertFalse(result["gates"]["pass"])
             self.assertTrue(result["scheduler_audit_required_before_selector_launch"])
+            sys.path.insert(0, str(C.G.ROOT.parent / "paper"))
+            import terminal_incidence_evidence as PaperEvidence
+            normalized = PaperEvidence.normalize_a(result, include_prior=False)
+            PaperEvidence.R._validate_a(normalized, {"a_tasks": 1, "a_families": 1}, include_prior=False)
+            self.assertFalse(PaperEvidence.R._a_gate(normalized, include_prior=False))
+            self.assertNotIn("all_prior", normalized)
             self.assertEqual(C.G.canonical(result), C.G.canonical(
                 A.analyze_records(copy.deepcopy(records), freeze, Guard.sha(freeze_path))))
             properties = root / "experiment-eval/properties"

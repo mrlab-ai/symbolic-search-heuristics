@@ -438,7 +438,7 @@ class RendererTests(unittest.TestCase):
         self.assertEqual(renderer.BASELINES, EXPECTED_BASELINES)
         self.assertEqual(len(renderer.BASELINE_TEX_LABELS), len(EXPECTED_BASELINES))
 
-    def test_exact_five_terminal_branches(self) -> None:
+    def test_original_five_terminal_branches_are_preserved(self) -> None:
         cases = (
             (False, None, None, renderer.OutcomeBranch.A_FAIL),
             (
@@ -466,7 +466,8 @@ class RendererTests(unittest.TestCase):
                 renderer.OutcomeBranch.A_PASS_DIRECT_PASS_B_PASS,
             ),
         )
-        self.assertEqual(len(renderer.OutcomeBranch), 5)
+        self.assertEqual(len(set(renderer.OutcomeBranch) - {
+            renderer.OutcomeBranch.A_PASS_SELECTORS_UNTESTED}), 5)
         for a_pass, direct_pass, b_pass, expected in cases:
             with self.subTest(expected=expected.value):
                 actual = renderer.classify(

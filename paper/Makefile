@@ -64,7 +64,8 @@ SEED_RENDERER := \
 TI_GENERATED_RESULT := generated/terminal-incidence-results.tex
 TI_RENDERER := render_terminal_incidence_results.py
 TI_EVIDENCE_READERS := terminal_incidence_evidence.py \
-	terminal_incidence_selection_evidence.py
+	terminal_incidence_selection_evidence.py within_family_evidence.py \
+	render_within_family_results.py
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
 		submission update-bib clean

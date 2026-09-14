@@ -250,6 +250,7 @@ def normalize_fraction_record(value: object, path: str) -> dict | None:
 
 class OutcomeBranch(Enum):
     A_FAIL = "a-fail"
+    A_PASS_SELECTORS_UNTESTED = "a-pass-selectors-untested"
     A_PASS_DIRECT_FAIL_B_FAIL = "a-pass-direct-fail-b-fail"
     A_PASS_DIRECT_FAIL_B_PASS = "a-pass-direct-fail-b-pass"
     A_PASS_DIRECT_PASS_B_FAIL = "a-pass-direct-pass-b-fail"
@@ -800,7 +801,7 @@ def _validate_a_construction(value: object, path: str, source_tasks: int) -> dic
     return record
 
 
-def _validate_a(value: object, source: dict) -> dict:
+def _validate_a(value: object, source: dict, *, include_prior: bool = True) -> dict:
     path = "evidence.confirmation_a"
     record = _keys(
         value,
@@ -814,7 +815,6 @@ def _validate_a(value: object, source: dict) -> dict:
             "i_concordance",
             "baselines",
             "orientation",
-            "all_prior",
             "all_strict",
             "oracle_regret",
             "certificate_tightness",
@@ -822,7 +822,7 @@ def _validate_a(value: object, source: dict) -> dict:
             "frontier_statuses",
             "construction_by_configuration",
             "cegar_fallback_tasks",
-        },
+        } | ({"all_prior"} if include_prior else set()),
         path,
     )
     if not _boolean(record, "sealed", path):
@@ -860,17 +860,18 @@ def _validate_a(value: object, source: dict) -> dict:
     )
     _validate_orientation(record["orientation"], f"{path}.orientation")
     _validate_a_baseline_consistency(record, path)
-    prior = _validate_a_stratum(record["all_prior"], f"{path}.all_prior")
-    if prior["comparison_tasks"] > source["a_prior_tasks"]:
-        raise RenderError("Confirmation A all-prior task support exceeds its cohort")
-    if prior["comparison_tasks"] > comparison_tasks:
-        raise RenderError("Confirmation A all-prior task support exceeds full support")
-    if prior["comparison_families"] > source["a_prior_families"]:
-        raise RenderError("Confirmation A all-prior family support exceeds its cohort")
-    if prior["comparison_families"] > comparison_families:
-        raise RenderError("Confirmation A all-prior family support exceeds full support")
-    if prior["target_strict_pairs"] > record["target_strict_pairs"]:
-        raise RenderError("Confirmation A all-prior pair support exceeds full support")
+    if include_prior:
+        prior = _validate_a_stratum(record["all_prior"], f"{path}.all_prior")
+        if prior["comparison_tasks"] > source["a_prior_tasks"]:
+            raise RenderError("Confirmation A all-prior task support exceeds its cohort")
+        if prior["comparison_tasks"] > comparison_tasks:
+            raise RenderError("Confirmation A all-prior task support exceeds full support")
+        if prior["comparison_families"] > source["a_prior_families"]:
+            raise RenderError("Confirmation A all-prior family support exceeds its cohort")
+        if prior["comparison_families"] > comparison_families:
+            raise RenderError("Confirmation A all-prior family support exceeds full support")
+        if prior["target_strict_pairs"] > record["target_strict_pairs"]:
+            raise RenderError("Confirmation A all-prior pair support exceeds full support")
     all_strict = _validate_all_strict(record["all_strict"], f"{path}.all_strict")
     if all_strict["comparison_tasks"] > comparison_tasks:
         raise RenderError("Confirmation A all-strict support exceeds full support")
@@ -922,11 +923,9 @@ def _baseline_gate(baselines: dict) -> bool:
     return True
 
 
-def _a_gate(record: dict) -> bool:
-    prior = record["all_prior"]
+def _a_gate(record: dict, *, include_prior: bool = True) -> bool:
     primary_concordance = _fraction(record, "i_concordance")
-    prior_concordance = _fraction(prior, "i_concordance")
-    return (
+    primary = (
         record["eligible_tasks"] >= 300
         and record["comparison_tasks"] >= 300
         and record["eligible_families"] >= 25
@@ -936,6 +935,13 @@ def _a_gate(record: dict) -> bool:
         and primary_concordance >= Fraction(13, 20)
         and _baseline_gate(record["baselines"])
         and _orientation_gate(record["orientation"])
+    )
+    if not include_prior:
+        return primary
+    prior = record["all_prior"]
+    prior_concordance = _fraction(prior, "i_concordance")
+    return (
+        primary
         and prior["comparison_tasks"] >= 50
         and prior["comparison_families"] >= 10
         and prior["target_strict_pairs"] >= 100
@@ -1558,6 +1564,9 @@ def _validate_hardware(value: object, *, downstream_required: bool) -> dict:
 
 def classify(evidence: object) -> Outcome:
     """Validate normalized evidence and recompute its unique terminal branch."""
+    if type(evidence) is dict and evidence.get("design") == "within-family-v1":
+        import render_within_family_results as Within
+        return Within.classify(evidence)
     _reject_artifact_text(evidence)
     if type(evidence) is not dict:
         raise RenderError("evidence must be a dict")
@@ -2178,6 +2187,9 @@ def _hardware_text(evidence: dict, outcome: Outcome) -> str:
 
 def render(evidence: object) -> str:
     """Return the fixed prose and table-row TeX interface."""
+    if type(evidence) is dict and evidence.get("design") == "within-family-v1":
+        import render_within_family_results as Within
+        return Within.render(evidence)
     outcome = classify(evidence)
     macros = (
         ("TIOutcomeTitle", _title(outcome)),
@@ -2214,6 +2226,13 @@ def render(evidence: object) -> str:
 
 def _load_production_evidence() -> dict:
     """Read only explicitly pinned, committed confirmation evidence."""
+    import within_family_evidence as Within
+    if Within.PRODUCTION_RESULTS_REVISION is not None:
+        try:
+            return Within.load_evidence(results_revision=Within.PRODUCTION_RESULTS_REVISION,
+                                        artifact_pins=Within.PRODUCTION_ARTIFACT_PINS)
+        except (ValueError, OSError) as error:
+            raise RenderError(str(error)) from error
     _validate_production_pin_contract(
         PRODUCTION_DIGEST_PINS, PRODUCTION_EXPECTED_A_PASS
     )
@@ -2432,6 +2451,8 @@ def _run_self_test() -> bool:
             "test_render_terminal_incidence_results.py",
             "test_terminal_incidence_evidence.py",
             "test_terminal_incidence_selection_evidence.py",
+            "test_within_family_evidence.py",
+            "test_render_within_family_results.py",
         )
     )
     result = unittest.TextTestRunner(verbosity=1).run(suite)
