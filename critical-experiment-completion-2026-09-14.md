@@ -60,8 +60,14 @@ thresholds are unchanged. No extra experiments are required. The original
 failure and amendment are retained in
 `experiments/artifacts/pdb-within-family-confirmation-v1/source-full/balanced-allocation-amendment.json`.
 The final rule and all per-level quotas are bound into the cohort freeze and
-independently recomputed when loading it. The four-arm A experiment remains
-unsubmitted until that freeze is complete.
+independently recomputed when loading it. The freeze is complete and validates
+650 tasks in 28 families. Its SHA-256 is
+`0c95dd5afe61ea0f77c7441a824bcecbe255641994874d28734274a64e3a0c67`.
+The 36-file Python dependency closure and pinned requirements file match
+commit `f284830c6e3134f2e35c55a2f7f4e85614d02b01`. The workflow tests pass,
+including floor/extras support failures and tampered freeze allocations; the
+paper reporting suite now passes 81 tests. The four-arm A campaign is ready
+for submission. B remains deferred.
 
 ## Approved within-family redesign
 

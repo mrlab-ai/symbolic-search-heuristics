@@ -33,11 +33,17 @@ def fixture():
         "statistical_selector_gate_passed": False,
         "eligible_tasks": 320, "eligible_families": 27,
     })
+    task_rows = [{"family": f"f{i % 27}", "level": i % 5} for i in range(650)]
+    level_allocations = {"a": {f"f{i}": {str(level): 0 for level in range(5)} for i in range(27)}}
+    for row in task_rows:
+        level_allocations["a"][row["family"]][str(row["level"])] += 1
     freeze = {
         "schema": "pdb-terminal-incidence-within-family-cohort/v1/freeze",
         "scope": "fresh-instances-within-previously-studied-families",
         "targets": {"a": 650}, "families": [f"f{i}" for i in range(27)],
-        "tasks": {"a": [{"family": f"f{i % 27}"} for i in range(650)]},
+        "tasks": {"a": task_rows},
+        "level_allocation_rule": "balanced-supported-levels-ascending/v1",
+        "level_allocations": level_allocations,
         "source_status_counts": {"supported": 650, "unsupported": 0},
         "analysis": {"minimum_eligible_tasks": 300, "minimum_comparison_tasks": 300,
                       "minimum_families": 25, "minimum_target_strict_pairs": 600,
@@ -129,6 +135,13 @@ class WithinFamilyEvidenceTests(unittest.TestCase):
         with mock.patch.object(W, "_snapshot_reader", return_value=lambda _revision, paths: {paths[0]: b"wrong"}):
             with self.assertRaisesRegex(W.EvidenceError, "scientific code differs"):
                 W._code_closure(freeze, "a" * 40)
+
+    def test_level_allocation_must_match_selected_tasks(self):
+        artifacts, _pins = fixture()
+        freeze = json.loads(artifacts["freeze"])
+        freeze["level_allocations"]["a"]["f0"]["0"] += 1
+        with self.assertRaisesRegex(W.EvidenceError, "allocations disagree"):
+            W._validate_level_allocations(freeze)
 
 
 if __name__ == "__main__":

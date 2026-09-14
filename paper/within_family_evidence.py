@@ -129,6 +129,35 @@ def _validate_seal(seal, artifacts, analysis, freeze):
         raise EvidenceError("within-family selector authorization disagrees with A")
 
 
+def _validate_level_allocations(freeze):
+    if freeze.get("level_allocation_rule") != "balanced-supported-levels-ascending/v1":
+        raise EvidenceError("within-family level allocation rule changed")
+    allocations = freeze.get("level_allocations")
+    tasks = freeze.get("tasks")
+    if not isinstance(allocations, dict) or not isinstance(tasks, dict):
+        raise EvidenceError("within-family level allocations are missing")
+    expected = {}
+    for role, rows in tasks.items():
+        if not isinstance(rows, list):
+            raise EvidenceError("within-family task rows are malformed")
+        role_counts = {}
+        for row in rows:
+            family, level = row.get("family"), row.get("level")
+            if type(family) is not str or type(level) is not int or not 0 <= level < 5:
+                raise EvidenceError("within-family task level identity is malformed")
+            family_counts = role_counts.setdefault(family, {str(index): 0 for index in range(5)})
+            family_counts[str(level)] += 1
+        if allocations.get(role) != role_counts:
+            raise EvidenceError("within-family level allocations disagree with selected tasks")
+        for family, counts in role_counts.items():
+            values = list(counts.values())
+            if max(values) - min(values) > 1:
+                raise EvidenceError("within-family level allocation is not balanced")
+        expected[role] = role_counts
+    if allocations != expected:
+        raise EvidenceError("within-family level allocation roles changed")
+
+
 def _validate_pipeline(launch, poll):
     if not isinstance(launch, dict) or not isinstance(poll, dict):
         raise EvidenceError("within-family scheduler evidence is malformed")
@@ -207,6 +236,7 @@ def load_evidence(*, results_revision=PRODUCTION_RESULTS_REVISION,
         raise EvidenceError("within-family scope changed")
     if freeze.get("targets") != {"a": 650} or len(freeze.get("tasks", {}).get("a", [])) != 650:
         raise EvidenceError("within-family cohort size changed")
+    _validate_level_allocations(freeze)
     normalized = E.normalize_a(analysis, include_prior=False)
     passed = analysis["gates"].get("pass")
     if (type(passed) is not bool or analysis["gates"].get("primary", {}).get("pass") is not passed
