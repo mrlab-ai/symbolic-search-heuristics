@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import importlib
 import json
@@ -333,7 +334,9 @@ def produce() -> dict:
     return evidence
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args(argv)
     evidence = produce()
     print(hashlib.sha256(P.canonical_json_line(evidence)).hexdigest())
 

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import copy
+import contextlib
 import hashlib
+import io
 import subprocess
 import sys
 import textwrap
@@ -66,6 +68,17 @@ def cap_records(snapshot: dict) -> list[dict]:
 
 
 class StandaloneTest(unittest.TestCase):
+    def test_help_and_invalid_arguments_do_not_read_b_evidence(self):
+        for arguments, expected_status in ((["--help"], 0), (["--unknown"], 2)):
+            with self.subTest(arguments=arguments), mock.patch.object(
+                Standalone, "produce"
+            ) as produce, contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit) as raised:
+                Standalone.main(arguments)
+            self.assertEqual(raised.exception.code, expected_status)
+            produce.assert_not_called()
+
     def test_protocol_and_standalone_import_without_loading_b(self):
         code = textwrap.dedent("""
             import importlib.abc
