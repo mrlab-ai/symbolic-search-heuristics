@@ -746,6 +746,8 @@ structurally supported families and five fixed size levels per family.
 Each task uses the BDD-prefix, goal-prefix, goal-fill and seeded CEGAR direct
 PDB generators with exact values, a $100{,}000$-state budget and one fixed BDD
 order.
+We run the 2,600 cells on AMD EPYC 9745 processors with a limit of
+1,800\,CPU seconds and 24\,GiB per planner run.
 We evaluate each heuristic on up to the first 16 completed non-goal blind
 layers in increasing $g$ order without letting it affect the search.
 A task solved earlier contributes the common complete pre-goal horizon, so all

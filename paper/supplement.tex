@@ -840,6 +840,12 @@ goal-fill and CEGAR.
 Each uses a 100,000-abstract-state budget and exact PDB values.
 CEGAR uses seed 2011, no wall-clock stopping condition and at most 128
 refinement calls.
+All 2,600 execution receipts identify AMD EPYC 9745 processors.
+Each planner run has a limit of 1,800\,CPU seconds and 24\,GiB.
+The scheduler reserves nine CPUs and 27\,GiB for each group of at most three
+sequential cells, with a 105-minute wall-time limit on the \texttt{fat}
+partition and normal QoS. The 867 array elements have no throttle, nice
+adjustment or automatic requeue.
 The Boolean order is the untranslated Fast Downward encoding order
 (\texttt{gamer\_ordering=false}); dynamic reordering is disabled.
 The PDB heuristic is instrumented on the blind search but cannot guide,

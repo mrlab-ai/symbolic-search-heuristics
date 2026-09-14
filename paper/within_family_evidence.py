@@ -6,10 +6,14 @@ import hashlib
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from collections.abc import Mapping
 
 import terminal_incidence_evidence as E
+
+if hasattr(sys, "set_int_max_str_digits"):
+    sys.set_int_max_str_digits(100000)
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -30,6 +34,24 @@ PRODUCTION_RESULTS_REVISION = None
 PRODUCTION_ARTIFACT_PINS = {}
 SCHEMA = "pdb-terminal-incidence-within-family-evidence/v1"
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
+RECOVERY_PYTHON_SHA256 = "021044895e95be79dc2f110367607e684119afbc8ce75f6f0eec94844e0acec7"
+RECOVERY_OUTPUT = (REPO / BASE / "confirmation-a").resolve()
+RECOVERY_EXPERIMENT = (EXPERIMENTS / "data/exp_pdb_within_family_a_v1").resolve()
+RECOVERY_PROPERTIES = Path(str(RECOVERY_EXPERIMENT) + "-eval/properties").resolve()
+RECOVERY_PYTHON = (EXPERIMENTS / "data/pdb-terminal-incidence-shadow-venv/bin/python").absolute()
+RECOVERY_INTERPRETER = RECOVERY_PYTHON.resolve()
+RECOVERY_ANALYSIS = (EXPERIMENTS / "pdb_within_family_a_analysis.py").resolve()
+RECOVERY_WRAPPER = (EXPERIMENTS / "pdb_within_family_recover_a_serialization.py").resolve()
+RECOVERY_INVOCATION = (RECOVERY_OUTPUT / "serialization-recovery-venv-invocation.json").resolve()
+RECOVERY_ENVIRONMENT = {
+    "unset": ["PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV"],
+    "set": {"LANG": "C", "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONHASHSEED": "0", "PYTHONNOUSERSITE": "1"},
+}
+SERIALIZATION_ERROR = (
+    "ValueError: Exceeds the limit (4300 digits) for integer string conversion; "
+    "use sys.set_int_max_str_digits() to increase the limit"
+)
 
 
 class EvidenceError(ValueError):
@@ -44,6 +66,10 @@ def _canonical(raw, label):
     return E._canonical(raw, label)
 
 
+def _is_path(value, expected):
+    return type(value) is str and Path(value).resolve() == expected
+
+
 def _snapshot_reader():
     if str(EXPERIMENTS) not in sys.path:
         sys.path.insert(0, str(EXPERIMENTS))
@@ -52,7 +78,7 @@ def _snapshot_reader():
 
 
 def _pins(pins):
-    if type(pins) is not dict or set(pins) != set(PATHS):
+    if type(pins) is not dict or not set(PATHS) <= set(pins) or not (set(pins) - set(PATHS)) <= {"recovery"}:
         raise EvidenceError("within-family artifact-pin roles changed")
     for role, value in pins.items():
         if type(value) is not str or E.R.SHA256_RE.fullmatch(value) is None or value == E.R.ZERO_SHA256:
@@ -76,12 +102,43 @@ def _read(revision, pins):
         raise EvidenceError("terminal poll path is ambiguous")
     committed[poll_relative] = reader(revision, [poll_relative])[poll_relative]
     paths = dict(PATHS, poll=poll_relative)
+    seal_schema = seal.get("schema")
+    recovery_path = None
+    if seal_schema == "pdb-terminal-incidence-within-family-a-seal/v2-serialization-recovery":
+        if "recovery" not in pins:
+            raise EvidenceError("serialization-recovery seal requires a recovery pin")
+        try:
+            recovery_path = Path(seal["evidence"]["recovery"]["path"]).resolve().relative_to(REPO).as_posix()
+        except (KeyError, OSError, ValueError, TypeError) as error:
+            raise EvidenceError("serialization-recovery seal does not identify its receipt") from error
+        committed[recovery_path] = reader(revision, [recovery_path])[recovery_path]
+        paths["recovery"] = recovery_path
+        recovery = _canonical(committed[recovery_path], "serialization-recovery receipt")
+        try:
+            invocation_path = Path(recovery["invocation"]["path"]).resolve().relative_to(REPO).as_posix()
+            stdout_path = Path(recovery["evidence"]["stdout"]["path"]).resolve().relative_to(REPO).as_posix()
+            stderr_path = Path(recovery["evidence"]["stderr"]["path"]).resolve().relative_to(REPO).as_posix()
+            wrapper_path = Path(recovery["immutable_code"]["recovery_wrapper"]["path"]).resolve().relative_to(REPO).as_posix()
+            wrapper_revision = recovery["immutable_code"]["recovery_wrapper"]["committed_revision"]
+        except (KeyError, OSError, ValueError, TypeError) as error:
+            raise EvidenceError("serialization-recovery receipt paths are malformed") from error
+        committed.update(reader(revision, [invocation_path, stdout_path, stderr_path]))
+        wrapper_reader = _snapshot_reader()
+        committed[wrapper_path] = wrapper_reader(wrapper_revision, [wrapper_path])[wrapper_path]
+        paths.update(invocation=invocation_path, stdout=stdout_path, stderr=stderr_path,
+                     wrapper=wrapper_path)
+    elif "recovery" in pins:
+        raise EvidenceError("recovery pin requires a serialization-recovery seal")
     result = {}
-    for role, path in paths.items():
+    pinned_roles = set(PATHS) | ({"recovery"} if "recovery" in paths else set())
+    for role in pinned_roles:
+        path = paths[role]
         raw = committed[path]
         if _sha(raw) != pins[role]:
             raise EvidenceError(f"committed within-family artifact differs from its pin: {role}")
         result[role] = raw
+    for role in set(paths) - pinned_roles:
+        result[role] = committed[paths[role]]
     return result
 
 
@@ -101,7 +158,10 @@ def _code_closure(freeze, revision):
 
 
 def _validate_seal(seal, artifacts, analysis, freeze):
-    if seal.get("schema") != "pdb-terminal-incidence-within-family-a-seal/v1":
+    recovered = seal.get("schema") == "pdb-terminal-incidence-within-family-a-seal/v2-serialization-recovery"
+    if seal.get("schema") not in {
+            "pdb-terminal-incidence-within-family-a-seal/v1",
+            "pdb-terminal-incidence-within-family-a-seal/v2-serialization-recovery"}:
         raise EvidenceError("within-family completion seal schema changed")
     if seal.get("scope") != "fresh-instances-within-previously-studied-families":
         raise EvidenceError("within-family scope changed")
@@ -112,12 +172,16 @@ def _validate_seal(seal, artifacts, analysis, freeze):
     if not isinstance(evidence, dict):
         raise EvidenceError("within-family completion evidence is missing")
     expected = {"freeze", "launch", "poll", "analysis", "repeat", "receipt", "properties"}
+    if recovered:
+        expected.add("recovery")
     if set(evidence) != expected:
         raise EvidenceError("within-family completion evidence roles changed")
     for role in ("freeze", "launch", "poll", "analysis", "repeat", "receipt"):
         record = evidence[role]
         if not isinstance(record, dict) or record.get("sha256") != _sha(artifacts[role]):
             raise EvidenceError(f"within-family completion seal does not bind {role}")
+    if recovered and seal["evidence"]["recovery"].get("sha256") != _sha(artifacts["recovery"]):
+        raise EvidenceError("within-family completion seal does not bind recovery")
     if seal.get("code_commit") != freeze.get("code_commit"):
         raise EvidenceError("within-family completion code identity changed")
     if seal.get("evidence", {}).get("properties", {}).get("sha256") != analysis.get("input", {}).get("properties_sha256"):
@@ -158,9 +222,11 @@ def _validate_level_allocations(freeze):
         raise EvidenceError("within-family level allocation roles changed")
 
 
-def _validate_pipeline(launch, poll):
+def _validate_pipeline(launch, poll, *, recovered=False):
     if not isinstance(launch, dict) or not isinstance(poll, dict):
         raise EvidenceError("within-family scheduler evidence is malformed")
+    if launch.get("schema") != "pdb-within-family-launch/v1" or poll.get("schema") != "pdb-within-family-poll/v1":
+        raise EvidenceError("within-family scheduler schemas changed")
     jobs = launch.get("jobs")
     if not isinstance(jobs, list):
         raise EvidenceError("within-family launch jobs are missing")
@@ -185,8 +251,123 @@ def _validate_pipeline(launch, poll):
         sys.path.insert(0, str(EXPERIMENTS))
     import pdb_within_family_cohort as C
     check = C.Monitor.check_accounting(launch, accounting.get("stdout", ""))
-    if not check["all_completed_successfully"] or not check["resources_match"]:
+    if not check["resources_match"] or check["observed_elements"] != 872:
+        raise EvidenceError("within-family scheduler pipeline identities/resources changed")
+    if recovered:
+        analysis_ids = {job["job_id"] for job in jobs
+                        if str(job.get("job_file", "")).endswith("-06-analyze")}
+        if len(analysis_ids) != 1:
+            raise EvidenceError("within-family analysis job identity changed")
+        for identity, row in check["rows"].items():
+            if identity.rsplit("_", 1)[0] in analysis_ids:
+                if row["state"] != "FAILED" or row["exit"] != "1:0":
+                    raise EvidenceError("original A analysis failure changed")
+            elif row["state"] != "COMPLETED" or row["exit"] != "0:0":
+                raise EvidenceError("within-family pre-analysis pipeline failed")
+    elif not check["all_completed_successfully"]:
         raise EvidenceError("within-family scheduler pipeline did not complete successfully")
+
+
+def _validate_recovery(receipt, artifacts, freeze, analysis, launch, poll):
+    for role in ("wrapper", "invocation", "stdout", "stderr"):
+        if role not in artifacts:
+            raise EvidenceError(f"serialization-recovery {role} artifact is missing")
+    if receipt.get("schema") != "pdb-terminal-incidence-within-family-a-serialization-recovery/v1":
+        raise EvidenceError("serialization-recovery receipt schema changed")
+    if (receipt.get("integer_max_str_digits") != 100000
+            or receipt.get("scheduler_queries_made_by_recovery") != 0
+            or receipt.get("scientific_runs_repeated") != 0):
+        raise EvidenceError("serialization-recovery execution contract changed")
+    failure = receipt.get("original_analysis_failure")
+    analysis_jobs = [job for job in launch.get("jobs", []) if str(job.get("job_file", "")).endswith("-06-analyze")]
+    if (not isinstance(failure, dict) or len(analysis_jobs) != 1
+            or failure.get("step") != "06-analyze"
+            or failure.get("job_id") != analysis_jobs[0].get("job_id")
+            or failure.get("state") != "FAILED" or failure.get("exit") != "1:0"
+            or failure.get("accounting_id") != f"{analysis_jobs[0].get('job_id')}_1"
+            or failure.get("error") != SERIALIZATION_ERROR):
+            raise EvidenceError("serialization-recovery original failure proof changed")
+    poll_logs = poll.get("pipeline_logs", {})
+    error_tail = poll_logs.get("slurm.err", {}).get("tail", "") if isinstance(poll_logs, dict) else ""
+    if error_tail.count(SERIALIZATION_ERROR) != 1:
+        raise EvidenceError("serialization-recovery original error is not retained")
+    immutable = receipt.get("immutable_code")
+    if (not isinstance(immutable, dict) or immutable.get("frozen_commit") != freeze.get("code_commit")
+            or immutable.get("frozen_code_sha256") != freeze.get("code_sha256")
+            or not isinstance(immutable.get("recovery_wrapper"), dict)):
+        raise EvidenceError("serialization-recovery input identity changed")
+    wrapper = immutable["recovery_wrapper"]
+    if (wrapper.get("sha256") != _sha(artifacts["wrapper"])
+            or not COMMIT_RE.fullmatch(str(wrapper.get("committed_revision", "")))
+            or not _is_path(wrapper.get("path"), RECOVERY_WRAPPER)):
+        raise EvidenceError("serialization-recovery wrapper identity changed")
+    invocation = receipt.get("invocation")
+    if (not isinstance(invocation, dict) or invocation.get("sha256") != _sha(artifacts["invocation"])
+            or not E.R.SHA256_RE.fullmatch(str(invocation.get("sha256", "")))
+            or not _is_path(invocation.get("path"), RECOVERY_INVOCATION)):
+        raise EvidenceError("serialization-recovery invocation did not succeed")
+    invocation_json = _canonical(artifacts["invocation"], "serialization-recovery invocation")
+    command = invocation_json.get("command")
+    interpreter = invocation_json.get("interpreter")
+    expected_command = [str(RECOVERY_PYTHON), "-X", "int_max_str_digits=100000", "-B",
+                        str(RECOVERY_ANALYSIS), "--properties", str(RECOVERY_PROPERTIES),
+                        "--output", str(RECOVERY_OUTPUT)]
+    if (invocation_json.get("schema") != "pdb-terminal-incidence-within-family-a-serialization-recovery/v1/invocation"
+            or invocation_json.get("returncode") != 0
+            or invocation_json.get("timed_out") is not False
+            or invocation_json.get("integer_max_str_digits") != 100000
+            or command != expected_command
+            or invocation_json.get("cwd") != str(EXPERIMENTS.resolve())
+            or invocation_json.get("environment") != RECOVERY_ENVIRONMENT
+            or not isinstance(interpreter, dict)
+            or interpreter.get("path") != str(RECOVERY_INTERPRETER)):
+        raise EvidenceError("serialization-recovery invocation changed")
+    if interpreter.get("sha256") != RECOVERY_PYTHON_SHA256:
+        raise EvidenceError("serialization-recovery interpreter identity changed")
+    if (invocation_json.get("stdout_sha256") != _sha(artifacts["stdout"])
+            or invocation_json.get("stderr_sha256") != _sha(artifacts["stderr"])):
+        raise EvidenceError("serialization-recovery invocation logs changed")
+    try:
+        started = datetime.fromisoformat(invocation_json["started_utc"])
+        ended = datetime.fromisoformat(invocation_json["ended_utc"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise EvidenceError("serialization-recovery invocation times changed") from error
+    if (started.tzinfo is None or ended.tzinfo is None or
+            started.utcoffset() is None or ended.utcoffset() is None or ended < started):
+        raise EvidenceError("serialization-recovery invocation times changed")
+    evidence = receipt.get("evidence")
+    if not isinstance(evidence, dict):
+        raise EvidenceError("serialization-recovery evidence bindings are missing")
+    expected = {"freeze", "launch", "poll", "properties", "analysis", "repeat", "analysis_receipt", "stdout", "stderr"}
+    if set(evidence) != expected:
+        raise EvidenceError("serialization-recovery evidence roles changed")
+    expected_paths = {
+        "freeze": (REPO / PATHS["freeze"]).resolve(),
+        "launch": (REPO / PATHS["launch"]).resolve(),
+        "poll": (RECOVERY_OUTPUT / "poll-20260914T211529Z.json").resolve(),
+        "properties": RECOVERY_PROPERTIES,
+        "analysis": (RECOVERY_OUTPUT / "analysis.json").resolve(),
+        "repeat": (RECOVERY_OUTPUT / "analysis-repeat.json").resolve(),
+        "analysis_receipt": (RECOVERY_OUTPUT / "analysis-receipt.json").resolve(),
+        "stdout": (RECOVERY_OUTPUT / "serialization-recovery-venv.stdout").resolve(),
+        "stderr": (RECOVERY_OUTPUT / "serialization-recovery-venv.stderr").resolve(),
+    }
+    if any(not isinstance(evidence[role], dict)
+           or not _is_path(evidence[role].get("path"), path)
+           for role, path in expected_paths.items()):
+        raise EvidenceError("serialization-recovery evidence paths changed")
+    for role, artifact_role in (("freeze", "freeze"), ("launch", "launch"), ("poll", "poll"),
+                                ("analysis", "analysis"), ("repeat", "repeat"),
+                                ("analysis_receipt", "receipt")):
+        if evidence[role].get("sha256") != _sha(artifacts[artifact_role]):
+            raise EvidenceError(f"serialization-recovery {role} binding changed")
+    if (evidence["stdout"].get("sha256") != _sha(artifacts["stdout"])
+            or evidence["stderr"].get("sha256") != _sha(artifacts["stderr"])):
+        raise EvidenceError("serialization-recovery invocation logs changed")
+    if (evidence["properties"].get("sha256") != analysis.get("input", {}).get("properties_sha256")
+            or command[6] != evidence["properties"].get("path")
+            or command[8] != str(Path(evidence["analysis"].get("path", "")).parent)):
+        raise EvidenceError("serialization-recovery outputs are not bound")
 
 
 def _canonical_bytes(value):
@@ -229,8 +410,16 @@ def load_evidence(*, results_revision=PRODUCTION_RESULTS_REVISION,
     if analysis.get("input", {}).get("code_commit") != freeze.get("code_commit") or analysis.get("input", {}).get("code_sha256") != freeze.get("code_sha256"):
         raise EvidenceError("within-family analysis code identity changed")
     _validate_seal(seal, artifacts, analysis, freeze)
-    _validate_pipeline(_canonical(artifacts["launch"], "within-family launch"),
-                       _canonical(artifacts["poll"], "within-family poll"))
+    launch = _canonical(artifacts["launch"], "within-family launch")
+    poll = _canonical(artifacts["poll"], "within-family poll")
+    if seal.get("schema") == "pdb-terminal-incidence-within-family-a-seal/v2-serialization-recovery":
+        recovery = _canonical(artifacts["recovery"], "serialization-recovery receipt")
+        _validate_recovery(recovery, artifacts, freeze, analysis, launch, poll)
+        if seal.get("original_scheduler_analysis") != recovery.get("original_analysis_failure"):
+            raise EvidenceError("serialization-recovery seal does not retain original failure")
+        _validate_pipeline(launch, poll, recovered=True)
+    else:
+        _validate_pipeline(launch, poll)
     _code_closure(freeze, results_revision)
     if freeze.get("scope") != "fresh-instances-within-previously-studied-families":
         raise EvidenceError("within-family scope changed")

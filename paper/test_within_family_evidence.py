@@ -2,6 +2,8 @@
 
 import copy
 import json
+from pathlib import Path
+import sys
 import unittest
 from unittest import mock
 
@@ -52,8 +54,8 @@ def fixture():
                       "horizon": 16, "unseen_family_gate": False},
         "code_commit": "c" * 40, "code_sha256": {"code.py": "d" * 64},
     }
-    launch = {"experiment": "/tmp/within-family", "jobs": []}
-    poll = {"launch_sha256": E._sha(canonical(launch)), "queries": {"accounting": {
+    launch = {"schema": "pdb-within-family-launch/v1", "experiment": "/tmp/within-family", "jobs": []}
+    poll = {"schema": "pdb-within-family-poll/v1", "launch_sha256": E._sha(canonical(launch)), "queries": {"accounting": {
         "returncode": 0, "stdout": ""}}}
     freeze["performance_observed"] = False
     freeze_raw = canonical(freeze)
@@ -75,6 +77,110 @@ def fixture():
     artifacts["seal"] = canonical(seal)
     pins = {key: E._sha(value) for key, value in artifacts.items()}
     return artifacts, pins
+
+
+def recovered_fixture():
+    artifacts, _pins = fixture()
+    steps = (("01-build", 1), ("02-start", 867), ("03-parse", 1),
+             ("04-fetch", 1), ("05-report", 1), ("06-analyze", 1))
+    launch = {"schema": "pdb-within-family-launch/v1",
+              "experiment": str(W.RECOVERY_EXPERIMENT), "jobs": []}
+    accounting = []
+    grid = Path(str(W.RECOVERY_EXPERIMENT) + "-grid-steps")
+    for index, (step, elements) in enumerate(steps, 1):
+        job_id = str(1000 + index)
+        name = W.RECOVERY_EXPERIMENT.name + "-" + step
+        launch["jobs"].append({"job_id": job_id, "job_file": str(grid / name),
+                               "array_elements": elements,
+                               "script": "#SBATCH --time=01:45:00\n#SBATCH --job-name=" + name + "\n"})
+        state, exit_code = (("FAILED", "1:0") if step == "06-analyze"
+                            else ("COMPLETED", "0:0"))
+        accounting.extend(
+            f"{job_id}_{element}|{name}|{state}|{exit_code}|fat|naiss2025-5-561-cpu|"
+            "normal|9|3Gc|01:45:00|synthetic|1"
+            for element in range(1, elements + 1))
+    poll = {"schema": "pdb-within-family-poll/v1",
+            "launch_sha256": E._sha(canonical(launch)),
+            "queries": {"accounting": {"returncode": 0, "stdout": "\n".join(accounting)}},
+            "pipeline_logs": {"slurm.err": {"tail": W.SERIALIZATION_ERROR}}}
+    artifacts["launch"] = canonical(launch)
+    artifacts["poll"] = canonical(poll)
+    artifacts["wrapper"] = b"committed recovery wrapper"
+    artifacts["stdout"] = b"local recovery summary\n"
+    artifacts["stderr"] = b""
+    invocation = {
+        "schema": "pdb-terminal-incidence-within-family-a-serialization-recovery/v1/invocation",
+        "command": [str(W.RECOVERY_PYTHON), "-X", "int_max_str_digits=100000", "-B",
+                    str(W.RECOVERY_ANALYSIS), "--properties", str(W.RECOVERY_PROPERTIES),
+                    "--output", str(W.RECOVERY_OUTPUT)],
+        "cwd": str(W.EXPERIMENTS.resolve()), "environment": W.RECOVERY_ENVIRONMENT,
+        "returncode": 0, "timed_out": False, "integer_max_str_digits": 100000,
+        "interpreter": {"path": str(W.RECOVERY_INTERPRETER),
+                        "sha256": W.RECOVERY_PYTHON_SHA256},
+        "started_utc": "2026-09-14T23:00:00+00:00",
+        "ended_utc": "2026-09-14T23:03:00+00:00",
+        "stdout_sha256": E._sha(artifacts["stdout"]),
+        "stderr_sha256": E._sha(artifacts["stderr"]),
+    }
+    artifacts["invocation"] = canonical(invocation)
+    output = W.RECOVERY_OUTPUT
+    evidence_paths = {
+        "freeze": (W.REPO / W.PATHS["freeze"]).resolve(),
+        "launch": (W.REPO / W.PATHS["launch"]).resolve(),
+        "poll": output / "poll-20260914T211529Z.json",
+        "properties": W.RECOVERY_PROPERTIES,
+        "analysis": output / "analysis.json",
+        "repeat": output / "analysis-repeat.json",
+        "analysis_receipt": output / "analysis-receipt.json",
+        "stdout": output / "serialization-recovery-venv.stdout",
+        "stderr": output / "serialization-recovery-venv.stderr",
+    }
+    artifact_roles = {"freeze": "freeze", "launch": "launch", "poll": "poll",
+                      "analysis": "analysis", "repeat": "repeat",
+                      "analysis_receipt": "receipt", "stdout": "stdout", "stderr": "stderr"}
+    recovery = {
+        "schema": "pdb-terminal-incidence-within-family-a-serialization-recovery/v1",
+        "integer_max_str_digits": 100000, "scheduler_queries_made_by_recovery": 0,
+        "scientific_runs_repeated": 0,
+        "original_analysis_failure": {"step": "06-analyze", "job_id": "1006",
+                                      "accounting_id": "1006_1", "state": "FAILED",
+                                      "exit": "1:0", "error": W.SERIALIZATION_ERROR},
+        "immutable_code": {"frozen_commit": "c" * 40,
+                           "frozen_code_sha256": {"code.py": "d" * 64},
+                           "recovery_wrapper": {"path": str(W.RECOVERY_WRAPPER),
+                                                "sha256": E._sha(artifacts["wrapper"]),
+                                                "committed_revision": "b" * 40}},
+        "invocation": {"path": str(W.RECOVERY_INVOCATION),
+                       "sha256": E._sha(artifacts["invocation"])},
+        "evidence": {role: {"path": str(path),
+                            "sha256": ("e" * 64 if role == "properties"
+                                       else E._sha(artifacts[artifact_roles[role]]))}
+                     for role, path in evidence_paths.items()},
+    }
+    artifacts["recovery"] = canonical(recovery)
+    analysis = json.loads(artifacts["analysis"])
+    seal_roles = {"freeze": "freeze", "launch": "launch", "poll": "poll",
+                  "analysis": "analysis", "repeat": "repeat", "receipt": "receipt",
+                  "recovery": "recovery"}
+    seal_paths = {"freeze": evidence_paths["freeze"], "launch": evidence_paths["launch"],
+                  "poll": evidence_paths["poll"], "analysis": evidence_paths["analysis"],
+                  "repeat": evidence_paths["repeat"],
+                  "receipt": evidence_paths["analysis_receipt"],
+                  "recovery": output / "serialization-recovery.json"}
+    seal = {"schema": "pdb-terminal-incidence-within-family-a-seal/v2-serialization-recovery",
+            "scope": analysis["scope"], "decision": "FAIL",
+            "selector_experiments_authorized": False,
+            "scheduler_queries_made_by_seal": 0,
+            "original_scheduler_analysis": recovery["original_analysis_failure"],
+            "matrix": analysis["matrix"], "code_commit": "c" * 40,
+            "evidence": {role: {"path": str(seal_paths[role]),
+                                "sha256": E._sha(artifacts[artifact_role])}
+                         for role, artifact_role in seal_roles.items()}}
+    seal["evidence"]["properties"] = {"path": str(W.RECOVERY_PROPERTIES), "sha256": "e" * 64}
+    artifacts["seal"] = canonical(seal)
+    pins = {role: E._sha(artifacts[role]) for role in W.PATHS}
+    pins["recovery"] = E._sha(artifacts["recovery"])
+    return artifacts, pins, launch, poll, recovery, invocation
 
 
 class WithinFamilyEvidenceTests(unittest.TestCase):
@@ -106,7 +212,7 @@ class WithinFamilyEvidenceTests(unittest.TestCase):
                 W.load_evidence(results_revision="a" * 40, artifact_pins=pins)
 
     def test_pipeline_validation_rejects_incomplete_and_failed_accounting(self):
-        launch = {"experiment": "/tmp/within-family", "jobs": []}
+        launch = {"schema": "pdb-within-family-launch/v1", "experiment": "/tmp/within-family", "jobs": []}
         accounting = []
         for index, (step, elements) in enumerate((
                 ("01-build", 1), ("02-start", 867), ("03-parse", 1),
@@ -118,7 +224,7 @@ class WithinFamilyEvidenceTests(unittest.TestCase):
             accounting.extend(
                 f"{index}_{element}|{name}|COMPLETED|0:0|fat|naiss2025-5-561-cpu|normal|9|3Gc|01:45:00|synthetic|1"
                 for element in range(1, elements + 1))
-        poll = {"launch_sha256": E._sha(canonical(launch)),
+        poll = {"schema": "pdb-within-family-poll/v1", "launch_sha256": E._sha(canonical(launch)),
                 "queries": {"accounting": {"returncode": 0, "stdout": "\n".join(accounting)}}}
         W._validate_pipeline(launch, poll)
         failed = copy.deepcopy(poll)
@@ -142,6 +248,65 @@ class WithinFamilyEvidenceTests(unittest.TestCase):
         freeze["level_allocations"]["a"]["f0"]["0"] += 1
         with self.assertRaisesRegex(W.EvidenceError, "allocations disagree"):
             W._validate_level_allocations(freeze)
+
+    def test_full_recovered_load_with_872_accounting_rows(self):
+        artifacts, pins, _launch, poll, _receipt, _invocation = recovered_fixture()
+        self.assertEqual(len(poll["queries"]["accounting"]["stdout"].splitlines()), 872)
+        mapping = {path: artifacts[role] for role, path in W.PATHS.items() if path is not None}
+        for role, path in (("poll", W.RECOVERY_OUTPUT / "poll-20260914T211529Z.json"),
+                           ("recovery", W.RECOVERY_OUTPUT / "serialization-recovery.json"),
+                           ("invocation", W.RECOVERY_INVOCATION),
+                           ("stdout", W.RECOVERY_OUTPUT / "serialization-recovery-venv.stdout"),
+                           ("stderr", W.RECOVERY_OUTPUT / "serialization-recovery-venv.stderr"),
+                           ("wrapper", W.RECOVERY_WRAPPER)):
+            mapping[path.resolve().relative_to(W.REPO).as_posix()] = artifacts[role]
+
+        def reader(_revision, paths):
+            return {path: mapping[path] for path in paths}
+
+        with mock.patch.object(W, "_snapshot_reader", return_value=reader), \
+                mock.patch.object(W, "_code_closure", return_value="c" * 40):
+            loaded = W.load_evidence(results_revision="a" * 40, artifact_pins=pins)
+        self.assertEqual(loaded["design"], "within-family-v1")
+        self.assertFalse(loaded["a_pass"])
+
+    def test_recovery_rejects_rehashed_invocation_semantics(self):
+        artifacts, _pins, launch, poll, receipt, invocation = recovered_fixture()
+        freeze = json.loads(artifacts["freeze"])
+        analysis = json.loads(artifacts["analysis"])
+        for field in ("returncode", "command"):
+            with self.subTest(field=field):
+                changed_invocation = copy.deepcopy(invocation)
+                if field == "returncode":
+                    changed_invocation[field] = 1
+                else:
+                    changed_invocation[field][4] = str(W.EXPERIMENTS / "other_analysis.py")
+                changed_artifacts = dict(artifacts, invocation=canonical(changed_invocation))
+                changed_receipt = copy.deepcopy(receipt)
+                changed_receipt["invocation"]["sha256"] = E._sha(changed_artifacts["invocation"])
+                with self.assertRaisesRegex(W.EvidenceError, "invocation changed"):
+                    W._validate_recovery(changed_receipt, changed_artifacts, freeze,
+                                         analysis, launch, poll)
+
+    def test_recovered_pipeline_rejects_poll_failure_state_mutation(self):
+        _artifacts, _pins, launch, poll, _receipt, _invocation = recovered_fixture()
+        completed_analysis = copy.deepcopy(poll)
+        completed_analysis["queries"]["accounting"]["stdout"] = (
+            completed_analysis["queries"]["accounting"]["stdout"].replace(
+                "FAILED|1:0", "COMPLETED|0:0", 1))
+        with self.assertRaisesRegex(W.EvidenceError, "analysis failure changed"):
+            W._validate_pipeline(launch, completed_analysis, recovered=True)
+        failed_scientific = copy.deepcopy(poll)
+        failed_scientific["queries"]["accounting"]["stdout"] = (
+            failed_scientific["queries"]["accounting"]["stdout"].replace(
+                "COMPLETED|0:0", "FAILED|1:0", 1))
+        with self.assertRaisesRegex(W.EvidenceError, "pre-analysis pipeline failed"):
+            W._validate_pipeline(launch, failed_scientific, recovered=True)
+
+    def test_paper_decoder_uses_finite_large_integer_limit(self):
+        self.assertEqual(sys.get_int_max_str_digits(), 100000)
+        raw = canonical({"large": int("7" * 5000)})
+        self.assertEqual(json.loads(raw)["large"], int("7" * 5000))
 
 
 if __name__ == "__main__":

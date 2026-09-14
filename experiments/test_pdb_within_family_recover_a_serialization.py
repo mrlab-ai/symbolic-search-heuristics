@@ -339,8 +339,8 @@ class SerializationRecoveryTests(unittest.TestCase):
                 self.assertEqual((fixture.output / name).read_bytes(), raw)
 
     def test_exact_venv_command_imports_lab_dependencies(self):
-        command = [str(R.PYTHON.absolute()), "-X", "int_max_str_digits=100000", "-B",
-                   "-c", "import downward, lab"]
+        command = R._command(R.PYTHON, R.PROPERTIES, A.OUTPUT)[:4] + [
+            "-c", "import downward, lab"]
         self.assertNotEqual(command[0], str(R.PYTHON.resolve()))
         completed = subprocess.run(command, cwd=C.G.ROOT, env=R._child_environment(),
                                    capture_output=True, timeout=30, check=False)
