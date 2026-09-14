@@ -346,12 +346,16 @@ def load_evidence(*, source_revision, results_revision, artifact_pins,
     R._validate_production_pin_contract(result_pins, expected_a_pass)
     _check_revision(source_revision, "source seal revision")
     _check_revision(results_revision, "results revision")
-    # The downstream projector will be installed before a passing branch is
-    # enabled. No downstream evidence is read while this boundary is closed.
+    paths = dict(A_PATHS)
     if expected_a_pass:
-        raise EvidenceError("passing-branch production projection is not yet enabled")
-    _require_downstream_absence()
-    raw = _read_artifacts(results_revision, A_PATHS, artifact_pins)
+        import terminal_incidence_selection_evidence as Selection
+        paths.update(Selection.PATHS)
+    else:
+        _require_downstream_absence()
+    if type(artifact_pins) is not dict or set(artifact_pins) != set(paths):
+        raise EvidenceError("production artifact-pin roles changed")
+    raw = _read_artifacts(results_revision, A_PATHS,
+                          {key: artifact_pins[key] for key in A_PATHS})
     jj, _safe, adapter, _snapshot = _imports()
     jj.require_ancestor(REPO, source_revision, results_revision)
     authorized = adapter.load_authorized_cohorts(source_revision)
@@ -393,6 +397,17 @@ def load_evidence(*, source_revision, results_revision, artifact_pins,
             "a": _hardware(receipt["hardware"], 2600), "direct": None, "b": None,
         },
     }
+    R._validate_a(evidence["confirmation_a"], evidence["source_audit"])
+    if R._a_gate(evidence["confirmation_a"]) is not expected_a_pass:
+        raise EvidenceError("recomputed A gate disagrees with the sealed result")
+    if expected_a_pass:
+        downstream, hardware = Selection.load_selection_evidence(
+            results_revision, artifact_pins, result_pins, authorized, raw, freeze,
+        )
+        evidence.update(downstream)
+        evidence["hardware"].update(hardware)
+    else:
+        _require_downstream_absence()
     if R.classify(evidence).a_pass is not expected_a_pass:
         raise EvidenceError("recomputed paper gate disagrees with the sealed result")
     return evidence

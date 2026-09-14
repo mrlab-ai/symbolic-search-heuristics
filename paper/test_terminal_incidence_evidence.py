@@ -7,6 +7,7 @@ import json
 import unittest
 from fractions import Fraction
 from unittest import mock
+from types import SimpleNamespace
 
 import render_terminal_incidence_results as R
 import terminal_incidence_evidence as E
@@ -233,6 +234,79 @@ class ProjectionTests(unittest.TestCase):
         with mock.patch.object(E.os.path, "lexists", return_value=True):
             with self.assertRaisesRegex(E.EvidenceError, "absent downstream"):
                 E._require_downstream_absence()
+
+    def test_production_a_failure_uses_only_the_matching_pinned_source_chain(self):
+        jj, _safe, adapter, _snapshot = E._imports()
+        import pdb_terminal_incidence_confirmation_a_protocol as A
+        import pdb_confirmation_run_cell as Cell
+        import test_freeze_pdb_terminal_incidence_confirmation_a_v12 as F
+        authorized = F.authorized_v12()
+        source_payload = A._source_payload(authorized)
+        fixture = Fixtures.fixture(a_pass=False, direct_pass=None, b_pass=None)
+        native = native_a(fixture["confirmation_a"])
+        hardware = {
+            "hardware_attestation_schema": Cell.HARDWARE_ATTESTATION_SCHEMA,
+            "hardware_attestation_files": 2600, "hardware_records_sha256": "a" * 64,
+            "processor_model_counts": {"Synthetic CPU": 2600},
+            "architecture_counts": {"x86_64": 2600},
+        }
+        freeze = {"freeze_repository_revision": "4" * 40, "planner": {"synthetic": True}}
+        execution_raw = canonical({"hardware": hardware})
+        fetch_raw = canonical({"properties_sha256": "a" * 64})
+        native.update({
+            "schema": "symbolic-search-heuristics/pdb-terminal-incidence-confirmation-a-analysis/v4",
+            "protocol": A.PROTOCOL, "analysis_protocol": A.ANALYSIS_PROTOCOL,
+            "matrix": {"tasks": 650, "cells": 2600, "configs": 4},
+            "guided_study_authorized": False,
+            "input": {
+                "path": str(E.EXPERIMENTS / "data" / "exp_pdb_terminal_incidence_confirmation_a-eval" / "properties"),
+                "sha256": "a" * 64, "fetch_receipt_sha256": E._sha(fetch_raw),
+                "execution_receipt_sha256": E._sha(execution_raw), "hardware": hardware,
+            },
+        })
+        native["gates"]["pass"] = False
+        result_raw = canonical(native)
+        receipt = {
+            "schema": native["schema"] + "/double-execution",
+            "analysis_protocol": A.ANALYSIS_PROTOCOL,
+            "bootstrap_replicates": A.BOOTSTRAP_REPLICATES, "bootstrap_seed": A.BOOTSTRAP_SEED,
+            "planner_identity": freeze["planner"],
+            "first_output": str(E.REPO / E.A_PATHS["a_result"]),
+            "second_output": str(E.REPO / E.A_PATHS["a_repeat"]),
+            "first_output_sha256": E._sha(result_raw), "second_output_sha256": E._sha(result_raw),
+            "outputs_byte_identical": True, "input_properties_sha256": "a" * 64,
+            "fetch_receipt_sha256": E._sha(fetch_raw),
+            "execution_receipt_sha256": E._sha(execution_raw), "hardware": hardware,
+            "confirmation_a_complete_gate_passed": False, "guided_study_authorized": False,
+        }
+        raw = {
+            "a_freeze": canonical(freeze), "a_result": result_raw, "a_repeat": result_raw,
+            "a_receipt": canonical(receipt), "a_execution": execution_raw, "a_fetch": fetch_raw,
+        }
+        for name in ("receipt", "execution", "fetch"):
+            raw[f"a_{name}_pin"] = (E._sha(raw[f"a_{name}"]) + "\n").encode("ascii")
+        pins = {
+            "source_audit": authorized.bindings.attestation_sha256,
+            "confirmation_a": E._sha(result_raw), "confirmation_b": None, "direct_metric_choice": None,
+        }
+        args = dict(source_revision=authorized.bindings.seal_repository_commit_id,
+                    results_revision="5" * 40, artifact_pins={key: E._sha(value) for key, value in raw.items()},
+                    result_pins=pins, expected_a_pass=False)
+        materials = SimpleNamespace(source_audit=source_payload)
+        with mock.patch.object(E, "_read_artifacts", return_value=raw) as read, \
+             mock.patch.object(jj, "require_ancestor"), \
+             mock.patch.object(adapter, "load_authorized_cohorts", return_value=authorized), \
+             mock.patch.object(A, "_load_freeze", return_value=(freeze, materials)), \
+             mock.patch.object(E, "_require_downstream_absence") as absence:
+            output = E.load_evidence(**args)
+            self.assertFalse(R.classify(output).a_pass)
+            read.assert_called_once()
+            self.assertEqual(set(read.call_args.args[1]), set(E.A_PATHS))
+            self.assertEqual(absence.call_count, 2)
+            self.assertIsNone(output["hardware"]["direct"])
+            materials.source_audit = {**source_payload, "source_seal_revision": "9" * 40}
+            with self.assertRaisesRegex(E.EvidenceError, "differs from the V12 adapter"):
+                E.load_evidence(**args)
 
 
 if __name__ == "__main__":
