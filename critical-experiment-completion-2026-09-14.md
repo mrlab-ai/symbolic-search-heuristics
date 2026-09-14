@@ -5,7 +5,7 @@ critically, then update and upload the paper.” Work remains in the isolated
 `symk-representation-safe` workspace. The earlier handoff report records the
 state when paper improvement stopped; this file records the subsequent work.
 
-## Current state: source census complete; freezing A only
+## Current state: source census complete; only A submitted
 
 The first hourly pilot check at 13:48:57 UTC retained all 95 scheduler rows
 at commit `7988a850`: the build and 90 run elements completed, while the four
@@ -66,8 +66,21 @@ independently recomputed when loading it. The freeze is complete and validates
 The 36-file Python dependency closure and pinned requirements file match
 commit `f284830c6e3134f2e35c55a2f7f4e85614d02b01`. The workflow tests pass,
 including floor/extras support failures and tampered freeze allocations; the
-paper reporting suite now passes 81 tests. The four-arm A campaign is ready
-for submission. B remains deferred.
+paper reporting suite now passes 81 tests. The freeze and paper-reader checks
+are committed at `dd592b26`.
+
+The four-arm A pipeline was submitted at 15:12:29 UTC: 2418263 (build),
+**2418264** (867 array elements covering 2,600 cells), 2418265 (parse),
+2418266 (fetch), 2418267 (report), and 2418268 (double analysis).
+Each array element executes at most three sequential cells with a 1:45-hour
+scheduler limit. All six steps use `fat`, normal QoS, nine CPUs and 3 GiB per
+CPU, with no throttle, no requeue, and nice 0. The immutable scripts and
+submission receipts are retained in
+`experiments/artifacts/pdb-within-family-confirmation-v1/confirmation-a/launch.json`.
+The first scheduler/result check is allowed after 16:12:29.649 UTC
+(18:12:29.649 Stockholm). No A outcome has been inspected. B generation,
+translation and all selector runs remain deferred until the completed A
+statistical gate and scheduler audit authorize them.
 
 ## Approved within-family redesign
 

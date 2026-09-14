@@ -359,7 +359,7 @@ neither baseline supplies a guaranteed order for $E$ across two heuristics.
 \subsection{An Ordinal Separation for Exact PDBs}
 
 The certificate inequalities do not imply an order between two heuristics.
-The next example isolates the node--terminal relation: every registered
+The next example isolates the node--terminal relation: every fixed
 relaxation ties, while incidence recovers a strict exact order.
 
 \begin{example}[PDB ordinal separation]
@@ -435,7 +435,7 @@ exact partition efforts.
 
 The example is an ordinal separation, not a universal correctness result for
 incidence.
-It shows that the node--terminal relation discarded by every registered
+It shows that the node--terminal relation discarded by every fixed
 certificate relaxation can be decisive on an actual blind layer even when
 their aggregate values all agree.
 
@@ -711,8 +711,8 @@ inputs; they are not generated or screened in advance of that decision.
 
 \subsection{Original Source Census and Scope Change}
 
-The original source scan enumerated 4,088 benchmark task paths at revision
-\texttt{48d6a00d\allowbreak{}482de238\allowbreak{}4a9e751f\allowbreak{}9343df58\allowbreak{}bf5582be}.
+The original source scan enumerated 4,088 benchmark task paths from a frozen
+benchmark checkout.
 After excluding prior task identities and problem hashes and collapsing
 duplicate problem files, it retained 1,640 candidates in 43 normalized
 families.
@@ -746,8 +746,9 @@ The new test does not claim unseen-family generalization.
 
 \subsection{Generated Instances and Structural Screening}
 
-We pin the PDDL generator collection \citep{seipp-et-al-zenodo2022} at revision
-\texttt{d5c22c9a\allowbreak{}b21ecaf9\allowbreak{}0db82daf\allowbreak{}2a053797\allowbreak{}3c661009}.
+We use a fixed revision of the PDDL generator collection
+\citep{seipp-et-al-zenodo2022}; the reproducibility manifest records the exact
+generator, benchmark and planner revisions.
 Each of 30 candidate families has five fixed size settings.
 A technical pilot generates the smallest, middle and largest settings twice,
 requiring byte-identical domain/problem pairs.
@@ -788,9 +789,7 @@ The analysis retains the original 25-family statistical support floor and all
 effect thresholds below; the unseen-family stratum is removed explicitly.
 The selected 650 inputs, translated-task hashes, configurations and local
 analysis-code closure are bound before the A runs.
-A uses the pinned planner revision
-\texttt{8148f798\allowbreak{}f13059ee\allowbreak{}881ad247\allowbreak{}1bd20cdd\allowbreak{}61d2ec18},
-1,800 CPU seconds and 24,576 MiB per cell.
+A uses the frozen planner build with 1,800 CPU seconds and 24,576 MiB per cell.
 The scheduler allocates nine CPUs and 3 GiB per CPU on the \texttt{fat}
 partition to cover the memory limit and execution overhead.
 The planner is single-process; reserving CPUs does not change its CPU budget.
@@ -1099,7 +1098,7 @@ Each complete triad contributes selector structure once per task: whether the
 two winners and reference differ; whether each change alters only the cap or
 the pattern; own-budget utilization and binding; cross-metric feasibility and
 retention; higher, tied or lower rank under the complete frozen selection score
-and its first decisive criterion; all registered structural work counts; and
+and its first decisive criterion; all fixed structural work counts; and
 per-arm probe/selection CPU, wall time and peak memory. Paired differences in
 the sum of recorded probe and selection CPU/wall times compare incidence-guided
 with $mJ$-guided and matched $K=32$. Each symmetric short
@@ -2334,7 +2333,7 @@ The protocol required at least 300 eligible tasks in 25 families, 300 tasks in
 pairs.
 It obtained 193 eligible tasks in 20 families and 500 strict pairs from 165
 tasks in 20 families.
-The study therefore missed every preregistered support floor, and its complete
+The study therefore missed every prespecified support floor, and its complete
 primary gate failed.
 It did not authorize the guided experiment.
 
@@ -2485,7 +2484,7 @@ materializing an Apply union can be larger than the sum of its input diagrams.
 The shared comparison admits only within-task pairs whose fragmentation,
 $W$, $U$, and frozen information-quality tuple are all strictly ordered;
 ties exclude the pair for every predictor.  Domain concordances receive equal
-weight.  The preregistered gate requires at least 31 domains and
+weight.  The prespecified gate requires at least 31 domains and
 \SemanticUnionTaskFloor\ tasks, macro width concordance at least 0.65, every
 width LODO value at least 0.60, width above quality, and width within 0.02 of
 $U$.
