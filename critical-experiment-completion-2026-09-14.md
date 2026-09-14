@@ -5,7 +5,16 @@ critically, then update and upload the paper.” Work remains in the isolated
 `symk-representation-safe` workspace. The earlier handoff report records the
 state when paper improvement stopped; this file records the subsequent work.
 
-## Current state: source census complete; only A submitted
+## Current state: scientific A runs complete; serialization-only recovery
+
+Latest check, 21:15:29 UTC: all 867 scientific A array elements and the
+build/parse/fetch/report steps completed with exit `0:0`. All 2,600 cells were
+parsed, with zero unexplained run errors. Only the final analysis job failed:
+the unchanged exact computation reached JSON serialization and hit Python's
+4,300-digit integer conversion limit. No analysis output file was created,
+and no scientific result aggregate has been inspected. No experiment rerun
+is needed. A serialization-only recovery is being implemented by lighter-model
+subagents for main-agent review; all frozen scientific code remains unchanged.
 
 The first hourly pilot check at 13:48:57 UTC retained all 95 scheduler rows
 at commit `7988a850`: the build and 90 run elements completed, while the four
@@ -81,6 +90,95 @@ The first scheduler/result check is allowed after 16:12:29.649 UTC
 (18:12:29.649 Stockholm). No A outcome has been inspected. B generation,
 translation and all selector runs remain deferred until the completed A
 statistical gate and scheduler audit authorize them.
+
+The first hourly A poll was retained at commit `8badb1d7` before inspection:
+`experiments/artifacts/pdb-within-family-confirmation-v1/confirmation-a/poll-20260914T161307Z.json`,
+SHA-256 `06f2d9e90b6a50bd34e66e202b5a25a37e87b564e4e9fdf7632cc54e38b64714`.
+The build and 231 array elements are complete with exit `0:0`; 236 array
+elements are running and 400 are pending for resources. All four downstream
+steps are pending dependencies. No scheduler failures are recorded. All 473
+accounting rows have the requested `fat`/normal, nine-CPU, 27-GiB total and
+1:45-hour contract. Slurm represents the pending array as `[468-867]` and the
+four dependent singletons as `[1]`; the frozen terminal validator rejects
+these compressed active identities and therefore correctly issues no
+completion seal. Its code remains unchanged. No heuristic outcome has been
+inspected. The next poll is allowed only after 17:13:07 UTC (19:13:07 Stockholm),
+one hour after this retained check. No extra experiment or restart is needed.
+
+The second hourly poll at 17:13:54 UTC is retained at commit `b4fa8746`:
+`experiments/artifacts/pdb-within-family-confirmation-v1/confirmation-a/poll-20260914T171354Z.json`,
+SHA-256 `e0c56a893ba4993a37a6c36550e93246053b3a600390fa6a3ffbd475a6ea5425`.
+The build and 466 array elements are complete with exit `0:0`; 49 array
+elements are running, and 352 (`516-867`) are pending with reason `Resources`.
+The four reporting steps still await dependencies. No scheduler failures or
+pipeline stderr are recorded, and all 521 accounting rows have the exact
+resource contract. The still-compressed pending identities prevent a terminal
+seal; no validator or experiment code is changed. The next check is no earlier
+than 18:13:54.834469 UTC (20:13:54.834469 Stockholm). Scientific outcomes remain
+uninspected, and no downstream campaign or restart is needed at this point.
+
+The third hourly poll at 18:14:11 UTC is retained at commit `1a85c285`:
+`experiments/artifacts/pdb-within-family-confirmation-v1/confirmation-a/poll-20260914T181411Z.json`,
+SHA-256 `09ca3eb52ba3330333ab49ea9e94b267d3b6057351d76f91e87c97495c467ffe`.
+The build and 568 array elements are complete with exit `0:0`; 109 array
+elements are running, and 190 (`678-867`) are pending for resources. All four
+reporting steps still await dependencies. No scheduler failures, nonzero
+completed exits, pipeline stderr, or allocation mismatches are recorded.
+All 683 accounting rows match the resource contract. The next check is allowed
+only after 19:14:11.984883 UTC (21:14:11.984883 Stockholm). The remaining work
+is ordinary execution/resource waiting, not a blocker requiring new authority
+or an extra campaign. Scientific outcomes remain uninspected.
+
+The fourth hourly poll at 19:14:50 UTC is retained at commit `e406c0d1`:
+`experiments/artifacts/pdb-within-family-confirmation-v1/confirmation-a/poll-20260914T191450Z.json`,
+SHA-256 `857893bbcbd6ef67a58da0030077b5afb7f62448697868649a249a4924fe3605`.
+The build and 721 array elements are complete with exit `0:0`; the remaining
+146 array elements are running, with none pending for resources. The four
+dependent reporting steps remain pending. Every one of the 872 accounting
+rows has the exact resource contract; there are no scheduler failures,
+nonzero completed exits or pipeline stderr. Pending singleton IDs remain
+compressed, so no terminal seal is possible yet. The next check is allowed
+only after 20:14:50.032030 UTC (22:14:50.032030 Stockholm). No extra experiment
+or restart is required.
+
+The fifth hourly poll at 20:15:09 UTC is retained at commit `5cb8117b`:
+`experiments/artifacts/pdb-within-family-confirmation-v1/confirmation-a/poll-20260914T201509Z.json`,
+SHA-256 `a3be2b02309c0a143131e276aa009b2ca8d4668fe9492379d33e4969870f8a13`.
+The build and 853 array elements are complete with exit `0:0`; only 14 array
+elements remain running. None await resources, while all four reporting
+steps await dependencies. All 872 accounting rows have the exact resource
+contract. No scheduler failures, nonzero completed exits or pipeline stderr
+are recorded. The next poll is allowed only after 21:15:09.095894 UTC
+(23:15:09.095894 Stockholm). No scientific outcomes have been inspected and
+no extra experiment or restart is needed.
+
+The sixth hourly poll at 21:15:29 UTC is retained at commit `6ec3ee03`:
+`experiments/artifacts/pdb-within-family-confirmation-v1/confirmation-a/poll-20260914T211529Z.json`,
+SHA-256 `c48ed72a2b6cf93ffce93e324e965f67b5cc74c9a6010b5b3001f662ff96532e`.
+It records all 872 scheduler identities and exact allocations: 871 completed
+with exit `0:0`, and analysis job 2418268 failed with exit `1:0` after 112
+seconds. The traceback identifies `versions.append(C.G.canonical(result))`
+and the precise 4,300-digit integer conversion error. Parsing and reporting
+both recorded zero unexplained run errors. Every job is now terminal, so no
+additional scheduler check is required for these jobs.
+
+The recovery plan in `codex-plan.md` raises only the trusted-artifact integer
+conversion limit to a finite 100,000 digits, then invokes the original
+analysis twice without changing its mathematics or thresholds. It retains
+the failed job, records a separate successful recovery invocation, verifies
+unchanged raw evidence and repeated analysis bytes, and uses an explicit
+recovery seal rather than fabricating a successful original scheduler state.
+The original 37-file code closure, original logs, and all scientific runs are
+preserved. No new translations or planner runs are authorized by this repair.
+The user also requires every coding task to use an appropriately lighter-model
+subagent: GPT-5.6 Sol implements the recovery wrapper and tests, and the
+existing GPT-5.6 Luna subagent implements the paper-reader support. Main-agent
+work is planning, independent review, scientific interpretation, and prose.
+
+During the wait, the anonymous manuscript was also checked for private
+revision identities. Exact revision hashes remain in the reproducibility
+records but were removed from review-facing prose. References to registered
+analyses now say prespecified, without implying a public registration.
 
 ## Approved within-family redesign
 
