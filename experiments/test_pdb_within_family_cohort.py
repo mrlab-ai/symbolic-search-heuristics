@@ -64,8 +64,86 @@ class CohortTests(unittest.TestCase):
                          (first["family"], first["level"]))
         extra = reserves[0]
         results[("translator", extra["family"], extra["problem"])]["status"] = "unsupported"
+        selected = C.select_tasks(manifest, results)
+        self.assertEqual(len(selected["a"]), 650)
+        counts = C.level_allocations(manifest, results)["a"][first["family"]]
+        self.assertEqual(list(counts.values()), [4, 5, 5, 4, 4])
+        remaining = next(row for row in selected["a"]
+                         if row["family"] == first["family"] and row["level"] == first["level"])
+        results[("translator", remaining["family"], remaining["problem"])]["status"] = "unsupported"
         with self.assertRaisesRegex(ValueError, "finite structural pool insufficient"):
             C.select_tasks(manifest, results)
+
+    def test_mystery_source_only_remainder_reallocation(self):
+        families = [family for family in C.G.FAMILIES if family not in {"cavediving", "maintenance"}]
+        rows = [dict(r, problem_file=f"{r['family']}/{r['role']}-{r['index']:03d}.pddl")
+                for r in C.candidate_specs(families)]
+        manifest = {"families": families, "records": rows}
+        results = {("translator", r["family"], Path(r["problem_file"]).name):
+                   {"status": "supported", "sas_sha256": "a" * 64} for r in rows}
+        original = C.level_allocations(manifest, results)
+        self.assertEqual(list(original["a"]["mystery"].values()), [5, 5, 5, 4, 4])
+        for problem in ("a-005.pddl", "a-010.pddl"):
+            results["translator", "mystery", problem]["status"] = "unsupported"
+        amended = C.level_allocations(manifest, results)
+        self.assertEqual(list(amended["a"]["mystery"].values()), [4, 5, 5, 5, 4])
+        self.assertEqual([family for family in families if original["a"][family] != amended["a"][family]],
+                         ["mystery"])
+        selected = C.select_tasks(manifest, results)
+        self.assertEqual(len(selected["a"]), 650)
+        self.assertEqual(sum(row["family"] == "mystery" for row in selected["a"]), 23)
+
+    def test_remainder_reallocation_requires_enough_supported_levels(self):
+        families = list(C.G.FAMILIES)
+        rows = [dict(r, problem_file=f"{r['family']}/{r['role']}-{r['index']:03d}.pddl")
+                for r in C.candidate_specs(families)]
+        manifest = {"families": families, "records": rows}
+        results = {("translator", r["family"], Path(r["problem_file"]).name):
+                   {"status": "supported", "sas_sha256": "a" * 64} for r in rows}
+        first = sorted(families)[0]
+        for row in rows:
+            if row["family"] == first and row["index"] // 5 >= 4:
+                results["translator", first, Path(row["problem_file"]).name]["status"] = "unsupported"
+        with self.assertRaisesRegex(ValueError, "balanced-extras"):
+            C.select_tasks(manifest, results)
+
+    def test_freeze_loader_recomputes_size_allocations(self):
+        families = list(C.G.FAMILIES)
+        rows = [dict(r, problem_file=f"{r['family']}/{r['role']}-{r['index']:03d}.pddl")
+                for r in C.candidate_specs(families)]
+        manifest = {"families": families, "records": rows}
+        results = {("translator", r["family"], Path(r["problem_file"]).name):
+                   {"status": "supported", "sas_sha256": "a" * 64,
+                    "id": ["translator", r["family"], Path(r["problem_file"]).name]} for r in rows}
+        with tempfile.TemporaryDirectory(dir=C.G.ROOT / "data") as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            manifest_path.write_bytes(C.G.canonical(manifest))
+            freeze = {"schema": C.SCHEMA + "/freeze", "performance_observed": False,
+                      "scope": "fresh-instances-within-previously-studied-families",
+                      "targets": C.TARGETS, "families": families,
+                      "analysis": C.analysis_settings(families),
+                      "planner_revision": "8148f798f13059ee881ad2471bd20cdd61d2ec18",
+                      "pool_directory": str(root), "pool_manifest_sha256": C.W.file_sha(manifest_path),
+                      "tasks": C.select_tasks(manifest, results),
+                      "level_allocation_rule": C.LEVEL_ALLOCATION_RULE,
+                      "level_allocations": C.level_allocations(manifest, results)}
+            for field in ("source_summary", "source_launch", "source_poll"):
+                path = root / (field + ".json")
+                path.write_bytes(C.G.canonical({"records": list(results.values())} if field == "source_summary" else {}))
+                freeze[field] = str(path)
+                freeze[field + "_sha256"] = C.W.file_sha(path)
+            path = root / "freeze.json"
+            path.write_bytes(C.G.canonical(freeze))
+            self.assertEqual(C.load_freeze(path, verify_code=False), freeze)
+            freeze["level_allocations"]["a"][families[0]]["0"] += 1
+            path.write_bytes(C.G.canonical(freeze))
+            with self.assertRaisesRegex(ValueError, "size-level allocation changed"):
+                C.load_freeze(path, verify_code=False)
+            freeze["level_allocation_rule"] = "changed-rule"
+            path.write_bytes(C.G.canonical(freeze))
+            with self.assertRaisesRegex(ValueError, "fresh-instance freeze changed"):
+                C.load_freeze(path, verify_code=False)
 
     def test_hourly_guard_makes_no_queries(self):
         with tempfile.TemporaryDirectory(dir=C.G.ROOT / "data") as directory:

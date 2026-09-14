@@ -764,8 +764,16 @@ The A target is 650 tasks, allocated as evenly as possible across supported
 families and then across each family's five size settings.
 One additional seed per family and size setting is the finite reserve for
 structural exclusions.
-Translation attempts every candidate; the first supported candidates in the
-fixed seed order fill each quota.
+Translation attempts all 790 candidates and supports 788; two Mystery inputs
+at the smallest setting have no serialized operators.
+Before running heuristics, we amend the allocation of remainder slots to
+avoid further source experiments while preserving balanced size levels.
+Every level must support the floor of its family's task quota divided by five.
+The remaining slots go to the first levels, in ascending size order, with an
+additional supported candidate.
+Only Mystery's allocation changes, from 5/5/5/4/4 to 4/5/5/5/4; every family
+quota and all five fixed size settings remain unchanged.
+The first supported candidates in ascending seed-index order fill each quota.
 No performance-dependent replacement or parameter adjustment is allowed.
 Seeds are deterministic hashes of the role, family, instance index and
 duplicate-retry index.

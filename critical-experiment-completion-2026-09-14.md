@@ -5,7 +5,7 @@ critically, then update and upload the paper.” Work remains in the isolated
 `symk-representation-safe` workspace. The earlier handoff report records the
 state when paper improvement stopped; this file records the subsequent work.
 
-## Current state: 28 supported families; A-only generation
+## Current state: source census complete; freezing A only
 
 The first hourly pilot check at 13:48:57 UTC retained all 95 scheduler rows
 at commit `7988a850`: the build and 90 run elements completed, while the four
@@ -40,10 +40,28 @@ The A-only source-screening pipeline was submitted at 13:55:17 UTC:
 QoS, nine CPUs, 3 GiB per CPU, 35 minutes per scheduler task and no throttle.
 The immutable launch journal is
 `experiments/artifacts/pdb-within-family-confirmation-v1/source-full/launch.json`.
-Its first permitted check is after 14:55:17.494330 UTC (16:55:17.494330 Stockholm).
-No full-source status or result has been read at this checkpoint. The four-arm
-scientific A experiment remains unsubmitted until this source census is
-complete and 650 tasks are frozen.
+The first hourly check at 14:55:31 UTC is retained at commit `881bd474`.
+All 795 scheduler elements completed with exit `0:0` and the exact resource
+contract. The census contains 788 supported candidates and two unsupported
+Mystery inputs, `a-005.pddl` and `a-010.pddl`, both at size level 0. Their
+serialized tasks have no operators. There are no input or resource failures.
+
+The original freeze attempt independently validated every raw source result
+and then failed because Mystery level 0 has four supported candidates for
+five reserved cohort slots. No cohort freeze or heuristic run was created.
+Before any performance observation, a source-only amendment retains every
+family quota and all five size levels: require the floor of the family quota
+divided by five in every level, then allocate remainder slots to the first
+levels in ascending order with one additional supported candidate. Selection
+within a level still follows ascending seed index. This changes only Mystery,
+from 5/5/5/4/4 to 4/5/5/5/4. The 650-task total, 28 families, fixed generator
+settings, level imbalance of at most one, configurations and statistical
+thresholds are unchanged. No extra experiments are required. The original
+failure and amendment are retained in
+`experiments/artifacts/pdb-within-family-confirmation-v1/source-full/balanced-allocation-amendment.json`.
+The final rule and all per-level quotas are bound into the cohort freeze and
+independently recomputed when loading it. The four-arm A experiment remains
+unsubmitted until that freeze is complete.
 
 ## Approved within-family redesign
 

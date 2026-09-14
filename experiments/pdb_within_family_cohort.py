@@ -22,6 +22,7 @@ SCHEMA = "pdb-terminal-incidence-within-family-cohort/v1"
 # The selector cohort is not generated or screened unless A justifies it.
 TARGETS = {"a": 650}
 RESERVES_PER_LEVEL = 1
+LEVEL_ALLOCATION_RULE = "balanced-supported-levels-ascending/v1"
 MAX_DUPLICATE_ATTEMPTS = 16
 ARTIFACTS = G.ROOT / "artifacts/pdb-within-family-confirmation-v1"
 PILOT = G.ROOT / "data/pdb-within-family-generator-pilot-v2"
@@ -254,12 +255,33 @@ def source_closure(*names):
     return dict(sorted(manifest.items()))
 
 
-def select_tasks(manifest, results):
-    selected = {role: [] for role in TARGETS}
+def level_allocations(manifest, results):
+    """Balance fixed size levels using structural support, never performance."""
+    supported = Counter((row["role"], row["family"], row["level"])
+                        for row in manifest["records"] if results[(
+                            "translator", row["family"], Path(row["problem_file"]).name)]["status"]
+                        == "supported")
+    quotas = {role: {} for role in TARGETS}
     for role, family_quotas in allocations(manifest["families"]).items():
         for family, total in family_quotas.items():
+            base, extras = divmod(total, 5)
             for level in range(5):
-                required = sum(index % 5 == level for index in range(total))
+                if supported[role, family, level] < base:
+                    raise ValueError(f"finite structural pool insufficient for {role}/{family}/level-{level}")
+            available = [level for level in range(5) if supported[role, family, level] >= base + 1]
+            if len(available) < extras:
+                raise ValueError(f"finite structural pool insufficient for {role}/{family}/balanced-extras")
+            extra_levels = set(available[:extras])
+            quotas[role][family] = {str(level): base + (level in extra_levels) for level in range(5)}
+    return quotas
+
+
+def select_tasks(manifest, results):
+    selected = {role: [] for role in TARGETS}
+    for role, family_quotas in level_allocations(manifest, results).items():
+        for family, size_quotas in family_quotas.items():
+            for level_string, required in size_quotas.items():
+                level = int(level_string)
                 candidates = sorted((row for row in manifest["records"]
                                      if (row["role"], row["family"], row["level"]) == (role, family, level)),
                                     key=lambda row: row["index"])
@@ -305,6 +327,8 @@ def freeze(pool, summary, launch, poll, output):
         "source_launch": str(launch), "source_launch_sha256": W.file_sha(launch),
         "source_poll": str(poll), "source_poll_sha256": W.file_sha(poll),
         "families": manifest["families"], "tasks": tasks, "targets": TARGETS,
+        "level_allocation_rule": LEVEL_ALLOCATION_RULE,
+        "level_allocations": level_allocations(manifest, results),
         "source_status_counts": dict(Counter(r["status"] for r in results.values())),
         "analysis": analysis_settings(manifest["families"]),
         "code_commit": revision, "code_sha256": code, "performance_observed": False,
@@ -319,6 +343,7 @@ def load_freeze(path=FREEZE, *, verify_code=True):
     if (value["schema"] != SCHEMA + "/freeze" or value["performance_observed"] is not False
             or value["scope"] != "fresh-instances-within-previously-studied-families"
             or value["targets"] != TARGETS
+            or value.get("level_allocation_rule") != LEVEL_ALLOCATION_RULE
             or value["analysis"] != analysis_settings(value["families"])
             or value["planner_revision"] != "8148f798f13059ee881ad2471bd20cdd61d2ec18"):
         raise ValueError("fresh-instance freeze changed")
@@ -336,6 +361,8 @@ def load_freeze(path=FREEZE, *, verify_code=True):
     manifest = json.loads((pool / "manifest.json").read_bytes())
     summary = json.loads(Path(value["source_summary"]).read_bytes())
     source_results = {tuple(row["id"]): row for row in summary["records"]}
+    if level_allocations(manifest, source_results) != value.get("level_allocations"):
+        raise ValueError("fresh-instance size-level allocation changed")
     if select_tasks(manifest, source_results) != value["tasks"]:
         raise ValueError("frozen tasks differ from the deterministic supported-source selection")
     if verify_code:
