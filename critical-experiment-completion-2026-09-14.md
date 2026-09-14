@@ -28,6 +28,21 @@ remain in their separate project-data directories. These pilot tasks cannot
 enter the scientific cohorts. Planner-compatibility testing is next; the
 final supported-family set will be determined without heuristic outcomes.
 
+The translation-only Lab pipeline was submitted at 12:48:40 UTC. Jobs are
+2399818 (build), **2399819** (90-element run array), 2399820 (parse),
+2399821 (fetch), 2399822 (absolute report), and 2399823 (validated summary).
+All use `fat`, normal QoS, nine CPUs at 3 GiB each, no throttle, no requeue,
+and a 35-minute scheduler limit. The child translator retains 1,800 CPU
+seconds and 24,576 MiB, with a 1,950-second wall guard. Source code is committed
+at `6592516d`. The pinned planner is
+`8148f798f13059ee881ad2471bd20cdd61d2ec18`; the checker uses the translator
+copied from that exact cache, not current working-tree planner sources.
+The first scheduler check is allowed after 13:48:40.324 UTC. Launch scripts
+and receipts are retained under
+`experiments/artifacts/pdb-within-family-confirmation-v1/source-pilot/launch.json`.
+The monitor enforces at least 3,600 seconds between checks and preserves
+accounting, queue, and pipeline-log evidence. Submission is not completion.
+
 The manuscript update and replacement Drive upload remain pending the
 completed critical evidence. Earlier source campaigns and their seals remain
 unchanged.
