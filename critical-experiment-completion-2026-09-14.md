@@ -5,15 +5,99 @@ critically, then update and upload the paper.” Work remains in the isolated
 `symk-representation-safe` workspace. The earlier handoff report records the
 state when paper improvement stopped; this file records the subsequent work.
 
-## Current state at 08:16 UTC (10:16 CEST)
+## Current state: approved within-family redesign
+
+After the source-feasibility failure below, the user approved replacing the
+unseen-family confirmation with fresh generated instances from previously
+studied families. This changes the scope of confirmation, not the historical
+V12 result. No heuristic performance has yet been observed in the new design.
+The new claim is conditional on the supported families, generator settings,
+PDB configurations and representation order. It cannot establish transfer to
+unseen families. The fixed-frontier prediction test still precedes any
+conditional selector comparison; the predictor and selector cohorts will use
+disjoint instance-generation seeds and verified nonduplicate problem inputs.
+
+The official `AI-Planning/pddl-generators` source is pinned at
+`d5c22c9ab21ecaf90db82daf2a0537973c661009`. The generator pilot uses three size
+settings in each of 30 previously studied candidate families, without running
+heuristics. Version 1 generated 87 of 90 instances reproducibly; Schedule's
+documented size option exceeded the executable's accepted range. The wrapper
+was corrected to the executable's valid option. Version 2 generated all 90
+instances twice with byte-identical domain/problem pairs. Both pilot manifests
+remain in their separate project-data directories. These pilot tasks cannot
+enter the scientific cohorts. Planner-compatibility testing is next; the
+final supported-family set will be determined without heuristic outcomes.
+
+The manuscript update and replacement Drive upload remain pending the
+completed critical evidence. Earlier source campaigns and their seals remain
+unchanged.
+
+## Completed V12 census and original-design failure
+
+The V12 source census is complete, but its cohort-feasibility gate failed.
+All 820 elements of job **2383478** completed with exit `0:0` and the exact
+resource contract. The first hourly poll was retained at `42a4d126` before
+inspection; its receipt SHA-256 is
+`9f93a31fff052048cd7864a02f10a1f56fd5f15abc03f8a462b35a069a477d06`.
+The subsequent seal made zero scheduler queries. The complete seal, including
+the 16,157,159-byte attestation, is committed at
+`0f7cdfd901279e272a6e1cc74e19328076b60076`. The attestation SHA-256 is
+`c3cb6249683d5a01e0921a870dc65f43d80337da18b7bffd43c9ce39e3629b3d`;
+the execution receipt SHA-256 is
+`3614a67e52f259f9b9cc6791e6ab82954bc59dfed7dc160378326fac3c3e8ed9`.
+
+All 1,640 candidates were freshly attempted. Translation succeeded on 1,590;
+50 were excluded by the fixed memory limit. There were no input rejections or
+time exclusions. Among the translated tasks, 396 are supported and 1,194 are
+unsupported. The supported tasks span 19 families, all already represented in
+both the shadow study and the full prior-study ledger.
+
+| Frozen prelaunch requirement | Available after deterministic split | Required |
+| --- | ---: | ---: |
+| Confirmation A tasks | 341 | 650 |
+| Confirmation A families | 19 | at least 28 |
+| Guided B tasks | 55 | at least 200 at the source gate; 300 downstream |
+| Guided B families | 19 | at least 30 |
+| A all-prior-unrepresented tasks/families | 0 / 0 | at least 100 / 10 |
+| B all-prior-unrepresented tasks/families | 0 / 0 | at least 50 / 10 |
+
+Unsupported-task reasons overlap: 514 tasks have nonpositive serialized
+operator costs, 606 have normalized axioms, 606 have serialized axioms, and
+600 have serialized conditional effects. The memory exclusions are flashfill
+(4), labyrinth (17), organic-synthesis (9), and slitherlink (20).
+
+The independent consumer's classification and deterministic-split functions
+were rerun against the exact attestation bytes read from the literal committed
+seal. Every classification summary, source-family flag, supported-task reason,
+cohort and gate clause matched. The public downstream-authorization consumer
+correctly refused the failed source gate. No confirmation freeze or launch was
+created, and no A/B/direct performance outcome has been observed. This is a
+**failed source-feasibility gate, not a failed statistical Confirmation A**.
+
+Additional compute cannot make the frozen inventory sufficient. Even assuming
+every memory-excluded task were supported, the upper bound would be 446 tasks
+from 22 families, including just 21 tasks from two all-prior-unrepresented
+families. That is insufficient even for A alone. Identical source reruns or
+larger memory limits cannot bridge the gap.
+
+At this checkpoint, completing confirmation required a scientific-design decision: expand the
+benchmark universe or replace the unseen-family requirement with a new,
+explicitly narrower held-out-instance design. Neither choice has been applied
+silently. The thresholds, inventory, source seal and current scientific claims
+remained unchanged. Paper result integration and replacement upload were paused
+pending that decision. The approval and resumed work are recorded above;
+the existing Drive PDFs remain the earlier drafts.
+
+## Full-census launch state at 08:16 UTC (10:16 CEST)
 
 The V12 preflight passed. The fresh full census is job **2383478**, accepted
 at **08:15:47 UTC (10:15:47 CEST)**. Its 820 unthrottled elements attempt all
 1,640 candidates under the existing `fat` resource contract. Launch evidence
 is committed at `17106c5e1f45c9bfa0244a3555634571de569bff`.
-The first full-census scheduler check is permitted no earlier than
-**09:15:47 UTC (11:15:47 CEST)**. No full-census poll or scientific payload
-read has occurred. Confirmation A/B/direct remain unstarted.
+The first full-census scheduler check was permitted no earlier than
+**09:15:47 UTC (11:15:47 CEST)**. At this launch checkpoint, no full-census poll
+or scientific payload read had occurred and Confirmation A/B/direct were
+unstarted.
 
 ## Execution repair and preflight
 

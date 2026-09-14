@@ -25,7 +25,7 @@ BDD nodes in the realized value buckets, lies below independent cofactor and
 standard-Apply certificate branches, and removes a factor $\Theta(k)$ from all
 seven registered certificate baselines on an explicit decision-diagram family.
 The metric retains the relation discarded by the developmental co-occurring
-profile $mJ$. A staged, source-disjoint experiment first tests the resulting
+profile $mJ$. A staged, fresh-instance experiment first tests the resulting
 ordinal prediction on common blind frontiers. Only success authorizes fresh
 guided runs that compare an incidence-budgeted PDB selector directly with the
 otherwise identical $mJ$-budgeted selector and with existing alternatives.
@@ -40,7 +40,7 @@ otherwise identical $mJ$-budgeted selector and with existing alternatives.
 | The missing node--terminal relation can decide an ordinal comparison for exact PDBs. | A reachable seven-bit blind-layer witness has $(E,I)=(10,10)$ versus $(11,11)$ while $D$, active-value count and all seven certificate baselines tie. |
 | Terminal maps contract incidence and every certificate, but not exact partition effort. | The contraction proposition is paired with a four-variable counterexample in which merging two values increases $E$ from 6 to 7. |
 | Incidence supports a safe representation budget. | The probe-budget proposition guarantees that the returned candidate's exact probe effort is at most the reference incidence budget and remains feasible under later terminal maps. |
-| Incidence predicts relative fixed-frontier partition effort better than the alternatives. | Confirmation A compares ten predictors on a target-strict common-frontier denominator with equal-family aggregation, nine margins, bootstrap reweighting and leave-one-family-out checks in both full and all-prior-unrepresented strata. Pending. |
+| Incidence predicts relative fixed-frontier partition effort better than the alternatives within supported, previously studied families. | Fresh generated-instance Confirmation A compares ten predictors on a target-strict common-frontier denominator with equal-family aggregation, nine margins, bootstrap reweighting and leave-one-family-out checks. Pending; no unseen-family claim. |
 | Choosing by incidence improves over choosing by $mJ$. | Fresh task-blocked direct triads on the B cohort, including a structurally defined differing-winner subset. Conditionally authorized by A; pending. |
 | The incidence-guided selector improves complete symbolic search within the frozen design. | Confirmation B compares the cap-aware reference, matched-work control and existing alternatives. Conditionally authorized by A; pending. |
 
@@ -61,6 +61,39 @@ otherwise identical $mJ$-budgeted selector and with existing alternatives.
   families; they are not population confidence intervals for unseen domains.
 - No result establishes a state-of-the-art planner or transfers beyond the
   frozen PDB pool, probe, representation order and product-at-evaluation search.
+- The approved fresh-instance redesign does not test unseen-family transfer,
+  arbitrary generator sizes, or robustness across CEGAR configuration seeds.
+
+## Approved Experimental Redesign (2026-09-14)
+
+The full V12 source census failed its original cohort-feasibility gate: 396
+supported tasks from 19 families were available, with no family absent from
+prior studies. This is not a statistical failure of terminal incidence; A,
+B and direct metric-choice runs were not launched. Preserve and disclose the
+failed feasibility result. The user subsequently approved confirmation on
+fresh generated instances of supported, previously studied families.
+
+Use the pinned official PDDL generator kit and outcome-independent size grids.
+The generator pilot and translation-only support audit determine technical
+feasibility before any heuristic performance is inspected. Use every candidate
+family meeting the structural requirements, not a performance-selected subset.
+Keep generation errors, support exclusions and duplicate rejections visible.
+Verify repeat generation and exclude pilot/prior/cohort problem duplicates;
+distinct names or comments alone do not make a new instance. A and B have
+distinct generation seeds and problem inputs. Target 650 A and 300 B tasks,
+with balanced family allocation; finalize the achievable family requirements
+after the structural pilot, before performance runs.
+
+Retain the fixed-frontier metric, ten-predictor comparison, target-strict ties,
+equal-family weighting, finite-family reweighting, leave-one-family-out checks,
+and existing effect thresholds. Remove the infeasible all-prior-unrepresented
+stratum and its claims explicitly. Freeze the finite instance configuration
+as a local reproducibility record, not a public preregistration. Do not tune
+generators, thresholds or heuristics after seeing confirmatory outcomes.
+Preserve the staged A-to-selector decision: an A failure is an informative
+terminal result, not a reason to select a new favorable test set. A success
+authorizes the existing controlled selector comparisons on disjoint B tasks.
+The final paper's empirical claims must reflect the actual terminal result.
 
 The adversarial-review sections below are a chronological audit trail. Their
 descriptions of the older diagonal construction remain historically accurate;
