@@ -11,6 +11,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from fractions import Fraction
 from pathlib import Path
 
@@ -1472,6 +1473,8 @@ class RendererTests(unittest.TestCase):
                 )
 
     def test_production_modes_are_disabled_and_do_not_write(self) -> None:
+        import within_family_evidence as Within
+
         self.assertIsNone(renderer.PRODUCTION_EXPECTED_A_PASS)
         self.assertEqual(
             renderer.PRODUCTION_DIGEST_PINS,
@@ -1482,22 +1485,24 @@ class RendererTests(unittest.TestCase):
                 "confirmation_b": None,
             },
         )
-        with self.assertRaisesRegex(renderer.RenderError, "outcome branch is unset"):
-            renderer._load_production_evidence()
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "results.tex"
-            with contextlib.redirect_stderr(io.StringIO()):
-                check_status = renderer.main(
-                    ["--check", "--output", str(output)]
-                )
-            self.assertEqual(check_status, 2)
-            self.assertFalse(output.exists())
-            with contextlib.redirect_stderr(io.StringIO()):
-                write_status = renderer.main(
-                    ["--write", "--output", str(output)]
-                )
-            self.assertEqual(write_status, 2)
-            self.assertFalse(output.exists())
+        with mock.patch.object(Within, "PRODUCTION_RESULTS_REVISION", None), \
+                mock.patch.object(Within, "PRODUCTION_ARTIFACT_PINS", {}):
+            with self.assertRaisesRegex(renderer.RenderError, "outcome branch is unset"):
+                renderer._load_production_evidence()
+            with tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "results.tex"
+                with contextlib.redirect_stderr(io.StringIO()):
+                    check_status = renderer.main(
+                        ["--check", "--output", str(output)]
+                    )
+                self.assertEqual(check_status, 2)
+                self.assertFalse(output.exists())
+                with contextlib.redirect_stderr(io.StringIO()):
+                    write_status = renderer.main(
+                        ["--write", "--output", str(output)]
+                    )
+                self.assertEqual(write_status, 2)
+                self.assertFalse(output.exists())
 
     def test_production_pin_contract_is_branch_exact(self) -> None:
         digest = "1" * 64

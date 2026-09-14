@@ -82,14 +82,7 @@
   \SeedNormalizedRows
 }
 
-% RESULT_INSERT_TITLE:
-% A+metric-choice pass, with or without B: Terminal Incidence Predicts
-%             Fixed-Frontier Partition Effort and Guides PDB Selection
-% A pass, metric-choice fail: Terminal Incidence Predicts Fixed-Frontier
-%             Partition Effort in Symbolic Search
-% A fail: Fixed-Frontier Partition Effort in Symbolic Search:
-%         Terminal-Incidence Certificates and Their Limits
-\title{Terminal Incidence for Fixed-Frontier Partition Effort in Symbolic Search}
+\title{Fixed-Frontier Partition Effort in Symbolic Search: Terminal-Incidence Certificates and Their Limits}
 \author{Anonymous Submission}
 \affiliations{}
 
@@ -114,19 +107,13 @@ missing relation can decide a strict partition-effort order on a planning
 frontier.
 Terminal relabeling, including safe heuristic caps, cannot increase terminal
 incidence, although it can increase exact partition effort.
-We use these results to define an incidence-guided pattern-database selector.
-A fresh-instance confirmation within previously studied families tests whether incidence ranks exact
-fixed-frontier partition effort better than masked ADD size, active-value count
-and seven certificate baselines; only success authorizes two complementary
-end-to-end tests on the same frozen guided cohort, including a controlled
-ablation against an otherwise identical selector guided by the developmental
-predecessor $mJ$, which multiplies the co-occurring residual profile by the
-active-value count.
-% RESULT_INSERT_ABSTRACT_A: insert the sealed Confirmation A result and scope.
+These results define a pattern-database selection rule with a fixed-probe
+guarantee, distinct from an end-to-end performance claim.
+We compare incidence with masked ADD size, active-value count and seven
+certificate baselines on common blind frontiers.
+Incidence reaches an equal-family concordance of 0.913, while the closest
+certificate baselines reach 0.896.
 \TIOutcomeAbstract
-% RESULT_INSERT_ABSTRACT_METRIC: insert the predecessor-ablation result only if
-% A authorized it and the campaign sealed.
-% RESULT_INSERT_ABSTRACT_B: insert B only if A authorized and B was completed.
 \end{abstract}
 
 \section{Introduction}
@@ -143,7 +130,7 @@ different search resources.
 Heuristics expose this distinction.
 In explicit \astar, a heuristic changes which individual states are expanded
 \citep{hart-et-al-ieeessc1968,pearl-1984}.
-Product-at-evaluation symbolic \astar additionally partitions a frontier into
+Product-at-evaluation symbolic \astar{} additionally partitions a frontier into
 one BDD for each heuristic value \citep{edelkamp-reffel-ki1998}.
 An informative heuristic can reduce the search space while making the
 remaining frontiers harder to represent.
@@ -215,17 +202,15 @@ The paper thus makes three linked contributions.
 First, it defines terminal incidence, proves the two-branch certificate
 hierarchy, terminal-map contraction and separations, and gives the exact PDB
 witness.
-Second, Confirmation A tests whether $I$ ranks exact partition effort better
-than masked ADD size, active-value count and seven certificate baselines on
-common frontiers.
-Third, only a successful confirmation authorizes fresh guided runs: a
-controlled predecessor ablation changes whether $I$ or the developmental
-co-occurring-profile certificate $mJ$ determines the selected candidate, while
-Confirmation B compares the incidence-guided selector with the cap-aware
-reference, a matched-work control and existing alternatives.
-The two guided studies execute different cells on the same frozen B task
-cohort and provide complementary tests rather than independent replications.
-This staging prevents the selector from validating its own predictor.
+Second, we compare ten predictors on 650 fresh generated tasks from 28
+previously studied families. Incidence has the highest equal-family
+concordance, but its advantages over four baselines do not meet the
+prespecified comparison requirements.
+Third, the contraction property gives a probe-conditioned PDB selection rule
+whose representation budget survives further terminal maps.
+We establish this rule's fixed-probe guarantee, not an improvement in complete
+search. The predictor result does not authorize the planned selector studies,
+so we do not run them.
 
 \section{Fixed-Frontier Partitioning}
 \label{sec-fixed-frontier}
@@ -617,9 +602,12 @@ the exact partition effort of every frontier or the cost of a complete search.
 The supplement proves the proposition, including the incidence contraction,
 and verifies the seven-node union in the counterexample.
 
-\section{Incidence-Guided PDB Selection}
+\section{A Probe-Conditioned PDB Selection Rule}
 \label{sec-selector}
 
+The certificate gives a selection rule with a fixed-probe guarantee.
+We describe this theoretical consequence without claiming an experimentally
+validated improvement in complete search.
 Pattern databases (PDBs) map states to exact abstract goal distances
 \citep{culberson-schaeffer-compint1998,edelkamp-ecp2001}.
 Automatic pattern selection usually optimizes heuristic information under an
@@ -638,7 +626,7 @@ $0,1,2,4,\ldots,256$ below its maximum finite value and the exact endpoint.
 The mandatory empty pattern has one exact width-one candidate and makes every
 width budget feasible.
 These choices, together with the cap grid, $K=32$ reference and 16-layer
-horizon, were fixed before A or B outcome access; the supplement records which
+horizon, are fixed before predictor outcomes; the supplement records which
 ones were inherited from developmental protocols.
 
 The selector first records exactly the first 16 completed blind layers on a
@@ -686,6 +674,8 @@ target $E$.
 For every candidate and probe layer, computing $E$ would materialize and
 reduce one BDD for each active value, whereas computing $I$ reuses the masked
 ADD and its reverse-edge traversal.
+Avoiding the value buckets does not by itself guarantee lower measurement
+cost.
 A finite $E$-guided selector is nevertheless possible in principle.
 The prespecified A diagnostics therefore compare measurement times and report
 the exact-$E$ regret of each predictor's top choice.
@@ -693,31 +683,6 @@ Incidence additionally supplies closure that $E$ lacks: a further cap can
 increase exact partition effort, while
 Proposition~\ref{prop-incidence-contraction} guarantees that every terminal
 map of an incidence-feasible candidate remains within the incidence budget.
-A matched-work control performs the identical probe, pool construction,
-candidate materialization and incidence measurement, then executes the fixed
-reference.
-The trace records the full candidate pool, cap identities, exact raw-value
-histograms, per-layer incidences, both selections and resource accounting.
-Independent replay rejects a trace if any pool, cap, score, monotonicity or
-identity invariant fails.
-Probe and selection CPU time, wall time and peak-memory deltas are recorded
-separately as descriptive phase accounting.
-The matched-work control matches the fixed probe and candidate-measurement
-work counts, while the
-comparison with the standalone reference retains that work in end-to-end
-planner time.
-
-For a direct test of the metric, we also define a symmetric $mJ$-guided
-selector.
-On complete probes, all three arms measure both $I$ and $mJ$ on the same probe
-and materialize the same candidates.
-The incidence and $mJ$ arms derive separate budgets from the same standalone
-$K=32$ reference, retain the strongest feasible cap of each pattern under
-their respective metric and apply the same information score.
-The matched arm has the same fixed structural work counts and executes the
-$K=32$ reference.
-The only mode-specific choice is which precomputed winner becomes the final
-heuristic; the two winners may coincide.
 
 \section{Confirmatory Evaluation}
 \label{sec-confirmation}
@@ -734,14 +699,15 @@ A translation-only pilot determines the supported families before heuristic
 outcomes are observed.
 We fix size grids, seeds, duplicate exclusions, configurations and analysis
 thresholds before the predictor runs.
-Selector tasks are generated only if Confirmation A passes, using disjoint
-seeds and problem inputs.
+The fixed design permits selector experiments only if the predictor
+confirmation passes its complete gate. It does not pass, so no selector
+cohort is generated and no selector campaign is run.
 This design tests new instances of the retained families, not transfer to
 unseen families; the supplement records the source audit and selection rules.
 
 \subsection{Confirmation A: Does Incidence Rank Partition Effort?}
 
-Confirmation A requires 650 source-attested tasks, balanced across the
+Confirmation A compares 650 source-attested tasks, balanced across the
 structurally supported families and five fixed size levels per family.
 Each task uses the BDD-prefix, goal-prefix, goal-fill and seeded CEGAR direct
 PDB generators with exact values, a $100{,}000$-state budget and one fixed BDD
@@ -784,7 +750,6 @@ leave-one-family-out difference must be positive.
 Failure of any support or effect clause is a failed confirmation.
 The infeasible unseen-family stratum is not part of this within-family test.
 
-% ================= RESULT_INSERT_CONFIRMATION_A_BEGIN =================
 \TIOutcomeA
 
 Table~\ref{tab:confirmation-a-predictors} reports the complete predictor
@@ -808,120 +773,46 @@ Predictor & $c_P$ & $\Delta$ & $L$ & $L_{-f}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
-% Insert only the double-executed, sealed A analysis here.
-% Report target-strict support, I concordance, all nine margins, bootstrap lower
-% endpoints, leave-one-family-out minima, the within-family gate,
-% all-strict sensitivity, exact-E top-choice regret, certificate
-% tightness and masked/incidence-versus-exact-partition measurement timing.
-% State PASS or FAIL for the complete gate explicitly.
-% If A fails, do not insert or imply Confirmation B results.
-% ================== RESULT_INSERT_CONFIRMATION_A_END ==================
 
-\subsection{Controlled Predecessor Ablation: $I$ versus $mJ$}
+\subsection{What the Comparison Establishes}
 
-This campaign is authorized only if Confirmation A passes.
-The co-occurring-profile certificate $mJ$ is the developmental structural
-predecessor of terminal incidence: it preserves which state and heuristic
-residuals share a prefix, but its factor $k$ assigns every active value to
-every pair.
-It was selected for this ablation before Confirmation A and is not presented
-as a field-wide consensus explanation.
-It uses the frozen 300-task Confirmation B cohort, but executes fresh runs in
-three task-blocked arms: incidence-guided, $mJ$-guided and matched $K=32$.
-Within each family, arm order rotates deterministically by task.
-On complete probes, every arm reconstructs both metrics, budgets, winners and
-the complete candidate trace; normalized structural certificates must be
-identical apart from timing, memory and the final-selection event.
-If the blind state space yields fewer than 16 layers, all three arms must expose
-the same certified three-event short-probe trace, exit
-\texttt{SEARCH\_UNSUPPORTED} (34), record coverage zero and perform no
-selection or fallback.
-The symmetric triad remains in both full contrasts as PAR2 3600 in every arm
-and supplies no winner; any asymmetry invalidates the campaign.
+Every support requirement passes, as does the 0.65 incidence-concordance
+threshold. Incidence has the highest point estimate, and its comparisons with
+$D$, $mJ$, Cartesian, width and Apply satisfy all effect requirements.
+The complete confirmation nevertheless fails for predictive effects, not for
+insufficient support.
+The advantages over $kD$, $mQ$ and $B_\wedge$ are below 0.02, and their
+paired-family intervals include zero.
+The advantage over active-value count exceeds 0.02, but its interval also
+includes zero.
+All nine leave-one-family-out advantages are positive.
+Thus the data support accurate ranking by incidence within this design, but
+do not establish its prespecified advantage over every alternative.
 
-The primary contrast is incidence-guided minus $mJ$-guided.
-PAR2 is total planner time for a solved run, which is at most 1800 seconds,
-and 3600 seconds for every unsolved certified cell.
-It passes only with nonlower coverage, an equal-family normalized PAR2
-improvement of at least 0.02, a strictly positive lower endpoint of the 95\%
-paired-family bootstrap interval and a positive effect after leaving out every
-family.
-The same clauses must hold on the prespecified subset of complete probes where
-the two reconstructed winners differ, with at least 50 tasks from ten
-families.
-This subset is defined only by certified selector structure and is blind to
-search coverage and runtime.
-Incidence-guided versus matched $K=32$ is secondary and cannot change the
-primary decision.
-Each contrast also has a fixed non-gating decomposition: a paired table of
-tasks solved by both arms, by only one arm or by neither, and the equal-family
-mean total-time difference normalized by 1800 on commonly solved tasks.
-
-A fixed non-gating trace panel reports complete/short support, winner uptake,
-cap-versus-pattern changes, budget use, cross-metric retention, score
-relations, structural work and selector overhead.
-Complete triads contribute selector structure once per task, while short
-triads contribute only support and probe overhead.
-Because the trace contains neither exact $E$ nor a final-search bucket
-trajectory, the panel cannot establish fragmentation mediation or affect the
-prespecified decision.
-
-% ================= RESULT_INSERT_METRIC_CHOICE_BEGIN =================
-% Insert only the double-executed, sealed predecessor-ablation analysis here.
-% Report full and short-probe counts, differing-winner support, coverage,
-% equal-family normalized
-% PAR2, bootstrap lower endpoint, leave-one-family-out minimum, paired coverage
-% and common-solved time decomposition, structural
-% identity checks, the complete fixed mechanism panel, the secondary
-% matched-K=32 contrast and PASS/FAIL.
-% ================== RESULT_INSERT_METRIC_CHOICE_END ==================
-
-\subsection{Confirmation B: Does Incidence Improve Selection?}
-
-Confirmation B may be prepared only if Confirmation A passes its complete
-gate.
-Its target is a separate 300-task generated-instance cohort within the
-families retained by structural screening; it cannot test the abandoned
-unseen-family claim.
-The nine configurations are blind search, three direct PDBs, CEGAR, uncapped
-exact-width selection, the cap-aware $K=32$ reference, incidence-guided
-selection and the matched-work control.
-The cap-aware reference, incidence-guided and matched-work final-search runs
-are task-blocked with a deterministic family-balanced cyclic execution order.
-The standalone reference's complete normalized pattern pool and selected
-identity must match the reference independently reconstructed from both
-selector traces.
-
-The outcome is PAR2 with a 3600-second penalty for every unsolved,
-unsupported, resource-limited or failed cell.
-No task is removed from the performance matrix.
-Against both the cap-aware reference and matched-work control, the complete
-gate requires nonlower coverage, an equal-family normalized PAR2 improvement
-of at least 0.02, a positive lower endpoint of the 95\% paired-family bootstrap
-reweighting interval and a positive effect after leaving out every family.
-A separate matched-work mechanism claim is available only on the frozen subset
-where the guided selector chooses a different candidate, where at least 50
-tasks from ten families support the contrast, and where the same clauses pass
-against the matched-work control.
-Every B contrast reports the same non-gating paired solve table and
-equal-family normalized total-time difference on commonly solved tasks.
-
-% ================= RESULT_INSERT_CONFIRMATION_B_BEGIN =================
-% Insert B only if the sealed A decision authorized its launch.
-% Report cohort support, trace certification, selection-difference support,
-% coverage and normalized PAR2 against both primary comparators, both bootstrap
-% reweighting intervals, leave-one-family-out minima, paired coverage and
-% common-solved time decompositions, task-block and reference
-% identity certification, coverage and PAR2 for all nine configurations,
-% mechanism support, overhead and the complete decision.
-% If A passed but B failed, retain the predictor claim and reject the
-% end-to-end design claim. If A failed, state that B was not authorized.
-% ================== RESULT_INSERT_CONFIRMATION_B_END ==================
+The non-gating diagnostics give the same qualified picture.
+On 1,691 all-strict pairs, incidence has equal-family concordance 0.912.
+Its top choice has equal-family normalized exact-effort regret 0.0466,
+compared with 0.0488 for $kD$ and $B_\wedge$.
+Equal-family certificate tightness, computed from the ratios $E/P$, is
+0.8173 for incidence and 0.4160 for $kD$ and $B_\wedge$.
+Thus a substantially tighter certificate need not yield a comparably large
+ranking advantage.
+The combined masked-ADD, cofactor-profile and incidence measurement takes
+2.375 times the pooled exact-partition audit time; the equal-family mean task
+ratio is 6.049. This timer is not an isolated measurement of incidence and
+does not establish a low-overhead selector.
+These descriptive results do not change the gate.
+The supplement reports all predictors, construction outcomes, frontier
+exclusions, certificate tightness and measurement costs.
+Because Confirmation A fails its complete gate, we do not generate a selector
+cohort or run either the predecessor ablation or the broader selector
+comparison. The probe-safety proposition remains a theoretical design result;
+we make no claim of improved complete-search performance.
 
 \section{Related Work}
 
-Product-at-evaluation \bddastar partitions frontiers by heuristic value
-\citep{edelkamp-reffel-ki1998}, while SetA\ensuremath{^{*}} and \ghseta
+Product-at-evaluation \bddastar{} partitions frontiers by heuristic value
+\citep{edelkamp-reffel-ki1998}, while SetA\ensuremath{^{*}} and \ghseta{}
 partition transition relations \citep{jensen-et-al-aij2008}.
 ADDA\ensuremath{^{*}} uses algebraic diagrams directly
 \citep{hansen-et-al-sara2002}.
@@ -980,16 +871,12 @@ It can establish an ordinal predictor of fixed-frontier partition effort within
 that design, but it cannot establish a cause of overall heuristic performance.
 Its generated tasks come from previously studied families and fixed size grids;
 distinct input bytes do not exclude structurally isomorphic instances.
-The controlled predecessor-ablation campaign changes only which precomputed winner
-becomes the final heuristic, but reuses Confirmation B's task cohort and is
-therefore not an independent task holdout from that broader evaluation.
-The direct campaign supports only the $I$-versus-$mJ$ selection-rule contrast
-and its secondary matched-$K=32$ comparison.
-Confirmation B separately supports the broader comparison with the cap-aware
-reference and alternative methods.
-Even if Confirmation A, the direct campaign and Confirmation B all pass, the
-conclusions remain specific to the frozen PDB pool, the first 16 completed
-blind probe layers on positive-cost tasks, forward
+The experiment meets its support thresholds but does not establish the
+required advantage over every baseline. The planned selector comparisons
+remain unrun, so the selection rule has no confirmed end-to-end benefit.
+The conclusions remain specific to the frozen PDB pool, the first 16 completed
+non-goal blind layers (or a shorter common pre-goal horizon) on positive-cost
+tasks, forward
 product-at-evaluation search, the tested benchmarks and the fixed-order CUDD
 representation.
 
@@ -1012,18 +899,11 @@ The theory also identifies a strict design boundary.
 Terminal maps contract incidence, but neither exact partition effort nor a
 complete symbolic search must improve.
 
-The staged experiments respect that boundary.
-Confirmation A tests terminal incidence only as an ordinal predictor of exact
-partition effort on common frontiers.
-Only if that claim survives do fresh guided runs test whether choosing with
-incidence rather than $mJ$ improves search, and whether the
-incidence-budgeted selector improves over the reference and alternatives.
-% RESULT_INSERT_CONCLUSION_A: replace the preceding protocol sentence with
+The completed experiment distinguishes this certificate guarantee from
+ordinal prediction. Incidence has the highest equal-family concordance, but
+the comparisons with active-value count and three certificate baselines do
+not satisfy the full confirmation requirements.
 \TIOutcomeConclusion
-% the sealed A conclusion and its exact scope.
-% RESULT_INSERT_CONCLUSION_METRIC: add the metric-choice conclusion only if
-% authorized and sealed.
-% RESULT_INSERT_CONCLUSION_B: add the sealed B conclusion only if authorized.
 
 \FloatBarrier
 \label{paper:references-start}

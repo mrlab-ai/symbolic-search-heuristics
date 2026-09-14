@@ -186,7 +186,7 @@ def recovered_fixture():
 class WithinFamilyEvidenceTests(unittest.TestCase):
     def test_defaults_refuse_unset_production(self):
         with self.assertRaises(W.EvidenceError):
-            W.load_evidence()
+            W.load_evidence(results_revision=None, artifact_pins={})
 
     def test_projects_a_without_all_prior_or_selector_fields(self):
         artifacts, pins = fixture()

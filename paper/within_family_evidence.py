@@ -30,8 +30,17 @@ PATHS = {
     # is obtained from the committed completion seal; no filename is guessed.
     "poll": None,
 }
-PRODUCTION_RESULTS_REVISION = None
-PRODUCTION_ARTIFACT_PINS = {}
+PRODUCTION_RESULTS_REVISION = "141f32e908868ed19f9056b612164cf1bdc3fdc4"
+PRODUCTION_ARTIFACT_PINS = {
+    "freeze": "0c95dd5afe61ea0f77c7441a824bcecbe255641994874d28734274a64e3a0c67",
+    "seal": "f36c24c2ba89cab1e7c3aaf6868f0e481ee45a0d3192142e977574386145577d",
+    "analysis": "8cc48ae1866688dbb6082eda8e892078c7dfaaf152af34188c98c9aad0d6323b",
+    "repeat": "8cc48ae1866688dbb6082eda8e892078c7dfaaf152af34188c98c9aad0d6323b",
+    "receipt": "e86a74ba849fd0ecc275ac3cdbe01f721000bfbba257a63436f41c43787dab64",
+    "launch": "47922017ce4ca0b86233005723da29e433826a2360879b300e3194a7876ac881",
+    "poll": "c48ed72a2b6cf93ffce93e324e965f67b5cc74c9a6010b5b3001f662ff96532e",
+    "recovery": "67c53a22081eb7329f8f9e9abed64a38461923985b772f696dbb43acfa9de937",
+}
 SCHEMA = "pdb-terminal-incidence-within-family-evidence/v1"
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 RECOVERY_PYTHON_SHA256 = "021044895e95be79dc2f110367607e684119afbc8ce75f6f0eec94844e0acec7"

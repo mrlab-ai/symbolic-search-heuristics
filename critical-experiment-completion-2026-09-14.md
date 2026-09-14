@@ -5,9 +5,83 @@ critically, then update and upload the paper.” Work remains in the isolated
 `symk-representation-safe` workspace. The earlier handoff report records the
 state when paper improvement stopped; this file records the subsequent work.
 
-## Current state: scientific A runs complete; serialization-only recovery
+## Current state: critical experiment complete; paper uploaded
 
-Latest check, 21:15:29 UTC: all 867 scientific A array elements and the
+All 2,600 scientific A cells are complete. The two exact analyses are
+byte-identical, and the explicit serialization-recovery completion seal is
+committed at `141f32e908868ed19f9056b612164cf1bdc3fdc4`. Its SHA-256 is
+`f36c24c2ba89cab1e7c3aaf6868f0e481ee45a0d3192142e977574386145577d`.
+The final independent seal reload validates the unchanged raw evidence and
+all 37 frozen code files. Neither the serialization repair nor its local
+virtual-environment launch correction repeats a scientific run. Both failed
+attempts remain recorded: the original Slurm serialization failure and the
+first local recovery's missing Lab import.
+
+The completed experiment meets every support requirement: 499 eligible tasks
+from 28 families, 484 comparison tasks from all 28 families and 1,719
+target-strict pairs. All four PDB constructions complete on all 650 tasks;
+151 tasks lack a sufficient common completed frontier horizon. Terminal
+incidence has the highest equal-family concordance, 0.9130. The complete
+predictive-effect gate nevertheless fails. Its comparisons with masked ADD
+size, mJ, Cartesian, width and Apply pass; the advantages over kD, mQ and the
+layerwise meet are below 0.02 and their bootstrap intervals include zero.
+The active-value-count advantage is 0.0237, but its interval also includes
+zero. Every leave-one-family-out advantage is positive. This is an effect
+failure, not a shortage of comparison support.
+
+The fixed non-gating diagnostics retain the same distinction. All-strict
+equal-family incidence concordance is 0.9119. Equal-family top-choice regret
+is 0.0466 for incidence and 0.0488 for kD and the meet. Certificate tightness
+is 0.8173 for incidence versus 0.4160 for kD and the meet. The combined
+masked-ADD, cofactor-profile and incidence phase takes 2.3747 times the pooled
+exact-partition audit time (equal-family mean task ratio 6.0492); this is not
+an isolated timing of incidence or a selector speedup.
+
+No selector cohort is generated, and neither the predecessor ablation nor
+Confirmation B is run. The minimal experimental critical path is closed.
+The paper is updated around terminal-incidence certificates and their
+empirical limits, retaining the selector only as a theoretical design
+consequence. Unrun experiment sections and outcome placeholders are removed.
+The production tables read eight pinned artifacts from the committed seal
+revision and independently recompute the numerical decision.
+The full reporting suite passes 85 tests; the recovery suite passes 13,
+the existing within-family suite 22 and the original analyzer suite 21.
+Author-kit checks and the submission-check self-tests pass. The full
+`make submission-audit` succeeds, and the final source/PDF review bundle is
+`READY`. The main paper has eight total pages, with references starting on
+page seven; the supplement has 40 pages. Both final build logs have no
+overfull boxes or undefined references/citations. Visual review checks the
+title, main results, conclusion and supplementary results tables.
+
+### Final delivery, 2026-09-15 (Stockholm)
+
+Both PDFs are uploaded with `rclone copyto` to the existing Google
+Drive targets. The remote file identities are unchanged, and read-back
+metadata confirms both the MD5 and SHA-256 hashes match the local PDFs.
+Verification completed by 22:11 UTC on September 14 (00:11 Stockholm on
+September 15). The source changes belong to Jujutsu change
+`oqkllqstltqlturtrxvstulwmrxvxwnv`.
+
+- [Main paper](https://drive.google.com/file/d/1cSqMubqtuK9fga8D-1V1lFMV4fr63nlR/view):
+  `google-drive:cofactor-width-icaps.pdf`, 303,767 bytes, eight pages.
+  MD5 `bec6aa91dce3e9f9e7d35e20ec4ce9c8`;
+  SHA-256 `1c56969f66c219ec609bfbb3aee86b90cdf24f1743879cd679375d3f239c1379`.
+- [Supplement](https://drive.google.com/file/d/1IDjUIBNo4s_dHOES-GEfjByIuxLZSAIV/view):
+  `google-drive:cofactor-width-icaps-supplement.pdf`, 574,157 bytes, 40 pages.
+  MD5 `6cdd9d61054f41b4e95f735d4582e602`;
+  SHA-256 `7b087f2332f23d4739e27366a4ce288a99b4b42252c8aa7f8ddd635c247b975a`.
+
+No further experiment, scheduler poll, public release or conference submission
+is performed. Coding and bounded TeX fixes use lighter-model subagents;
+the main agent reviews the implementation, interprets the results and verifies
+the final delivery. The raw scientific inputs and both failed recovery-attempt
+records remain retained. Rclone warns that its existing shared Google Drive
+client ID is being retired during 2026; this upload succeeds, and no account
+configuration is changed.
+
+## Execution history
+
+At 21:15:29 UTC, all 867 scientific A array elements and the
 build/parse/fetch/report steps completed with exit `0:0`. All 2,600 cells were
 parsed, with zero unexplained run errors. Only the final analysis job failed:
 the unchanged exact computation reached JSON serialization and hit Python's

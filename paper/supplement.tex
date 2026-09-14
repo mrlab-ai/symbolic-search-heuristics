@@ -72,7 +72,7 @@
 \input{generated/pdb-profile-certificate-holdout-v1.tex}
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
 
-\title{Terminal Incidence for Fixed-Frontier Partition Effort in Symbolic Search:\\
+\title{Fixed-Frontier Partition Effort in Symbolic Search: Terminal-Incidence Certificates and Their Limits:\\
 Supplementary Material}
 \author{Anonymous for review}
 \date{}
@@ -928,10 +928,29 @@ within-family design.
 The analysis is run twice from fresh loads of the sealed matrix; publication
 requires byte-identical canonical outputs.
 
+The double analysis uses the unchanged frozen computation and exact rational
+arithmetic. An analysis-only recovery raises Python's integer conversion limit
+from 4,300 to a finite 100,000 decimal digits to serialize the exact results.
+Both outputs are byte-identical, and independent checks bind them to the
+unchanged raw 2,600-cell matrix. No scientific run is repeated for this repair.
+
+For top-choice regret, each predictor selects all semantic observations with
+minimum predictor value. We average $E$ over a tied selected set and normalize
+its excess above the task minimum by the task's range of $E$. Tasks without
+two distinct target values do not enter this diagnostic. We average regrets
+within family and then equally across families. Certificate tightness first
+averages $E/P$ over a task's semantic observations, with $0/0=1$, then within
+family and equally across families. Family quartiles use nearest ranks.
+The masked timer includes masked-ADD construction, masked cofactor-profile
+computation and incidence traversal; it is not an isolated measurement of
+incidence. The comparison timer measures exact per-value bucket construction.
+
 \subsection{Confirmation A Results}
 
 \TIOutcomeSourceAudit
+
 \TIOutcomeA
+
 \TIOutcomeHardware
 
 \begin{table*}[htbp]
@@ -995,7 +1014,7 @@ Status & Tasks \\
 \begin{table*}[htbp]
 \centering
 \small
-\caption{Non-gating measurement cost of masked-ADD/incidence computation
+\caption{Non-gating measurement cost of masked-ADD/cofactor-profile/incidence computation
 relative to exact bucket construction. Ratios are defined only for positive
 exact-partition measurement times and are not end-to-end search speedups.}
 \begin{tabular}{@{}lr@{}}
@@ -1007,213 +1026,15 @@ Measurement & Value \\
 \end{tabular}
 \end{table*}
 
-\subsection{Controlled Predecessor-Ablation Measurement and Analysis}
+\subsection{Unrun Selector Experiments}
 
-This campaign may freeze only after Confirmation A passes its complete gate
-and a preparation manifest for the exact 300-task B cohort is sealed.
-The preparation manifest binds the cohort's source provenance and, for every
-task, the cap-aware $K=32$ pool and selected identity reconstructed without
-using final-search outcomes.
-We generate it from the sealed B records while withholding coverage, runtime
-and all other final-search outcome fields.
-Before the direct freeze, independent replay reconstructs every manifest
-record from the source-attested B inputs and verifies every path and hash.
-Confirmation B performance remains unread until the direct campaign is both
-frozen and launched.
-It contains one task-blocked triad per B task: incidence-guided,
-$mJ$-guided and matched $K=32$, for 900 fresh planner cells.
-Within each family, the three execution positions rotate cyclically by task.
-The task mapping, committed full-census source provenance, planner revision,
-executable and preprocessor hashes, search strings, options, limits and trace
-schemas are bound before launch.
-
-On complete probes, all arms record the same 16 completed blind layers,
-construct the same normalized pattern pool and cap grid, and compute both
-terminal incidence and the masked joint-residual score
-$mJ=\sum_g k_g\jointprofile{S_g}{h}$ for every candidate.
-The $I$ and $mJ$ selectors derive separate budgets from the same independently
-reconstructed cap-aware $K=32$ reference, retain the strongest feasible cap
-for each pattern under the respective budget and apply the same frozen
-information score.
-The matched arm performs both measurements and selections but executes the
-$K=32$ reference.
-The only mode-specific choice is which precomputed winner becomes the final
-heuristic; the two winners may coincide.
-
-If the blind state space yields fewer than 16 layers, all three arms must
-instead expose the same certified three-event trace containing only the schema,
-variable order and incomplete probe.
-Each arm exits \texttt{SEARCH\_UNSUPPORTED} (34), records coverage zero and
-performs no candidate selection or fallback.
-The audit replays each short trace and requires identical status, structure,
-hash and completed-layer count across the triad; any complete-only winner,
-reference or selection field invalidates it.
-A symmetric short triad is a valid terminal campaign outcome and remains in
-both full 300-task contrasts as PAR2 3600 in every arm.
-It supplies no metric winner.
-
-For complete probes, the trace supplies a canonical breadth-first masked-ADD
-DAG for every candidate and layer.
-The parser independently reconstructs incidence by reverse traversal from
-active semantic terminals and reconstructs $mJ$ from the distinct
-state-BDD/heuristic-ADD residual pairs at every nonterminal cut.
-It also checks both budgets, retained-cap flags, winners, cap-refinement
-monotonicity, projection and product bounds, semantic dead-end handling and
-the complete candidate-pool identity.
-After timing, memory and the final-selection event are removed, the three
-normalized structural traces must be identical.
-
-For task $t$, the primary normalized improvement is
-\[
- \delta_{mJ}(t)=
- \frac{\operatorname{PAR2}_{mJ\text{-guided}}(t)
-       -\operatorname{PAR2}_{I\text{-guided}}(t)}{3600}.
-\]
-A solved certified cell contributes total planner time in $[0,1800]$ seconds;
-every unsolved certified cell contributes 3600 seconds.
-Thus each symmetric short triad contributes zero to both full-cohort task
-contrasts rather than being deleted.
-Task effects are averaged first with equal weight within normalized family and
-then with equal weight across families.
-The primary decision requires nonlower incidence-guided coverage, an
-equal-family mean of at least 0.02, a strictly positive lower endpoint of the
-100,000-replicate paired-family bootstrap interval and a positive
-leave-one-family-out value for every family.
-All four clauses must also hold on the subset of complete probes defined solely
-by unequal reconstructed $I$ and $mJ$ winners, with at least 50 tasks from ten
-families.
-This subset depends only on certified selector structure and is blind to
-search coverage, runtime and all other search outcomes.
-The incidence-guided versus matched-$K=32$ contrast is secondary.
-It cannot rescue a failed direct metric decision.
-Every contrast also reports a non-gating paired solve table with the four
-outcomes both solved, incidence only, comparator only and neither solved.
-On commonly solved tasks, it reports
-$(t_{\mathrm{comparator}}-t_I)/1800$, averaged first within family and then
-equally across families. This decomposition is fixed before campaign outcomes
-and helps distinguish coverage changes from total-time changes without affecting a
-gate.
-The bootstrap uses nearest-rank endpoints and seeds 20260903, 20260904 and
-20260905 for the full, differing-winner and secondary contrasts,
-respectively.
-These are finite-cohort family-reweighting stability intervals, not population
-confidence intervals for unseen families.
-
-Before launch, a non-gating mechanism panel is fixed over the certified trace.
-Each complete triad contributes selector structure once per task: whether the
-two winners and reference differ; whether each change alters only the cap or
-the pattern; own-budget utilization and binding; cross-metric feasibility and
-retention; higher, tied or lower rank under the complete frozen selection score
-and its first decisive criterion; all fixed structural work counts; and
-per-arm probe/selection CPU, wall time and peak memory. Paired differences in
-the sum of recorded probe and selection CPU/wall times compare incidence-guided
-with $mJ$-guided and matched $K=32$. Each symmetric short
-triad contributes only support, completed layers and per-arm probe overhead;
-no winner, budget or selection overhead is imputed. The main paper always
-reports support, I-versus-$mJ$ uptake among complete probes and the
-cap-versus-pattern split, the frozen
-score relation on differing winners, own-budget utilization and binding, and
-paired recorded-time differences. Complete selected-candidate source-set, cap
-and pattern-size histograms are always published in the supplement or artifact.
-The panel is descriptive and cannot change either gate. Because the trace
-contains neither exact partition effort $E$ nor a final-search bucket
-trajectory, it tests the selection mechanism but cannot establish
-fragmentation mediation.
-
-Scheduler time and memory are not chosen from benchmark outcomes.
-A fixed three-task purpose-built calibration publishes only completed probe
-layers and selector CPU, wall-time and peak-memory measurements.
-The subsequent freeze reconstructs conservative resource floors from that
-redacted receipt and the three sequential planner limits.
-The array is exactly 300 unthrottled one-CPU task triads on the
-\texttt{fat} partition with normal QoS and no automatic requeue.
-Execution sealing first requires all triads to be terminal-complete and all
-structural output markers to exist.
-Parsing and audit then certify the traces; only after that may fetching and
-the deterministic double-run analysis proceed.
-The direct campaign and Confirmation~B use the same frozen 300-task cohort.
-Their separately executed cells and contrasts answer complementary questions;
-they are not independent replications.
-
-\subsection{Confirmation B Measurement and Analysis}
-
-Every B task has the nine configurations listed in the main paper.
-All PDB configurations use the same 100,000-state budget, encoding order and
-disabled dynamic reordering as A, with no shadow partition, pruning-only mode
-or batching.
-The exact-width and cap-aware references use $K=32$.
-The cap-aware, incidence-guided and matched candidates use caps
-$0,1,2,4,\ldots,256$ that lie below the raw maximum and one exact endpoint.
-Both incidence arms must have structurally identical probe, candidate-pool,
-preselection and reference traces after timing and memory fields are removed.
-The parser independently reconstructs all capped statistics and replays the
-selection rule.
-A separate parser normalizes the standalone cap-aware $K=32$ run's complete
-pattern pool and selected identity.
-These data must equal the reference pool and identity independently
-reconstructed from both the guided and matched traces; disagreement
-invalidates the task rather than redefining the reference.
-Pool equality covers index, sources, pattern, abstract-state count and
-state-budget feasibility; selected-identity equality covers index, sources,
-pattern and the cap, with the exact endpoint normalized to null.
-A probe with fewer than 16 completed blind layers on a positive-cost task is
-unsupported and has no fallback; the task nevertheless remains in the
-performance matrix.
-The completed initial layer at $g=0$ counts toward the 16; ``positive-cost''
-refers to operator costs, not to the layer's $g$ value.
-
-For task $t$ and reference $R$, the normalized improvement is
-\[
- \delta_R(t)=
- \frac{\operatorname{PAR2}_R(t)-\operatorname{PAR2}_{I\text{-guided}}(t)}
- {3600}.
-\]
-A solved run contributes its total planner time, which must lie in
-$[0,1800]$ seconds.
-Every unsolved, unsupported, resource-limited or algorithm-failure cell
-contributes 3600 seconds.
-The task effects are averaged within normalized family and then equally over
-families.
-The paired-family bootstrap uses 100,000 resamples, seed 20260902 and the same
-nearest-rank endpoints as A.
-As in A, this is a finite-cohort family-reweighting stability analysis, not a
-population confidence statement about unseen families.
-The complete gate applies separately against the cap-aware reference and the
-matched-work control; every task appears in both contrasts.
-Each contrast additionally reports the same non-gating paired solve table and
-equal-family normalized total-time difference on commonly solved tasks.
-The mechanism subset is fixed solely by a certified difference between the
-guided and reference selected identities.
-It must contain at least 50 tasks from ten families and pass the same coverage,
-effect, bootstrap-reweighting and leave-one-family-out clauses against the
-matched-work control.
-
-Confirmations A and B run on the execution cluster's \texttt{fat} partition
-with normal QoS, one CPU and 26~GiB requested per cell group.
-The planner limit is 1,800 seconds and 24,576~MiB per cell; three cells run
-sequentially in each 01:40:00 array element, without an array throttle, nice
-adjustment or automatic requeue.
-For B, all nine cells of each task are contiguous, and its cap-aware $K=32$,
-incidence-guided and matched-work runs form the final task-blocked three-run
-array element.
-Within each family, a deterministic cyclic schedule balances which of the
-three configurations runs first, second and third; the complete task-to-order
-mapping and its digest are frozen and revalidated through build, launch, audit
-and recovery.  The 2,700 cells therefore occupy 900 unthrottled array
-elements.
-Only prespecified scheduler interruptions permit recovery; timeouts,
-out-of-memory conditions and algorithm failures are never selectively rerun.
-Any permitted B recovery reruns the entire interrupted three-cell element,
-including a cell that had already completed.
-The B trace reports probe and selection CPU time, wall time and peak-memory
-delta separately, but these measurements are descriptive and do not affect a
-gate.
-The guided--matched contrast controls for this probe work because both arms pay
-it, whereas the guided--standalone-reference contrast includes it in total
-planner time.
-% RESULT_INSERT_CONFIRMATORY_HARDWARE: report the allocated processor model
-% and final execution-receipt identifiers with the sealed A/B results; report
-% the direct campaign's calibration-frozen scheduler resources separately.
+The fixed protocol permits selector experiments only after Confirmation A
+passes its complete gate. It does not pass, despite meeting every support
+threshold. We therefore do not generate a selector cohort and do not run the
+planned controlled comparison with the developmental $mJ$ selector or the
+broader comparison with the cap-aware reference and existing methods.
+The selection rule and its probe-safety guarantee are theoretical results;
+there is no confirmatory end-to-end selector evidence.
 
 \section{Archived Developmental Search and Cofactor Theory}
 \label{sec:supp-legacy-theory}
@@ -2827,9 +2648,9 @@ independent scalar account of total effort.
 
 Within this legacy protocol, no seed, subset, response or threshold replaced
 the failed primary decision.
-The later terminal-incidence metric and Confirmations A and B address a
-different, fixed-frontier target and are reported under their separate frozen
-protocols above.
+The later terminal-incidence metric and Confirmation A address a different,
+fixed-frontier target and are reported above. The planned selector experiments
+remain unrun because A does not pass its complete gate.
 
 \section{Additional Related-Work Detail}
 \label{sec:supp-related}
