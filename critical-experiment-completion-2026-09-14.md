@@ -175,6 +175,19 @@ subagent: GPT-5.6 Sol implements the recovery wrapper and tests, and the
 existing GPT-5.6 Luna subagent implements the paper-reader support. Main-agent
 work is planning, independent review, scientific interpretation, and prose.
 
+The reviewed recovery wrapper was committed at `96cbdc1e`. Its first local
+invocation at 21:35:30 UTC exited before analysis with
+`ModuleNotFoundError: No module named 'downward'`: resolving the virtual
+environment's Python symlink before invoking it selected the base interpreter
+without Lab's site packages. The invocation, empty stdout and stderr remain
+unchanged under the original `serialization-recovery` filenames. No analysis
+output, recovery receipt or completion seal was produced. The correction
+invokes the absolute virtual-environment path without resolving it, while
+retaining the resolved executable's hash as provenance. A separate
+`serialization-recovery-venv` log prefix preserves both attempts. The Sol
+subagent also owns the matching paper-reader path correction and integration
+tests. This is a reporting launch repair, not a scientific rerun.
+
 During the wait, the anonymous manuscript was also checked for private
 revision identities. Exact revision hashes remain in the reproducibility
 records but were removed from review-facing prose. References to registered

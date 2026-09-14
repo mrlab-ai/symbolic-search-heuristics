@@ -32,9 +32,9 @@ ANALYSIS = C.G.ROOT / "pdb_within_family_a_analysis.py"
 WRAPPER = Path(__file__).resolve()
 
 RECOVERY = A.OUTPUT / "serialization-recovery.json"
-INVOCATION = A.OUTPUT / "serialization-recovery-invocation.json"
-STDOUT = A.OUTPUT / "serialization-recovery.stdout"
-STDERR = A.OUTPUT / "serialization-recovery.stderr"
+INVOCATION = A.OUTPUT / "serialization-recovery-venv-invocation.json"
+STDOUT = A.OUTPUT / "serialization-recovery-venv.stdout"
+STDERR = A.OUTPUT / "serialization-recovery-venv.stderr"
 SEAL = A.OUTPUT / "completion-seal.json"
 
 EXPECTED_LAUNCH_SHA256 = "47922017ce4ca0b86233005723da29e433826a2360879b300e3194a7876ac881"
@@ -296,10 +296,18 @@ def _paths(output):
 
 def _command(python, properties, output):
     return [
-        str(Path(python).resolve()), "-X", "int_max_str_digits=100000", "-B",
+        str(Path(python).absolute()), "-X", "int_max_str_digits=100000", "-B",
         str(ANALYSIS.resolve()), "--properties", str(Path(properties).resolve()),
         "--output", str(Path(output).resolve()),
     ]
+
+
+def _child_environment():
+    environment = os.environ.copy()
+    for name in ENVIRONMENT["unset"]:
+        environment.pop(name, None)
+    environment.update(ENVIRONMENT["set"])
+    return environment
 
 
 def _invocation(command, started, ended, returncode, timed_out, stdout, stderr, python):
@@ -452,10 +460,7 @@ def recover(launch=LAUNCH, poll=POLL, properties=PROPERTIES, output=A.OUTPUT,
         raise ValueError("pinned recovery interpreter changed")
     wrapper = _committed_wrapper_identity()
     command = _command(python, properties, output)
-    environment = os.environ.copy()
-    for name in ENVIRONMENT["unset"]:
-        environment.pop(name, None)
-    environment.update(ENVIRONMENT["set"])
+    environment = _child_environment()
     started = datetime.now(timezone.utc).isoformat()
     run = subprocess.run if runner is None else runner
     try:

@@ -249,11 +249,11 @@ class SerializationRecoveryTests(unittest.TestCase):
                 fixture.recover(runner)
             self.assertFalse((fixture.output / "serialization-recovery.json").exists())
             self.assertFalse((fixture.output / "completion-seal.json").exists())
-            self.assertEqual((fixture.output / "serialization-recovery.stdout").read_bytes(), b"out")
-            self.assertEqual((fixture.output / "serialization-recovery.stderr").read_bytes(),
+            self.assertEqual((fixture.output / R.STDOUT.name).read_bytes(), b"out")
+            self.assertEqual((fixture.output / R.STDERR.name).read_bytes(),
                              b"serialization failed")
             invocation = json.loads(
-                (fixture.output / "serialization-recovery-invocation.json").read_bytes())
+                (fixture.output / R.INVOCATION.name).read_bytes())
             self.assertEqual(invocation["returncode"], 1)
             self.assertFalse(invocation["timed_out"])
             with self.assertRaisesRegex(ValueError, "refusing existing"):
@@ -268,12 +268,12 @@ class SerializationRecoveryTests(unittest.TestCase):
                 fixture.recover(runner)
             self.assertFalse((fixture.output / "serialization-recovery.json").exists())
             self.assertFalse((fixture.output / "completion-seal.json").exists())
-            self.assertEqual((fixture.output / "serialization-recovery.stdout").read_bytes(),
+            self.assertEqual((fixture.output / R.STDOUT.name).read_bytes(),
                              b"partial out")
-            self.assertEqual((fixture.output / "serialization-recovery.stderr").read_bytes(),
+            self.assertEqual((fixture.output / R.STDERR.name).read_bytes(),
                              b"partial err")
             invocation = json.loads(
-                (fixture.output / "serialization-recovery-invocation.json").read_bytes())
+                (fixture.output / R.INVOCATION.name).read_bytes())
             self.assertIsNone(invocation["returncode"])
             self.assertTrue(invocation["timed_out"])
 
@@ -319,11 +319,32 @@ class SerializationRecoveryTests(unittest.TestCase):
                                             fixture.properties, fixture.output)
 
     def test_refuses_existing_outputs_or_logs(self):
-        for name in ("analysis.json", "serialization-recovery.stderr"):
+        for name in ("analysis.json", R.STDERR.name):
             with self.subTest(name=name), RecoveryFixture() as fixture:
                 (fixture.output / name).write_bytes(b"existing")
                 with self.assertRaisesRegex(ValueError, "refusing existing"):
                     fixture.recover()
+
+    def test_preserves_failed_attempt_logs_under_the_old_prefix(self):
+        with RecoveryFixture() as fixture:
+            retained = {
+                "serialization-recovery-invocation.json": b"failed invocation\n",
+                "serialization-recovery.stdout": b"failed stdout\n",
+                "serialization-recovery.stderr": b"failed stderr\n",
+            }
+            for name, raw in retained.items():
+                (fixture.output / name).write_bytes(raw)
+            fixture.recover()
+            for name, raw in retained.items():
+                self.assertEqual((fixture.output / name).read_bytes(), raw)
+
+    def test_exact_venv_command_imports_lab_dependencies(self):
+        command = [str(R.PYTHON.absolute()), "-X", "int_max_str_digits=100000", "-B",
+                   "-c", "import downward, lab"]
+        self.assertNotEqual(command[0], str(R.PYTHON.resolve()))
+        completed = subprocess.run(command, cwd=C.G.ROOT, env=R._child_environment(),
+                                   capture_output=True, timeout=30, check=False)
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
 
 
 if __name__ == "__main__":
