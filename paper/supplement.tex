@@ -751,10 +751,13 @@ Each of 30 candidate families has five fixed size settings.
 A technical pilot generates the smallest, middle and largest settings twice,
 requiring byte-identical domain/problem pairs.
 All 90 generator-pilot tasks satisfy this repeatability check.
-The translation-only pilot determines structural compatibility without
-running heuristics.
-A family enters the candidate population only if all three pilot tasks are
-supported.
+The translation-only pilot finds 84 supported tasks in 28 families.
+All three Cave Diving inputs are rejected for undefined objects in domain
+actions, and all three Maintenance inputs for a duplicate object.
+These failures remain in the pilot report; neither family enters the
+scientific population.
+We use every family for which all three pilot tasks are supported, without
+running heuristics or repairing the two excluded generators.
 
 The A target is 650 tasks, allocated as evenly as possible across supported
 families and then across each family's five size settings.
