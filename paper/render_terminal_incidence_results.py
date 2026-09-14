@@ -2426,9 +2426,13 @@ def _write_output_atomic(
 
 
 def _run_self_test() -> bool:
-    suite = unittest.defaultTestLoader.discover(
-        str(Path(__file__).resolve().parent),
-        pattern="test_render_terminal_incidence_results.py",
+    suite = unittest.TestSuite(
+        unittest.defaultTestLoader.discover(str(PAPER_ROOT), pattern=pattern)
+        for pattern in (
+            "test_render_terminal_incidence_results.py",
+            "test_terminal_incidence_evidence.py",
+            "test_terminal_incidence_selection_evidence.py",
+        )
     )
     result = unittest.TextTestRunner(verbosity=1).run(suite)
     return result.wasSuccessful()
