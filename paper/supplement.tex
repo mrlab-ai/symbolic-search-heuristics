@@ -50,6 +50,7 @@
 \newcommand{\bddastar}{BDDA\ensuremath{^{*}}}
 \newcommand{\astar}{A\ensuremath{^{*}}}
 \newcommand{\ghseta}{GHSETA\ensuremath{^{*}}}
+\input{generated/terminal-incidence-results.tex}
 
 \theoremstyle{plain}
 \newtheorem{theorem}{Theorem}
@@ -913,6 +914,85 @@ The original all-prior-unrepresented gate is not applied to this
 within-family design.
 The analysis is run twice from fresh loads of the sealed matrix; publication
 requires byte-identical canonical outputs.
+
+\subsection{Confirmation A Results}
+
+\TIOutcomeSourceAudit
+\TIOutcomeA
+\TIOutcomeHardware
+
+\begin{table*}[htbp]
+\centering
+\small
+\caption{Full predictor comparison. The columns give target-strict concordance,
+incidence advantage, both 95\% paired-family bootstrap endpoints, minimum
+leave-one-family-out advantage, normalized exact-effort top-choice regret,
+and equal-family certificate tightness. Tightness is undefined for the two
+non-certificate baselines; dashes indicate unavailable estimates.}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+Predictor & Concordance & Advantage & Lower & Upper & LOFO min. & Regret & Tightness \\
+\midrule
+\TIOutcomeAPredictorRows
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[htbp]
+\centering
+\small
+\caption{Non-gating diagnostics: all-strict concordance, exact-effort regret,
+top-choice tie rate, equal-family certificate tightness and its nearest-rank
+family quartiles. These rows do not alter the confirmation decision.}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+Predictor & All-strict & Regret & Tie rate & Tightness & $q_{25}$ & $q_{50}$ & $q_{75}$ \\
+\midrule
+\TIOutcomeADiagnosticRows
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{A construction outcomes. Each row accounts for all 650 source tasks.}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Generator & Completed & Failed & Absent \\
+\midrule
+\TIOutcomeAConstructionRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Common-frontier eligibility and exclusions for all A tasks.}
+\begin{tabular}{@{}lr@{}}
+\toprule
+Status & Tasks \\
+\midrule
+\TIOutcomeAFrontierRows
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table*}[htbp]
+\centering
+\small
+\caption{Non-gating measurement cost of masked-ADD/incidence computation
+relative to exact bucket construction. Ratios are defined only for positive
+exact-partition measurement times and are not end-to-end search speedups.}
+\begin{tabular}{@{}lr@{}}
+\toprule
+Measurement & Value \\
+\midrule
+\TIOutcomeATimingRows
+\bottomrule
+\end{tabular}
+\end{table*}
 
 \subsection{Controlled Predecessor-Ablation Measurement and Analysis}
 

@@ -75,6 +75,7 @@
 \input{generated/pdb-profile-order-intervention-v1.tex}
 \input{generated/pdb-profile-certificate-holdout-v1.tex}
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
+\input{generated/terminal-incidence-results.tex}
 \newcommand{\legacyresultinterface}{%
   \HoldoutTwoEffectRows
   \HoldoutSelectorStressRows
@@ -122,6 +123,7 @@ ablation against an otherwise identical selector guided by the developmental
 predecessor $mJ$, which multiplies the co-occurring residual profile by the
 active-value count.
 % RESULT_INSERT_ABSTRACT_A: insert the sealed Confirmation A result and scope.
+\TIOutcomeAbstract
 % RESULT_INSERT_ABSTRACT_METRIC: insert the predecessor-ablation result only if
 % A authorized it and the campaign sealed.
 % RESULT_INSERT_ABSTRACT_B: insert B only if A authorized and B was completed.
@@ -185,7 +187,7 @@ An independent standard-Apply argument gives a total-ADD certificate.
 We prove that this certificate and the masked-cofactor certificate are
 incomparable.
 More strongly, one explicit decision-diagram family has exact counts
-$E=I=k(r+L)$ for $k=2^r$, while each preregistered certificate baseline is
+$E=I=k(r+L)$ for $k=2^r$, while each fixed certificate baseline is
 $\Theta(k^2L)$ when $L\geq r$.
 On an exact-PDB blind layer, two PDBs tie under active-value count, masked ADD
 size and every certificate baseline, whereas incidence recovers their strict
@@ -781,10 +783,33 @@ Failure of any support or effect clause is a failed confirmation.
 The infeasible unseen-family stratum is not part of this within-family test.
 
 % ================= RESULT_INSERT_CONFIRMATION_A_BEGIN =================
+\TIOutcomeA
+
+Table~\ref{tab:confirmation-a-predictors} reports the complete predictor
+comparison.
+The interval endpoints and leave-one-family-out minima describe stability to
+reweighting the tested families, not uncertainty over unseen families.
+\begin{table}[htbp]
+\centering
+\small
+\caption{Equal-family target-strict concordance $c_P$, incidence advantage
+$\Delta=c_I-c_P$, lower 95\% paired-family bootstrap endpoint $L$ and minimum
+leave-one-family-out advantage $L_{-f}$. Predictor ties score one half;
+unavailable estimates are shown as dashes. All nine advantages must satisfy
+the fixed gate.}
+\label{tab:confirmation-a-predictors}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Predictor & $c_P$ & $\Delta$ & $L$ & $L_{-f}$ \\
+\midrule
+\TIOutcomeACompactRows
+\bottomrule
+\end{tabular}
+\end{table}
 % Insert only the double-executed, sealed A analysis here.
 % Report target-strict support, I concordance, all nine margins, bootstrap lower
-% endpoints, leave-one-family-out minima, the robust all-prior-unrepresented
-% gate, all-strict sensitivity, exact-E top-choice regret, certificate
+% endpoints, leave-one-family-out minima, the within-family gate,
+% all-strict sensitivity, exact-E top-choice regret, certificate
 % tightness and masked/incidence-versus-exact-partition measurement timing.
 % State PASS or FAIL for the complete gate explicitly.
 % If A fails, do not insert or imply Confirmation B results.
@@ -851,11 +876,11 @@ registered decision.
 
 \subsection{Confirmation B: Does Incidence Improve Selection?}
 
-Confirmation B is frozen in advance but may run only if Confirmation A passes
-its complete gate.
-It requires a source-disjoint cohort of exactly 300 tasks from at least 30
-normalized families, including prespecified shadow-unrepresented and
-all-prior-unrepresented support.
+Confirmation B may be prepared only if Confirmation A passes its complete
+gate.
+Its target is a separate 300-task generated-instance cohort within the
+families retained by structural screening; it cannot test the abandoned
+unseen-family claim.
 The nine configurations are blind search, three direct PDBs, CEGAR, uncapped
 exact-width selection, the cap-aware $K=32$ reference, incidence-guided
 selection and the matched-work control.
@@ -992,6 +1017,7 @@ Only if that claim survives do fresh guided runs test whether choosing with
 incidence rather than $mJ$ improves search, and whether the
 incidence-budgeted selector improves over the reference and alternatives.
 % RESULT_INSERT_CONCLUSION_A: replace the preceding protocol sentence with
+\TIOutcomeConclusion
 % the sealed A conclusion and its exact scope.
 % RESULT_INSERT_CONCLUSION_METRIC: add the metric-choice conclusion only if
 % authorized and sealed.

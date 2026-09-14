@@ -34,6 +34,17 @@ B generation and all
 selector runs remain deferred. No new heuristic-performance outcomes have
 been observed.
 
+The A-only source-screening pipeline was submitted at 13:55:17 UTC:
+2412435 (build), **2412436** (790-element translation array), 2412437 (parse),
+2412438 (fetch), 2412439 (report), and 2412440 (summary). It uses `fat`, normal
+QoS, nine CPUs, 3 GiB per CPU, 35 minutes per scheduler task and no throttle.
+The immutable launch journal is
+`experiments/artifacts/pdb-within-family-confirmation-v1/source-full/launch.json`.
+Its first permitted check is after 14:55:17.494330 UTC (16:55:17.494330 Stockholm).
+No full-source status or result has been read at this checkpoint. The four-arm
+scientific A experiment remains unsubmitted until this source census is
+complete and 650 tasks are frozen.
+
 ## Approved within-family redesign
 
 After the source-feasibility failure below, the user approved replacing the
