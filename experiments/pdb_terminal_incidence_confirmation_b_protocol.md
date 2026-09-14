@@ -8,7 +8,7 @@ its pin, both byte-identical A outputs, the sealed source-audit artifacts, the
 planner identity, every executed Python source, and the option matrix. The A
 authorization exports `{revision, cache_name, build_options, downward_sha256,
 preprocess_sha256, tree_manifest_sha256}` and B requires exact equality.
-The shared source chain is the fresh campaign-V11 full census. It attempts all
+The shared source chain is the fresh campaign-V12 full census. It attempts all
 1,640 candidates as 820 two-candidate shards and reads or reuses no V1--V10
 task log, scheduler row, shard, temporary file, translated task, or scientific
 payload. Its compute canary and full census run on `fat` with normal QoS, no
@@ -20,7 +20,7 @@ isolation. The only source classifications are `input-rejected`,
 `resource-excluded`, and `success`; only records independently certified as
 eligible successes may enter either cohort.
 
-V11 first commits its source closure at revision S. A controller publication
+V12 first commits its source closure at revision S. A controller publication
 canary and an independent one-row compute canary then establish the filesystem,
 publisher, execution, and scheduler contracts. Their complete append-only
 evidence and preflight authorization are committed at revision P. Only an
@@ -32,13 +32,13 @@ any worker payload. The full seal and all authenticated source records are
 committed at revision Q. Failed canaries or census rows cannot be selectively
 repaired; they require a new versioned campaign.
 
-The independent V11 consumer and committed-snapshot reader authenticate the
+The independent V12 consumer and committed-snapshot reader authenticate the
 entire S-to-P-to-Q control chain, both canaries, the inventory, source and
 translator closures, launch and execution receipts, scheduler gate,
 attestation, all 1,640 records, eligibility, and cohort disjointness. The
 freeze-time adapter exposes no worker payload: it returns immutable A and B
 source projections containing exactly the 14 native source-identity fields,
-plus hashes that bind both projections and the authenticated V11 closure. B
+plus hashes that bind both projections and the authenticated V12 closure. B
 uses the adapter's exact `guided_b` projection from the same Q that seeded A;
 neither the B freeze nor its runtime loader reconstructs the split.
 
@@ -50,12 +50,12 @@ guided-study authorization. The authorization must name the identical planner,
 benchmark, Q seal, A projection, and guided-B projection and must bind A's
 freeze. B's later clean `freeze_repository_revision` must descend in order from
 S, P, Q, and the A-freeze revision, and independently from the planner
-revision. It binds the embedded V11 source projection, the complete A
+revision. It binds the embedded V12 source projection, the complete A
 authorization, and every executed B source. After planner caching and
 immediately before the exclusive freeze write, B repeats the clean-parent,
 same-Q source consumption, A authorization, ancestry, and live/tracked-source
 checks. Runtime and analysis validate only that immutable B freeze and never
-reopen V11 or authorize from mutable A artifacts.
+reopen V12 or authorize from mutable A artifacts.
 
 All canonical protocol, authorization, launch, audit, and analysis inputs are
 lexically validated before filesystem I/O and read and hashed through stable

@@ -14,7 +14,7 @@ from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 
 import pdb_terminal_incidence_confirmation_a_protocol as SourceValidation
-import pdb_terminal_incidence_confirmation_v11_adapter as SourceV11
+import pdb_terminal_incidence_confirmation_v12_adapter as SourceV12
 
 
 class ProtocolError(RuntimeError):
@@ -34,7 +34,7 @@ FREEZE_SCHEMA = (
 )
 FROZEN_SOURCE_SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-b-source/v1/campaign-v11"
+    "pdb-terminal-incidence-confirmation-b-source/v1/campaign-v12"
 )
 CONFIRMATION_A_ARTIFACT_DIR = (
     SCRIPT_DIR / "artifacts" / "pdb-terminal-incidence-confirmation" /
@@ -342,10 +342,10 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
-    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v11.py",
-    "experiments/pdb_terminal_incidence_confirmation_v11_adapter.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v12.py",
+    "experiments/pdb_terminal_incidence_confirmation_v12_adapter.py",
     "experiments/pdb_terminal_incidence_selector_parser.py",
-    "experiments/pdb_terminal_incidence_v11_snapshot_reader.py",
+    "experiments/pdb_terminal_incidence_v12_snapshot_reader.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
     "experiments/requirements-pdb-terminal-incidence-shadow.txt",
@@ -397,31 +397,31 @@ class SourceMaterials:
         return self.confirmation_a_source_projection_sha256
 
 
-def _plain_v11(value):
+def _plain_v12(value):
     if is_dataclass(value):
         return {
-            field.name: _plain_v11(getattr(value, field.name))
+            field.name: _plain_v12(getattr(value, field.name))
             for field in fields(value)
         }
     if isinstance(value, Mapping):
         if any(type(key) is not str for key in value):
-            raise ProtocolError("V11 source mapping key is not text")
-        return {key: _plain_v11(item) for key, item in value.items()}
+            raise ProtocolError("V12 source mapping key is not text")
+        return {key: _plain_v12(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
-        return [_plain_v11(item) for item in value]
+        return [_plain_v12(item) for item in value]
     if value is None or type(value) in (bool, int, float, str):
         return value
-    raise ProtocolError("V11 source value is not canonical JSON")
+    raise ProtocolError("V12 source value is not canonical JSON")
 
 
 def _source_payload(authorized) -> dict:
-    if type(authorized) is not SourceV11.AuthorizedV11Cohorts:
-        raise ProtocolError("V11 adapter returned an unexpected result")
+    if type(authorized) is not SourceV12.AuthorizedV12Cohorts:
+        raise ProtocolError("V12 adapter returned an unexpected result")
     return {
         "schema": FROZEN_SOURCE_SCHEMA,
         "source_seal_revision": authorized.bindings.seal_repository_commit_id,
-        "bindings": _plain_v11(authorized.bindings),
-        "guided_b": _plain_v11(authorized.guided_b),
+        "bindings": _plain_v12(authorized.bindings),
+        "guided_b": _plain_v12(authorized.guided_b),
     }
 
 
@@ -433,9 +433,9 @@ def _validate_native_task(task: dict) -> None:
             from err
 
 
-def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
+def _validate_v12_bindings(bindings: dict, source_seal_revision: str) -> None:
     try:
-        SourceValidation._validate_v11_bindings(
+        SourceValidation._validate_v12_bindings(
             bindings, source_seal_revision,
         )
     except SourceValidation.ProtocolError as err:
@@ -448,7 +448,7 @@ def _materials_from_frozen_source(source: dict) -> SourceMaterials:
     } or source.get("schema") != FROZEN_SOURCE_SCHEMA:
         raise ProtocolError("Confirmation B frozen source shape changed")
     revision = source.get("source_seal_revision")
-    _validate_v11_bindings(source.get("bindings"), revision)
+    _validate_v12_bindings(source.get("bindings"), revision)
     bindings = source["bindings"]
     cohort = source.get("guided_b")
     if not isinstance(cohort, dict) or set(cohort) != {
@@ -528,10 +528,10 @@ def _materials_from_frozen_source(source: dict) -> SourceMaterials:
     )
 
 
-def _v11_source_provenance(materials: SourceMaterials) -> dict:
+def _v12_source_provenance(materials: SourceMaterials) -> dict:
     bindings = materials.bindings
     return {
-        "source_audit_campaign": "v11-full-census",
+        "source_audit_campaign": "v12-full-census",
         "source_audit_launch_receipt_sha256": bindings["launch_receipt_sha256"],
         "source_audit_execution_receipt_sha256": (
             bindings["execution_receipt_sha256"]
@@ -680,7 +680,7 @@ def load_confirmation_a_authorization(
         "confirmation_a_cohort_manifest_sha256": (
             ConfirmationA.P.COHORT_MANIFEST_SHA256
         ),
-        "source_audit_provenance": ConfirmationA.P.v11_run_provenance(),
+        "source_audit_provenance": ConfirmationA.P.v12_run_provenance(),
         "confirmation_a_freeze_path": ConfirmationA.P.FREEZE_PATH,
         "confirmation_a_freeze_repository_revision": (
             ConfirmationA.P.FREEZE_REPOSITORY_REVISION
@@ -704,7 +704,7 @@ def _validate_confirmation_a_source_link(
         ),
     }
     source_provenance = authorization.get("source_audit_provenance")
-    expected_provenance = _v11_source_provenance(materials)
+    expected_provenance = _v12_source_provenance(materials)
     if (
         authorization.get("guided_study_authorized") is not True
         or any(authorization.get(key) != value for key, value in expected.items())
@@ -735,19 +735,19 @@ def _planner_identity(planner: dict) -> dict:
 
 
 def load_source_materials(source_seal_revision: str) -> SourceMaterials:
-    """Load the authorized source projection from one immutable V11 seal."""
+    """Load the authorized source projection from one immutable V12 seal."""
     if not isinstance(source_seal_revision, str):
-        raise ProtocolError("V11 source seal revision is malformed")
+        raise ProtocolError("V12 source seal revision is malformed")
     try:
-        authorized = SourceV11.load_authorized_cohorts(source_seal_revision)
+        authorized = SourceV12.load_authorized_cohorts(source_seal_revision)
     except (
-        SourceV11.V11AdapterError,
-        SourceV11.SourceV11.SourceConsumerError,
+        SourceV12.V12AdapterError,
+        SourceV12.SourceV12.SourceConsumerError,
     ) as err:
         raise ProtocolError(str(err)) from err
     source = _source_payload(authorized)
     if source["source_seal_revision"] != source_seal_revision:
-        raise ProtocolError("V11 adapter returned the wrong seal revision")
+        raise ProtocolError("V12 adapter returned the wrong seal revision")
     return _materials_from_frozen_source(source)
 
 
@@ -1056,13 +1056,13 @@ def _installed_values() -> dict:
 globals().update(_installed_values())
 
 
-def v11_run_provenance() -> dict:
-    """Return the canonical V11 source projection for every B cell."""
+def v12_run_provenance() -> dict:
+    """Return the canonical V12 source projection for every B cell."""
     if not FREEZE_PATH.exists():
         raise ProtocolError("Confirmation B freeze is not installed")
     _freeze, materials = _load_freeze(FREEZE_PATH)
     return {
-        **_v11_source_provenance(materials),
+        **_v12_source_provenance(materials),
         "confirmation_b_freeze_sha256": sha256_file(FREEZE_PATH),
     }
 

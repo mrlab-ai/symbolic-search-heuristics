@@ -124,7 +124,7 @@ def _fixed_properties() -> dict:
         "planner_cache_name": P.PLANNER_CACHE_NAME,
         "translator_source_sha256": P.TRANSLATOR_SOURCE_SHA256,
         "cost_attestation_sha256": P.COST_ATTESTATION_SHA256,
-        **P.v11_run_provenance(),
+        **P.v12_run_provenance(),
         "cohort_seed": P.COHORT_SEED,
         "cohort_family_count": P.COHORT_FAMILIES,
         "incidence_probe_layers": P.PROBE_LAYERS,
@@ -435,13 +435,13 @@ def _plain_reference_identity(record: dict) -> dict:
     return _plain_reference_evidence(record)["identity"]
 
 
-def _validate_v11_run_provenance(records: list[dict]) -> None:
-    """Require every sealed cell to carry the complete V11 source chain."""
-    expected = P.v11_run_provenance()
+def _validate_v12_run_provenance(records: list[dict]) -> None:
+    """Require every sealed cell to carry the complete V12 source chain."""
+    expected = P.v12_run_provenance()
     for record in records:
         if any(record.get(key) != value for key, value in expected.items()):
             raise ConfirmationBAnalysisError(
-                "sealed cell has inconsistent V11 source provenance"
+                "sealed cell has inconsistent V12 source provenance"
             )
         if LEGACY_SOURCE_PROPERTIES.intersection(record):
             raise ConfirmationBAnalysisError(
@@ -451,7 +451,7 @@ def _validate_v11_run_provenance(records: list[dict]) -> None:
 
 def validate_matrix(records: list[dict]):
     P.validate_protocol_without_sources()
-    _validate_v11_run_provenance(records)
+    _validate_v12_run_provenance(records)
     if len(records) != P.CELL_COUNT:
         raise ConfirmationBAnalysisError(
             "matrix has {} records, expected {}".format(

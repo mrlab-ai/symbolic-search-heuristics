@@ -281,7 +281,7 @@ def validate_primary_job(freeze: dict) -> tuple[bytes, str]:
 
 def _required_launch_ancestors(freeze: dict) -> tuple[str, ...]:
     base = freeze["base_confirmation_b"]
-    bindings = base["source_audit_v11"]["bindings"]
+    bindings = base["source_audit_v12"]["bindings"]
     return (
         bindings["preflight_source_repository_commit_id"],
         bindings["preflight_seal_repository_commit_id"],

@@ -35,7 +35,7 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             "analysis-v4-repeat.json",
         )
 
-    def test_source_loader_accepts_only_one_v11_seal_revision(self):
+    def test_source_loader_accepts_only_one_v12_seal_revision(self):
         parameters = inspect.signature(P.load_source_materials).parameters
         self.assertEqual(tuple(parameters), ("source_seal_revision",))
         self.assertIs(
@@ -64,11 +64,11 @@ class ConfirmationBProtocolTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertFalse(hasattr(P, name))
 
-    def test_b_uses_v11_adapter_and_bound_planner(self):
+    def test_b_uses_v12_adapter_and_bound_planner(self):
         self.assertTrue({
-            "experiments/pdb_terminal_incidence_confirmation_v11_adapter.py",
-            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v11.py",
-            "experiments/pdb_terminal_incidence_v11_snapshot_reader.py",
+            "experiments/pdb_terminal_incidence_confirmation_v12_adapter.py",
+            "experiments/pdb_terminal_incidence_confirmation_source_consumer_v12.py",
+            "experiments/pdb_terminal_incidence_v12_snapshot_reader.py",
         }.issubset(P.EXPERIMENT_SOURCE_FILES))
         self.assertFalse(any(
             "source_consumer_v7" in relative

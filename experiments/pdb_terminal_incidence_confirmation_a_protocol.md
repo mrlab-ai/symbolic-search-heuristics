@@ -23,11 +23,13 @@ validated before filesystem I/O and are read and hashed from one `O_NOFOLLOW`
 descriptor, with regular-file and stable-identity checks before and after the
 read. Symlinks, directories, FIFOs, and identity-changing races fail closed.
 
-The source chain is a fresh V11 census of all 1,640 candidates. It reads or
-reuses no runtime payload from V1--V10. Each of the 820 unthrottled `fat`
+The source chain is a fresh V12 census of all 1,640 candidates. It reads or
+reuses no runtime payload from V1--V11. Each of the 820 unthrottled `fat`
 partition tasks computes its original two candidates under one frozen 62-file
-producer closure. Only `input-rejected` and `success` are accepted source
-outcomes; timeout and every other outcome are infrastructure failures. The
+producer closure. The source census retains successful translations, rejected
+inputs, and evidence-validated memory/time exclusions. A hard CPU-limit signal
+counts as a time exclusion only when the child's kernel CPU usage reaches the
+unchanged 1,800-second budget; an unexplained signal fails the census. The
 terminal seal requires all scheduler rows to be `COMPLETED` with exit `0:0`
 before it reads a worker payload.
 
@@ -50,7 +52,7 @@ selection role, and seed-derived rank. The complete projection and ordered
 candidate indices are separately hashed.
 
 The A freeze consumes exact revision Q, embeds the complete native A
-projection and all V11 bindings, and never reopens V11 payloads afterward. It
+projection and all V12 bindings, and never reopens V12 payloads afterward. It
 proves `S -> P -> Q -> F` and planner revision
 `8148f798f13059ee881ad2471bd20cdd61d2ec18 -> F`. After planner-cache
 validation, it consumes the same Q a second time and compares the complete

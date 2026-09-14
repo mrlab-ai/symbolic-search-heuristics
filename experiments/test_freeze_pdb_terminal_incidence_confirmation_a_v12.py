@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused tests for the V11 Confirmation A freeze boundary."""
+"""Focused tests for the V12 Confirmation A freeze boundary."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ from unittest import mock
 
 import freeze_pdb_terminal_incidence_confirmation_a as Freeze
 import pdb_terminal_incidence_confirmation_a_protocol as P
-import pdb_terminal_incidence_confirmation_v11_adapter as Adapter
-import test_pdb_terminal_incidence_confirmation_v11_adapter as Fixture
+import pdb_terminal_incidence_confirmation_v12_adapter as Adapter
+import test_pdb_terminal_incidence_confirmation_v12_adapter as Fixture
 
 
 FREEZE_REVISION = "4" * 40
 
 
-def authorized_v11():
+def authorized_v12():
     source = Fixture.mixed_authorized_confirmation()
     for record in source.all_records:
         directory = record["directory"]
@@ -30,27 +30,27 @@ def authorized_v11():
         record["aliases"][0]["domain_file"] = record["domain_file"]
         record["aliases"][0]["problem_file"] = record["problem_file"]
     with (
-        mock.patch.object(Adapter.SourceV11, "paths_for", return_value=object()),
+        mock.patch.object(Adapter.SourceV12, "paths_for", return_value=object()),
         mock.patch.object(
-            Adapter.SourceV11, "load_authorized_confirmation",
+            Adapter.SourceV12, "load_authorized_confirmation",
             return_value=source,
         ),
     ):
         return Adapter.load_authorized_cohorts(Fixture.FULL_REVISION)
 
 
-class ConfirmationAV11FreezeTests(unittest.TestCase):
+class ConfirmationAV12FreezeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.authorized = authorized_v11()
+        cls.authorized = authorized_v12()
         with mock.patch.object(
-            P.SourceV11, "load_authorized_cohorts", return_value=cls.authorized,
+            P.SourceV12, "load_authorized_cohorts", return_value=cls.authorized,
         ):
             cls.materials = P.load_source_materials(Fixture.FULL_REVISION)
 
-    def test_exact_v11_seal_revision_path_is_green(self):
+    def test_exact_v12_seal_revision_path_is_green(self):
         with mock.patch.object(
-            P.SourceV11,
+            P.SourceV12,
             "load_authorized_cohorts",
             return_value=self.authorized,
         ):
@@ -99,10 +99,10 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
                       FREEZE_REVISION),
         ])
 
-    def test_frozen_loader_never_reopens_v11(self):
+    def test_frozen_loader_never_reopens_v12(self):
         with mock.patch.object(
-            P.SourceV11, "load_authorized_cohorts",
-            side_effect=AssertionError("must not reopen V11"),
+            P.SourceV12, "load_authorized_cohorts",
+            side_effect=AssertionError("must not reopen V12"),
         ):
             loaded = P._materials_from_frozen_source(
                 self.materials.source_audit,
@@ -124,7 +124,7 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
             self.materials.bindings["resource_exclusion_counts"],
         )
 
-    def test_build_and_revalidation_consume_same_v11_seal_twice(self):
+    def test_build_and_revalidation_consume_same_v12_seal_twice(self):
         planner = {
             "revision": P.PLANNER_REVISION_REQUIRED,
             "cache_name": "cache", "build_options": list(P.BUILD_OPTIONS),
@@ -177,14 +177,14 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
             mock.patch.object(Freeze, "_require_source_ancestry"),
             mock.patch.object(Freeze, "_source_hashes", return_value={}),
             mock.patch.object(P, "load_source_materials", return_value=changed),
-            self.assertRaisesRegex(Freeze.FreezeError, "V11 source changed"),
+            self.assertRaisesRegex(Freeze.FreezeError, "V12 source changed"),
         ):
             Freeze._revalidate_before_write(
                 value, source_seal_revision=Fixture.FULL_REVISION,
                 freeze_repository_revision=FREEZE_REVISION,
             )
 
-    def test_v11_experiment_sources_are_bound_at_freeze_revision(self):
+    def test_v12_experiment_sources_are_bound_at_freeze_revision(self):
         digests = {
             relative: "{:064x}".format(index + 1)
             for index, relative in enumerate(P.EXPERIMENT_SOURCE_FILES)
@@ -204,7 +204,7 @@ class ConfirmationAV11FreezeTests(unittest.TestCase):
             call.args[2] == FREEZE_REVISION for call in attest.call_args_list
         ))
 
-    def test_v11_freeze_round_trip_rejects_embedded_and_source_tamper(self):
+    def test_v12_freeze_round_trip_rejects_embedded_and_source_tamper(self):
         value = {
             "schema": P.FREEZE_SCHEMA,
             "freeze_repository_revision": FREEZE_REVISION,

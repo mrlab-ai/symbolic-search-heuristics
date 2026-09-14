@@ -481,26 +481,26 @@ def validate_manifest(manifest: dict, freeze: dict, freeze_sha256: str) -> None:
         raise RunnerError("runner provenance binding changed")
 
 
-V11_PROVENANCE_PROPERTY_FIELDS = (
-    "source_audit_v11_schema",
+V12_PROVENANCE_PROPERTY_FIELDS = (
+    "source_audit_v12_schema",
     "source_audit_bindings_sha256",
-    *P.V11_RUN_PROVENANCE_FIELDS,
+    *P.V12_RUN_PROVENANCE_FIELDS,
     "confirmation_a_freeze_repository_revision",
 )
 
 
 def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
     base = freeze["base_confirmation_b"]
-    source = base["source_audit_v11"]
+    source = base["source_audit_v12"]
     standalone_source = freeze["standalone_k32"]["sealed_b_input"]
     provenance = base["confirmation_a_authorization"][
         "source_audit_provenance"
     ]
-    expected = P._expected_v11_run_provenance(
+    expected = P._expected_v12_run_provenance(
         source["bindings"], base["confirmation_a_freeze"]["sha256"]
     )
     if provenance != expected:
-        raise RunnerError("V11 run provenance differs from sealed source")
+        raise RunnerError("V12 run provenance differs from sealed source")
     return {
         "campaign_freeze_sha256": freeze_sha256,
         "campaign_freeze_repository_revision": freeze[
@@ -552,7 +552,7 @@ def build_manifest_properties(freeze: dict, freeze_sha256: str) -> dict:
         "standalone_b_properties_sha256": standalone_source[
             "properties_sha256"
         ],
-        "source_audit_v11_schema": source["schema"],
+        "source_audit_v12_schema": source["schema"],
         "source_audit_bindings_sha256": hashlib.sha256(
             P.canonical_json(source["bindings"])
         ).hexdigest(),

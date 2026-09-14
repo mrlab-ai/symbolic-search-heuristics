@@ -32,8 +32,8 @@ HARDWARE = {
 }
 
 
-class V11ProvenanceIntegrationTest(unittest.TestCase):
-    def test_source_names_need_no_live_v11_artifact_paths(self):
+class V12ProvenanceIntegrationTest(unittest.TestCase):
+    def test_source_names_need_no_live_v12_artifact_paths(self):
         with mock.patch.object(
             P, "_load_freeze", return_value=({}, SimpleNamespace(tasks=())),
         ):
@@ -49,9 +49,9 @@ class V11ProvenanceIntegrationTest(unittest.TestCase):
             names[-1], P.FREEZE_PATH.relative_to(Runner.SCRIPT_DIR).as_posix()
         )
 
-    def test_configure_emits_v11_and_no_legacy_source_properties(self):
+    def test_configure_emits_v12_and_no_legacy_source_properties(self):
         provenance = {
-            "source_audit_campaign": "v11-full-census",
+            "source_audit_campaign": "v12-full-census",
             "source_audit_source_repository_commit_id": "1" * 40,
             "source_audit_preflight_seal_repository_commit_id": "2" * 40,
             "source_audit_seal_repository_commit_id": "3" * 40,
@@ -63,7 +63,7 @@ class V11ProvenanceIntegrationTest(unittest.TestCase):
                 P, "_load_freeze",
                 return_value=({"design": {}}, SimpleNamespace(tasks=())),
             ),
-            mock.patch.object(P, "v11_run_provenance", return_value=provenance),
+            mock.patch.object(P, "v12_run_provenance", return_value=provenance),
             mock.patch.object(Runner, "_source_names", return_value=("runner.py",)),
         ):
             Runner.configure()
@@ -76,27 +76,27 @@ class V11ProvenanceIntegrationTest(unittest.TestCase):
                 properties
             ))
 
-    def test_analyzer_requires_exact_v11_provenance(self):
+    def test_analyzer_requires_exact_v12_provenance(self):
         provenance = {
-            "source_audit_campaign": "v11-full-census",
+            "source_audit_campaign": "v12-full-census",
             "source_audit_seal_repository_commit_id": "3" * 40,
         }
         with mock.patch.object(
-            P, "v11_run_provenance", return_value=provenance,
+            P, "v12_run_provenance", return_value=provenance,
         ):
-            Analyze._validate_v11_run_provenance([dict(provenance)])
+            Analyze._validate_v12_run_provenance([dict(provenance)])
             changed = dict(provenance)
             changed["source_audit_seal_repository_commit_id"] = "4" * 40
             with self.assertRaisesRegex(
-                Analyze.ConfirmationAnalysisError, "V11 source provenance"
+                Analyze.ConfirmationAnalysisError, "V12 source provenance"
             ):
-                Analyze._validate_v11_run_provenance([changed])
+                Analyze._validate_v12_run_provenance([changed])
             legacy = dict(provenance)
             legacy["source_audit_v7_output_tree_sha256"] = "5" * 64
             with self.assertRaisesRegex(
                 Analyze.ConfirmationAnalysisError, "obsolete V5/V7"
             ):
-                Analyze._validate_v11_run_provenance([legacy])
+                Analyze._validate_v12_run_provenance([legacy])
 
 
 class PrepareJobTest(unittest.TestCase):

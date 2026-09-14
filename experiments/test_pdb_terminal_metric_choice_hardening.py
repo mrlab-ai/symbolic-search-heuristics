@@ -36,7 +36,7 @@ class HardeningTest(unittest.TestCase):
                 campaign_sources[relative] = digest
         return freeze
 
-    def test_repository_closure_covers_v11_a_b_inputs(self):
+    def test_repository_closure_covers_v12_a_b_inputs(self):
         freeze = self.closure_ready_freeze()
         bindings = Freeze._launch_closure_bindings(freeze, "f" * 64)
         snapshot = freeze["base_confirmation_b"]
@@ -53,7 +53,7 @@ class HardeningTest(unittest.TestCase):
             P.BASE_A_SECOND_OUTPUT_PATH.relative_to(P.REPO).as_posix(),
             *P.SOURCE_FILES,
             *snapshot["base_b_experiment_source_sha256"],
-            *snapshot["source_audit_v11"]["bindings"][
+            *snapshot["source_audit_v12"]["bindings"][
                 "combined_tracked_file_sha256"
             ],
         }
@@ -64,9 +64,9 @@ class HardeningTest(unittest.TestCase):
         with self.assertRaisesRegex(Freeze.FreezeError, "source closure"):
             Freeze._launch_closure_bindings(broken, "f" * 64)
 
-    def test_v11_committed_source_is_in_repository_closure(self):
+    def test_v12_committed_source_is_in_repository_closure(self):
         freeze = self.closure_ready_freeze()
-        tracked = freeze["base_confirmation_b"]["source_audit_v11"][
+        tracked = freeze["base_confirmation_b"]["source_audit_v12"][
             "bindings"
         ]["combined_tracked_file_sha256"]
         bindings = Freeze._launch_closure_bindings(freeze, "f" * 64)
@@ -74,10 +74,10 @@ class HardeningTest(unittest.TestCase):
             {path: bindings[path] for path in tracked}, tracked
         )
 
-    def test_v11_closure_overlap_requires_identical_bytes(self):
+    def test_v12_closure_overlap_requires_identical_bytes(self):
         freeze = self.closure_ready_freeze()
         snapshot = freeze["base_confirmation_b"]
-        bindings = snapshot["source_audit_v11"]["bindings"]
+        bindings = snapshot["source_audit_v12"]["bindings"]
         shared = next(
             relative for relative in P.SOURCE_FILES
             if relative in snapshot["base_b_experiment_source_sha256"]
@@ -93,7 +93,7 @@ class HardeningTest(unittest.TestCase):
             ).hexdigest()
         snapshot["confirmation_a_authorization"][
             "source_audit_provenance"
-        ] = P._expected_v11_run_provenance(
+        ] = P._expected_v12_run_provenance(
             bindings, snapshot["confirmation_a_freeze"]["sha256"]
         )
         with self.assertRaisesRegex(Freeze.FreezeError, "conflicting bindings"):
@@ -301,7 +301,7 @@ class HardeningTest(unittest.TestCase):
         exclusive.assert_called_once_with(P.FREEZE_PATH, built)
         self.assertEqual(events[-1], "write")
 
-    def test_freeze_requires_v11_a_b_ancestors_in_exact_order(self):
+    def test_freeze_requires_v12_a_b_ancestors_in_exact_order(self):
         snapshot = fake_snapshot()
         revision = "d" * 40
         with mock.patch.object(Freeze.JJ, "require_ancestor") as require:
@@ -315,7 +315,7 @@ class HardeningTest(unittest.TestCase):
             mock.call(P.REPO, P.REQUIRED_PLANNER_REVISION, revision),
         ])
 
-    def test_freeze_rejects_v11_ancestry_branch(self):
+    def test_freeze_rejects_v12_ancestry_branch(self):
         snapshot = fake_snapshot()
 
         def require(repo, ancestor, descendant):
@@ -474,7 +474,7 @@ class HardeningTest(unittest.TestCase):
             cohort = (
                 mutated["confirmation_a_cohort"]
                 if role == "confirmation-a"
-                else mutated["source_audit_v11"]["guided_b"]
+                else mutated["source_audit_v12"]["guided_b"]
             )
             cohort["records"][0]["problem_sha256"] = digest
             cohort["records"][0]["aliases"][0]["problem_sha256"] = digest
@@ -482,7 +482,7 @@ class HardeningTest(unittest.TestCase):
                 P.canonical_json(cohort["records"])
             ).hexdigest()
             cohort["source_projection_sha256"] = projection_sha
-            bindings = mutated["source_audit_v11"]["bindings"]
+            bindings = mutated["source_audit_v12"]["bindings"]
             prefix = "confirmation_a" if role == "confirmation-a" else "guided_b"
             bindings[prefix + "_source_projection_sha256"] = projection_sha
             if role == "confirmation-a":
@@ -491,7 +491,7 @@ class HardeningTest(unittest.TestCase):
                 ] = projection_sha
             mutated["confirmation_a_authorization"][
                 "source_audit_provenance"
-            ] = P._expected_v11_run_provenance(
+            ] = P._expected_v12_run_provenance(
                 bindings, mutated["confirmation_a_freeze"]["sha256"]
             )
             with self.subTest(role=role), self.assertRaisesRegex(

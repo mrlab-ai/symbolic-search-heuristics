@@ -119,12 +119,12 @@ def _add_binding(
 def _base_snapshot_bindings(
     snapshot: dict, standalone_binding: dict,
 ) -> dict[str, str]:
-    """Return every in-repository artifact bound by the sealed V11 snapshot."""
+    """Return every in-repository artifact bound by the sealed V12 snapshot."""
     try:
         P.validate_base_snapshot(snapshot)
         P.validate_standalone_source_binding(standalone_binding)
     except P.ProtocolError as err:
-        raise FreezeError("sealed V11 A/B binding is invalid") from err
+        raise FreezeError("sealed V12 A/B binding is invalid") from err
     bindings: dict[str, str] = {}
     _add_binding(
         bindings, snapshot["base_b_freeze_path"],
@@ -186,11 +186,11 @@ def _base_snapshot_bindings(
         bindings, BASE_A_PROPERTIES_PATH,
         authorization["input_properties_sha256"], "Confirmation A properties",
     )
-    tracked = snapshot["source_audit_v11"]["bindings"][
+    tracked = snapshot["source_audit_v12"]["bindings"][
         "combined_tracked_file_sha256"
     ]
     for relative, digest in tracked.items():
-        _add_binding(bindings, relative, digest, "V11 committed source")
+        _add_binding(bindings, relative, digest, "V12 committed source")
     return dict(sorted(bindings.items()))
 
 def _freeze_closure_bindings(
@@ -263,7 +263,7 @@ def _source_hashes(revision: str) -> dict[str, str]:
 
 
 def _require_ancestors(snapshot: dict, revision: str) -> None:
-    bindings = snapshot["source_audit_v11"]["bindings"]
+    bindings = snapshot["source_audit_v12"]["bindings"]
     chain = (
         bindings["preflight_source_repository_commit_id"],
         bindings["preflight_seal_repository_commit_id"],
@@ -285,7 +285,7 @@ def _require_ancestors(snapshot: dict, revision: str) -> None:
         JJ.require_ancestor(P.REPO, P.REQUIRED_PLANNER_REVISION, revision)
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "planner or sealed V11 A/B producer is not an ancestor"
+            "planner or sealed V12 A/B producer is not an ancestor"
         ) from err
 
 
@@ -328,7 +328,7 @@ def freeze(
     )):
         raise FreezeError("campaign freeze input/output path changed")
     revision = _require_clean_parent(freeze_repository_revision)
-    # Calibration is opened and completely validated before any V11 A/B
+    # Calibration is opened and completely validated before any V12 A/B
     # verifier or evidence path is touched.
     calibration_raw, calibration = P.load_canonical(
         calibration_path, "calibration receipt",

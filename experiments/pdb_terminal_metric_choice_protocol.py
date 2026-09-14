@@ -66,13 +66,13 @@ FREEZE_SCHEMA = (
     "symbolic-search-heuristics/pdb-terminal-metric-choice-freeze/v1"
 )
 BASE_SNAPSHOT_SCHEMA = FREEZE_SCHEMA + "/sealed-confirmation-b-snapshot"
-V11_SOURCE_SCHEMA = (
+V12_SOURCE_SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-b-source/v1/campaign-v11"
+    "pdb-terminal-incidence-confirmation-b-source/v1/campaign-v12"
 )
-V11_ADAPTER_SCHEMA = (
+V12_ADAPTER_SCHEMA = (
     "symbolic-search-heuristics/"
-    "universal-unseen-confirmation-source-adapter/v1/campaign-v11"
+    "universal-unseen-confirmation-source-adapter/v1/campaign-v12"
 )
 CALIBRATION_SCHEMA = (
     "symbolic-search-heuristics/pdb-terminal-metric-choice-calibration/v1"
@@ -131,12 +131,12 @@ CALIBRATION_TASK_SPECS = (
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-V11_TRANSLATOR_FILE_COUNT = 38
-V11_CODE_MANIFEST_RELATIVE = (
+V12_TRANSLATOR_FILE_COUNT = 38
+V12_CODE_MANIFEST_RELATIVE = (
     "experiments/"
-    "pdb_terminal_incidence_confirmation_source_audit_v11_code.sha256"
+    "pdb_terminal_incidence_confirmation_source_audit_v12_code.sha256"
 )
-V11_SHADOW_FAMILIES = frozenset({
+V12_SHADOW_FAMILIES = frozenset({
     "agricola", "barman", "caldera", "cavediving", "childsnack",
     "floortile", "hiking", "maintenance", "miconic", "nomystery",
     "nurikabe", "openstacks", "organic-synthesis", "parking",
@@ -144,7 +144,7 @@ V11_SHADOW_FAMILIES = frozenset({
     "termes", "tetris", "thoughtful", "tidybot", "transport", "visitall",
     "woodworking",
 })
-V11_ALL_PRIOR_FAMILIES = frozenset({
+V12_ALL_PRIOR_FAMILIES = frozenset({
     "agricola", "airport", "barman", "blocks", "caldera", "cavediving",
     "childsnack", "depot", "driverlog", "elevators", "floortile",
     "freecell", "ged", "grid", "gripper", "hiking", "logistics",
@@ -156,26 +156,26 @@ V11_ALL_PRIOR_FAMILIES = frozenset({
     "tidybot", "tpp", "transport", "trucks", "visitall", "woodworking",
     "zenotravel",
 })
-V11_A_MIN_FAMILIES = 28
-V11_A_MIN_SHADOW_UNREPRESENTED_FAMILIES = 12
-V11_A_MIN_ALL_PRIOR_UNREPRESENTED_TASKS = 100
-V11_A_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
-V11_B_MIN_FAMILIES = 30
-V11_B_MIN_SHADOW_UNREPRESENTED_FAMILIES = 12
-V11_B_MIN_ALL_PRIOR_UNREPRESENTED_TASKS = 50
-V11_B_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
-V11_B_MAX_TASKS_PER_FAMILY = 12
-V11_SUPPORT_STATUS_KEYS = (
+V12_A_MIN_FAMILIES = 28
+V12_A_MIN_SHADOW_UNREPRESENTED_FAMILIES = 12
+V12_A_MIN_ALL_PRIOR_UNREPRESENTED_TASKS = 100
+V12_A_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
+V12_B_MIN_FAMILIES = 30
+V12_B_MIN_SHADOW_UNREPRESENTED_FAMILIES = 12
+V12_B_MIN_ALL_PRIOR_UNREPRESENTED_TASKS = 50
+V12_B_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES = 10
+V12_B_MAX_TASKS_PER_FAMILY = 12
+V12_SUPPORT_STATUS_KEYS = (
     "indeterminate", "supported", "unsupported",
 )
-V11_SUPPORT_EXCLUSION_REASONS = (
+V12_SUPPORT_EXCLUSION_REASONS = (
     "translation-input-rejected", "no-serialized-operators",
     "nonpositive-serialized-operator-cost", "serialized-axioms",
     "serialized-conditional-effects", "normalized-axioms",
 )
-V11_RESOURCE_EXCLUSION_KEYS = ("memory", "time")
+V12_RESOURCE_EXCLUSION_KEYS = ("memory", "time")
 
-V11_BINDING_FIELDS = (
+V12_BINDING_FIELDS = (
     "schema", "campaign", "benchmark_revision", "seal_repository_commit_id",
     "preflight_campaign", "preflight_source_repository_commit_id",
     "preflight_seal_repository_commit_id", "preflight_full_launch_authorized",
@@ -204,15 +204,15 @@ V11_BINDING_FIELDS = (
     "preflight_tracked_file_sha256_digest", "combined_tracked_file_sha256",
     "combined_tracked_file_sha256_digest",
 )
-V11_TRACKED_BINDING_FIELDS = (
+V12_TRACKED_BINDING_FIELDS = (
     "full_tracked_file_sha256", "preflight_tracked_file_sha256",
     "combined_tracked_file_sha256",
 )
-V11_COMMIT_BINDING_FIELDS = (
+V12_COMMIT_BINDING_FIELDS = (
     "preflight_source_repository_commit_id",
     "preflight_seal_repository_commit_id", "seal_repository_commit_id",
 )
-V11_RUN_PROVENANCE_FIELDS = (
+V12_RUN_PROVENANCE_FIELDS = (
     "source_audit_campaign", "source_audit_launch_receipt_sha256",
     "source_audit_execution_receipt_sha256",
     "source_audit_code_manifest_sha256", "source_audit_repository_commit_id",
@@ -234,13 +234,13 @@ V11_RUN_PROVENANCE_FIELDS = (
     "source_audit_guided_b_indices_sha256",
     "source_audit_guided_b_projection_sha256", "confirmation_a_freeze_sha256",
 )
-V11_SOURCE_PROJECTION_FIELDS = (
+V12_SOURCE_PROJECTION_FIELDS = (
     "candidate_index", "directory", "family", "problem", "domain_file",
     "problem_file", "domain_sha256", "problem_sha256", "canonical_path",
     "is_shadow_family", "is_shadow_unrepresented", "is_all_prior_represented",
     "is_all_prior_unrepresented", "aliases",
 )
-V11_ALIAS_FIELDS = (
+V12_ALIAS_FIELDS = (
     "directory", "family", "problem", "domain_file", "problem_file",
     "domain_sha256", "problem_sha256",
 )
@@ -272,10 +272,10 @@ BASE_B_EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
-    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v11.py",
-    "experiments/pdb_terminal_incidence_confirmation_v11_adapter.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v12.py",
+    "experiments/pdb_terminal_incidence_confirmation_v12_adapter.py",
     "experiments/pdb_terminal_incidence_selector_parser.py",
-    "experiments/pdb_terminal_incidence_v11_snapshot_reader.py",
+    "experiments/pdb_terminal_incidence_v12_snapshot_reader.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_b.py",
     "experiments/requirements-pdb-terminal-incidence-shadow.txt",
@@ -307,9 +307,9 @@ SOURCE_FILES = (
     "experiments/pdb_terminal_metric_choice_requirements.txt",
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_b_protocol.py",
-    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v11.py",
-    "experiments/pdb_terminal_incidence_confirmation_v11_adapter.py",
-    "experiments/pdb_terminal_incidence_v11_snapshot_reader.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v12.py",
+    "experiments/pdb_terminal_incidence_confirmation_v12_adapter.py",
+    "experiments/pdb_terminal_incidence_v12_snapshot_reader.py",
     "experiments/test_pdb_terminal_metric_choice_protocol.py",
     "experiments/test_pdb_terminal_metric_choice_planner_manifest.py",
     "experiments/test_pdb_terminal_metric_choice_parser.py",
@@ -648,7 +648,7 @@ def _require_commit40(value, label: str) -> None:
         raise ProtocolError("{} commit is invalid".format(label))
 
 
-def _validate_v11_tracked(value, label: str) -> dict[str, str]:
+def _validate_v12_tracked(value, label: str) -> dict[str, str]:
     if not isinstance(value, dict) or not value:
         raise ProtocolError("{} tracked closure is absent".format(label))
     for relative, digest in value.items():
@@ -657,22 +657,22 @@ def _validate_v11_tracked(value, label: str) -> dict[str, str]:
     return dict(sorted(value.items()))
 
 
-def _validate_v11_bindings(bindings: dict) -> None:
-    if not isinstance(bindings, dict) or set(bindings) != set(V11_BINDING_FIELDS):
-        raise ProtocolError("V11 source binding shape changed")
-    for field in V11_COMMIT_BINDING_FIELDS:
-        _require_commit40(bindings.get(field), "V11 " + field)
-    commits = tuple(bindings[field] for field in V11_COMMIT_BINDING_FIELDS)
+def _validate_v12_bindings(bindings: dict) -> None:
+    if not isinstance(bindings, dict) or set(bindings) != set(V12_BINDING_FIELDS):
+        raise ProtocolError("V12 source binding shape changed")
+    for field in V12_COMMIT_BINDING_FIELDS:
+        _require_commit40(bindings.get(field), "V12 " + field)
+    commits = tuple(bindings[field] for field in V12_COMMIT_BINDING_FIELDS)
     hash_fields = {
-        field for field in V11_BINDING_FIELDS
+        field for field in V12_BINDING_FIELDS
         if field.endswith("_sha256") or field.endswith("_sha256_digest")
-    } - set(V11_TRACKED_BINDING_FIELDS)
+    } - set(V12_TRACKED_BINDING_FIELDS)
     for field in hash_fields:
-        _require_sha(bindings.get(field), "V11 " + field)
+        _require_sha(bindings.get(field), "V12 " + field)
     if any((
-        bindings.get("schema") != V11_ADAPTER_SCHEMA,
-        bindings.get("campaign") != "v11-full-census",
-        bindings.get("preflight_campaign") != "v11-preflight",
+        bindings.get("schema") != V12_ADAPTER_SCHEMA,
+        bindings.get("campaign") != "v12-full-census",
+        bindings.get("preflight_campaign") != "v12-preflight",
         bindings.get("benchmark_revision")
         != "48d6a00d482de2384a9e751f9343df58bf5582be",
         bindings.get("preflight_full_launch_authorized") is not True,
@@ -690,7 +690,7 @@ def _validate_v11_bindings(bindings: dict) -> None:
         bindings.get("confirmation_a_count") != 650,
         bindings.get("guided_b_count") != COHORT_TASKS,
     )):
-        raise ProtocolError("V11 source authorization changed")
+        raise ProtocolError("V12 source authorization changed")
     outcome_counts = bindings.get("outcome_counts")
     if (
         not isinstance(outcome_counts, dict)
@@ -701,11 +701,11 @@ def _validate_v11_bindings(bindings: dict) -> None:
         or hashlib.sha256(canonical_json(outcome_counts)).hexdigest()
         != bindings["outcome_counts_sha256"]
     ):
-        raise ProtocolError("V11 source outcome summary changed")
+        raise ProtocolError("V12 source outcome summary changed")
     summary_keys = {
-        "support_status_counts": set(V11_SUPPORT_STATUS_KEYS),
-        "support_exclusion_counts": set(V11_SUPPORT_EXCLUSION_REASONS),
-        "resource_exclusion_counts": set(V11_RESOURCE_EXCLUSION_KEYS),
+        "support_status_counts": set(V12_SUPPORT_STATUS_KEYS),
+        "support_exclusion_counts": set(V12_SUPPORT_EXCLUSION_REASONS),
+        "resource_exclusion_counts": set(V12_RESOURCE_EXCLUSION_KEYS),
     }
     for name, keys in summary_keys.items():
         value = bindings.get(name)
@@ -715,13 +715,13 @@ def _validate_v11_bindings(bindings: dict) -> None:
             or hashlib.sha256(canonical_json(value)).hexdigest()
             != bindings[name + "_sha256"]
         ):
-            raise ProtocolError("V11 source classification summary changed")
+            raise ProtocolError("V12 source classification summary changed")
     exclusions = bindings.get("resource_exclusions_by_family")
     if (
         not isinstance(exclusions, dict)
         or len(exclusions) > bindings["inventory_families_count"]
     ):
-        raise ProtocolError("V11 resource-exclusion summary changed")
+        raise ProtocolError("V12 resource-exclusion summary changed")
     excluded = 0
     for family, counts in exclusions.items():
         if (
@@ -733,14 +733,14 @@ def _validate_v11_bindings(bindings: dict) -> None:
             or counts["total"] != counts["memory"] + counts["time"]
             or counts["total"] == 0
         ):
-            raise ProtocolError("V11 resource-exclusion summary changed")
+            raise ProtocolError("V12 resource-exclusion summary changed")
         excluded += counts["total"]
     if (
         excluded != outcome_counts["resource-excluded"]
         or hashlib.sha256(canonical_json(exclusions)).hexdigest()
         != bindings["resource_exclusions_by_family_sha256"]
     ):
-        raise ProtocolError("V11 resource-exclusion summary changed")
+        raise ProtocolError("V12 resource-exclusion summary changed")
     support_status = bindings["support_status_counts"]
     support_exclusions = bindings["support_exclusion_counts"]
     resource_counts = bindings["resource_exclusion_counts"]
@@ -749,11 +749,11 @@ def _validate_v11_bindings(bindings: dict) -> None:
     )
     structural_counts = [
         support_exclusions[reason]
-        for reason in V11_SUPPORT_EXCLUSION_REASONS[1:]
+        for reason in V12_SUPPORT_EXCLUSION_REASONS[1:]
     ]
     aggregated_resource_counts = {
         key: sum(counts[key] for counts in exclusions.values())
-        for key in V11_RESOURCE_EXCLUSION_KEYS
+        for key in V12_RESOURCE_EXCLUSION_KEYS
     }
     if any((
         sum(support_status.values()) != bindings["all_records_count"],
@@ -768,31 +768,31 @@ def _validate_v11_bindings(bindings: dict) -> None:
         sum(resource_counts.values()) != outcome_counts["resource-excluded"],
         resource_counts != aggregated_resource_counts,
     )):
-        raise ProtocolError("V11 source classification summary is incoherent")
+        raise ProtocolError("V12 source classification summary is incoherent")
     tracked = {
-        field: _validate_v11_tracked(bindings[field], "V11 " + field)
-        for field in V11_TRACKED_BINDING_FIELDS
+        field: _validate_v12_tracked(bindings[field], "V12 " + field)
+        for field in V12_TRACKED_BINDING_FIELDS
     }
     if any(
-        tracked[field].get(V11_CODE_MANIFEST_RELATIVE)
+        tracked[field].get(V12_CODE_MANIFEST_RELATIVE)
         != bindings["code_manifest_sha256"]
         for field in (
             "full_tracked_file_sha256", "preflight_tracked_file_sha256",
         )
     ):
-        raise ProtocolError("V11 code-manifest closure changed")
-    for field in V11_TRACKED_BINDING_FIELDS:
+        raise ProtocolError("V12 code-manifest closure changed")
+    for field in V12_TRACKED_BINDING_FIELDS:
         if hashlib.sha256(canonical_json(tracked[field])).hexdigest() != bindings[
             field + "_digest"
         ]:
-            raise ProtocolError("V11 tracked-closure digest changed")
+            raise ProtocolError("V12 tracked-closure digest changed")
     combined = dict(tracked["preflight_tracked_file_sha256"])
     for relative, digest in tracked["full_tracked_file_sha256"].items():
         if relative in combined and combined[relative] != digest:
-            raise ProtocolError("V11 tracked closures disagree")
+            raise ProtocolError("V12 tracked closures disagree")
         combined[relative] = digest
     if dict(sorted(combined.items())) != tracked["combined_tracked_file_sha256"]:
-        raise ProtocolError("V11 combined tracked closure changed")
+        raise ProtocolError("V12 combined tracked closure changed")
     full_translator = {
         relative: digest
         for relative, digest in tracked["full_tracked_file_sha256"].items()
@@ -808,17 +808,17 @@ def _validate_v11_bindings(bindings: dict) -> None:
         for relative, digest in sorted(full_translator.items())
     ]
     if (
-        len(full_translator) != V11_TRANSLATOR_FILE_COUNT
+        len(full_translator) != V12_TRANSLATOR_FILE_COUNT
         or full_translator != preflight_translator
         or hashlib.sha256(canonical_json(translator)).hexdigest()
         != bindings["translator_source_sha256"]
     ):
-        raise ProtocolError("V11 translator source digest changed")
+        raise ProtocolError("V12 translator source digest changed")
 
 
-def _validate_v11_source_task(task: dict) -> None:
-    if not isinstance(task, dict) or set(task) != set(V11_SOURCE_PROJECTION_FIELDS):
-        raise ProtocolError("V11 source task shape changed")
+def _validate_v12_source_task(task: dict) -> None:
+    if not isinstance(task, dict) or set(task) != set(V12_SOURCE_PROJECTION_FIELDS):
+        raise ProtocolError("V12 source task shape changed")
     text_fields = (
         "directory", "family", "problem", "domain_file", "problem_file",
         "canonical_path",
@@ -838,41 +838,41 @@ def _validate_v11_source_task(task: dict) -> None:
         or task["is_shadow_family"] == task["is_shadow_unrepresented"]
         or task["is_all_prior_represented"] == task["is_all_prior_unrepresented"]
         or task["is_shadow_family"] is not (
-            task["family"] in V11_SHADOW_FAMILIES
+            task["family"] in V12_SHADOW_FAMILIES
         )
         or task["is_all_prior_represented"] is not (
-            task["family"] in V11_ALL_PRIOR_FAMILIES
+            task["family"] in V12_ALL_PRIOR_FAMILIES
         )
     ):
-        raise ProtocolError("V11 source task changed")
+        raise ProtocolError("V12 source task changed")
     for field in ("directory", "domain_file", "problem_file"):
         path = Path(task[field])
         if (
             path.is_absolute() or path == Path(".") or ".." in path.parts
             or path.as_posix() != task[field] or task[field].startswith("./")
         ):
-            raise ProtocolError("V11 source task path is unsafe")
+            raise ProtocolError("V12 source task path is unsafe")
     if (
         Path(task["problem_file"]) != Path(task["directory"]) / task["problem"]
         or Path(task["domain_file"]).parent != Path(task["directory"])
     ):
-        raise ProtocolError("V11 source task identity changed")
+        raise ProtocolError("V12 source task identity changed")
     aliases = task.get("aliases")
-    alias_fields = set(V11_ALIAS_FIELDS)
+    alias_fields = set(V12_ALIAS_FIELDS)
     if not isinstance(aliases, list) or not aliases:
-        raise ProtocolError("V11 source aliases changed")
+        raise ProtocolError("V12 source aliases changed")
     identities = []
     for alias in aliases:
         if (
             not isinstance(alias, dict) or set(alias) != alias_fields
             or any(type(alias.get(field)) is not str or not alias[field]
-                   for field in V11_ALIAS_FIELDS)
+                   for field in V12_ALIAS_FIELDS)
             or any(SHA256_RE.fullmatch(alias.get(field, "")) is None
                    for field in ("domain_sha256", "problem_sha256"))
             or alias["family"] != task["family"]
             or alias["problem_sha256"] != task["problem_sha256"]
         ):
-            raise ProtocolError("V11 source aliases changed")
+            raise ProtocolError("V12 source aliases changed")
         for field in ("directory", "domain_file", "problem_file"):
             path = Path(alias[field])
             if (
@@ -880,27 +880,27 @@ def _validate_v11_source_task(task: dict) -> None:
                 or path.as_posix() != alias[field]
                 or alias[field].startswith("./")
             ):
-                raise ProtocolError("V11 source alias path is unsafe")
+                raise ProtocolError("V12 source alias path is unsafe")
         if (
             Path(alias["problem_file"])
             != Path(alias["directory"]) / alias["problem"]
             or Path(alias["domain_file"]).parent != Path(alias["directory"])
         ):
-            raise ProtocolError("V11 source alias identity changed")
+            raise ProtocolError("V12 source alias identity changed")
         identities.append((
             alias["directory"], alias["problem"], alias["problem_file"],
             alias["domain_file"],
         ))
-    canonical_alias = {field: task[field] for field in V11_ALIAS_FIELDS}
+    canonical_alias = {field: task[field] for field in V12_ALIAS_FIELDS}
     if (
         aliases[0] != canonical_alias
         or identities != sorted(identities)
         or len(identities) != len(set(identities))
     ):
-        raise ProtocolError("V11 source alias order changed")
+        raise ProtocolError("V12 source alias order changed")
 
 
-def _validate_v11_cohort(
+def _validate_v12_cohort(
     cohort: dict, role: str, count: int,
 ) -> tuple[list[dict], dict[str, str]]:
     if not isinstance(cohort, dict) or set(cohort) != {
@@ -911,7 +911,7 @@ def _validate_v11_cohort(
     if not isinstance(tasks, list) or len(tasks) != count:
         raise ProtocolError("{} cohort cardinality changed".format(role))
     for task in tasks:
-        _validate_v11_source_task(task)
+        _validate_v12_source_task(task)
     indices = [task["candidate_index"] for task in tasks]
     identities = [(task["directory"], task["problem"]) for task in tasks]
     problem_hashes = [task["problem_sha256"] for task in tasks]
@@ -949,34 +949,34 @@ def _validate_v11_cohort(
     }
     if role == "confirmation-a":
         passed = all((
-            len(families) >= V11_A_MIN_FAMILIES,
+            len(families) >= V12_A_MIN_FAMILIES,
             len(shadow_unrepresented)
-            >= V11_A_MIN_SHADOW_UNREPRESENTED_FAMILIES,
+            >= V12_A_MIN_SHADOW_UNREPRESENTED_FAMILIES,
             len(all_prior_unrepresented)
-            >= V11_A_MIN_ALL_PRIOR_UNREPRESENTED_TASKS,
+            >= V12_A_MIN_ALL_PRIOR_UNREPRESENTED_TASKS,
             len(all_prior_unrepresented_families)
-            >= V11_A_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES,
+            >= V12_A_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES,
         ))
     elif role == "guided-b":
         passed = all((
-            len(families) >= V11_B_MIN_FAMILIES,
+            len(families) >= V12_B_MIN_FAMILIES,
             max(per_family.values(), default=0)
-            <= V11_B_MAX_TASKS_PER_FAMILY,
+            <= V12_B_MAX_TASKS_PER_FAMILY,
             len(shadow_unrepresented)
-            >= V11_B_MIN_SHADOW_UNREPRESENTED_FAMILIES,
+            >= V12_B_MIN_SHADOW_UNREPRESENTED_FAMILIES,
             len(all_prior_unrepresented)
-            >= V11_B_MIN_ALL_PRIOR_UNREPRESENTED_TASKS,
+            >= V12_B_MIN_ALL_PRIOR_UNREPRESENTED_TASKS,
             len(all_prior_unrepresented_families)
-            >= V11_B_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES,
+            >= V12_B_MIN_ALL_PRIOR_UNREPRESENTED_FAMILIES,
         ))
     else:
-        raise ProtocolError("unknown V11 cohort role")
+        raise ProtocolError("unknown V12 cohort role")
     if not passed:
         raise ProtocolError("{} family/novelty floor changed".format(role))
     return tasks, dict(sorted(directory_to_family.items()))
 
 
-def _expected_v11_run_provenance(
+def _expected_v12_run_provenance(
     bindings: dict, confirmation_a_freeze_sha256: str,
 ) -> dict:
     return {
@@ -1044,11 +1044,11 @@ def _expected_v11_run_provenance(
 
 
 def guided_b_tasks(snapshot: dict) -> list[dict]:
-    return snapshot["source_audit_v11"]["guided_b"]["records"]
+    return snapshot["source_audit_v12"]["guided_b"]["records"]
 
 
 def guided_b_projection_sha256(snapshot: dict) -> str:
-    return snapshot["source_audit_v11"]["guided_b"][
+    return snapshot["source_audit_v12"]["guided_b"][
         "source_projection_sha256"
     ]
 
@@ -1058,7 +1058,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
         "schema", "base_b_freeze_path", "base_b_freeze_sha256",
         "base_b_freeze_repository_revision", "base_b_experiment_source_sha256",
         "base_b_planner", "benchmark_revision", "confirmation_a_authorization",
-        "confirmation_a_freeze", "source_audit_v11", "confirmation_a_cohort",
+        "confirmation_a_freeze", "source_audit_v12", "confirmation_a_cohort",
     }
     if not isinstance(snapshot, dict) or set(snapshot) != keys or (
         snapshot.get("schema") != BASE_SNAPSHOT_SCHEMA
@@ -1083,20 +1083,20 @@ def validate_base_snapshot(snapshot: dict) -> None:
     validate_planner_identity(snapshot.get("base_b_planner"))
     _require_commit40(snapshot.get("benchmark_revision"), "benchmark revision")
 
-    source = snapshot.get("source_audit_v11")
+    source = snapshot.get("source_audit_v12")
     if not isinstance(source, dict) or set(source) != {
         "schema", "source_seal_revision", "bindings", "guided_b",
-    } or source.get("schema") != V11_SOURCE_SCHEMA:
-        raise ProtocolError("sealed V11 source shape changed")
+    } or source.get("schema") != V12_SOURCE_SCHEMA:
+        raise ProtocolError("sealed V12 source shape changed")
     bindings = source.get("bindings")
-    _validate_v11_bindings(bindings)
+    _validate_v12_bindings(bindings)
     if (
         source.get("source_seal_revision")
         != bindings["seal_repository_commit_id"]
         or snapshot["benchmark_revision"] != bindings["benchmark_revision"]
     ):
-        raise ProtocolError("sealed V11 revision binding changed")
-    tasks_b, directory_families_b = _validate_v11_cohort(
+        raise ProtocolError("sealed V12 revision binding changed")
+    tasks_b, directory_families_b = _validate_v12_cohort(
         source.get("guided_b"), "guided-b", COHORT_TASKS
     )
     if (
@@ -1119,7 +1119,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
         confirmation_freeze.get("repository_revision"), "Confirmation A freeze",
     )
     confirmation = snapshot.get("confirmation_a_cohort")
-    tasks_a, directory_families_a = _validate_v11_cohort(
+    tasks_a, directory_families_a = _validate_v12_cohort(
         confirmation, "confirmation-a", 650
     )
     if (
@@ -1132,7 +1132,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
     if bindings["inventory_families_count"] < len({
         task["family"] for task in (*tasks_a, *tasks_b)
     }):
-        raise ProtocolError("V11 inventory family count is too small")
+        raise ProtocolError("V12 inventory family count is too small")
     if (
         any(
             directory_families_a[directory] != directory_families_b[directory]
@@ -1214,7 +1214,7 @@ def validate_base_snapshot(snapshot: dict) -> None:
         authorization.get("confirmation_a_freeze_repository_revision")
         != confirmation_freeze["repository_revision"],
         authorization.get("source_audit_provenance")
-        != _expected_v11_run_provenance(
+        != _expected_v12_run_provenance(
             bindings, confirmation_freeze["sha256"]
         ),
     )):
@@ -1229,7 +1229,7 @@ def _lazy_base_protocol():
 
 
 def snapshot_sealed_b(calibration_receipt: dict) -> dict:
-    """Validate A authorization and snapshot the canonical V11 A/B sources."""
+    """Validate A authorization and snapshot the canonical V12 A/B sources."""
     validate_calibration_receipt(calibration_receipt)
     base = _lazy_base_protocol()
     if tuple(base.EXPERIMENT_SOURCE_FILES) != BASE_B_EXPERIMENT_SOURCE_FILES:
@@ -1246,7 +1246,7 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
             BASE_A_FREEZE_PATH
         )
     except Exception as err:
-        raise ProtocolError("sealed V11 A/B protocol is unavailable") from err
+        raise ProtocolError("sealed V12 A/B protocol is unavailable") from err
 
     authorization = {}
     for field, value in live_authorization.items():
@@ -1283,11 +1283,11 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
         planner_identity(a_freeze["planner"])
         != planner_identity(freeze["planner"]),
     )):
-        raise ProtocolError("sealed V11 A/B source bindings differ")
+        raise ProtocolError("sealed V12 A/B source bindings differ")
     try:
         confirmation_cohort = a_freeze["source_audit"]["confirmation_a"]
     except (KeyError, TypeError) as err:
-        raise ProtocolError("sealed V11 A projection is unavailable") from err
+        raise ProtocolError("sealed V12 A projection is unavailable") from err
     snapshot = {
         "schema": BASE_SNAPSHOT_SCHEMA,
         "base_b_freeze_path": base.FREEZE_PATH.relative_to(REPO).as_posix(),
@@ -1306,7 +1306,7 @@ def snapshot_sealed_b(calibration_receipt: dict) -> dict:
             "sha256": a_freeze_sha256,
             "repository_revision": a_freeze["freeze_repository_revision"],
         },
-        "source_audit_v11": json.loads(
+        "source_audit_v12": json.loads(
             canonical_json(materials.source_audit).decode("ascii")
         ),
         "confirmation_a_cohort": json.loads(

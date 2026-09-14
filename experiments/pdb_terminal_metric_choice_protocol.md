@@ -47,14 +47,14 @@ is a new layer and does not modify the Confirmation A/B protocol or launcher.
    those explicit values. The freeze independently reopens and revalidates the
    sealed Confirmation B verifier. It fails unless
    Confirmation A authorized the guided study, B is still the exact sealed
-   300-task guided-B projection from the fresh V11 census, the exact disjoint
+   300-task guided-B projection from the fresh V12 census, the exact disjoint
    650-task Confirmation A projection and its freeze validate,
    calibration completed,
    and every source, planner, option, task, K=32 record, and receipt hash binds.
    The freeze must be made from a clean working copy whose parent is recorded
    as the freeze source revision; all campaign sources and bound inputs must be
    tracked with the same bytes at that revision. The planner revision, sealed-B
-   V11 preflight source, preflight seal, and full seal revisions and the sealed
+   V12 preflight source, preflight seal, and full seal revisions and the sealed
    Confirmation A and B freeze revisions must all be its ancestors. The
    freeze rebuilds the complete standalone evidence from the live B properties
    both before validation and immediately before exclusive publication.
@@ -70,17 +70,17 @@ every component below a trusted root through retained directory descriptors
 with `O_DIRECTORY | O_NOFOLLOW`, open the leaf relative to its retained parent,
 and revalidate all ancestor, leaf-descriptor, and leaf-entry identities after
 same-descriptor reading and hashing. Calibration is completely
-loaded and validated before the freeze code opens any V11 A/B evidence. Its
+loaded and validated before the freeze code opens any V12 A/B evidence. Its
 generated IDs and domain/problem hashes are then checked against both sealed
 A and B cohorts. No outcome may be inspected before the freeze exists.
-The inherited V11 provenance authenticates one fresh 1,640-task census, its
+The inherited V12 provenance authenticates one fresh 1,640-task census, its
 outcome and resource-exclusion summaries, the exact 950 eligible tasks, the
 disjoint 650-task Confirmation A and 300-task guided-B projections, the
 preflight authorization and canary chain, and the full, preflight, and combined
 committed-file closures. No earlier campaign payload is reused. The direct
 freeze embeds the canonical B source projection and the canonical A projection
 from its own freeze; later readers validate those bytes without reopening the
-V11 census payload. Repository closure construction also binds every V11
+V12 census payload. Repository closure construction also binds every V12
 combined-closure path. If that path is independently bound by a later A, B, or
 direct source manifest, the digests must agree; conflicting historical and
 descendant bytes fail closed rather than receiving precedence.
@@ -89,7 +89,7 @@ the 38 `src/translate/*.py` entries in that committed closure and requires the
 two authorized Confirmation A analyses to have identical SHA-256 digests.
 Every recorded repository revision is exactly 40 lowercase hexadecimal
 characters. At freeze time, ancestry is checked on each adjacent edge in the
-ordered chain V11 source to preflight seal to full seal to Confirmation A
+ordered chain V12 source to preflight seal to full seal to Confirmation A
 freeze to Confirmation B freeze to direct freeze; planner ancestry to the
 direct freeze is checked separately.
 
@@ -119,7 +119,7 @@ artifacts. Live A/B verification is restricted to construction of the direct
 freeze.
 
 The launch likewise requires a clean working copy. Its commit must descend
-from the exact planner, V11 preflight source, preflight seal, full seal, sealed
+from the exact planner, V12 preflight source, preflight seal, full seal, sealed
 Confirmation A and B freezes, and recorded direct-freeze source revisions; the
 campaign-freeze bytes tracked in that commit must match the live freeze exactly.
 
@@ -165,11 +165,11 @@ job identifier, timestamp, raw processor data, or memory value. The seal
 requires all 900 records, requires the three cells in each allocation to
 agree, and binds their ordered digest and processor-model/architecture counts.
 Parsing and fetching are rejected until this receipt revalidates against live
-launch and scheduler evidence. Every run carries the canonical V11 source
+launch and scheduler evidence. Every run carries the canonical V12 source
 provenance: census and code hashes; launch, execution, attestation, preflight,
 and canary hashes; all-record and exact A/B projection hashes; all three source
 revisions; all three committed-closure digests; and the Confirmation A freeze
-hash and revision. It also carries a digest of the complete V11 bindings. The
+hash and revision. It also carries a digest of the complete V12 bindings. The
 double-run analyzer copies that closure,
 the freeze and B-freeze revisions, standalone B receipt/property hashes and
 the campaign execution-receipt path/hash and validated hardware summary into

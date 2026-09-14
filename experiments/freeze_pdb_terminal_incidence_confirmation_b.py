@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the prospective V11 source/planner freeze for Confirmation B."""
+"""Create the prospective V12 source/planner freeze for Confirmation B."""
 
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ def _require_source_ancestry(
         JJ.require_ancestor(REPO, P.PLANNER_REVISION_REQUIRED, revision)
     except JJ.JjCacheError as err:
         raise FreezeError(
-            "V11 S-to-P-to-Q-to-A-to-B chain or planner is not ancestral"
+            "V12 S-to-P-to-Q-to-A-to-B chain or planner is not ancestral"
         ) from err
 
 
@@ -282,7 +282,7 @@ def _revalidate_before_write(
         or P.canonical_json(value.get("source_audit"))
         != P.canonical_json(materials.source_audit)
     ):
-        raise FreezeError("V11 source changed during planner caching")
+        raise FreezeError("V12 source changed during planner caching")
     if P.canonical_json(value.get("confirmation_a_authorization")) != (
         P.canonical_json(_authorization_provenance(authorization))
     ):

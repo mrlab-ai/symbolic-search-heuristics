@@ -161,7 +161,7 @@ def configure() -> None:
     Base.BENCHMARK_SOURCE_VALIDATOR = lambda cohort: (
         P.validate_benchmark_sources(cohort, BENCHMARKS)
     )
-    provenance = P.v11_run_provenance()
+    provenance = P.v12_run_provenance()
     Base.EXTRA_RUN_PROPERTIES = {
         "benchmark_revision": P.BENCHMARK_REVISION,
         "planner_cache_name": P.PLANNER_CACHE_NAME,

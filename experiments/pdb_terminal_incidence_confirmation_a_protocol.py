@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pdb_profile_comparison_protocol as Source
 import pdb_confirmation_safe_io as SafeIO
-import pdb_terminal_incidence_confirmation_v11_adapter as SourceV11
+import pdb_terminal_incidence_confirmation_v12_adapter as SourceV12
 
 
 class ProtocolError(RuntimeError):
@@ -33,7 +33,7 @@ FREEZE_SCHEMA = (
 )
 FROZEN_SOURCE_SCHEMA = (
     "symbolic-search-heuristics/"
-    "pdb-terminal-incidence-confirmation-a-source/v1/campaign-v11"
+    "pdb-terminal-incidence-confirmation-a-source/v1/campaign-v12"
 )
 PROTOCOL = "pdb-terminal-incidence-confirmation-a-measurement-v1"
 ANALYSIS_PROTOCOL = "pdb-terminal-incidence-confirmation-a-analysis-v4"
@@ -238,9 +238,9 @@ EXPERIMENT_SOURCE_FILES = (
     "experiments/pdb_profile_semantic_union_protocol.py",
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.md",
     "experiments/pdb_terminal_incidence_confirmation_a_protocol.py",
-    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v11.py",
-    "experiments/pdb_terminal_incidence_confirmation_v11_adapter.py",
-    "experiments/pdb_terminal_incidence_v11_snapshot_reader.py",
+    "experiments/pdb_terminal_incidence_confirmation_source_consumer_v12.py",
+    "experiments/pdb_terminal_incidence_confirmation_v12_adapter.py",
+    "experiments/pdb_terminal_incidence_v12_snapshot_reader.py",
     "experiments/pdb_terminal_incidence_shadow_protocol.py",
     "experiments/recover_pdb_terminal_incidence_confirmation_a.py",
     "experiments/requirements-pdb-terminal-incidence-shadow.txt",
@@ -286,36 +286,36 @@ class SourceMaterials:
         return self.source_projection_sha256
 
 
-def _plain_v11(value):
+def _plain_v12(value):
     if is_dataclass(value):
         return {
-            field.name: _plain_v11(getattr(value, field.name))
+            field.name: _plain_v12(getattr(value, field.name))
             for field in fields(value)
         }
     if isinstance(value, Mapping):
         if any(type(key) is not str for key in value):
-            raise ProtocolError("V11 source mapping key is not text")
-        return {key: _plain_v11(item) for key, item in value.items()}
+            raise ProtocolError("V12 source mapping key is not text")
+        return {key: _plain_v12(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
-        return [_plain_v11(item) for item in value]
+        return [_plain_v12(item) for item in value]
     if value is None or type(value) in (bool, int, float, str):
         return value
-    raise ProtocolError("V11 source value is not canonical JSON")
+    raise ProtocolError("V12 source value is not canonical JSON")
 
 
 def _source_payload(authorized) -> dict:
-    if type(authorized) is not SourceV11.AuthorizedV11Cohorts:
-        raise ProtocolError("V11 adapter returned an unexpected result")
+    if type(authorized) is not SourceV12.AuthorizedV12Cohorts:
+        raise ProtocolError("V12 adapter returned an unexpected result")
     return {
         "schema": FROZEN_SOURCE_SCHEMA,
         "source_seal_revision": authorized.bindings.seal_repository_commit_id,
-        "bindings": _plain_v11(authorized.bindings),
-        "confirmation_a": _plain_v11(authorized.confirmation_a),
+        "bindings": _plain_v12(authorized.bindings),
+        "confirmation_a": _plain_v12(authorized.confirmation_a),
     }
 
 
 def _validate_native_task(task: dict) -> None:
-    expected = set(SourceV11.SOURCE_PROJECTION_FIELDS)
+    expected = set(SourceV12.SOURCE_PROJECTION_FIELDS)
     aliases = task.get("aliases") if isinstance(task, dict) else None
     text_fields = (
         "directory", "family", "problem", "domain_file", "problem_file",
@@ -336,11 +336,11 @@ def _validate_native_task(task: dict) -> None:
         ))
         or task.get("canonical_path") != task.get("problem_file")
     ):
-        raise ProtocolError("frozen V11 source task changed")
+        raise ProtocolError("frozen V12 source task changed")
     for key in ("domain_file", "problem_file"):
         path = Path(task[key])
         if path.is_absolute() or ".." in path.parts:
-            raise ProtocolError("frozen V11 source path is unsafe")
+            raise ProtocolError("frozen V12 source path is unsafe")
     if (
         Path(task["problem_file"]) != Path(task["directory"]) / task["problem"]
         or Path(task["domain_file"]).parent != Path(task["directory"])
@@ -348,12 +348,12 @@ def _validate_native_task(task: dict) -> None:
         or task["is_all_prior_represented"]
         == task["is_all_prior_unrepresented"]
         or task["is_shadow_family"]
-        is not (task["family"] in SourceV11.SourceV11.SHADOW_FAMILIES)
+        is not (task["family"] in SourceV12.SourceV12.SHADOW_FAMILIES)
         or task["is_all_prior_represented"]
-        is not (task["family"] in SourceV11.SourceV11.ALL_PRIOR_FAMILIES)
+        is not (task["family"] in SourceV12.SourceV12.ALL_PRIOR_FAMILIES)
     ):
-        raise ProtocolError("frozen V11 source identity changed")
-    alias_fields = set(SourceV11.ALIAS_FIELDS)
+        raise ProtocolError("frozen V12 source identity changed")
+    alias_fields = set(SourceV12.ALIAS_FIELDS)
     canonical_alias = {key: task[key] for key in alias_fields}
     if (
         not isinstance(aliases, list)
@@ -362,13 +362,13 @@ def _validate_native_task(task: dict) -> None:
                for alias in aliases)
         or aliases[0] != canonical_alias
     ):
-        raise ProtocolError("frozen V11 source aliases changed")
+        raise ProtocolError("frozen V12 source aliases changed")
 
 
-def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
-    expected = {field.name for field in fields(SourceV11.V11SourceBindings)}
+def _validate_v12_bindings(bindings: dict, source_seal_revision: str) -> None:
+    expected = {field.name for field in fields(SourceV12.V12SourceBindings)}
     if not isinstance(bindings, dict) or set(bindings) != expected:
-        raise ProtocolError("frozen V11 binding shape changed")
+        raise ProtocolError("frozen V12 binding shape changed")
     commits = (
         bindings.get("preflight_source_repository_commit_id"),
         bindings.get("preflight_seal_repository_commit_id"),
@@ -382,10 +382,10 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
         "combined_tracked_file_sha256",
     }
     if (
-        bindings.get("schema") != SourceV11.SCHEMA
-        or bindings.get("campaign") != "v11-full-census"
+        bindings.get("schema") != SourceV12.SCHEMA
+        or bindings.get("campaign") != "v12-full-census"
         or bindings.get("benchmark_revision") != BENCHMARK_REVISION
-        or bindings.get("preflight_campaign") != "v11-preflight"
+        or bindings.get("preflight_campaign") != "v12-preflight"
         or bindings.get("preflight_full_launch_authorized") is not True
         or bindings.get("seal_repository_commit_id") != source_seal_revision
         or any(COMMIT_RE.fullmatch(value or "") is None for value in commits)
@@ -406,7 +406,7 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
         or bindings["eligible_records_count"]
         < bindings["confirmation_a_count"] + bindings["guided_b_count"]
     ):
-        raise ProtocolError("frozen V11 authorization changed")
+        raise ProtocolError("frozen V12 authorization changed")
     for prefix in ("full", "preflight", "combined"):
         tracked = bindings.get(prefix + "_tracked_file_sha256")
         if (
@@ -418,19 +418,19 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
             or hashlib.sha256(canonical_json(tracked)).hexdigest()
             != bindings[prefix + "_tracked_file_sha256_digest"]
         ):
-            raise ProtocolError("frozen V11 tracked closure changed")
+            raise ProtocolError("frozen V12 tracked closure changed")
     combined = dict(bindings["preflight_tracked_file_sha256"])
     for path, digest in bindings["full_tracked_file_sha256"].items():
         if path in combined and combined[path] != digest:
-            raise ProtocolError("frozen V11 tracked closures disagree")
+            raise ProtocolError("frozen V12 tracked closures disagree")
         combined[path] = digest
     if combined != bindings["combined_tracked_file_sha256"]:
-        raise ProtocolError("frozen V11 combined tracked closure changed")
+        raise ProtocolError("frozen V12 combined tracked closure changed")
     summary_keys = {
         "outcome_counts": {"input-rejected", "resource-excluded", "success"},
-        "support_status_counts": set(SourceV11.SUPPORT_STATUS_KEYS),
-        "support_exclusion_counts": set(SourceV11.SUPPORT_EXCLUSION_REASONS),
-        "resource_exclusion_counts": set(SourceV11.RESOURCE_EXCLUSION_KEYS),
+        "support_status_counts": set(SourceV12.SUPPORT_STATUS_KEYS),
+        "support_exclusion_counts": set(SourceV12.SUPPORT_EXCLUSION_REASONS),
+        "resource_exclusion_counts": set(SourceV12.RESOURCE_EXCLUSION_KEYS),
     }
     for name, keys in summary_keys.items():
         value = bindings.get(name)
@@ -441,7 +441,7 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
             or hashlib.sha256(canonical_json(value)).hexdigest()
             != bindings[name + "_sha256"]
         ):
-            raise ProtocolError("frozen V11 summary changed")
+            raise ProtocolError("frozen V12 summary changed")
     resource_by_family = bindings.get("resource_exclusions_by_family")
     if (
         not isinstance(resource_by_family, dict)
@@ -462,7 +462,7 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
         or hashlib.sha256(canonical_json(resource_by_family)).hexdigest()
         != bindings["resource_exclusions_by_family_sha256"]
     ):
-        raise ProtocolError("frozen V11 summary changed")
+        raise ProtocolError("frozen V12 summary changed")
     outcome_counts = bindings["outcome_counts"]
     support_status_counts = bindings["support_status_counts"]
     support_exclusion_counts = bindings["support_exclusion_counts"]
@@ -473,11 +473,11 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
     )
     structural_counts = [
         support_exclusion_counts[reason]
-        for reason in SourceV11.SUPPORT_EXCLUSION_REASONS[1:]
+        for reason in SourceV12.SUPPORT_EXCLUSION_REASONS[1:]
     ]
     aggregated_resource_counts = {
         key: sum(counts[key] for counts in resource_by_family.values())
-        for key in SourceV11.RESOURCE_EXCLUSION_KEYS
+        for key in SourceV12.RESOURCE_EXCLUSION_KEYS
     }
     if (
         sum(outcome_counts.values()) != bindings["all_records_count"]
@@ -495,18 +495,18 @@ def _validate_v11_bindings(bindings: dict, source_seal_revision: str) -> None:
         != outcome_counts["resource-excluded"]
         or resource_exclusion_counts != aggregated_resource_counts
     ):
-        raise ProtocolError("frozen V11 summary is incoherent")
+        raise ProtocolError("frozen V12 summary is incoherent")
     translator = [
         {"path": path, "sha256": digest}
         for path, digest in sorted(bindings["full_tracked_file_sha256"].items())
         if path.startswith("src/translate/") and path.endswith(".py")
     ]
     if (
-        len(translator) != SourceV11.TRANSLATOR_FILE_COUNT
+        len(translator) != SourceV12.TRANSLATOR_FILE_COUNT
         or hashlib.sha256(canonical_json(translator)).hexdigest()
         != bindings["translator_source_sha256"]
     ):
-        raise ProtocolError("frozen V11 translator closure changed")
+        raise ProtocolError("frozen V12 translator closure changed")
 
 
 def _materials_from_frozen_source(source: dict) -> SourceMaterials:
@@ -515,7 +515,7 @@ def _materials_from_frozen_source(source: dict) -> SourceMaterials:
     } or source.get("schema") != FROZEN_SOURCE_SCHEMA:
         raise ProtocolError("Confirmation A frozen source shape changed")
     revision = source.get("source_seal_revision")
-    _validate_v11_bindings(source.get("bindings"), revision)
+    _validate_v12_bindings(source.get("bindings"), revision)
     bindings = source["bindings"]
     cohort = source.get("confirmation_a")
     if not isinstance(cohort, dict) or set(cohort) != {
@@ -583,19 +583,19 @@ def _materials_from_frozen_source(source: dict) -> SourceMaterials:
 
 
 def load_source_materials(source_seal_revision: str) -> SourceMaterials:
-    """Load the authorized source projection from one immutable V11 seal."""
+    """Load the authorized source projection from one immutable V12 seal."""
     if not isinstance(source_seal_revision, str):
-        raise ProtocolError("V11 source seal revision is malformed")
+        raise ProtocolError("V12 source seal revision is malformed")
     try:
-        authorized = SourceV11.load_authorized_cohorts(source_seal_revision)
+        authorized = SourceV12.load_authorized_cohorts(source_seal_revision)
     except (
-        SourceV11.V11AdapterError,
-        SourceV11.SourceV11.SourceConsumerError,
+        SourceV12.V12AdapterError,
+        SourceV12.SourceV12.SourceConsumerError,
     ) as err:
         raise ProtocolError(str(err)) from err
     source = _source_payload(authorized)
     if source["source_seal_revision"] != source_seal_revision:
-        raise ProtocolError("V11 adapter returned the wrong seal revision")
+        raise ProtocolError("V12 adapter returned the wrong seal revision")
     return _materials_from_frozen_source(source)
 
 
@@ -794,12 +794,12 @@ def _installed_values() -> dict:
 globals().update(_installed_values())
 
 
-def v11_run_provenance() -> dict:
-    """Return the one canonical V11 provenance projection for every A cell."""
+def v12_run_provenance() -> dict:
+    """Return the one canonical V12 provenance projection for every A cell."""
     if not FREEZE_PATH.exists():
         raise ProtocolError("Confirmation A freeze is not installed")
     return {
-        "source_audit_campaign": "v11-full-census",
+        "source_audit_campaign": "v12-full-census",
         "source_audit_launch_receipt_sha256": (
             SOURCE_AUDIT_LAUNCH_RECEIPT_SHA256
         ),

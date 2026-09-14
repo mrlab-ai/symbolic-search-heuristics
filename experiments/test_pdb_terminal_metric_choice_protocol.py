@@ -37,15 +37,15 @@ def fake_tasks(start=0, count=P.COHORT_TASKS):
             "domain_sha256": _digest(directory),
             "problem_sha256": _digest("problem-{}".format(index)),
             "canonical_path": problem_file,
-            "is_shadow_family": family in P.V11_SHADOW_FAMILIES,
-            "is_shadow_unrepresented": family not in P.V11_SHADOW_FAMILIES,
-            "is_all_prior_represented": family in P.V11_ALL_PRIOR_FAMILIES,
+            "is_shadow_family": family in P.V12_SHADOW_FAMILIES,
+            "is_shadow_unrepresented": family not in P.V12_SHADOW_FAMILIES,
+            "is_all_prior_represented": family in P.V12_ALL_PRIOR_FAMILIES,
             "is_all_prior_unrepresented": (
-                family not in P.V11_ALL_PRIOR_FAMILIES
+                family not in P.V12_ALL_PRIOR_FAMILIES
             ),
         }
         task["aliases"] = [{
-            field: task[field] for field in P.V11_ALIAS_FIELDS
+            field: task[field] for field in P.V12_ALIAS_FIELDS
         }]
         tasks.append(task)
     return tasks
@@ -65,21 +65,21 @@ def _projection(role, tasks):
     }
 
 
-def _v11_bindings(confirmation, guided):
+def _v12_bindings(confirmation, guided):
     code_manifest = _digest("code")
     translator = {
         "src/translate/module_{:02d}.py".format(index): _digest(
             "translator-{:02d}".format(index)
         )
-        for index in range(P.V11_TRANSLATOR_FILE_COUNT)
+        for index in range(P.V12_TRANSLATOR_FILE_COUNT)
     }
     full = {
-        **translator, P.V11_CODE_MANIFEST_RELATIVE: code_manifest,
-        "experiments/v11-full.py": _digest("full"),
+        **translator, P.V12_CODE_MANIFEST_RELATIVE: code_manifest,
+        "experiments/v12-full.py": _digest("full"),
     }
     preflight = {
-        **translator, P.V11_CODE_MANIFEST_RELATIVE: code_manifest,
-        "experiments/v11-preflight.py": _digest("preflight"),
+        **translator, P.V12_CODE_MANIFEST_RELATIVE: code_manifest,
+        "experiments/v12-preflight.py": _digest("preflight"),
     }
     combined = dict(sorted({**full, **preflight}.items()))
     outcomes = {
@@ -94,20 +94,20 @@ def _v11_bindings(confirmation, guided):
             else 1 if reason == "no-serialized-operators"
             else 0
         )
-        for reason in P.V11_SUPPORT_EXCLUSION_REASONS
+        for reason in P.V12_SUPPORT_EXCLUSION_REASONS
     }
     resource_counts = {"memory": 0, "time": 0}
     exclusions = {}
     values = {
-        field: _digest(field) for field in P.V11_BINDING_FIELDS
+        field: _digest(field) for field in P.V12_BINDING_FIELDS
         if field.endswith("_sha256") or field.endswith("_sha256_digest")
     }
     values.update({
-        "schema": P.V11_ADAPTER_SCHEMA,
-        "campaign": "v11-full-census",
+        "schema": P.V12_ADAPTER_SCHEMA,
+        "campaign": "v12-full-census",
         "benchmark_revision": "48d6a00d482de2384a9e751f9343df58bf5582be",
         "seal_repository_commit_id": "3" * 40,
-        "preflight_campaign": "v11-preflight",
+        "preflight_campaign": "v12-preflight",
         "preflight_source_repository_commit_id": "1" * 40,
         "preflight_seal_repository_commit_id": "2" * 40,
         "preflight_full_launch_authorized": True,
@@ -174,7 +174,7 @@ def _v11_bindings(confirmation, guided):
 def fake_snapshot():
     guided = _projection("guided-b", fake_tasks())
     confirmation = _projection("confirmation-a", fake_tasks(300, 650))
-    bindings = _v11_bindings(confirmation, guided)
+    bindings = _v12_bindings(confirmation, guided)
     planner = fake_planner()
     a_freeze_sha = _digest("a-freeze")
     authorization = {
@@ -219,7 +219,7 @@ def fake_snapshot():
         "confirmation_a_cohort_manifest_sha256": confirmation[
             "source_projection_sha256"
         ],
-        "source_audit_provenance": P._expected_v11_run_provenance(
+        "source_audit_provenance": P._expected_v12_run_provenance(
             bindings, a_freeze_sha
         ),
         "planner_identity": P.planner_identity(planner),
@@ -240,8 +240,8 @@ def fake_snapshot():
             "sha256": a_freeze_sha,
             "repository_revision": "4" * 40,
         },
-        "source_audit_v11": {
-            "schema": P.V11_SOURCE_SCHEMA,
+        "source_audit_v12": {
+            "schema": P.V12_SOURCE_SCHEMA,
             "source_seal_revision": bindings["seal_repository_commit_id"],
             "bindings": bindings,
             "guided_b": guided,
@@ -250,9 +250,9 @@ def fake_snapshot():
     }
 
 
-def rebind_v11_cohort(snapshot, role):
+def rebind_v12_cohort(snapshot, role):
     if role == "guided-b":
-        cohort = snapshot["source_audit_v11"]["guided_b"]
+        cohort = snapshot["source_audit_v12"]["guided_b"]
         binding_prefix = "guided_b"
     elif role == "confirmation-a":
         cohort = snapshot["confirmation_a_cohort"]
@@ -262,7 +262,7 @@ def rebind_v11_cohort(snapshot, role):
     cohort["source_projection_sha256"] = hashlib.sha256(
         P.canonical_json(cohort["records"])
     ).hexdigest()
-    snapshot["source_audit_v11"]["bindings"][
+    snapshot["source_audit_v12"]["bindings"][
         binding_prefix + "_source_projection_sha256"
     ] = cohort["source_projection_sha256"]
     if role == "confirmation-a":
@@ -271,26 +271,26 @@ def rebind_v11_cohort(snapshot, role):
         ] = cohort["source_projection_sha256"]
 
 
-def set_v11_task_family(task, family):
+def set_v12_task_family(task, family):
     task["family"] = family
-    task["is_shadow_family"] = family in P.V11_SHADOW_FAMILIES
-    task["is_shadow_unrepresented"] = family not in P.V11_SHADOW_FAMILIES
-    task["is_all_prior_represented"] = family in P.V11_ALL_PRIOR_FAMILIES
+    task["is_shadow_family"] = family in P.V12_SHADOW_FAMILIES
+    task["is_shadow_unrepresented"] = family not in P.V12_SHADOW_FAMILIES
+    task["is_all_prior_represented"] = family in P.V12_ALL_PRIOR_FAMILIES
     task["is_all_prior_unrepresented"] = (
-        family not in P.V11_ALL_PRIOR_FAMILIES
+        family not in P.V12_ALL_PRIOR_FAMILIES
     )
     for alias in task["aliases"]:
         alias["family"] = family
 
 
-def set_v11_task_directory(task, directory):
+def set_v12_task_directory(task, directory):
     task["directory"] = directory
     task["domain_file"] = directory + "/domain.pddl"
     task["problem_file"] = directory + "/" + task["problem"]
     task["canonical_path"] = task["problem_file"]
     task["domain_sha256"] = _digest(directory)
     task["aliases"] = [{
-        field: task[field] for field in P.V11_ALIAS_FIELDS
+        field: task[field] for field in P.V12_ALIAS_FIELDS
     }]
 
 
@@ -536,9 +536,9 @@ class ProtocolTest(unittest.TestCase):
         ), self.assertRaisesRegex(P.ProtocolError, "contract drifted"):
             P.snapshot_sealed_b(fake_calibration())
 
-    def test_snapshot_uses_canonical_embedded_v11_a_b_materials(self):
+    def test_snapshot_uses_canonical_embedded_v12_a_b_materials(self):
         expected = fake_snapshot()
-        source = expected["source_audit_v11"]
+        source = expected["source_audit_v12"]
         authorization = copy.deepcopy(expected["confirmation_a_authorization"])
         live_authorization = copy.deepcopy(authorization)
         for field in tuple(live_authorization):
@@ -624,7 +624,7 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "planner manifest"):
             P.validate_planner_manifest(planner)
 
-    def test_v11_projection_and_authorization_links_are_exact(self):
+    def test_v12_projection_and_authorization_links_are_exact(self):
         snapshot = fake_snapshot()
         P.validate_base_snapshot(snapshot)
         mutations = (
@@ -634,7 +634,7 @@ class ProtocolTest(unittest.TestCase):
         )
         for field, value in mutations:
             changed = copy.deepcopy(snapshot)
-            changed["source_audit_v11"]["bindings"][field] = value
+            changed["source_audit_v12"]["bindings"][field] = value
             with self.subTest(field=field), self.assertRaises(P.ProtocolError):
                 P.validate_base_snapshot(changed)
         changed = copy.deepcopy(snapshot)
@@ -644,23 +644,23 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "metadata"):
             P.validate_base_snapshot(changed)
         changed = copy.deepcopy(snapshot)
-        changed["source_audit_v11"]["guided_b"]["records"][0][
+        changed["source_audit_v12"]["guided_b"]["records"][0][
             "candidate_index"
         ] = 300
         with self.assertRaises(P.ProtocolError):
             P.validate_base_snapshot(changed)
 
-    def test_v11_translator_digest_is_recomputed(self):
+    def test_v12_translator_digest_is_recomputed(self):
         snapshot = fake_snapshot()
-        snapshot["source_audit_v11"]["bindings"][
+        snapshot["source_audit_v12"]["bindings"][
             "translator_source_sha256"
         ] = "0" * 64
         with self.assertRaisesRegex(P.ProtocolError, "translator source"):
             P.validate_base_snapshot(snapshot)
 
-    def test_v11_translator_closure_is_identical_in_both_runs(self):
+    def test_v12_translator_closure_is_identical_in_both_runs(self):
         snapshot = fake_snapshot()
-        bindings = snapshot["source_audit_v11"]["bindings"]
+        bindings = snapshot["source_audit_v12"]["bindings"]
         preflight = bindings["preflight_tracked_file_sha256"]
         preflight.pop(next(
             path for path in preflight if path.startswith("src/translate/")
@@ -671,9 +671,9 @@ class ProtocolTest(unittest.TestCase):
         with self.assertRaisesRegex(P.ProtocolError, "translator source"):
             P.validate_base_snapshot(snapshot)
 
-    def test_v11_eligible_count_tracks_supported_not_success(self):
+    def test_v12_eligible_count_tracks_supported_not_success(self):
         snapshot = fake_snapshot()
-        bindings = snapshot["source_audit_v11"]["bindings"]
+        bindings = snapshot["source_audit_v12"]["bindings"]
         self.assertEqual(bindings["eligible_records_count"], 950)
         self.assertEqual(bindings["support_status_counts"]["supported"], 950)
         self.assertEqual(bindings["outcome_counts"]["success"], 951)
@@ -683,56 +683,56 @@ class ProtocolTest(unittest.TestCase):
         )
         P.validate_base_snapshot(snapshot)
 
-    def test_v11_classification_binding_fields_are_mandatory(self):
+    def test_v12_classification_binding_fields_are_mandatory(self):
         fields = {
             "inventory_families_count", "translation_attempts_count",
             "support_status_counts", "support_status_counts_sha256",
             "support_exclusion_counts", "support_exclusion_counts_sha256",
             "resource_exclusion_counts", "resource_exclusion_counts_sha256",
         }
-        self.assertTrue(fields <= set(P.V11_BINDING_FIELDS))
+        self.assertTrue(fields <= set(P.V12_BINDING_FIELDS))
         for field in fields:
             snapshot = fake_snapshot()
-            del snapshot["source_audit_v11"]["bindings"][field]
+            del snapshot["source_audit_v12"]["bindings"][field]
             with self.subTest(field=field), self.assertRaisesRegex(
                 P.ProtocolError, "binding shape"
             ):
                 P.validate_base_snapshot(snapshot)
 
-    def test_v11_classification_binding_counts_are_exact(self):
+    def test_v12_classification_binding_counts_are_exact(self):
         for field, value in (
             ("inventory_families_count", 0),
             ("translation_attempts_count", 1639),
         ):
             snapshot = fake_snapshot()
-            snapshot["source_audit_v11"]["bindings"][field] = value
+            snapshot["source_audit_v12"]["bindings"][field] = value
             with self.subTest(field=field), self.assertRaisesRegex(
                 P.ProtocolError, "source authorization"
             ):
                 P.validate_base_snapshot(snapshot)
 
-    def test_v11_inventory_covers_all_embedded_canonical_families(self):
+    def test_v12_inventory_covers_all_embedded_canonical_families(self):
         snapshot = fake_snapshot()
-        snapshot["source_audit_v11"]["bindings"][
+        snapshot["source_audit_v12"]["bindings"][
             "inventory_families_count"
         ] = 94
         with self.assertRaisesRegex(P.ProtocolError, "family count is too small"):
             P.validate_base_snapshot(snapshot)
 
-    def test_v11_classification_summaries_are_recomputed_and_coherent(self):
+    def test_v12_classification_summaries_are_recomputed_and_coherent(self):
         mutations = {
             "support_status_counts": {
                 "indeterminate": 0, "supported": 949, "unsupported": 691,
             },
             "support_exclusion_counts": {
                 reason: 689 if reason == "translation-input-rejected" else 0
-                for reason in P.V11_SUPPORT_EXCLUSION_REASONS
+                for reason in P.V12_SUPPORT_EXCLUSION_REASONS
             },
             "resource_exclusion_counts": {"memory": 1, "time": 0},
         }
         for field, value in mutations.items():
             snapshot = fake_snapshot()
-            bindings = snapshot["source_audit_v11"]["bindings"]
+            bindings = snapshot["source_audit_v12"]["bindings"]
             bindings[field] = value
             bindings[field + "_sha256"] = hashlib.sha256(
                 P.canonical_json(value)
@@ -742,22 +742,22 @@ class ProtocolTest(unittest.TestCase):
             ):
                 P.validate_base_snapshot(snapshot)
 
-    def test_v11_code_manifest_is_bound_in_both_tracked_closures(self):
+    def test_v12_code_manifest_is_bound_in_both_tracked_closures(self):
         tracked_fields = (
             "full_tracked_file_sha256",
             "preflight_tracked_file_sha256",
         )
         for field in tracked_fields:
             snapshot = fake_snapshot()
-            snapshot["source_audit_v11"]["bindings"][field][
-                P.V11_CODE_MANIFEST_RELATIVE
+            snapshot["source_audit_v12"]["bindings"][field][
+                P.V12_CODE_MANIFEST_RELATIVE
             ] = "0" * 64
             with self.subTest(field=field), self.assertRaisesRegex(
                 P.ProtocolError, "code-manifest closure"
             ):
                 P.validate_base_snapshot(snapshot)
 
-    def test_v11_fixed_family_ledgers_define_projection_flags(self):
+    def test_v12_fixed_family_ledgers_define_projection_flags(self):
         flag_pairs = (
             ("is_shadow_family", "is_shadow_unrepresented"),
             ("is_all_prior_represented", "is_all_prior_unrepresented"),
@@ -767,23 +767,23 @@ class ProtocolTest(unittest.TestCase):
             task = P.guided_b_tasks(snapshot)[0]
             task[first] = not task[first]
             task[second] = not task[second]
-            rebind_v11_cohort(snapshot, "guided-b")
+            rebind_v12_cohort(snapshot, "guided-b")
             with self.subTest(flags=(first, second)), self.assertRaisesRegex(
                 P.ProtocolError, "source task changed"
             ):
                 P.validate_base_snapshot(snapshot)
 
-    def test_v11_cohort_directory_family_ledger_is_consistent(self):
+    def test_v12_cohort_directory_family_ledger_is_consistent(self):
         snapshot = fake_snapshot()
         guided = P.guided_b_tasks(snapshot)
-        set_v11_task_directory(guided[10], guided[0]["directory"])
-        rebind_v11_cohort(snapshot, "guided-b")
+        set_v12_task_directory(guided[10], guided[0]["directory"])
+        rebind_v12_cohort(snapshot, "guided-b")
         with self.assertRaisesRegex(
             P.ProtocolError, "guided-b directory-to-family ledger"
         ):
             P.validate_base_snapshot(snapshot)
 
-    def test_v11_task_and_alias_directories_are_canonical_safe_relative(self):
+    def test_v12_task_and_alias_directories_are_canonical_safe_relative(self):
         invalid_directories = (
             "domain-000/.",
             "./domain-000",
@@ -802,28 +802,28 @@ class ProtocolTest(unittest.TestCase):
                 task = P.guided_b_tasks(snapshot)[0]
                 source = task if location == "task" else task["aliases"][0]
                 source["directory"] = directory
-                rebind_v11_cohort(snapshot, "guided-b")
+                rebind_v12_cohort(snapshot, "guided-b")
                 with self.subTest(
                     location=location, directory=directory
                 ), self.assertRaisesRegex(P.ProtocolError, error):
                     P.validate_base_snapshot(snapshot)
 
-    def test_v11_a_b_directory_family_ledgers_agree(self):
+    def test_v12_a_b_directory_family_ledgers_agree(self):
         snapshot = fake_snapshot()
         a_task = snapshot["confirmation_a_cohort"]["records"][0]
         b_task = P.guided_b_tasks(snapshot)[0]
-        set_v11_task_directory(a_task, b_task["directory"])
-        rebind_v11_cohort(snapshot, "confirmation-a")
+        set_v12_task_directory(a_task, b_task["directory"])
+        rebind_v12_cohort(snapshot, "confirmation-a")
         with self.assertRaisesRegex(P.ProtocolError, "A/B directory-to-family"):
             P.validate_base_snapshot(snapshot)
 
-    def test_v11_confirmation_a_family_and_novelty_floors(self):
+    def test_v12_confirmation_a_family_and_novelty_floors(self):
         snapshot = fake_snapshot()
         tasks = snapshot["confirmation_a_cohort"]["records"]
         for position, task in enumerate(tasks):
-            set_v11_task_family(task, "a-floor-{:02d}".format(position % 27))
-            set_v11_task_directory(task, "a-floor-dir-{:03d}".format(position))
-        rebind_v11_cohort(snapshot, "confirmation-a")
+            set_v12_task_family(task, "a-floor-{:02d}".format(position % 27))
+            set_v12_task_directory(task, "a-floor-dir-{:03d}".format(position))
+        rebind_v12_cohort(snapshot, "confirmation-a")
         with self.assertRaisesRegex(
             P.ProtocolError, "confirmation-a family/novelty floor"
         ):
@@ -831,25 +831,25 @@ class ProtocolTest(unittest.TestCase):
 
         snapshot = fake_snapshot()
         tasks = snapshot["confirmation_a_cohort"]["records"]
-        families = sorted(P.V11_SHADOW_FAMILIES) + [
+        families = sorted(P.V12_SHADOW_FAMILIES) + [
             "a-novel-00", "a-novel-01",
         ]
         for position, task in enumerate(tasks):
-            set_v11_task_family(task, families[position % len(families)])
-            set_v11_task_directory(task, "a-novel-dir-{:03d}".format(position))
-        rebind_v11_cohort(snapshot, "confirmation-a")
+            set_v12_task_family(task, families[position % len(families)])
+            set_v12_task_directory(task, "a-novel-dir-{:03d}".format(position))
+        rebind_v12_cohort(snapshot, "confirmation-a")
         with self.assertRaisesRegex(
             P.ProtocolError, "confirmation-a family/novelty floor"
         ):
             P.validate_base_snapshot(snapshot)
 
-    def test_v11_guided_b_family_and_novelty_floors(self):
+    def test_v12_guided_b_family_and_novelty_floors(self):
         snapshot = fake_snapshot()
         tasks = P.guided_b_tasks(snapshot)
         for position, task in enumerate(tasks):
-            set_v11_task_family(task, "b-floor-{:02d}".format(position % 29))
-            set_v11_task_directory(task, "b-floor-dir-{:03d}".format(position))
-        rebind_v11_cohort(snapshot, "guided-b")
+            set_v12_task_family(task, "b-floor-{:02d}".format(position % 29))
+            set_v12_task_directory(task, "b-floor-dir-{:03d}".format(position))
+        rebind_v12_cohort(snapshot, "guided-b")
         with self.assertRaisesRegex(
             P.ProtocolError, "guided-b family/novelty floor"
         ):
@@ -857,19 +857,19 @@ class ProtocolTest(unittest.TestCase):
 
         snapshot = fake_snapshot()
         tasks = P.guided_b_tasks(snapshot)
-        families = sorted(P.V11_SHADOW_FAMILIES) + [
+        families = sorted(P.V12_SHADOW_FAMILIES) + [
             "b-novel-00", "b-novel-01", "b-novel-02", "b-novel-03",
         ]
         for position, task in enumerate(tasks):
-            set_v11_task_family(task, families[position % len(families)])
-            set_v11_task_directory(task, "b-novel-dir-{:03d}".format(position))
-        rebind_v11_cohort(snapshot, "guided-b")
+            set_v12_task_family(task, families[position % len(families)])
+            set_v12_task_directory(task, "b-novel-dir-{:03d}".format(position))
+        rebind_v12_cohort(snapshot, "guided-b")
         with self.assertRaisesRegex(
             P.ProtocolError, "guided-b family/novelty floor"
         ):
             P.validate_base_snapshot(snapshot)
 
-    def test_v11_guided_b_per_family_cap_is_enforced(self):
+    def test_v12_guided_b_per_family_cap_is_enforced(self):
         snapshot = fake_snapshot()
         tasks = P.guided_b_tasks(snapshot)
         for position, task in enumerate(tasks):
@@ -877,9 +877,9 @@ class ProtocolTest(unittest.TestCase):
                 "b-cap-00" if position < 13
                 else "b-cap-{:02d}".format(1 + (position - 13) % 29)
             )
-            set_v11_task_family(task, family)
-            set_v11_task_directory(task, "b-cap-dir-{:03d}".format(position))
-        rebind_v11_cohort(snapshot, "guided-b")
+            set_v12_task_family(task, family)
+            set_v12_task_directory(task, "b-cap-dir-{:03d}".format(position))
+        rebind_v12_cohort(snapshot, "guided-b")
         with self.assertRaisesRegex(
             P.ProtocolError, "guided-b family/novelty floor"
         ):
@@ -897,11 +897,11 @@ class ProtocolTest(unittest.TestCase):
         paths = (
             ("base_b_freeze_repository_revision",),
             ("confirmation_a_freeze", "repository_revision"),
-            ("source_audit_v11", "bindings",
+            ("source_audit_v12", "bindings",
              "preflight_source_repository_commit_id"),
-            ("source_audit_v11", "bindings",
+            ("source_audit_v12", "bindings",
              "preflight_seal_repository_commit_id"),
-            ("source_audit_v11", "bindings", "seal_repository_commit_id"),
+            ("source_audit_v12", "bindings", "seal_repository_commit_id"),
         )
         for path in paths:
             for length in (39, 41):

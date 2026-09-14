@@ -455,23 +455,23 @@ class AnalyzerTest(unittest.TestCase):
         self.assertEqual(first["pass"], second["pass"])
         self.assertFalse(second["mechanism_diagnostics"]["gating"])
 
-    def test_downstream_provenance_is_v11_only_and_closed(self):
+    def test_downstream_provenance_is_v12_only_and_closed(self):
         freeze = fake_freeze()
         properties = Analyzer.Runner.build_manifest_properties(
             freeze, FREEZE_SHA
         )
         keys = set(properties)
-        expected_v11 = set(Analyzer.Runner.V11_PROVENANCE_PROPERTY_FIELDS)
-        self.assertTrue(expected_v11.issubset(keys))
+        expected_v12 = set(Analyzer.Runner.V12_PROVENANCE_PROPERTY_FIELDS)
+        self.assertTrue(expected_v12.issubset(keys))
         self.assertEqual(
             {key for key in keys if key.startswith("source_audit")},
-            {key for key in expected_v11 if key.startswith("source_audit")},
+            {key for key in expected_v12 if key.startswith("source_audit")},
         )
         self.assertEqual(
-            properties["source_audit_v11_schema"], P.V11_SOURCE_SCHEMA
+            properties["source_audit_v12_schema"], P.V12_SOURCE_SCHEMA
         )
         self.assertEqual(
-            properties["source_audit_campaign"], "v11-full-census"
+            properties["source_audit_campaign"], "v12-full-census"
         )
         provenance = Analyzer._analysis_provenance(freeze, FREEZE_SHA)
         self.assertEqual(
@@ -521,7 +521,7 @@ class AnalyzerTest(unittest.TestCase):
             self.assertEqual(receipt_value["hardware"], HARDWARE)
             self.assertEqual(analysis_provenance, receipt_provenance)
             self.assertTrue(set(
-                Analyzer.Runner.V11_PROVENANCE_PROPERTY_FIELDS
+                Analyzer.Runner.V12_PROVENANCE_PROPERTY_FIELDS
             ).issubset(analysis_provenance))
 
     def test_second_pass_input_drift_publishes_nothing(self):

@@ -930,7 +930,7 @@ ANALYSIS_PROVENANCE_FIELDS = (
     "standalone_k32_evidence_sha256", "standalone_k32_records_sha256",
     "standalone_b_parse_receipt_sha256",
     "standalone_b_fetch_receipt_sha256", "standalone_b_properties_sha256",
-) + Runner.V11_PROVENANCE_PROPERTY_FIELDS
+) + Runner.V12_PROVENANCE_PROPERTY_FIELDS
 
 
 def _analysis_provenance(freeze: dict, freeze_sha256: str) -> dict:
