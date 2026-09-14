@@ -242,61 +242,36 @@ def fixture(*, a_pass: bool, direct_pass: bool | None, b_pass: bool | None) -> d
     evidence = {
         "source_audit": {
             "sealed": True,
+            "campaign_number": 12,
             "inventory_candidates": 1640,
             "candidates": 1640,
             "inventory_families": 40,
             "translation_attempts": 1640,
             "translated_successfully": 1500,
             "translation_status_counts": {
-                "success": 1500,
-                "input_rejected": 140,
+                "success": 1500, "input_rejected": 120, "resource_excluded": 20,
             },
             "supported_tasks": 1400,
-            "unsupported_tasks": 240,
+            "unsupported_tasks": 220,
+            "indeterminate_tasks": 20,
             "unassigned_supported_tasks": 450,
             "reason_incidence_counts": {
-                "translation_input_rejected": 140,
+                "translation_input_rejected": 120,
                 "no_serialized_operators": 40,
                 "nonpositive_serialized_operator_cost": 30,
                 "serialized_axioms": 20,
                 "serialized_conditional_effects": 10,
                 "normalized_axioms": 20,
             },
-            "primary_exclusion_counts": {
-                "translation_input_rejected": 140,
-                "no_serialized_operators": 30,
-                "nonpositive_serialized_operator_cost": 25,
-                "serialized_axioms": 15,
-                "serialized_conditional_effects": 10,
-                "normalized_axioms": 20,
+            "resource_exclusion_counts": {"memory": 10, "time": 10},
+            "resource_exclusions_by_family": {
+                "freecell": {"memory": 10, "time": 10},
             },
             "logical_shards": 820,
-            "reusable_v5_shard_indices": list(range(800)),
-            "repair_v5_shard_indices": list(range(800, 820)),
-            "reused_v5_shards": 800,
-            "repaired_v5_shards": 20,
-            "whole_campaign_rerun": False,
-            "source_support_outcome_blind_selective_repair": True,
-            "reuse_eligibility_rule_verified": True,
-            "repair_scope_verified": True,
-            "union_sources_verified": True,
-            "reused_v1_v4_shards": 0,
-            "reused_v6_shards": 0,
-            "noncompleted_v5_shards_used": False,
-            "noncompleted_v5_files_opened": False,
-            "v5_noncompleted_failure_logs_inspected": False,
-            "v5_failure_detailed_accounting_inspected": False,
-            "v7_success_resource_accounting_recorded": True,
-            "v5_output_namespace_enumerated_by_v7": False,
-            "v5_output_triplet_bytes_read_before_v7_all_success_gate": False,
-            "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate": True,
-            "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion": False,
-            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal": True,
-            "accepted_translation_statuses": ["input-rejected", "success"],
-            "translator_timeout_is_infrastructure_failure": True,
-            "resource_ceiling_changes_accepted_outcome_classes": False,
-            "source_audit_runtime_estimand_recorded": False,
-            "cross_campaign_runtime_comparison_authorized": False,
+            "whole_campaign_rerun": True,
+            "prior_campaign_shards_reused": 0,
+            "time_limit_seconds": 1800,
+            "memory_limit_mib": 24576,
             "source_chain_verified": True,
             "environment_verified": True,
             "scheduler_verified": True,
@@ -660,7 +635,7 @@ class RendererTests(unittest.TestCase):
             ),
         )
         renderer.classify(fixture(a_pass=True, direct_pass=True, b_pass=True))
-        for field in ("reason_incidence_counts", "primary_exclusion_counts"):
+        for field in ("reason_incidence_counts",):
             for mutation in ("missing", "extra"):
                 evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
                 counts = evidence["source_audit"][field]
@@ -672,12 +647,13 @@ class RendererTests(unittest.TestCase):
                     with self.assertRaisesRegex(renderer.RenderError, "schema mismatch"):
                         renderer.classify(evidence)
 
-    def test_source_translation_support_and_primary_histogram_conservation(self) -> None:
+    def test_source_translation_support_and_resource_conservation(self) -> None:
         mutations = (
             ("translation_status_counts", "success", 1499),
-            ("translation_status_counts", "input_rejected", 139),
-            ("reason_incidence_counts", "translation_input_rejected", 139),
-            ("primary_exclusion_counts", "normalized_axioms", 19),
+            ("translation_status_counts", "input_rejected", 119),
+            ("translation_status_counts", "resource_excluded", 19),
+            ("reason_incidence_counts", "translation_input_rejected", 119),
+            ("resource_exclusion_counts", "time", 9),
         )
         for section, field, value in mutations:
             evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
@@ -685,82 +661,52 @@ class RendererTests(unittest.TestCase):
             with self.subTest(section=section, field=field):
                 with self.assertRaises(renderer.RenderError):
                     renderer.classify(evidence)
-        evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["unassigned_supported_tasks"] -= 1
-        with self.assertRaisesRegex(renderer.RenderError, "does not authorize"):
-            renderer.classify(evidence)
+        for field in (
+            "supported_tasks", "unsupported_tasks", "indeterminate_tasks",
+            "unassigned_supported_tasks",
+        ):
+            evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
+            evidence["source_audit"][field] -= 1
+            with self.subTest(field=field):
+                with self.assertRaisesRegex(renderer.RenderError, "does not authorize"):
+                    renderer.classify(evidence)
 
     def test_source_reason_category_bounds_fail_closed(self) -> None:
         evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["reason_incidence_counts"][
-            "normalized_axioms"
-        ] = 241
+        evidence["source_audit"]["reason_incidence_counts"]["normalized_axioms"] = 221
         with self.assertRaisesRegex(renderer.RenderError, "outside its allowed range"):
             renderer.classify(evidence)
 
-        evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["primary_exclusion_counts"][
-            "normalized_axioms"
-        ] = 21
-        with self.assertRaisesRegex(renderer.RenderError, "exceeds incidence"):
-            renderer.classify(evidence)
-
-    def test_source_v5_v7_index_partition_is_exact(self) -> None:
-        cases = {}
-        evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["reusable_v5_shard_indices"] = [1, 0] + list(
-            range(2, 800)
-        )
-        cases["unsorted"] = evidence
-        evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["reusable_v5_shard_indices"][1] = 0
-        cases["duplicate"] = evidence
-        evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["repair_v5_shard_indices"][0] = 799
-        cases["overlap-and-gap"] = evidence
-        evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["repair_v5_shard_indices"][-1] = 820
-        cases["out-of-range"] = evidence
-        evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["reused_v5_shards"] = 799
-        cases["count-mismatch"] = evidence
-        for name, changed in cases.items():
-            with self.subTest(name=name):
+    def test_source_resource_family_census_is_conserved(self) -> None:
+        for changed in (
+            {},
+            {"freecell": {"memory": 9, "time": 10}},
+            {"freecell": {"memory": 10, "time": 10}, "blocks": {"memory": 0, "time": 0}},
+            {"freecell": {"memory": 10, "time": True}},
+            {"freecell": {"memory": 10, "time": 10, "extra": 0}},
+        ):
+            evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
+            evidence["source_audit"]["resource_exclusions_by_family"] = changed
+            with self.subTest(changed=changed):
                 with self.assertRaises(renderer.RenderError):
-                    renderer.classify(changed)
+                    renderer.classify(evidence)
 
-    def test_source_v7_policy_flags_are_all_required(self) -> None:
+    def test_source_v12_contract_is_required(self) -> None:
         for field, invalid in (
-            ("whole_campaign_rerun", True),
-            ("source_support_outcome_blind_selective_repair", False),
-            ("reuse_eligibility_rule_verified", False),
-            ("repair_scope_verified", False),
-            ("union_sources_verified", False),
-            ("noncompleted_v5_shards_used", True),
-            ("noncompleted_v5_files_opened", True),
-            ("v5_noncompleted_failure_logs_inspected", True),
-            ("v5_failure_detailed_accounting_inspected", True),
-            ("v7_success_resource_accounting_recorded", False),
-            ("v5_output_namespace_enumerated_by_v7", True),
-            ("v5_output_triplet_bytes_read_before_v7_all_success_gate", True),
-            ("v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate", False),
-            ("v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion", True),
-            ("v5_reusable_selected_tree_first_separately_recorded_at_v7_seal", False),
-            ("translator_timeout_is_infrastructure_failure", False),
-            ("resource_ceiling_changes_accepted_outcome_classes", True),
-            ("source_audit_runtime_estimand_recorded", True),
-            ("cross_campaign_runtime_comparison_authorized", True),
-            ("reused_v6_shards", 1),
+            ("campaign_number", 11), ("logical_shards", 819),
+            ("whole_campaign_rerun", False), ("prior_campaign_shards_reused", 1),
+            ("time_limit_seconds", 1801), ("memory_limit_mib", 24575),
+            ("source_chain_verified", False), ("environment_verified", False),
+            ("scheduler_verified", False), ("cohort_disjoint", False),
         ):
             evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
             evidence["source_audit"][field] = invalid
             with self.subTest(field=field):
                 with self.assertRaisesRegex(renderer.RenderError, "does not authorize"):
                     renderer.classify(evidence)
-
         evidence = fixture(a_pass=True, direct_pass=True, b_pass=True)
-        evidence["source_audit"]["accepted_translation_statuses"] = []
-        with self.assertRaisesRegex(renderer.RenderError, "statuses changed"):
+        evidence["source_audit"]["reusable_v5_shard_indices"] = []
+        with self.assertRaisesRegex(renderer.RenderError, "schema mismatch"):
             renderer.classify(evidence)
 
     def test_a_gate_boundary_is_recomputed(self) -> None:

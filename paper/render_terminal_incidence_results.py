@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Render terminal-incidence outcomes from sealed, normalized evidence.
 
-Phase 1 deliberately has no real-artifact loader.  Production modes remain
-blocked while every expected digest is the all-zero sentinel.
+Production modes require explicit committed source/results revisions and
+non-sentinel digest pins. Synthetic fixtures never authorize a paper build.
 """
 
 from __future__ import annotations
@@ -24,6 +24,9 @@ from pathlib import Path
 ZERO_SHA256 = "0" * 64
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 PRODUCTION_EXPECTED_A_PASS = None
+PRODUCTION_SOURCE_SEAL_REVISION = None
+PRODUCTION_RESULTS_REVISION = None
+PRODUCTION_ARTIFACT_PINS = {}
 PRODUCTION_DIGEST_PINS = {
     "source_audit": ZERO_SHA256,
     "confirmation_a": ZERO_SHA256,
@@ -348,12 +351,6 @@ def _reject_artifact_text(value: object, path: str = "evidence") -> None:
         for key, child in value.items():
             if type(key) is not str:
                 raise RenderError(f"{path} contains a non-string schema key")
-            if (
-                path == "evidence.source_audit"
-                and key == "accepted_translation_statuses"
-                and child == ["input-rejected", "success"]
-            ):
-                continue
             _reject_artifact_text(child, f"{path}.{key}")
     elif type(value) in (list, tuple, set):
         for index, child in enumerate(value):
@@ -375,65 +372,25 @@ def _validate_sorted_indices(
 
 
 def _validate_source_audit(value: object) -> dict:
+    """Validate the fresh V12 census, not the superseded selective repair."""
     path = "evidence.source_audit"
     record = _keys(
         value,
         {
-            "sealed",
-            "inventory_candidates",
-            "candidates",
-            "inventory_families",
-            "translation_attempts",
-            "translated_successfully",
-            "translation_status_counts",
-            "supported_tasks",
-            "unsupported_tasks",
-            "unassigned_supported_tasks",
-            "reason_incidence_counts",
-            "primary_exclusion_counts",
-            "logical_shards",
-            "reusable_v5_shard_indices",
-            "repair_v5_shard_indices",
-            "reused_v5_shards",
-            "repaired_v5_shards",
-            "whole_campaign_rerun",
-            "source_support_outcome_blind_selective_repair",
-            "reuse_eligibility_rule_verified",
-            "repair_scope_verified",
-            "union_sources_verified",
-            "reused_v1_v4_shards",
-            "reused_v6_shards",
-            "noncompleted_v5_shards_used",
-            "noncompleted_v5_files_opened",
-            "v5_noncompleted_failure_logs_inspected",
-            "v5_failure_detailed_accounting_inspected",
-            "v7_success_resource_accounting_recorded",
-            "v5_output_namespace_enumerated_by_v7",
-            "v5_output_triplet_bytes_read_before_v7_all_success_gate",
-            "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
-            "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
-            "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
-            "accepted_translation_statuses",
-            "translator_timeout_is_infrastructure_failure",
-            "resource_ceiling_changes_accepted_outcome_classes",
-            "source_audit_runtime_estimand_recorded",
-            "cross_campaign_runtime_comparison_authorized",
-            "source_chain_verified",
-            "environment_verified",
-            "scheduler_verified",
-            "cohort_disjoint",
-            "a_tasks",
-            "a_families",
-            "a_shadow_tasks",
-            "a_shadow_families",
-            "a_prior_tasks",
-            "a_prior_families",
-            "b_tasks",
-            "b_families",
-            "b_shadow_tasks",
-            "b_shadow_families",
-            "b_prior_tasks",
-            "b_prior_families",
+            "sealed", "campaign_number", "inventory_candidates", "candidates",
+            "inventory_families", "translation_attempts",
+            "translated_successfully", "translation_status_counts",
+            "supported_tasks", "unsupported_tasks", "indeterminate_tasks",
+            "unassigned_supported_tasks", "reason_incidence_counts",
+            "resource_exclusion_counts", "resource_exclusions_by_family",
+            "logical_shards", "whole_campaign_rerun", "prior_campaign_shards_reused",
+            "time_limit_seconds", "memory_limit_mib",
+            "source_chain_verified", "environment_verified",
+            "scheduler_verified", "cohort_disjoint",
+            "a_tasks", "a_families", "a_shadow_tasks", "a_shadow_families",
+            "a_prior_tasks", "a_prior_families",
+            "b_tasks", "b_families", "b_shadow_tasks", "b_shadow_families",
+            "b_prior_tasks", "b_prior_families",
         },
         path,
     )
@@ -441,244 +398,98 @@ def _validate_source_audit(value: object) -> dict:
         raise RenderError("the source audit is not sealed")
     candidates = _integer(record, "inventory_candidates", path)
     execution_candidates = _integer(record, "candidates", path)
-    inventory_families = _integer(
-        record, "inventory_families", path, maximum=candidates
-    )
+    families = _integer(record, "inventory_families", path, maximum=candidates)
     attempts = _integer(record, "translation_attempts", path, maximum=candidates)
-    translated = _integer(
-        record, "translated_successfully", path, maximum=attempts
-    )
-    translation_statuses = _keys(
+    translated = _integer(record, "translated_successfully", path, maximum=attempts)
+    statuses = _keys(
         record["translation_status_counts"],
-        {"success", "input_rejected"},
+        {"success", "input_rejected", "resource_excluded"},
         f"{path}.translation_status_counts",
     )
-    translation_success = _integer(
-        translation_statuses,
-        "success",
-        f"{path}.translation_status_counts",
-        maximum=attempts,
-    )
-    translation_rejected = _integer(
-        translation_statuses,
-        "input_rejected",
-        f"{path}.translation_status_counts",
-        maximum=attempts,
-    )
+    for key in statuses:
+        _integer(statuses, key, f"{path}.translation_status_counts", maximum=attempts)
     supported = _integer(record, "supported_tasks", path, maximum=candidates)
     unsupported = _integer(record, "unsupported_tasks", path, maximum=candidates)
-    unassigned_supported = _integer(
-        record, "unassigned_supported_tasks", path, maximum=supported
-    )
-    reason_counts = _keys(
-        record["reason_incidence_counts"],
-        set(SOURCE_EXCLUSION_CATEGORIES),
+    indeterminate = _integer(record, "indeterminate_tasks", path, maximum=candidates)
+    unassigned = _integer(record, "unassigned_supported_tasks", path, maximum=supported)
+    reasons = _keys(
+        record["reason_incidence_counts"], set(SOURCE_EXCLUSION_CATEGORIES),
         f"{path}.reason_incidence_counts",
     )
-    primary_counts = _keys(
-        record["primary_exclusion_counts"],
-        set(SOURCE_EXCLUSION_CATEGORIES),
-        f"{path}.primary_exclusion_counts",
+    for key in reasons:
+        _integer(reasons, key, f"{path}.reason_incidence_counts", maximum=unsupported)
+    resources = _keys(
+        record["resource_exclusion_counts"], {"memory", "time"},
+        f"{path}.resource_exclusion_counts",
     )
-    for category in SOURCE_EXCLUSION_CATEGORIES:
-        incidence = _integer(
-            reason_counts,
-            category,
-            f"{path}.reason_incidence_counts",
-            maximum=unsupported,
-        )
-        primary = _integer(
-            primary_counts,
-            category,
-            f"{path}.primary_exclusion_counts",
-            maximum=unsupported,
-        )
-        if primary > incidence:
-            raise RenderError(
-                f"{path}.primary_exclusion_counts.{category} exceeds incidence"
+    for key in resources:
+        _integer(resources, key, f"{path}.resource_exclusion_counts", maximum=indeterminate)
+    by_family = record["resource_exclusions_by_family"]
+    if type(by_family) is not dict or len(by_family) > families:
+        raise RenderError("source resource-exclusion family census changed")
+    totals = {"memory": 0, "time": 0}
+    for family, counts in by_family.items():
+        if type(family) is not str or not re.fullmatch(r"[a-z0-9-]+", family):
+            raise RenderError("source resource-exclusion family is invalid")
+        _keys(counts, set(totals), f"{path}.resource_exclusions_by_family.{family}")
+        for key in totals:
+            totals[key] += _integer(
+                counts, key, f"{path}.resource_exclusions_by_family.{family}",
+                maximum=indeterminate,
             )
+        if sum(counts.values()) == 0:
+            raise RenderError("source resource-exclusion family is empty")
     logical_shards = _integer(record, "logical_shards", path)
-    reused_indices = _validate_sorted_indices(
-        record["reusable_v5_shard_indices"],
-        f"{path}.reusable_v5_shard_indices",
-        upper_bound=logical_shards,
-    )
-    repair_indices = _validate_sorted_indices(
-        record["repair_v5_shard_indices"],
-        f"{path}.repair_v5_shard_indices",
-        upper_bound=logical_shards,
-    )
-    reused_v5 = _integer(
-        record, "reused_v5_shards", path, maximum=logical_shards
-    )
-    repaired_v5 = _integer(
-        record, "repaired_v5_shards", path, maximum=logical_shards
-    )
-    reused_v1_v4 = _integer(
-        record, "reused_v1_v4_shards", path, maximum=logical_shards
-    )
-    reused_v6 = _integer(
-        record, "reused_v6_shards", path, maximum=logical_shards
-    )
+    prior_reused = _integer(record, "prior_campaign_shards_reused", path)
+    time_limit = _integer(record, "time_limit_seconds", path)
+    memory_limit = _integer(record, "memory_limit_mib", path)
     whole_rerun = _boolean(record, "whole_campaign_rerun", path)
-    source_support_outcome_blind = _boolean(
-        record, "source_support_outcome_blind_selective_repair", path
-    )
-    completed_zero_only = _boolean(
-        record, "reuse_eligibility_rule_verified", path
-    )
-    complete_shard_scope = _boolean(record, "repair_scope_verified", path)
-    union_sources_verified = _boolean(record, "union_sources_verified", path)
-    noncompleted_used = _boolean(
-        record, "noncompleted_v5_shards_used", path
-    )
-    noncompleted_opened = _boolean(
-        record, "noncompleted_v5_files_opened", path
-    )
-    failure_logs_inspected = _boolean(
-        record, "v5_noncompleted_failure_logs_inspected", path
-    )
-    failure_accounting_inspected = _boolean(
-        record, "v5_failure_detailed_accounting_inspected", path
-    )
-    v7_resources_recorded = _boolean(
-        record, "v7_success_resource_accounting_recorded", path
-    )
-    v5_namespace_enumerated = _boolean(
-        record, "v5_output_namespace_enumerated_by_v7", path
-    )
-    v5_triplets_read_before_gate = _boolean(
-        record, "v5_output_triplet_bytes_read_before_v7_all_success_gate", path
-    )
-    v5_triplets_read_after_gate = _boolean(
-        record,
-        "v5_reusable_triplet_bytes_read_during_seal_after_v7_all_success_gate",
-        path,
-    )
-    v5_bytes_contemporaneously_committed = _boolean(
-        record,
-        "v5_reusable_selected_tree_contemporaneously_externally_committed_at_v5_completion",
-        path,
-    )
-    v5_bytes_first_recorded_at_v7_seal = _boolean(
-        record,
-        "v5_reusable_selected_tree_first_separately_recorded_at_v7_seal",
-        path,
-    )
-    accepted_translation_statuses = record["accepted_translation_statuses"]
-    if accepted_translation_statuses != ["input-rejected", "success"]:
-        raise RenderError(
-            f"{path}.accepted_translation_statuses changed"
-        )
-    timeout_is_infrastructure = _boolean(
-        record, "translator_timeout_is_infrastructure_failure", path
-    )
-    ceiling_changes_classes = _boolean(
-        record, "resource_ceiling_changes_accepted_outcome_classes", path
-    )
-    runtime_estimand = _boolean(
-        record, "source_audit_runtime_estimand_recorded", path
-    )
-    cross_campaign_runtime = _boolean(
-        record, "cross_campaign_runtime_comparison_authorized", path
-    )
     verification = all(
         _boolean(record, key, path)
         for key in (
-            "source_chain_verified",
-            "environment_verified",
-            "scheduler_verified",
-            "cohort_disjoint",
+            "source_chain_verified", "environment_verified",
+            "scheduler_verified", "cohort_disjoint",
         )
     )
-    a_tasks = _integer(record, "a_tasks", path)
-    a_families = _integer(record, "a_families", path, maximum=a_tasks)
-    a_shadow_tasks = _integer(
-        record, "a_shadow_tasks", path, maximum=a_tasks
-    )
-    a_shadow = _integer(record, "a_shadow_families", path, maximum=a_families)
-    a_prior_tasks = _integer(record, "a_prior_tasks", path, maximum=a_tasks)
-    a_prior_families = _integer(
-        record,
-        "a_prior_families",
-        path,
-        maximum=min(a_families, a_prior_tasks),
-    )
-    b_tasks = _integer(record, "b_tasks", path)
-    b_families = _integer(record, "b_families", path, maximum=b_tasks)
-    b_shadow_tasks = _integer(
-        record, "b_shadow_tasks", path, maximum=b_tasks
-    )
-    b_shadow = _integer(record, "b_shadow_families", path, maximum=b_families)
-    b_prior_tasks = _integer(record, "b_prior_tasks", path, maximum=b_tasks)
-    b_prior_families = _integer(
-        record,
-        "b_prior_families",
-        path,
-        maximum=min(b_families, b_prior_tasks),
-    )
+    for role in ("a", "b"):
+        tasks = _integer(record, f"{role}_tasks", path, maximum=supported)
+        cohort_families = _integer(
+            record, f"{role}_families", path, maximum=min(tasks, families),
+        )
+        for stratum in ("shadow", "prior"):
+            count = _integer(record, f"{role}_{stratum}_tasks", path, maximum=tasks)
+            _integer(
+                record, f"{role}_{stratum}_families", path,
+                maximum=min(count, cohort_families),
+            )
     authorized = (
-        candidates == 1640
-        and execution_candidates == candidates
-        and execution_candidates == 2 * logical_shards
-        and inventory_families > 0
-        and attempts == candidates
-        and translated == translation_success
-        and translation_success + translation_rejected == attempts
-        and supported + unsupported == candidates
-        and supported <= translated
-        and reason_counts["translation_input_rejected"]
-        == translation_rejected
-        and primary_counts["translation_input_rejected"]
-        == translation_rejected
-        and all(
-            reason_counts[category] <= translated
-            for category in SOURCE_EXCLUSION_CATEGORIES
-            if category != "translation_input_rejected"
-        )
-        and sum(reason_counts.values()) >= unsupported
-        and sum(primary_counts.values()) == unsupported
+        _integer(record, "campaign_number", path) == 12
+        and candidates == execution_candidates == attempts == 1640
         and logical_shards == 820
-        and reused_v5 == len(reused_indices)
-        and repaired_v5 == len(repair_indices)
-        and reused_v5 + repaired_v5 == logical_shards
-        and not (set(reused_indices) & set(repair_indices))
-        and sorted(reused_indices + repair_indices) == list(range(logical_shards))
-        and not whole_rerun
-        and source_support_outcome_blind
-        and completed_zero_only
-        and complete_shard_scope
-        and union_sources_verified
-        and reused_v1_v4 == 0
-        and reused_v6 == 0
-        and not noncompleted_used
-        and not noncompleted_opened
-        and not failure_logs_inspected
-        and not failure_accounting_inspected
-        and v7_resources_recorded
-        and not v5_namespace_enumerated
-        and not v5_triplets_read_before_gate
-        and v5_triplets_read_after_gate
-        and not v5_bytes_contemporaneously_committed
-        and v5_bytes_first_recorded_at_v7_seal
-        and timeout_is_infrastructure
-        and not ceiling_changes_classes
-        and not runtime_estimand
-        and not cross_campaign_runtime
+        and families > 0
+        and translated == statuses["success"]
+        and sum(statuses.values()) == attempts
+        and supported + unsupported + indeterminate == candidates
+        and supported <= translated
+        and indeterminate == statuses["resource_excluded"]
+        and sum(resources.values()) == indeterminate
+        and totals == resources
+        and reasons["translation_input_rejected"] == statuses["input_rejected"]
+        and all(
+            reasons[key] <= translated for key in SOURCE_EXCLUSION_CATEGORIES
+            if key != "translation_input_rejected"
+        )
+        and sum(reasons.values()) >= unsupported
+        and whole_rerun and prior_reused == 0
+        and time_limit == 1800 and memory_limit == 24576
         and verification
-        and a_tasks == 650
-        and a_families >= 28
-        and a_shadow_tasks >= a_shadow
-        and a_shadow >= 12
-        and a_prior_tasks >= 100
-        and a_prior_families >= 10
-        and b_tasks == 300
-        and b_families >= 30
-        and b_shadow_tasks >= b_shadow
-        and b_shadow >= 12
-        and b_prior_tasks >= 50
-        and b_prior_families >= 10
-        and a_tasks + b_tasks + unassigned_supported == supported
+        and record["a_tasks"] == 650 and record["a_families"] >= 28
+        and record["a_shadow_families"] >= 12
+        and record["a_prior_tasks"] >= 100 and record["a_prior_families"] >= 10
+        and record["b_tasks"] == 300 and record["b_families"] >= 30
+        and record["b_shadow_families"] >= 12
+        and record["b_prior_tasks"] >= 50 and record["b_prior_families"] >= 10
+        and record["a_tasks"] + record["b_tasks"] + unassigned == supported
     )
     if not authorized:
         raise RenderError("the sealed source audit does not authorize both cohorts")
@@ -2264,10 +2075,9 @@ def _b_outcome_rows(evidence: dict, outcome: Outcome) -> str:
 
 def _source_exclusion_rows(source: dict) -> str:
     return " ".join(
-        "{} & {} & {} \\\\".format(
+        "{} & {} \\\\".format(
             category.replace("_", " "),
             source["reason_incidence_counts"][category],
-            source["primary_exclusion_counts"][category],
         )
         for category in SOURCE_EXCLUSION_CATEGORIES
     )
@@ -2320,35 +2130,27 @@ def _b_text(evidence: dict, outcome: Outcome) -> str:
 
 def _source_text(source: dict) -> str:
     return (
-        f"The sealed source audit classified all {source['inventory_candidates']} "
+        f"The fresh source audit attempted all {source['inventory_candidates']} "
         f"candidates from {source['inventory_families']} normalized families: "
         f"{source['translated_successfully']} translated successfully, "
         f"{source['translation_status_counts']['input_rejected']} were rejected "
-        f"at translation, "
-        f"{source['supported_tasks']} were supported and "
-        f"{source['unsupported_tasks']} were unsupported. Exclusion rows report "
-        f"reason incidences followed by mutually exclusive primary counts. The "
-        f"sealed campaign used "
-        f"{source['reused_v5_shards']} byte-verified successful V5 shards and "
-        f"{source['repaired_v5_shards']} fresh V7 repair shards, totaling "
-        f"{source['logical_shards']}; no V1--V4 or V6 shard and no noncompleted "
-        f"V5 file was used. The scheduler-defined repair was frozen before "
-        f"source/support outcomes were inspected. Translation timeouts remain "
-        f"infrastructure failures rather than accepted record classes, and the "
-        f"source audit records no runtime estimand. The reusable V5 tree was "
-        f"first separately recorded at V7 seal rather than contemporaneously "
-        f"committed at V5 completion; the protocol requires an immediate "
-        f"content-addressed commit before outcome analysis and later archival. "
-        f"Live provenance and semantic checks cannot exclude a coherent "
-        f"same-user replacement before that commitment. The audit authorized "
-        f"{source['a_tasks']} Confirmation A "
-        f"tasks from {source['a_families']} families and {source['b_tasks']} "
-        f"Confirmation B tasks from {source['b_families']} families; the "
-        f"remaining {source['unassigned_supported_tasks']} supported tasks were "
-        f"not assigned to either cohort. The "
-        f"all-prior-unrepresented strata contained {source['a_prior_tasks']} and "
-        f"{source['b_prior_tasks']} tasks, respectively, and the cohorts were "
-        f"source-disjoint."
+        f"at translation and {source['indeterminate_tasks']} reached a resource "
+        f"limit ({source['resource_exclusion_counts']['time']} time and "
+        f"{source['resource_exclusion_counts']['memory']} memory exclusions). "
+        f"These resource exclusions have indeterminate source support. Of the "
+        f"classified tasks, {source['supported_tasks']} were supported and "
+        f"{source['unsupported_tasks']} unsupported. Exclusion rows count reason "
+        f"incidences; a task can have several reasons. All "
+        f"{source['logical_shards']} shards were computed afresh under the same "
+        f"1,800-second CPU and 24,576-MiB limits; no prior campaign shard was reused. "
+        f"The audit authorized {source['a_tasks']} Confirmation A tasks from "
+        f"{source['a_families']} families and {source['b_tasks']} Confirmation B "
+        f"tasks from {source['b_families']} families; "
+        f"{source['unassigned_supported_tasks']} supported tasks were unassigned. "
+        f"The all-prior-unrepresented strata contained {source['a_prior_tasks']} "
+        f"and {source['b_prior_tasks']} tasks, respectively. The cohorts were "
+        f"source-disjoint. Resource-excluded tasks are outside both cohorts, so "
+        f"the results do not cover tasks whose translation exceeds these limits."
     )
 
 
@@ -2411,11 +2213,21 @@ def render(evidence: object) -> str:
 
 
 def _load_production_evidence() -> dict:
-    """Boundary for the future digest-verifying real-artifact loader."""
+    """Read only explicitly pinned, committed confirmation evidence."""
     _validate_production_pin_contract(
         PRODUCTION_DIGEST_PINS, PRODUCTION_EXPECTED_A_PASS
     )
-    raise RenderError("the real-artifact loader is not implemented")
+    import terminal_incidence_evidence as Evidence
+    try:
+        return Evidence.load_evidence(
+            source_revision=PRODUCTION_SOURCE_SEAL_REVISION,
+            results_revision=PRODUCTION_RESULTS_REVISION,
+            artifact_pins=PRODUCTION_ARTIFACT_PINS,
+            result_pins=PRODUCTION_DIGEST_PINS,
+            expected_a_pass=PRODUCTION_EXPECTED_A_PASS,
+        )
+    except (Evidence.EvidenceError, ValueError) as error:
+        raise RenderError(str(error)) from error
 
 
 def _validate_output_target(
