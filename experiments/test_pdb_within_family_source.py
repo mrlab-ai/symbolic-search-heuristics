@@ -75,6 +75,24 @@ class SupportTests(unittest.TestCase):
                 self.assertEqual(result["status"], "supported")
                 self.assertFalse(result["performance_observed"])
                 self.assertEqual(result["normalization"]["num_normalized_axioms"], 0)
+                # Reproduce Lab's empty dynamic-property context; static
+                # identity is deliberately initialized before source parsing.
+                from lab.parser import Parser
+                from lab.tools import Properties
+                from exp_pdb_within_family_source_pilot_v1 import parse_result
+                from pdb_within_family_parse_context import initialize_static
+                static = {"id": config["id"], "source_config_sha256": W.file_sha(config_path),
+                          "domain_sha256": config["domain_sha256"], "problem_sha256": config["problem_sha256"]}
+                (directory / "static-properties").write_bytes(W.canonical(static))
+                (directory / "run.log").write_text("source test\n")
+                parser = Parser()
+                parser.add_function(initialize_static, file="run.log")
+                parser.add_function(parse_result, file="source-result.json")
+                props = Properties()
+                parser.parse(directory, props)
+                self.assertEqual(props["source_status"], "supported")
+                self.assertEqual(props["coverage"], 1)
+                self.assertEqual(props["unexplained_errors"], [])
                 with self.assertRaisesRegex(ValueError, "already used"):
                     W.run(config_path, translator)
                 (directory / "problem.pddl").write_text("changed")

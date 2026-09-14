@@ -17,7 +17,7 @@ class CohortTests(unittest.TestCase):
             families = C.G.FAMILIES[:count]
             allocations = C.allocations(families)
             specs = C.candidate_specs(families)
-            self.assertEqual(len(specs), 950 + 10 * count)
+            self.assertEqual(len(specs), 650 + 5 * count)
             identities = {(r["role"], r["family"], r["index"]) for r in specs}
             self.assertEqual(len(identities), len(specs))
             for role, total in C.TARGETS.items():
@@ -47,7 +47,7 @@ class CohortTests(unittest.TestCase):
         results[identity]["status"] = "unsupported"
         selected = C.select_tasks(manifest, results)
         self.assertEqual(len(selected["a"]), 650)
-        self.assertEqual(len(selected["b"]), 300)
+        self.assertEqual(set(selected), {"a"})
         reserves = [r for role in selected.values() for r in role if r["reserve"]]
         self.assertEqual(len(reserves), 1)
         self.assertEqual((reserves[0]["family"], reserves[0]["level"]),
@@ -81,6 +81,28 @@ class CohortTests(unittest.TestCase):
         for changed in (raw + "\n" + lines[0], raw.replace("100_2", "100_3")):
             with self.assertRaises(ValueError):
                 M.check_accounting(launch, changed)
+
+    def test_parsing_recovery_cannot_adopt_failed_or_active_translations(self):
+        jobs = []
+        lines = []
+        for number, suffix, count, state in ((100, "01-build", 1, "COMPLETED"),
+                                              (200, "02-start", 2, "COMPLETED"),
+                                              (300, "03-parse", 1, "FAILED")):
+            name = "source-" + suffix
+            jobs.append({"job_id": str(number), "array_elements": count, "job_file": name,
+                         "script": f"#SBATCH --job-name={name}\n#SBATCH --time=00:35:00\n"})
+            for index in range(1, count + 1):
+                code = "1:0" if state == "FAILED" else "0:0"
+                lines.append(f"{number}_{index}|{name}|{state}|{code}|fat|naiss2025-5-561-cpu|normal|9|3072Mc|00:35:00|n1|7")
+        raw = "\n".join(lines)
+        poll = {"queries": {"accounting": {"returncode": 0, "stdout": raw}}}
+        result = C.require_translation_jobs_complete({"jobs": jobs}, poll)
+        self.assertFalse(result["all_completed_successfully"])
+        for changed in (raw.replace("200_1|source-02-start|COMPLETED|0:0", "200_1|source-02-start|FAILED|1:0"),
+                        raw.replace("300_1|source-03-parse|FAILED", "300_1|source-03-parse|RUNNING")):
+            with self.assertRaises(ValueError):
+                C.require_translation_jobs_complete({"jobs": jobs}, {"queries": {
+                    "accounting": {"returncode": 0, "stdout": changed}}})
 
 
 if __name__ == "__main__":

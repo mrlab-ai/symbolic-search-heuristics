@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a finite, structurally screened fresh-instance confirmation cohort."""
+"""Create the finite, structurally screened fresh-instance predictor cohort."""
 
 from __future__ import annotations
 
@@ -18,12 +18,39 @@ import pdb_within_family_source_worker as W
 
 
 SCHEMA = "pdb-terminal-incidence-within-family-cohort/v1"
-TARGETS = {"a": 650, "b": 300}
+# The selector cohort is not generated or screened unless A justifies it.
+TARGETS = {"a": 650}
 RESERVES_PER_LEVEL = 1
 MAX_DUPLICATE_ATTEMPTS = 16
 ARTIFACTS = G.ROOT / "artifacts/pdb-within-family-confirmation-v1"
 PILOT = G.ROOT / "data/pdb-within-family-generator-pilot-v2"
 FREEZE = ARTIFACTS / "cohort-freeze.json"
+
+
+def require_translation_jobs_complete(launch, poll):
+    """Allow parsing recovery, never recovery/reuse of a failed translation."""
+    accounting = poll["queries"]["accounting"]
+    if accounting["returncode"] != 0:
+        raise ValueError("source accounting query did not succeed")
+    all_jobs = Monitor.check_accounting(launch, accounting["stdout"])
+    terminal = {"COMPLETED", "FAILED", "TIMEOUT", "OUT_OF_MEMORY", "NODE_FAIL",
+                "PREEMPTED", "BOOT_FAIL", "DEADLINE"}
+    if (all_jobs["observed_elements"] != all_jobs["expected_elements"]
+            or not all_jobs["resources_match"] or any(
+                row["state"] not in terminal and not row["state"].startswith("CANCELLED")
+                for row in all_jobs["rows"].values())):
+        raise ValueError("source pipeline is still active, incomplete, or misallocated")
+    jobs = [job for job in launch["jobs"]
+            if Path(job["job_file"]).name.endswith(("-01-build", "-02-start"))]
+    if len(jobs) != 2:
+        raise ValueError("cannot isolate original translation jobs")
+    ids = {job["job_id"] for job in jobs}
+    raw = "\n".join(line for line in accounting["stdout"].splitlines()
+                    if line.split("|", 1)[0].split("_", 1)[0] in ids)
+    execution = Monitor.check_accounting({"jobs": jobs}, raw)
+    if not execution["all_completed_successfully"] or not execution["resources_match"]:
+        raise ValueError("original translations did not all complete successfully")
+    return all_jobs
 
 
 def load_completed_source(summary_path, launch_path, poll_path, manifest_path):
@@ -35,10 +62,22 @@ def load_completed_source(summary_path, launch_path, poll_path, manifest_path):
     accounting = poll["queries"]["accounting"]
     if accounting["returncode"] != 0:
         raise ValueError("source accounting query did not succeed")
-    validation = Monitor.check_accounting(launch, accounting["stdout"])
-    if not validation["all_completed_successfully"] or not validation["resources_match"]:
-        raise ValueError("source pipeline is not successfully complete")
     summary = json.loads(summary_path.read_bytes())
+    recovery = summary.get("parsing_recovery")
+    if recovery is None:
+        validation = Monitor.check_accounting(launch, accounting["stdout"])
+        if not validation["all_completed_successfully"] or not validation["resources_match"]:
+            raise ValueError("source pipeline is not successfully complete")
+    else:
+        require_translation_jobs_complete(launch, poll)
+        if (recovery["schema"] != W.SCHEMA + "/static-context-recovery/v1"
+                or recovery["source_launch_sha256"] != W.file_sha(launch_path)
+                or recovery["source_poll_sha256"] != W.file_sha(poll_path)
+                or recovery["raw_translation_payloads_unchanged"] is not True):
+            raise ValueError("source parsing recovery changed identity")
+        for name, expected in recovery["code_sha256"].items():
+            if W.file_sha(G.ROOT / name) != expected:
+                raise ValueError("source parsing recovery code changed")
     manifest = json.loads(manifest_path.read_bytes())
     if (summary["performance_observed"] is not False
             or summary["generator_manifest_sha256"] != W.file_sha(manifest_path)
@@ -104,7 +143,7 @@ def allocations(families):
 
 def analysis_settings(families):
     return {"minimum_eligible_tasks": 300, "minimum_comparison_tasks": 300,
-            "minimum_families": min(25, len(families)),
+            "minimum_families": 25,
             "minimum_target_strict_pairs": 600,
             "minimum_concordance": [13, 20], "minimum_advantage": [1, 50],
             "bootstrap_replicates": 100000, "bootstrap_seed": 20260901,
@@ -215,16 +254,19 @@ def select_tasks(manifest, results):
 def freeze(pool, summary, launch, poll, output):
     manifest, results = load_completed_source(summary, launch, poll, pool / "manifest.json")
     tasks = select_tasks(manifest, results)
-    all_tasks = tasks["a"] + tasks["b"]
+    all_tasks = tasks["a"]
     for field in ("problem_sha256", "instance_fingerprint", "seed"):
         if len({row[field] for row in all_tasks}) != len(all_tasks):
-            raise ValueError(f"A/B overlap in {field}")
+            raise ValueError(f"prediction cohort duplicates {field}")
     for row in all_tasks:
         for kind in ("domain", "problem"):
             if W.file_sha(pool / row[f"{kind}_file"]) != row[f"{kind}_sha256"]:
                 raise ValueError("generated input changed before freeze")
     code = source_closure("pdb_within_family_cohort.py", "exp_pdb_within_family_a_v1.py",
-                          "pdb_within_family_a_analysis.py", "pdb_within_family_run_guard.py")
+                          "pdb_within_family_a_analysis.py", "pdb_within_family_run_guard.py",
+                          "pdb_within_family_a_seal.py")
+    requirements = "requirements-pdb-terminal-incidence-shadow.txt"
+    code[requirements] = W.file_sha(G.ROOT / requirements)
     revision = JJ.parent_commit(G.ROOT.parent)
     for name, expected in code.items():
         if JJ.tracked_file_sha256(G.ROOT.parent, revision, "experiments/" + name) != expected:
@@ -242,7 +284,7 @@ def freeze(pool, summary, launch, poll, output):
         "planner_revision": "8148f798f13059ee881ad2471bd20cdd61d2ec18",
     }
     Monitor.publish(output, value)
-    print(f"Frozen {len(tasks['a'])} A and {len(tasks['b'])} B tasks in {len(manifest['families'])} families")
+    print(f"Frozen {len(tasks['a'])} A tasks in {len(manifest['families'])} families; selector cohort deferred")
 
 
 def load_freeze(path=FREEZE, *, verify_code=True):
@@ -264,6 +306,11 @@ def load_freeze(path=FREEZE, *, verify_code=True):
     for field in ("source_summary", "source_launch", "source_poll"):
         if W.file_sha(value[field]) != value[field + "_sha256"]:
             raise ValueError(f"frozen source evidence changed: {field}")
+    manifest = json.loads((pool / "manifest.json").read_bytes())
+    summary = json.loads(Path(value["source_summary"]).read_bytes())
+    source_results = {tuple(row["id"]): row for row in summary["records"]}
+    if select_tasks(manifest, source_results) != value["tasks"]:
+        raise ValueError("frozen tasks differ from the deterministic supported-source selection")
     if verify_code:
         for name, expected in value["code_sha256"].items():
             if W.file_sha(G.ROOT / name) != expected:
@@ -277,8 +324,10 @@ def generate(output, pilot_summary, pilot_launch, pilot_poll):
     counts = {family: Counter(r["status"] for identity, r in results.items() if identity[1] == family)
               for family in G.FAMILIES}
     families = sorted(family for family, statuses in counts.items() if statuses == {"supported": 3})
-    if not families:
-        raise ValueError("no family passed the structural pilot")
+    minimum = analysis_settings(families)["minimum_families"]
+    if len(families) < minimum:
+        raise ValueError(f"only {len(families)} structurally supported families; "
+                         f"cannot meet the unchanged {minimum}-family statistical gate")
     excluded = exclusion_inventory()
     seen_raw = {row["problem_sha256"] for row in excluded}
     seen_fingerprints = {row["instance_fingerprint"] for row in excluded}

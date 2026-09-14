@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Translation-only Lab census of the finite fresh A/B candidate pool."""
+"""Translation-only Lab census of the finite fresh predictor candidate pool."""
 
 from collections import Counter, defaultdict
 import json
@@ -7,8 +7,11 @@ import os
 from pathlib import Path
 import sys
 
+from lab.parser import Parser
+
 import exp_pdb_within_family_source_pilot_v1 as Base
 import pdb_within_family_cohort as C
+from pdb_within_family_parse_context import initialize_static
 
 
 INPUT = Base.ROOT / "data/pdb-within-family-candidate-pool-v1"
@@ -73,8 +76,12 @@ def make_experiment():
     Base.load_manifest = load_manifest
     Base.summarize = summarize
     exp = Base.make_experiment()
-    # Above 1,000 runs Lab executes two runs sequentially per array element.
-    exp.environment.time_limit_per_task = "01:10:00"
+    context = Parser()
+    context.add_function(initialize_static, file="run.log")
+    exp.parsers.insert(0, context)
+    # The predictor-only pool has at most 800 candidates, one per array task.
+    if len(exp.runs) > 1000:
+        raise ValueError("predictor source pool unexpectedly exceeds one run per array task")
     exp.set_property("full_census_runner_sha256", C.W.file_sha(__file__))
     return exp
 
