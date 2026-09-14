@@ -75,6 +75,10 @@ class CohortTests(unittest.TestCase):
         good = M.check_accounting(launch, raw)
         self.assertTrue(good["all_completed_successfully"])
         self.assertTrue(good["resources_match"])
+        for equivalent in ("3Gc", "27G", "27Gn", "27648M", "27648Mn"):
+            self.assertTrue(M.check_accounting(launch, raw.replace("3072Mc", equivalent))["resources_match"])
+        for different in ("26G", "28G", "27647M", "3G", "27Gc"):
+            self.assertFalse(M.check_accounting(launch, raw.replace("3072Mc", different))["resources_match"])
         self.assertFalse(M.check_accounting(launch, lines[0])["all_completed_successfully"])
         self.assertFalse(M.check_accounting(launch, raw.replace("|9|", "|1|"))["resources_match"])
         self.assertFalse(M.check_accounting(launch, raw.replace("COMPLETED", "FAILED"))["all_completed_successfully"])

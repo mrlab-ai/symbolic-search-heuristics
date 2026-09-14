@@ -69,7 +69,10 @@ def check_accounting(launch, stdout):
     resources_ok = all(
         row["partition"] == "fat" and row["account"] == "naiss2025-5-561-cpu"
         and row["qos"] == "normal" and row["cpus"] == "9"
-        and row["memory"] in {"3Gc", "3072Mc"}
+        # This Slurm installation reports the effective total for a submitted
+        # --mem-per-cpu=3G, --cpus-per-task=9 request as ReqMem=27G.
+        # Accept only that exact equivalent, not an arbitrary resource change.
+        and row["memory"] in {"3Gc", "3072Mc", "27G", "27Gn", "27648M", "27648Mn"}
         for row in normalized.values())
     for identity, row in normalized.items():
         job = expected[identity]
