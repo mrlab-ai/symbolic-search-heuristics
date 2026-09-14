@@ -8,6 +8,7 @@ import ast
 from collections import Counter
 import json
 from pathlib import Path
+import re
 import subprocess
 
 import jj_cached_revision as JJ
@@ -25,6 +26,27 @@ MAX_DUPLICATE_ATTEMPTS = 16
 ARTIFACTS = G.ROOT / "artifacts/pdb-within-family-confirmation-v1"
 PILOT = G.ROOT / "data/pdb-within-family-generator-pilot-v2"
 FREEZE = ARTIFACTS / "cohort-freeze.json"
+
+
+def diagnosed_pilot_input_rejection(result):
+    """Recognize the two observed generator/translator incompatibilities.
+
+    These are failed technical pilot cells, never supported candidates or
+    acceptable input failures in the subsequent scientific source census.
+    """
+    if result.get("status") != "input-error" or result.get("returncode") != 31:
+        return False
+    family = result.get("id", [None, None])[1]
+    stdout = result.get("stdout", {}).get("tail", "")
+    if family == "maintenance":
+        return stdout == "Parsing...\n\nFound the following duplicate objects: fra\n"
+    if family == "cavediving":
+        return bool(re.fullmatch(
+            r"Parsing\.\.\.\nParsing domain\n\t->Parsing axiom/action entry #1\n"
+            r"\t->Parsing action #1\n\t->Parsing action 'hire-diver-d[0-9]+'\n"
+            r"\t->Parsing precondition\n\t->Parsing condition\n\t->Parsing literal\n"
+            r"Undefined object\nGot: d[0-9]+\n", stdout))
+    return False
 
 
 def require_translation_jobs_complete(launch, poll):
@@ -122,6 +144,11 @@ def load_completed_source(summary_path, launch_path, poll_path, manifest_path):
             reasons = W.support_reasons(sas["sas"], normalization["num_normalized_axioms"])
             if reasons != result["support_reasons"] or bool(reasons) != (result["status"] == "unsupported"):
                 raise ValueError("source support classification changed")
+        elif manifest["role"] == "pilot" and diagnosed_pilot_input_rejection(result):
+            for stream in ("stdout", "stderr"):
+                actual = W.Translate.stream_file_evidence(run_dir / ("translate." + stream))
+                if actual != result[stream]:
+                    raise ValueError("diagnosed pilot input-rejection stream changed")
         elif result["status"] not in {"memory-excluded", "time-excluded", "wall-excluded"}:
             raise ValueError("unresolved source failure")
         results[identity] = result

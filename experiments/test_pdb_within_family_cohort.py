@@ -12,6 +12,16 @@ import pdb_within_family_monitor as M
 
 
 class CohortTests(unittest.TestCase):
+    def test_only_diagnosed_technical_pilot_rejections_are_recognized(self):
+        result = {"status": "input-error", "returncode": 31,
+                  "id": ["translator", "maintenance", "p00.pddl"],
+                  "stdout": {"tail": "Parsing...\n\nFound the following duplicate objects: fra\n"}}
+        self.assertTrue(C.diagnosed_pilot_input_rejection(result))
+        for changed in (dict(result, returncode=-9), dict(result, status="infrastructure-error"),
+                        dict(result, id=["translator", "blocks", "p00.pddl"]),
+                        dict(result, stdout={"tail": "arbitrary parser error"})):
+            self.assertFalse(C.diagnosed_pilot_input_rejection(changed))
+
     def test_balance_and_finite_reserves(self):
         for count in (19, 25, 30):
             families = C.G.FAMILIES[:count]

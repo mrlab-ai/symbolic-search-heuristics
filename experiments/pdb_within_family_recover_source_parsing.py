@@ -41,7 +41,8 @@ def recover(launch_path, poll_path, output):
         props = Properties()
         parser.parse(directory, props)
         identity = tuple(props["id"])
-        if identity not in expected or "-".join(identity) in properties or props.get("error") != "none":
+        recognized = props.get("error") == "none" or C.diagnosed_pilot_input_rejection(props["source_result"])
+        if identity not in expected or "-".join(identity) in properties or not recognized:
             raise ValueError("recovered source matrix has an unknown, duplicated or failed cell")
         properties["-".join(identity)] = dict(props)
     if {tuple(props["id"]) for props in properties.values()} != expected:
@@ -65,12 +66,14 @@ def recover(launch_path, poll_path, output):
                 "original_pipeline_completed_successfully": validation["all_completed_successfully"],
                 "code_sha256": {name: C.W.file_sha(C.G.ROOT / name) for name in (
                     "pdb_within_family_recover_source_parsing.py", "pdb_within_family_parse_context.py",
+                    "pdb_within_family_cohort.py", "pdb_within_family_monitor.py",
                     "exp_pdb_within_family_source_pilot_v1.py")}}
     summary = {"schema": C.W.SCHEMA + "/pilot-summary", "performance_observed": False,
                "generator_manifest_sha256": C.W.file_sha(Original.INPUT / "manifest.json"),
                "properties_sha256": C.W.file_sha(output / "properties"),
                "family_status_counts": counts,
                "fully_supported_families": sorted(f for f, c in counts.items() if c == {"supported": 3}),
+               "diagnosed_input_rejections": [r["id"] for r in records if r["status"] == "input-error"],
                "records": sorted(records, key=lambda record: record["id"]), "parsing_recovery": recovery}
     summary_path = output / "source-summary.json"
     C.Monitor.publish(summary_path, summary)
