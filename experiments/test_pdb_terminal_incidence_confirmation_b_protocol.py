@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import inspect
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +15,18 @@ import pdb_terminal_incidence_confirmation_b_protocol as P
 
 
 class ConfirmationBProtocolTest(unittest.TestCase):
+    def test_command_line_exit_paths_do_not_use_removed_source_alias(self):
+        script = P.SCRIPT_DIR / "exp_pdb_terminal_incidence_confirmation_b.py"
+        for argument, expected in (("design-check", 0), ("--help", 0), ("invalid-command", 2)):
+            completed = subprocess.run(
+                [sys.executable, "-B", str(script), argument], cwd=P.REPO,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                check=False, timeout=30,
+            )
+            with self.subTest(argument=argument):
+                self.assertEqual(completed.returncode, expected, completed.stderr)
+                self.assertNotIn("Traceback", completed.stderr)
+
     def test_analysis_v3_consumes_confirmation_a_v4_namespace(self):
         self.assertEqual(
             P.ANALYSIS_PROTOCOL,

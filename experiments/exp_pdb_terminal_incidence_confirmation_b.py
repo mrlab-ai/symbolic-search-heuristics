@@ -897,7 +897,7 @@ if __name__ == "__main__":
         ConfirmationLaunchError,
         Base.LaunchError,
         P.ProtocolError,
-        P.Source.ProtocolError,
+        P.SourceValidation.ProtocolError,
         JJ.JjCacheError,
     ) as err:
         print("error: {}".format(err), file=sys.stderr)
