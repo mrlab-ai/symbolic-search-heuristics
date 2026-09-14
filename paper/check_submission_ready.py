@@ -50,6 +50,8 @@ HOLDOUT_GENERATED_INPUT = (
 SEED_GENERATED_INPUT = (
     r"\input{generated/pdb-profile-joint-seed-validation-v1.tex}"
 )
+TI_GENERATED = ROOT / "generated" / "terminal-incidence-results.tex"
+TI_GENERATED_INPUT = r"\input{generated/terminal-incidence-results.tex}"
 CAP_STUDY_INPUT = r"\input{cap-study.tex}"
 REFERENCES_START_LABEL = r"\label{paper:references-start}"
 
@@ -397,6 +399,7 @@ REQUIRED_MAIN = (
     ORDER_GENERATED_INPUT,
     HOLDOUT_GENERATED_INPUT,
     SEED_GENERATED_INPUT,
+    TI_GENERATED_INPUT,
     r"\HoldoutTwoEffectRows",
     r"\HoldoutSelectorStressRows",
     r"\SeedNormalizedRows",
@@ -408,6 +411,7 @@ REQUIRED_SUPPLEMENT = (
     ORDER_GENERATED_INPUT,
     HOLDOUT_GENERATED_INPUT,
     SEED_GENERATED_INPUT,
+    TI_GENERATED_INPUT,
     CAP_STUDY_INPUT,
 )
 
@@ -1273,6 +1277,7 @@ def _validate_source(name: str, text: str, required) -> None:
         .replace(ORDER_GENERATED_INPUT, "")
         .replace(HOLDOUT_GENERATED_INPUT, "")
         .replace(SEED_GENERATED_INPUT, "")
+        .replace(TI_GENERATED_INPUT, "")
     )
     for description, pattern in FORBIDDEN_IDENTITY:
         match = pattern.search(identity_text)
@@ -1371,6 +1376,27 @@ def validate(
     )
 
 
+def _validate_terminal_incidence_integration(
+    main_text: str, supplement_text: str, generated_text: str, evidence: dict,
+) -> None:
+    import render_terminal_incidence_results as Terminal
+
+    try:
+        outcome = Terminal.classify(evidence)
+        expected = Terminal.render(evidence)
+    except Terminal.RenderError as error:
+        raise SubmissionReadinessError(str(error)) from error
+    if generated_text != expected:
+        raise SubmissionReadinessError(
+            "terminal-incidence generated TeX differs from the sealed evidence"
+        )
+    title = _validate_source_title_contract(main_text, supplement_text)
+    if title != Terminal._title(outcome):
+        raise SubmissionReadinessError(
+            "paper title does not match the sealed terminal-incidence outcome"
+        )
+
+
 def check_repository() -> None:
     _validate_author_kit_files()
     main_text = _read_stable_regular(MAIN, label="main paper source")
@@ -1396,6 +1422,16 @@ def check_repository() -> None:
         manifest_text,
         generated_text,
         posthoc_generated_text,
+    )
+    import render_terminal_incidence_results as Terminal
+    try:
+        evidence = Terminal._load_production_evidence()
+    except Terminal.RenderError as error:
+        raise SubmissionReadinessError(str(error)) from error
+    _validate_terminal_incidence_integration(
+        main_text, supplement_text,
+        _read_stable_regular(TI_GENERATED, label="terminal-incidence results"),
+        evidence,
     )
 
 
@@ -2268,6 +2304,47 @@ def self_test():
             raise AssertionError(
                 "post-hoc generated-byte adversary was accepted"
             )
+    import render_terminal_incidence_results as Terminal
+    from test_render_terminal_incidence_results import fixture as ti_fixture
+
+    for a_pass, direct_pass, b_pass in (
+        (False, None, None),
+        (True, False, False),
+        (True, False, True),
+        (True, True, False),
+        (True, True, True),
+    ):
+        evidence = ti_fixture(
+            a_pass=a_pass, direct_pass=direct_pass, b_pass=b_pass,
+        )
+        title = Terminal._title(Terminal.classify(evidence))
+        ti_main = f"\\title{{{title}}}"
+        ti_supplement = f"\\title{{{title}: {SUPPLEMENT_TITLE_SUFFIX}}}"
+        ti_generated = Terminal.render(evidence)
+        _validate_terminal_incidence_integration(
+            ti_main, ti_supplement, ti_generated, evidence,
+        )
+        wrong_title = next(
+            candidate for candidate in OUTCOME_CONTINGENT_TITLES
+            if candidate != title
+        )
+        for arguments in (
+            (ti_main, ti_supplement, "", evidence),
+            (ti_main, ti_supplement, ti_generated + "% drift\n", evidence),
+            (
+                f"\\title{{{wrong_title}}}",
+                f"\\title{{{wrong_title}: {SUPPLEMENT_TITLE_SUFFIX}}}",
+                ti_generated, evidence,
+            ),
+        ):
+            try:
+                _validate_terminal_incidence_integration(*arguments)
+            except SubmissionReadinessError:
+                rejected += 1
+            else:
+                raise AssertionError(
+                    "terminal-incidence submission adversary was accepted"
+                )
     review_rejected = _review_bundle_self_test()
     return {
         "self_test": "PASS",

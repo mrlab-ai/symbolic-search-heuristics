@@ -61,6 +61,10 @@ SEED_ARTIFACT := $(SEED_ARTIFACT_DIR)/analysis-v1.json
 SEED_SIDECAR := $(SEED_ARTIFACT).sha256
 SEED_RENDERER := \
 	../experiments/render_pdb_profile_joint_seed_validation_paper.py
+TI_GENERATED_RESULT := generated/terminal-incidence-results.tex
+TI_RENDERER := render_terminal_incidence_results.py
+TI_EVIDENCE_READERS := terminal_incidence_evidence.py \
+	terminal_incidence_selection_evidence.py
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
 		submission update-bib clean
@@ -71,6 +75,7 @@ paper.pdf: paper.tex $(AUTHOR_KIT_STYLE) $(AUTHOR_KIT_BST) \
 		$(ORDER_GENERATED_RESULT) \
 		$(HOLDOUT_GENERATED_RESULT) \
 		$(SEED_GENERATED_RESULT) \
+		$(TI_GENERATED_RESULT) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib) | author-kit-preflight
 	$(LATEXMK) $(LATEXFLAGS) $<
 
@@ -81,6 +86,7 @@ supplement.pdf: supplement.tex cap-study.tex $(GENERATED_RESULT) \
 		$(SEMANTIC_UNION_GENERATED_RESULT) $(ORDER_GENERATED_RESULT) \
 		$(HOLDOUT_GENERATED_RESULT) \
 		$(SEED_GENERATED_RESULT) \
+		$(TI_GENERATED_RESULT) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) $<
 
@@ -116,6 +122,12 @@ $(SEED_GENERATED_RESULT): $(SEED_RENDERER) $(SEED_ARTIFACT) \
 		$(SEED_SIDECAR)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SEED_RENDERER) \
 		--analysis $(SEED_ARTIFACT) --output $@ --write
+
+# The renderer reads only the explicitly pinned, committed terminal branch.
+# It refuses to generate prospective or synthetic production results. The
+# submission checker also verifies these bytes and the outcome-specific title.
+$(TI_GENERATED_RESULT): $(TI_RENDERER) $(TI_EVIDENCE_READERS)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(TI_RENDERER) --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -156,7 +168,8 @@ author-kit-preflight:
 # unreviewed result bytes.
 submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		$(SEMANTIC_UNION_GENERATED_RESULT) $(ORDER_GENERATED_RESULT) \
-		$(HOLDOUT_GENERATED_RESULT) $(SEED_GENERATED_RESULT)
+		$(HOLDOUT_GENERATED_RESULT) $(SEED_GENERATED_RESULT) $(TI_GENERATED_RESULT)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(TI_RENDERER) --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) check_submission_ready.py
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \

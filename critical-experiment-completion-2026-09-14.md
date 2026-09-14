@@ -79,6 +79,21 @@ Production pins remain unset: no synthetic or unfinished result is inserted
 into the paper. All V12 manifest-bound source bytes still match the submitted
 manifest.
 
+A second CLI check found that the standalone-evidence producer ignored
+`--help` and entered its evidence-reading path. It reached the missing B-freeze
+check and failed without publishing anything. At `4cc70b74`, argument parsing
+was added before all evidence access; help and invalid arguments now have
+explicit no-read regression tests. All 34 standalone/hardening tests passed.
+The existing synthetic calibration and planner-manifest files are present;
+they will be revalidated, not blindly overwritten, before any direct freeze.
+
+The main/supplement build now depends on the final terminal-incidence generated
+TeX. Submission checks load the pinned production evidence, compare generated
+bytes, and require the title appropriate to the observed terminal branch.
+The submission-check self-test passes with 166 rejected source/result
+adversaries and 46 rejected review-bundle adversaries; the 71 reporter tests
+also still pass. The manuscript's actual outcome integration remains pending.
+
 ## Paper and upload
 
 Before the resumption request, the existing main paper and supplement were
