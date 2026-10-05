@@ -100,20 +100,21 @@ functions that remain after fixing any prefix of the variable order. On
 solvable tasks with positive action costs, a consistent heuristic with
 $\values\leq W$ finite values expands at most $3\values Wn\leq3W^2n$ times as
 many BDD nodes as blind forward search, where $n$ is the number of state bits.
-The known exponential example has exponential width under its analyzed order,
-and a new family attains an $\Omega(W^2)$ ratio. Width and total ADD size give
-incomparable bounds. Integer potentials, pattern databases (PDBs) with bounded
+The known task family on which \hstar\ is exponentially worse than blind
+search has exponential width under its analyzed order, and a new family
+attains an $\Omega(W^2)$ ratio. Bounds based on width and on total algebraic
+decision diagram (ADD) size are incomparable. Integer potentials, pattern databases (PDBs) with bounded
 abstract state spaces and linear merge-and-shrink aligned with the search order
 all have bounded width.
 
 We evaluate PDB selection under exact width budgets alongside a
-construction-bounded merge-and-shrink safeguard. The winning budget admits
-only the empty PDB, so the selector behaves like blind search in every stage.
-It ties blind search on a 50-task screen (30/50 solved), solves 41 tasks versus
-40 for a counterexample-guided PDB on a disjoint 92-task sample, with a
-domain-resampling interval that includes zero, and solves 612 of 1377 tasks in
-a full census, three fewer than blind search and 21 fewer than capped
-merge-and-shrink. Cofactor width therefore certifies representational safety in
+construction-bounded merge-and-shrink safeguard. The best budget on a
+screening set admits only the empty PDB, so the selector behaves like blind
+search in every stage. It ties blind search on the 50-task screen (30/50
+solved). On a disjoint 92-task sample, it solves 41 tasks versus 40 for a
+counterexample-guided PDB, with a domain-resampling interval that includes
+zero. On all 1377 tasks, it solves 612, three fewer than blind search and 21
+fewer than capped merge-and-shrink. Cofactor width therefore certifies representational safety in
 this search architecture, not heuristic quality, construction cost or runtime.
 \end{abstract}
 
@@ -145,10 +146,10 @@ loses in others \citep{torralba-phd2015,torralba-et-al-aij2017}.
 \citet{speck-et-al-icaps2020} explained why: the effort of a symbolic
 expansion depends on the number of BDD nodes rather than the number of
 represented states, and even the perfect heuristic \hstar\ can increase the
-cumulative size of the expanded BDDs exponentially. Operator-potential
-heuristics \citep{fiser-et-al-aaai2022,fiser-et-al-aij2024}, which integrate
-potential heuristics based on linear programming
-\citep{pommerening-et-al-aaai2015} into \ghseta, report little growth of BDD
+cumulative size of the expanded BDDs exponentially. Work on
+operator-potential heuristics \citep{fiser-et-al-aaai2022,fiser-et-al-aij2024},
+which integrate potential heuristics based on linear programming
+\citep{pommerening-et-al-aaai2015} into \ghseta, reports little growth of BDD
 sizes in practice. This evidence calls for a structural explanation, but it
 does not yield a condition under which a heuristic \emph{provably} cannot
 cause a large representational overhead. \citet{speck-helmert-ecai2025}
@@ -171,18 +172,17 @@ of planning heuristics.
 We analyze product-at-evaluation forward search, which partitions every
 frontier by heuristic value; we do not analyze transition partitions by
 heuristic deltas or cumulative bidirectional search. Our first contribution
-bounds fragmentation. For a heuristic with width $W$ and $T$ terminals, the
-slices of a state-set BDD $B$ have total size at most $TWn(|B|+2)$. An exact
-characterization of the expanded buckets turns this into the cut-sensitive
-search bound $\values W\sum_{\substack{g<\copt\\L_g\ne\emptyset}}
-\cofcount(\chi_{L_g})$, where $L_g$ is the exact cost layer and $\cofcount$
-sums fixed-order residual counts, and into the ratio $3\values Wn\leq3W^2n$
-relative to blind search. The known exponential example has exponential width
-under its analyzed order, and a new family attains an $\Omega(W^2)$ overhead;
-whether the joint $\values Wn$ bound is tight remains open. Before cofactor
-count is relaxed, the per-bucket width bound and the bound that the Apply
-algorithm gives for the total ADD are incomparable. Two variants refine the
-cost model: an image-aware model counts idealized high-level image
+bounds fragmentation. Splitting a state-set BDD $B$ by the values of a
+heuristic with width $W$ and $T$ terminal values yields slices with total size
+at most $TWn(|B|+2)$. An exact characterization of the expanded buckets turns
+this into a bound on the total size of all expanded BDDs and into the ratio
+$3\values Wn\leq3W^2n$ relative to blind search, where $\values$ is the number
+of finite heuristic values. The known exponential example has exponential
+width under its analyzed order, and a new family attains an $\Omega(W^2)$
+overhead; whether the joint $\values Wn$ bound is tight remains open. For
+individual buckets, the sharper form of the width bound and a bound derived
+from the total ADD with the Apply algorithm are incomparable. Two variants
+refine the cost model: an image-aware model counts idealized high-level image
 invocations, and pruning-only search removes the factor \values\ by keeping
 the blind layers and using the heuristic only for sound discards.
 
@@ -264,9 +264,8 @@ persists until its exact key is selected. Immediately before expansion, the
 selected bucket is intersected with the complement of all states closed at an
 equal or lower $g$-value. An empty result is skipped, and a nonempty result is
 moved entirely to the closed list before its successors are generated. These
-assumptions about the
-queue, stale duplicates, goal tests and positive costs define the scope of
-our cumulative guarantees.
+assumptions about the queue, stale duplicates, goal tests and positive costs
+define the scope of our cumulative guarantees.
 
 \begin{definition}[expansion size, \citealp{speck-et-al-icaps2020}]
 \label{def-effort}
@@ -276,6 +275,8 @@ $\effort(\task,h)=\sum_{j=1}^q|B_j|$. Lemma~\ref{lem-identity} shows that,
 under the assumptions above, these BDDs are exactly the nonempty $(g,v)$
 slices with $g+v\leq\copt$ and $g<\copt$.
 \end{definition}
+
+We also call expansion size the \emph{effort} of a search.
 
 For $\hblind$, \bddastar\ is uniform-cost search and
 $\effort(\task,\hblind) = \sum_{g < \copt} \bddsize{L_g}$.
@@ -289,6 +290,9 @@ selects by value.
 
 % ===================== width-bounded heuristics ==========================
 \section{Bounded Cofactor Width}
+
+This section defines cofactor width and collects the properties that the
+later bounds use.
 
 \begin{definition}[cofactor width]
 \label{def-width}
@@ -360,7 +364,7 @@ $\phi_{\kappa_1}\circ q$ is a terminal relabeling of $\phi_{\kappa_2}\circ q$
 and has no larger width. Caps therefore form a nested ladder between safety
 and informativeness: increasing $\kappa$ weakly strengthens the heuristic,
 while decreasing it weakly decreases the number of finite values, the width
-and hence the coarse $3\values Wn$ certificate.
+and hence the coarse $3\values Wn$ bound.
 
 Width is closely related to the size of the reduced ordered ADD
 $\mathrm{ADD}_\pi(h)$ under $\pi$ \citep{bahar-et-al-iccad1993}.
@@ -446,7 +450,9 @@ reuses nodes across buckets. The factor $n$ cannot be removed: the supplement
 gives a width-two parity slice whose reduced BDD is $\Theta(n)$ times as large
 as its one-node source set.
 
-Total ADD size gives a second certificate. Let $A$ be the number of inner
+Theorem~\ref{thm-bucket} is a \emph{certificate}: an upper bound on slice size
+that is computable from the heuristic and the source set. Total ADD size gives
+a second certificate. Let $A$ be the number of inner
 nodes of the total heuristic ADD and $b=\bddsize{S}$. Relabeling the ADD
 terminals by membership in $U$ \citep[Sec.~9.2]{wegener-2000} and applying the
 standard Boolean Apply algorithm \citep[Sec.~4.3]{bryant-ieeecomp1986} gives
@@ -461,7 +467,7 @@ width because it captures this cut-sensitive structure and yields
 compositional bounds for heuristic families.
 
 % ======================= search-effort guarantees ========================
-\section{Forward Product-at-Evaluation Search Guarantees}
+\section{Search Effort Guarantees}
 \label{sec-effort}
 
 To lift the slice bounds to complete searches, we first characterize exactly
@@ -535,6 +541,8 @@ by pruning. It concerns frontier sizes in forward product-at-evaluation
 semantic buckets inherit the bound on their state sets.
 
 \subsection{A Quadratic Ratio in $W$ Is Realizable}
+
+The quadratic dependence on $W$ in Theorem~\ref{thm-effort} can occur.
 
 \begin{theorem}[quadratic width-ratio family]
 \label{thm-tight}
@@ -814,10 +822,7 @@ initial value, a larger mean finite goal distance and a larger fraction of
 abstract dead ends, followed by smaller width and fewer abstract states.
 Width one forces the attained value zero, so the pool deliberately includes
 the blind endpoint. Width measurement covers invalid codes and skipped manager
-levels. The fixed $B$ and the 60-second safeguard below are protocol design
-points, not optimized or theoretically justified budgets. The matrix contains
-no ablation with a budget on total ADD size, so it cannot establish which
-quantity is the better operational constraint.
+levels.
 
 We add two engineering diagnostics. An uncertified batching probe computes one
 image for the union of the selected bucket and other eligible fresh buckets
@@ -828,7 +833,13 @@ performance claim. A separate M\&S safeguard aborts construction after
 60\,seconds, falls back to blind search and charges the setup time. The
 evaluated causal-graph M\&S is unaligned, so the $d(N+1)$ formula does not
 apply, but its measured width can still instantiate the general theorem on
-solvable cells. The supplement gives the full algorithms and contracts.
+solvable cells.
+
+The budget $B$ and the 60-second limit are protocol design points, not
+optimized or theoretically justified values. Our experiments contain no
+ablation with a budget on total ADD size, so they cannot establish which
+quantity is the better operational constraint. The supplement gives the full
+algorithms and contracts.
 
 % ============================ experiments ================================
 \section{Experiments}
@@ -855,8 +866,9 @@ Frozen, disjoint exclusions of 290 tasks with zero-cost operators and 30 tasks
 with axioms after normalization leave 1377 tasks with positive costs and no
 axioms. Direct SAS scans or a pinned-parser proof certify positive costs, a
 separate check after normalization certifies the absence of axioms, and source
-hashes are frozen. The \texttt{release\_no\_lp} matrix excludes potential
-heuristics. The screen crosses five controls---blind search, uncapped and
+hashes are frozen. All configurations use the \texttt{release\_no\_lp}
+build, which excludes potential heuristics. The configuration matrix of the
+screen crosses five controls---blind search, uncapped and
 value-32-capped M\&S with 10,000 states, a goal-fill PDB and a CEGAR
 PDB---with fifteen selector treatments. Ten are unbatched with
 $K\in\{1,2,4,8,16,32,64,128,256,\infty\}$, four combine selected budgets with
@@ -949,10 +961,11 @@ predeclared domain-resampling stability interval was $[-1/46,1/23]$, or
 $[-2.17,4.35]$ points, with two discordant wins and one loss, so it does not
 establish a coverage advantage. All 91 eligible selector traces again chose
 the blind-equivalent empty PDB, which precludes a nontrivial test of width and
-fragmentation. As a negative control, the selector also failed to be
-operationally equivalent to blind search: this $h=0$ wrapper solved one task
-more than the direct blind path but was 1.428 times slower on the 40 jointly
-solved tasks. Neither difference can be attributed to heuristic information.
+fragmentation. The selector thereby also serves as a negative control for
+operational equivalence, and it fails this control: the $h=0$ wrapper solved
+one task more than the direct blind path but was 1.428 times slower on the 40
+jointly solved tasks. Neither difference can be attributed to heuristic
+information.
 Descriptively, the 60-second capped-M\&S safeguard led the matrix with 43/92
 solved tasks and five blind fallbacks. No P5 outcome reranked the matrix. The
 supplement reports the full table and every operational comparison with its
@@ -974,14 +987,16 @@ sensitivity analysis without the screen tasks
 +\ArrFullSensitivityMicroDelta) and
 $100\,(\ArrFullSensitivityMacroNumerator/\ArrFullSensitivityMacroDenominator)=
 \ArrFullSensitivityMacroPercent$ points, without an interval or $p$-value.
+
 These contrasts do not rescue the selector. It solved three fewer tasks than
 blind search and 21 fewer than capped M\&S, and every one of its 1355
 certified traces again selected the empty width-one PDB. Against blind search,
 this $h=0$ wrapper had four exclusive wins and seven losses, and its runtime,
 image-time and BDD-effort ratios over jointly eligible tasks were 1.388, 1.026
 and 1.005. These small differences reflect the wrapper, the code path or
-sensitivity to resource limits, not heuristic effects. Capped M\&S solved the
-most tasks (633). Its build-bounded safeguard had the lowest PAR2, by
+sensitivity to resource limits, not heuristic effects.
+
+Capped M\&S solved the most tasks (633). Its build-bounded safeguard had the lowest PAR2, by
 0.5191\,seconds, and a construction ratio of 0.744, but solved three fewer
 tasks; its paired image, effort and runtime ratios were 0.962, 0.971 and
 0.977. In the secondary diagnostic, the median of $U/W$ was about 10.2--10.6
@@ -1039,9 +1054,9 @@ $\values$ finite values has effort at most
 $\values Wn(\effort(\task,\hblind)+2\copt)$, and hence at most
 $3\values Wn\leq3W^2n$ times blind effort. The known exponential example has
 exponential width under its analyzed order, and an $\Omega(W^2)$ family shows
-that a quadratic ratio is attainable. Before cofactor count is relaxed, the per-bucket width bound and
-the Apply bound for the total ADD are incomparable; the latter gives the ratio
-$\values(2A+1)$ for ADD size $A$. Integer potentials, PDBs with bounded
+that a quadratic ratio is attainable. For individual buckets, the sharper form
+of the width bound and the Apply bound for the total ADD are incomparable; the
+latter gives the ratio $\values(2A+1)$ for ADD size $A$. Integer potentials, PDBs with bounded
 abstract state spaces and aligned linear M\&S have bounded width. The
 certificate bounds representational harm, not heuristic quality, construction
 cost or runtime.
