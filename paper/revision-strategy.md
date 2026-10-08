@@ -4,100 +4,51 @@
 
 - Target: ICAPS 2027 long paper.
 - Typesetting: official AAAI 2027 author kit in anonymous-submission mode.
-- Official length target: at most eight content pages plus additional reference
-  pages. The ICAPS 2027 CFP was published on September 6, 2026, and requires
-  AAAI format and double-blind review.
-- The project builds a separate anonymized supplement for internal review, but
-  the CFP is silent about supplementary uploads; verify the submission form
-  before treating that PDF as a venue deliverable.
+- Provisional length target: at most eight content pages plus references,
+  following the published ICAPS 2026 rule until ICAPS 2027 publishes its own
+  author instructions. AAAI 2027's separate seven-content-page rule is not
+  treated as an ICAPS rule.
 - Paper category: theoretical/algorithmic classical-planning paper with a
   fixed-census empirical evaluation.
-- Central question: which structural property explains why some heuristics
-  fragment a fixed symbolic frontier more than others, and can that property
-  guide heuristic selection without conflating representation with
-  search-space reduction?
+- Central question: when can a heuristic partition symbolic search frontiers
+  without causing an uncontrolled representation blow-up, and can the
+  resulting certificate retain useful heuristic information?
 
 ## Central Contribution
 
-Terminal incidence counts which active heuristic terminals are reachable from
-which inner nodes of the frontier-masked ADD. It upper-bounds the exact sum of
-BDD nodes in the realized value buckets, lies below independent cofactor and
-standard-Apply certificate branches, and removes a factor $\Theta(k)$ from all
-seven registered certificate baselines on an explicit decision-diagram family.
-The metric retains the relation discarded by the developmental co-occurring
-profile $mJ$. A staged, fresh-instance experiment first tests the resulting
-ordinal prediction on common blind frontiers. Only success authorizes fresh
-guided runs that compare an incidence-budgeted PDB selector directly with the
-otherwise identical $mJ$-budgeted selector and with existing alternatives.
+Cofactor width gives a fixed-order certificate for heuristic fragmentation in
+forward product-at-evaluation symbolic A*. The certificate's $O(VWn)$ ratio is
+jointly tight for independently chosen feasible $V$, $W$, and $n$. Safe
+terminal capping turns the certificate into a backward-compatible PDB selector
+that recovers useful heuristic information while improving the same-budget
+comparator.
 
 ## Claims and Evidence
 
 | Claim | Evidence |
 |---|---|
-| Exact fixed-frontier partition effort satisfies $E\leq I$. | Relabel each masked-ADD terminal in turn; every surviving bucket BDD node injects into an ancestor of that terminal. |
-| Incidence is a more informative certificate than masked node count and the registered cofactor/Apply relaxations. | Two-branch hierarchy $E\leq I\leq kD\leq mQ\leq mJ\leq C\leq W$ and independently $E\leq I\leq A_{\mathrm{Apply}}$; the layerwise meet $B_\wedge$ is the strongest direct combination of the two branches. |
-| All seven certificate baselines can lose a factor of order $k$. | An exact decision-diagram family has $E=I=\Theta(kL)$ while every registered certificate baseline is $\Theta(k^2L)$. |
-| The missing node--terminal relation can decide an ordinal comparison for exact PDBs. | A reachable seven-bit blind-layer witness has $(E,I)=(10,10)$ versus $(11,11)$ while $D$, active-value count and all seven certificate baselines tie. |
-| Terminal maps contract incidence and every certificate, but not exact partition effort. | The contraction proposition is paired with a four-variable counterexample in which merging two values increases $E$ from 6 to 7. |
-| Incidence supports a safe representation budget. | The probe-budget proposition guarantees that the returned candidate's exact probe effort is at most the reference incidence budget and remains feasible under later terminal maps. |
-| Incidence predicts relative fixed-frontier partition effort better than the alternatives within supported, previously studied families. | Fresh generated-instance Confirmation A compares ten predictors on a target-strict common-frontier denominator with equal-family aggregation, nine margins, bootstrap reweighting and leave-one-family-out checks. Pending; no unseen-family claim. |
-| Choosing by incidence improves over choosing by $mJ$. | Fresh task-blocked direct triads on the B cohort, including a structurally defined differing-winner subset. Conditionally authorized by A; pending. |
-| The incidence-guided selector improves complete symbolic search within the frozen design. | Confirmation B compares the cap-aware reference, matched-work control and existing alternatives. Conditionally authorized by A; pending. |
+| A width-$W$, $V$-valued consistent heuristic has expansion-size ratio at most $2VWn$ over blind forward search. | The sharper layerwise certificate is $\sum_g V_g\mathcal C_\pi(L_g,h)$, where $\mathcal C_\pi$ is the cut-aligned product of the state-set and heuristic cofactor profiles. Relaxing it yields the coarse ratio. |
+| All three factors in the coarse ratio are jointly necessary. | A polynomial-size multiplexer/modular family independently chooses every $2\leq V\leq W$ and power-of-two $B\geq4W$, has $n=\Theta(B)$ Boolean state bits and exact width $W$, and attains effort ratio $\Omega(VWn)$. Complete residual counting and the blind $O(B^2)$ bound are in the supplement. |
+| Cofactor width contributes information beyond ordinary total-ADD size. | Before relaxation to width, the cofactor-profile and Apply certificates have explicit linear separations in both directions and combine per active layer by taking their minimum. |
+| Uniform caps preserve admissibility and consistency and contract every cofactor cut. | Safe-terminal-transform proposition and nested-cap argument; pointwise cut contraction also contracts every fixed-layer profile certificate. |
+| Cap-aware selection is backward compatible with exact-width selection on score-identical raw pools. | The exact candidate chosen for every width-feasible pattern is retained by the cap-aware per-pattern step, so the frozen lexicographic score cannot decrease. This also preserves semantic nontriviality; an exact cap-aware fallback is the exact selector's winner. |
+| Every selected heuristic retains an end-to-end representation certificate. | Every completed output has ratio at most $2K^2n$; at $K=8$ this is $128n$, while caps 2 and 4 sharpen it to $48n$ and $80n$. |
+| Cap-aware selection recovers useful heuristic content. | On 1,306 completed, certified, identical-pool pairs in the 1,327-task primary scope: 626 semantic gains and 0 losses; 1,292 versus 666 nontrivial selections. |
+| The recovered information improves the same-pool, same-width-budget comparator. | Primary macro coverage +0.96 percentage points, 12 wins versus 5 losses; expanded BDD nodes ratio 0.884 and image-time ratio 0.893 on 579 positive-work pairs, plus 11 zero-work unsolvable endpoints; construction-time ratio 1.023. On 393 triple-solved finite-cap tasks, the effort ratios are cap-aware/exact 0.868, cap-aware/blind 0.982, and exact/blind 1.132. The 1,377-task sensitivity has the same direction. |
 
 ## Explicit Non-Claims
 
-- The classical ADD-to-BDD-forest relation is not claimed as new. The claimed
-  contribution is the frontier-masked node--terminal statistic, its hierarchy
-  and separations, and its use in symbolic-search heuristic selection; this
-  novelty boundary remains subject to a bounded literature audit.
-- An upper bound for one heuristic does not guarantee its ordinal ranking
-  against another. Confirmation A is required for that empirical claim.
-- Fixed-frontier incidence does not explain which states guided search reaches,
-  bucket residency, image operations, runtime or peak memory.
-- A direct $I$-versus-$mJ$ win establishes an effect of the frozen selection
-  rule, not fragmentation mediation and not superiority to every possible
-  selector.
-- Bootstrap intervals describe stability to reweighting the finite frozen
-  families; they are not population confidence intervals for unseen domains.
-- No result establishes a state-of-the-art planner or transfers beyond the
-  frozen PDB pool, probe, representation order and product-at-evaluation search.
-- The approved fresh-instance redesign does not test unseen-family transfer,
-  arbitrary generator sizes, or robustness across CEGAR configuration seeds.
-
-## Approved Experimental Redesign (2026-09-14)
-
-The full V12 source census failed its original cohort-feasibility gate: 396
-supported tasks from 19 families were available, with no family absent from
-prior studies. This is not a statistical failure of terminal incidence; A,
-B and direct metric-choice runs were not launched. Preserve and disclose the
-failed feasibility result. The user subsequently approved confirmation on
-fresh generated instances of supported, previously studied families.
-
-Use the pinned official PDDL generator kit and outcome-independent size grids.
-The generator pilot and translation-only support audit determine technical
-feasibility before any heuristic performance is inspected. Use every candidate
-family meeting the structural requirements, not a performance-selected subset.
-Keep generation errors, support exclusions and duplicate rejections visible.
-Verify repeat generation and exclude pilot/prior/cohort problem duplicates;
-distinct names or comments alone do not make a new instance. A and B have
-distinct generation seeds and problem inputs. Target 650 A and 300 B tasks,
-with balanced family allocation; finalize the achievable family requirements
-after the structural pilot, before performance runs.
-
-Retain the fixed-frontier metric, ten-predictor comparison, target-strict ties,
-equal-family weighting, finite-family reweighting, leave-one-family-out checks,
-and existing effect thresholds. Remove the infeasible all-prior-unrepresented
-stratum and its claims explicitly. Freeze the finite instance configuration
-as a local reproducibility record, not a public preregistration. Do not tune
-generators, thresholds or heuristics after seeing confirmatory outcomes.
-Following the user's subsequent minimum-experiment instruction, generate and
-screen only A initially. B generation and source screening are deferred until
-the completed A result justifies a selector claim. Do not run exploratory
-heuristics, parameter sweeps or comparisons unrelated to the final claims.
-Preserve the staged A-to-selector decision: an A failure is an informative
-terminal result, not a reason to select a new favorable test set. A success
-authorizes the existing controlled selector comparisons on disjoint B tasks.
-The final paper's empirical claims must reflect the actual terminal result.
+- Cofactor width is standard fixed-order MTBDD/branching-program width; the
+  contribution is its connection to symbolic-search fragmentation and the
+  resulting planning guarantees and selector.
+- The experiment does not establish population-level significance or a
+  state-of-the-art planner.
+- The 21 primary tasks without completed paired selector construction do not
+  support a selector-mechanism comparison; they remain in all coverage and
+  PAR2 denominators.
+- The experiment measures the theorem's effort target against blind search but
+  does not instantiate the sharper profile-based numerical upper bound.
+- The unaligned M&S control is not covered by the aligned M&S family formula.
 
 The adversarial-review sections below are a chronological audit trail. Their
 descriptions of the older diagonal construction remain historically accurate;
@@ -528,64 +479,3 @@ gate therefore fails and its frozen consequence applies: do not tune a rescue
 selector. The manuscript keeps the theory-and-algorithm framing, reports the
 strong but under-supported signal as suggestive, and does not claim that width
 is a validated predictor of relative planner performance.
-
-## Round 7: Prospective Unseen-Order Decision
-
-The decisive follow-up uses four previously unseen Gamer-order seeds while
-holding the PDB, heuristic values, costs, expanded states, and active buckets
-fixed. It covers 4,208 completed cells (1,052 tasks by four seeds). After the
-frozen completeness and invariance checks, 440 tasks remain eligible. The
-primary shared strict set contains 1,832 distinct-order pairs from 313 tasks
-in 40 domains, comfortably exceeding every support floor.
-
-The co-occurring certificate recovers structural signal that the relaxations
-lose: its equal-domain concordance with normalized fragmentation is 0.631,
-compared with 0.494 for the Cartesian profile, 0.480 for the width relaxation,
-and 0.474 for the ADD relaxation. It is also substantially tighter: across
-1,760 eligible observations, its ratio to the Cartesian certificate has
-median 0.205 and mean 0.251. However, the denominator-only null reaches 0.641,
-giving a margin of -0.009, and the leave-one-domain-out non-worsening criterion
-fails. The preregistered primary decision is therefore a failure. The
-unnormalized co-occurring certificate reaches 0.733 on 2,237 strict pairs and
-passes its secondary gate, but unsplit effort is stronger at 0.905.
-
-The strongest supported framing is consequently theory-first:
-**Heuristic Fragmentation in Symbolic Search: Cofactor Certificates and Their
-Limits.** The new scientific contribution is the co-occurring certificate,
-its tight worst-case theory, and the empirical diagnosis of what its
-Cartesian and width relaxations discard. It is a useful representation
-diagnostic, not an independent scalar predictor of relative performance. The
-width-constrained selectors are a mixed design stress test: they reduce
-conditional effort relative to unconstrained heuristic selection but remain
-worse than blind search. No seed, task subset, denominator, threshold, or
-adaptive experiment replaces the failed primary decision, and the title,
-abstract, contribution list, limitations, and conclusion all preserve that
-boundary.
-
-## Round 8: terminal-incidence reframing and prospective confirmation
-
-The terminal-incidence story is stronger than the previous cofactor-width
-story, conditional on the frozen confirmation succeeding.  The metric now
-retains the exact node--terminal reachability relation of the masked ADD, sits
-between exact partition effort and the existing certificates, and yields both
-cofactor and Apply proof branches.  This supplies a precise answer to what the
-older relaxations discard instead of merely proposing another correlated
-scalar.
-
-The empirical claim remains deliberately gated.  Confirmation A must show
-that incidence predicts fixed-frontier exact partition effort beyond the
-noncertificate row and column controls $D$ and $N_{\mathrm{val}}$ and all
-seven certificate baselines; the direct selector then tests whether replacing
-the developmental predecessor by incidence changes a final heuristic choice
-usefully.  The evaluation must also report the exact-effort
-oracle regret and measurement cost, because a reviewer can otherwise ask why
-the selector does not optimize the target directly.  Study B is algorithmic
-evidence about representation-budgeted selection, not proof that incidence
-mediates end-to-end search performance.
-
-The asymptotic construction is claimed only as a decision-diagram family.
-Planning realizability is supplied by the separate PDB ordinal witness.  The
-paper does not claim that the developmental predecessor was a community
-consensus, nor that one metric explains heuristic quality in general.  Title,
-abstract, and conclusions remain provisional until the frozen branch is
-rendered from sealed artifacts.

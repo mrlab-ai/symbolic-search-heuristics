@@ -41,17 +41,6 @@ GENERATED = ROOT / "generated" / "pdb-cap-grid-full-v1.tex"
 GENERATED_INPUT = r"\input{generated/pdb-cap-grid-full-v1.tex}"
 POSTHOC_GENERATED = ROOT / "generated" / "pdb-cap-grid-posthoc-v1.tex"
 POSTHOC_GENERATED_INPUT = r"\input{generated/pdb-cap-grid-posthoc-v1.tex}"
-ORDER_GENERATED_INPUT = (
-    r"\input{generated/pdb-profile-order-intervention-v1.tex}"
-)
-HOLDOUT_GENERATED_INPUT = (
-    r"\input{generated/pdb-profile-certificate-holdout-v1.tex}"
-)
-SEED_GENERATED_INPUT = (
-    r"\input{generated/pdb-profile-joint-seed-validation-v1.tex}"
-)
-TI_GENERATED = ROOT / "generated" / "terminal-incidence-results.tex"
-TI_GENERATED_INPUT = r"\input{generated/terminal-incidence-results.tex}"
 CAP_STUDY_INPUT = r"\input{cap-study.tex}"
 REFERENCES_START_LABEL = r"\label{paper:references-start}"
 
@@ -129,51 +118,28 @@ FORBIDDEN_AAAI_MAIN = (
     ),
 )
 
-# Internal project audit allowlist. The ICAPS 2027 CFP fixes the main-paper
-# limit and format but is silent about a separate supplementary upload.
-# Changing this two-PDF review allowlist requires an explicit reviewed edit.
+# Provisional project audit assumption only, not an ICAPS 2027 requirement:
+# audit a two-PDF review bundle until the venue publishes its rules. Changing
+# this allowlist then requires an explicit reviewed edit.
 REVIEW_BUNDLE_FILENAMES = (
     "paper.pdf",
     "supplement.pdf",
 )
 
-OUTCOME_CONTINGENT_TITLES = (
-    (
-        "Terminal Incidence Predicts Fixed-Frontier Partition Effort and "
-        "Guides PDB Selection"
-    ),
-    (
-        "Terminal Incidence Predicts Fixed-Frontier Partition Effort in "
-        "Symbolic Search"
-    ),
-    (
-        "Fixed-Frontier Partition Effort in Symbolic Search: "
-        "Terminal-Incidence Certificates and Their Limits"
-    ),
-)
-SUPPLEMENT_TITLE_SUFFIX = "Supplementary Material"
-
 REVIEW_DOCUMENT_MARKERS = {
     "paper.pdf": {
-        "required": (
-            "Anonymous submission",
-            "Abstract",
-        ),
+        "required": ("Cofactor Width", "Anonymous submission", "Abstract"),
         "forbidden": ("Supplementary Material",),
     },
     "supplement.pdf": {
         "required": (
+            "Cofactor Width",
             "Supplementary Material",
             "Anonymous for review",
             "Guide.",
         ),
         "forbidden": ("Abstract\n",),
     },
-}
-
-REVIEW_DOCUMENT_AUTHOR_MARKERS = {
-    "paper.pdf": "Anonymous submission",
-    "supplement.pdf": "Anonymous for review",
 }
 
 # Self-citations and the public system name can legitimately appear in paper
@@ -312,36 +278,11 @@ FORBIDDEN_CONTENT = (
         re.compile(r"\bpreliminary\s+results?\b", re.IGNORECASE),
     ),
     (
-        "pending source audit or scan",
-        re.compile(r"\bpending\s+source\s+(?:audit|scan)\b", re.IGNORECASE),
-    ),
-    (
-        "prospective source-audit campaign",
-        re.compile(
-            r"\bv[0-9]+\s+(?:therefore\s+)?(?:reruns|repairs)\b"
-            r"|\bunless\s+v[0-9]+\s+completes\b"
-            r"|\bprospective\s+campaign\s+v[0-9]+\b"
-            r"|\bv[0-9]+\s+seal\s+is\s+possible\s+only\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
         "overstated structural-value blindness",
         re.compile(
             r"\bbefore\s+any\s+(?:P6\s+)?structural\s+values?\b",
             re.IGNORECASE,
         ),
-    ),
-)
-
-UNRESOLVED_RAW_SOURCE = (
-    (
-        "source-audit result insertion marker",
-        re.compile(r"RESULT_INSERT_SOURCE_AUDIT_V[0-9]+(?:_[A-Z0-9_]+)?"),
-    ),
-    (
-        "result insertion marker",
-        re.compile(r"RESULT_INSERT_(?!SOURCE_AUDIT_V[0-9]+(?:_|\b))[A-Z0-9_]+"),
     ),
 )
 
@@ -396,22 +337,19 @@ REQUIRED_MAIN = (
     "/TemplateVersion (2027.1)",
     r"\author{Anonymous Submission}",
     r"\affiliations{}",
-    ORDER_GENERATED_INPUT,
-    HOLDOUT_GENERATED_INPUT,
-    SEED_GENERATED_INPUT,
-    TI_GENERATED_INPUT,
-    r"\HoldoutTwoEffectRows",
-    r"\HoldoutSelectorStressRows",
-    r"\SeedNormalizedRows",
+    GENERATED_INPUT,
+    POSTHOC_GENERATED_INPUT,
+    r"\CapFullContextRows",
+    r"\CapPrimaryContrastRows",
+    r"\CapPrimaryMechanismRows",
+    r"\CapPrimarySecondaryRows",
+    r"\CapPrimarySecondaryText",
+    r"\CapScopeCaveat",
 )
 
 REQUIRED_SUPPLEMENT = (
     GENERATED_INPUT,
     POSTHOC_GENERATED_INPUT,
-    ORDER_GENERATED_INPUT,
-    HOLDOUT_GENERATED_INPUT,
-    SEED_GENERATED_INPUT,
-    TI_GENERATED_INPUT,
     CAP_STUDY_INPUT,
 )
 
@@ -443,10 +381,6 @@ REQUIRED_MANIFEST = (
     "experiments/requirements.txt",
     "experiments/analyze_pdb_cap_grid_posthoc_review.py",
     "experiments/render_pdb_cap_grid_posthoc_review.py",
-    "experiments/exp_pdb_profile_certificate_holdout.py",
-    "experiments/analyze_pdb_profile_certificate_holdout.py",
-    "experiments/analyze_pdb_profile_denominator_audit.py",
-    "experiments/exp_pdb_profile_order_intervention.py",
     "`experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json`",
     "`experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json.sha256`",
     "paper/generated/pdb-cap-grid-posthoc-v1.tex",
@@ -627,40 +561,6 @@ def _strip_tex_comments(text: str) -> str:
             ending = "\n" if line.endswith("\n") else ""
             stripped.append(line[:comment] + ending)
     return "".join(stripped)
-
-
-TITLE_COMMAND = re.compile(r"\\title\s*\{([^{}]*)\}", re.DOTALL)
-
-
-def _normalize_source_title(value: str) -> str:
-    return " ".join(value.replace(r"\\", " ").split())
-
-
-def _extract_source_title(name: str, text: str) -> str:
-    active = _strip_tex_comments(text)
-    matches = list(TITLE_COMMAND.finditer(active))
-    if len(matches) != 1:
-        raise SubmissionReadinessError(
-            f"{name} must contain exactly one simple active title command"
-        )
-    return _normalize_source_title(matches[0].group(1))
-
-
-def _validate_source_title_contract(main_text: str, supplement_text: str) -> str:
-    main_title = _extract_source_title("paper.tex", main_text)
-    if main_title not in OUTCOME_CONTINGENT_TITLES:
-        raise SubmissionReadinessError(
-            "paper.tex title must be one of the three reviewed outcome-contingent "
-            "titles"
-        )
-    supplement_title = _extract_source_title("supplement.tex", supplement_text)
-    expected_supplement_title = f"{main_title}: {SUPPLEMENT_TITLE_SUFFIX}"
-    if supplement_title != expected_supplement_title:
-        raise SubmissionReadinessError(
-            "supplement.tex title must exactly match the main title before its "
-            "supplementary-material suffix"
-        )
-    return main_title
 
 
 def _validate_review_bundle_names(paths) -> None:
@@ -921,43 +821,7 @@ def _extract_action_targets(pdf_name: str, action_markup: str) -> str:
     return "\n".join(parser.targets)
 
 
-def _normalize_rendered_title_text(value: str) -> str:
-    return " ".join(value.split()).replace("- ", "-")
-
-
-def _extract_rendered_title(pdf_name: str, first_page_text: str) -> str:
-    normalized = _normalize_rendered_title_text(first_page_text).casefold()
-    author_marker = REVIEW_DOCUMENT_AUTHOR_MARKERS[pdf_name]
-    matches = []
-    for title in OUTCOME_CONTINGENT_TITLES:
-        rendered = title
-        if pdf_name == "supplement.pdf":
-            rendered = f"{title}: {SUPPLEMENT_TITLE_SUFFIX}"
-        prefix = _normalize_rendered_title_text(
-            f"{rendered} {author_marker}"
-        ).casefold()
-        if normalized == prefix or normalized.startswith(prefix + " "):
-            matches.append(title)
-    if len(matches) != 1:
-        raise SubmissionReadinessError(
-            f"{pdf_name} lacks one unambiguous reviewed outcome-contingent title"
-        )
-    return matches[0]
-
-
-def _validate_review_title_pair(titles) -> None:
-    if set(titles) != set(REVIEW_BUNDLE_FILENAMES):
-        raise SubmissionReadinessError(
-            "review bundle title comparison requires both canonical PDFs"
-        )
-    if titles["paper.pdf"] != titles["supplement.pdf"]:
-        raise SubmissionReadinessError(
-            "review bundle main and supplement titles do not match"
-        )
-
-
-def _validate_review_document_identity(pdf_name: str, first_page_text: str) -> str:
-    title = _extract_rendered_title(pdf_name, first_page_text)
+def _validate_review_document_identity(pdf_name: str, first_page_text: str) -> None:
     contract = REVIEW_DOCUMENT_MARKERS[pdf_name]
     normalized = " ".join(first_page_text.split()).casefold()
     for token in contract["required"]:
@@ -972,7 +836,6 @@ def _validate_review_document_identity(pdf_name: str, first_page_text: str) -> s
             raise SubmissionReadinessError(
                 f"{pdf_name} has the wrong first-page document identity"
             )
-    return title
 
 
 def _validate_review_pdf_surfaces(
@@ -984,7 +847,7 @@ def _validate_review_pdf_surfaces(
     first_page_text: str,
     action_markup: str,
     javascript: str,
-) -> str:
+) -> None:
     if not raw.startswith(b"%PDF-"):
         raise SubmissionReadinessError(f"{pdf_name} lacks a PDF header")
 
@@ -1001,7 +864,7 @@ def _validate_review_pdf_surfaces(
         raise SubmissionReadinessError(f"{pdf_name} contains document JavaScript")
     if re.search(rb"/Outlines\b", raw):
         raise SubmissionReadinessError(f"{pdf_name} contains PDF bookmarks")
-    title = _validate_review_document_identity(pdf_name, first_page_text)
+    _validate_review_document_identity(pdf_name, first_page_text)
     normalized_visible_text = _normalized_visible_text(extracted_text)
     for description, pattern in FORBIDDEN_CONTENT:
         if pattern.search(normalized_visible_text):
@@ -1042,7 +905,6 @@ def _validate_review_pdf_surfaces(
         raise SubmissionReadinessError(
             f"{pdf_name} contains an embedded link or PDF action"
         )
-    return title
 
 
 def _validate_attachment_inventory(pdf_name: str, inventory: str) -> None:
@@ -1114,21 +976,11 @@ def audit_review_bundle(path_values) -> None:
     _validate_review_bundle_paths(paths)
     # Independently enforce the official preamble and source boundary even
     # when the bundle-only action is invoked without the full result gate.
-    main_text = _read_stable_regular(MAIN, label="main paper source")
-    supplement_text = _read_stable_regular(
-        SUPPLEMENT, label="supplement source"
-    )
     _validate_source(
         "paper.tex",
-        main_text,
+        _read_stable_regular(MAIN, label="main paper source"),
         REQUIRED_MAIN,
     )
-    _validate_source(
-        "supplement.tex",
-        supplement_text,
-        REQUIRED_SUPPLEMENT,
-    )
-    source_title = _validate_source_title_contract(main_text, supplement_text)
     _validate_author_kit_files()
     pdfinfo = shutil.which("pdfinfo")
     pdftotext = shutil.which("pdftotext")
@@ -1142,7 +994,6 @@ def audit_review_bundle(path_values) -> None:
         )
 
     digests = {}
-    rendered_titles = {}
     for path in sorted(paths, key=lambda item: item.name):
         label = path.name
         before = _read_stable_regular_bytes(
@@ -1212,7 +1063,7 @@ def audit_review_bundle(path_values) -> None:
             raise SubmissionReadinessError(
                 f"{label} changed while external PDF checks were running"
             )
-        rendered_titles[label] = _validate_review_pdf_surfaces(
+        _validate_review_pdf_surfaces(
             label,
             before,
             document_info,
@@ -1221,11 +1072,6 @@ def audit_review_bundle(path_values) -> None:
             first_page_text,
             action_markup,
             javascript,
-        )
-    _validate_review_title_pair(rendered_titles)
-    if rendered_titles["paper.pdf"] != source_title:
-        raise SubmissionReadinessError(
-            "review bundle title does not match the reviewed source title"
         )
 
 
@@ -1264,20 +1110,8 @@ def _validate_source(name: str, text: str, required) -> None:
             raise SubmissionReadinessError(
                 f"{name}:{line}: unresolved submission marker ({description})"
             )
-    for description, pattern in UNRESOLVED_RAW_SOURCE:
-        match = pattern.search(text)
-        if match:
-            line = text.count("\n", 0, match.start()) + 1
-            raise SubmissionReadinessError(
-                f"{name}:{line}: unresolved submission marker ({description})"
-            )
-    identity_text = (
-        active.replace(GENERATED_INPUT, "")
-        .replace(POSTHOC_GENERATED_INPUT, "")
-        .replace(ORDER_GENERATED_INPUT, "")
-        .replace(HOLDOUT_GENERATED_INPUT, "")
-        .replace(SEED_GENERATED_INPUT, "")
-        .replace(TI_GENERATED_INPUT, "")
+    identity_text = active.replace(GENERATED_INPUT, "").replace(
+        POSTHOC_GENERATED_INPUT, ""
     )
     for description, pattern in FORBIDDEN_IDENTITY:
         match = pattern.search(identity_text)
@@ -1365,7 +1199,6 @@ def validate(
 ) -> None:
     _validate_source("paper.tex", main_text, REQUIRED_MAIN)
     _validate_source("supplement.tex", supplement_text, REQUIRED_SUPPLEMENT)
-    _validate_source_title_contract(main_text, supplement_text)
     _validate_source("cap-study.tex", cap_study_text, REQUIRED_CAP_STUDY)
     _validate_manifest(
         manifest_text,
@@ -1374,27 +1207,6 @@ def validate(
         expected_generated_sha256=expected_generated_sha256,
         expected_posthoc_generated_sha256=expected_posthoc_generated_sha256,
     )
-
-
-def _validate_terminal_incidence_integration(
-    main_text: str, supplement_text: str, generated_text: str, evidence: dict,
-) -> None:
-    import render_terminal_incidence_results as Terminal
-
-    try:
-        outcome = Terminal.classify(evidence)
-        expected = Terminal.render(evidence)
-    except Terminal.RenderError as error:
-        raise SubmissionReadinessError(str(error)) from error
-    if generated_text != expected:
-        raise SubmissionReadinessError(
-            "terminal-incidence generated TeX differs from the sealed evidence"
-        )
-    title = _validate_source_title_contract(main_text, supplement_text)
-    if title != Terminal._title(outcome):
-        raise SubmissionReadinessError(
-            "paper title does not match the sealed terminal-incidence outcome"
-        )
 
 
 def check_repository() -> None:
@@ -1423,16 +1235,6 @@ def check_repository() -> None:
         generated_text,
         posthoc_generated_text,
     )
-    import render_terminal_incidence_results as Terminal
-    try:
-        evidence = Terminal._load_production_evidence()
-    except Terminal.RenderError as error:
-        raise SubmissionReadinessError(str(error)) from error
-    _validate_terminal_incidence_integration(
-        main_text, supplement_text,
-        _read_stable_regular(TI_GENERATED, label="terminal-incidence results"),
-        evidence,
-    )
 
 
 def _review_bundle_self_test():
@@ -1459,10 +1261,8 @@ def _review_bundle_self_test():
     # visible scholarly text; anonymity is enforced through PDF metadata and
     # direct infrastructure/provenance scans, not by suppressing citations.
     safe_text = "SymK builds on prior work by Jendrik Seipp.\n"
-    safe_title = OUTCOME_CONTINGENT_TITLES[0]
     safe_first_page = (
-        safe_title
-        + "\n"
+        "Bounding Heuristic Fragmentation with Cofactor Width\n"
         "Anonymous submission\nAbstract\n"
     )
     safe_action_markup = "<html><body>anonymous paper</body></html>"
@@ -1487,72 +1287,7 @@ def _review_bundle_self_test():
     )
     _validate_font_inventory(REVIEW_BUNDLE_FILENAMES[0], safe_fonts)
 
-    for title in OUTCOME_CONTINGENT_TITLES:
-        paper_title = _validate_review_document_identity(
-            "paper.pdf",
-            f"{title}\nAnonymous submission\nAbstract\n",
-        )
-        supplement_title = _validate_review_document_identity(
-            "supplement.pdf",
-            (
-                f"{title}: {SUPPLEMENT_TITLE_SUFFIX}\n"
-                "Anonymous for review\nGuide.\n"
-            ),
-        )
-        _validate_review_title_pair(
-            {"paper.pdf": paper_title, "supplement.pdf": supplement_title}
-        )
-
     rejected = 0
-    for bad_first_page in (
-        "Unreviewed Terminal Metric Title\nAnonymous submission\nAbstract\n",
-        (
-            "Terminal Incidence for Fixed-Frontier Partition Effort in "
-            "Symbolic Search\n"
-            "Anonymous submission\nAbstract\n"
-        ),
-    ):
-        try:
-            _validate_review_document_identity("paper.pdf", bad_first_page)
-        except SubmissionReadinessError:
-            rejected += 1
-        else:
-            raise AssertionError("unreviewed outcome title was accepted")
-    misplaced_titles = (
-        (
-            "paper.pdf",
-            (
-                "Wrong Visible Heading\nAnonymous submission\nAbstract\n"
-                f"This paragraph mentions {safe_title}.\n"
-            ),
-        ),
-        (
-            "supplement.pdf",
-            (
-                "Wrong Visible Heading\nAnonymous for review\nGuide.\n"
-                f"This paragraph mentions {safe_title}: "
-                f"{SUPPLEMENT_TITLE_SUFFIX}.\n"
-            ),
-        ),
-    )
-    for pdf_name, bad_first_page in misplaced_titles:
-        try:
-            _validate_review_document_identity(pdf_name, bad_first_page)
-        except SubmissionReadinessError:
-            rejected += 1
-        else:
-            raise AssertionError("misplaced outcome title was accepted")
-    try:
-        _validate_review_title_pair(
-            {
-                "paper.pdf": OUTCOME_CONTINGENT_TITLES[0],
-                "supplement.pdf": OUTCOME_CONTINGENT_TITLES[1],
-            }
-        )
-    except SubmissionReadinessError:
-        rejected += 1
-    else:
-        raise AssertionError("mismatched review-bundle titles were accepted")
     bad_name_sets = (
         [ROOT / REVIEW_BUNDLE_FILENAMES[0]],
         [ROOT / REVIEW_BUNDLE_FILENAMES[0]] * 2,
@@ -1919,11 +1654,6 @@ def _review_bundle_self_test():
 
 def self_test():
     _validate_author_kit_files()
-    fixture_title = OUTCOME_CONTINGENT_TITLES[0]
-    main_title_command = f"\\title{{{fixture_title}}}"
-    supplement_title_command = (
-        f"\\title{{{fixture_title}:\\\\\n{SUPPLEMENT_TITLE_SUFFIX}}}"
-    )
     reference_tail = (
         "\\FloatBarrier\n"
         + REFERENCES_START_LABEL
@@ -1932,17 +1662,10 @@ def self_test():
     )
     main = (
         "\n".join(REQUIRED_MAIN)
-        + "\n"
-        + main_title_command
         + "\nfinal census accepted\n"
         + reference_tail
     )
-    supplement = (
-        "\n".join(REQUIRED_SUPPLEMENT)
-        + "\n"
-        + supplement_title_command
-        + "\nfinal census accepted\n"
-    )
+    supplement = "\n".join(REQUIRED_SUPPLEMENT) + "\nfinal census accepted\n"
     cap_study = "\n".join(REQUIRED_CAP_STUDY) + "\nfinal tables accepted\n"
     generated = "\\newcommand{\\CapFixtureValue}{1}\n"
     generated_sha = hashlib.sha256(generated.encode("utf-8")).hexdigest()
@@ -1971,31 +1694,13 @@ def self_test():
 
     base = (main, supplement, cap_study, manifest, generated)
     validate_fixture(base)
-    for title in OUTCOME_CONTINGENT_TITLES:
-        validate_fixture(
-            (
-                main.replace(
-                    main_title_command,
-                    f"\\title{{{title}}}",
-                    1,
-                ),
-                supplement.replace(
-                    supplement_title_command,
-                    f"\\title{{{title}:\\\\\n{SUPPLEMENT_TITLE_SUFFIX}}}",
-                    1,
-                ),
-                cap_study,
-                manifest,
-                generated,
-            )
-        )
     # The kit expressly permits tabcolsep adjustment for otherwise oversized
     # tables, so the general setlength ban must not reject that exception.
     validate_fixture(
         (
             main.replace(
-                ORDER_GENERATED_INPUT,
-                "\\setlength{\\tabcolsep}{1mm}\n" + ORDER_GENERATED_INPUT,
+                GENERATED_INPUT,
+                "\\setlength{\\tabcolsep}{1mm}\n" + GENERATED_INPUT,
                 1,
             ),
             supplement,
@@ -2006,66 +1711,10 @@ def self_test():
     )
     rejected = 0
     mutations = [
-        (
-            main.replace(
-                main_title_command,
-                (
-                    r"\title{Terminal Incidence for Fixed-Frontier "
-                    r"Partition Effort in Symbolic Search}"
-                ),
-                1,
-            ),
-            supplement,
-            cap_study,
-            manifest,
-            generated,
-        ),
-        (
-            main,
-            supplement.replace(
-                supplement_title_command,
-                (
-                    f"\\title{{{OUTCOME_CONTINGENT_TITLES[1]}:\\\\\n"
-                    f"{SUPPLEMENT_TITLE_SUFFIX}}}"
-                ),
-                1,
-            ),
-            cap_study,
-            manifest,
-            generated,
-        ),
-        (
-            main.replace(main_title_command, "", 1),
-            supplement,
-            cap_study,
-            manifest,
-            generated,
-        ),
-        (
-            main + main_title_command + "\n",
-            supplement,
-            cap_study,
-            manifest,
-            generated,
-        ),
         (main + "RESULT PLACEHOLDER\n", supplement, cap_study, manifest, generated),
         (main + "synthetic results\n", supplement, cap_study, manifest, generated),
         (main + "pending P6\n", supplement, cap_study, manifest, generated),
         (main + "preliminary results\n", supplement, cap_study, manifest, generated),
-        (
-            main,
-            supplement + "% RESULT_INSERT_SOURCE_AUDIT_V7_BEGIN\n",
-            cap_study,
-            manifest,
-            generated,
-        ),
-        (
-            main,
-            supplement + "Prospective campaign v7 repairs the complement.\n",
-            cap_study,
-            manifest,
-            generated,
-        ),
         (
             main + "before any structural value was inspected\n",
             supplement,
@@ -2216,8 +1865,8 @@ def self_test():
         ),
         (
             main.replace(
-                ORDER_GENERATED_INPUT,
-                "\\usepackage{times}\n" + ORDER_GENERATED_INPUT,
+                GENERATED_INPUT,
+                "\\usepackage{times}\n" + GENERATED_INPUT,
                 1,
             ),
             supplement,
@@ -2227,8 +1876,8 @@ def self_test():
         ),
         (
             main.replace(
-                ORDER_GENERATED_INPUT,
-                "\\setlength{\\pdfpagewidth}{8.5in}\n" + ORDER_GENERATED_INPUT,
+                GENERATED_INPUT,
+                "\\setlength{\\pdfpagewidth}{8.5in}\n" + GENERATED_INPUT,
                 1,
             ),
             supplement,
@@ -2304,47 +1953,6 @@ def self_test():
             raise AssertionError(
                 "post-hoc generated-byte adversary was accepted"
             )
-    import render_terminal_incidence_results as Terminal
-    from test_render_terminal_incidence_results import fixture as ti_fixture
-
-    for a_pass, direct_pass, b_pass in (
-        (False, None, None),
-        (True, False, False),
-        (True, False, True),
-        (True, True, False),
-        (True, True, True),
-    ):
-        evidence = ti_fixture(
-            a_pass=a_pass, direct_pass=direct_pass, b_pass=b_pass,
-        )
-        title = Terminal._title(Terminal.classify(evidence))
-        ti_main = f"\\title{{{title}}}"
-        ti_supplement = f"\\title{{{title}: {SUPPLEMENT_TITLE_SUFFIX}}}"
-        ti_generated = Terminal.render(evidence)
-        _validate_terminal_incidence_integration(
-            ti_main, ti_supplement, ti_generated, evidence,
-        )
-        wrong_title = next(
-            candidate for candidate in OUTCOME_CONTINGENT_TITLES
-            if candidate != title
-        )
-        for arguments in (
-            (ti_main, ti_supplement, "", evidence),
-            (ti_main, ti_supplement, ti_generated + "% drift\n", evidence),
-            (
-                f"\\title{{{wrong_title}}}",
-                f"\\title{{{wrong_title}: {SUPPLEMENT_TITLE_SUFFIX}}}",
-                ti_generated, evidence,
-            ),
-        ):
-            try:
-                _validate_terminal_incidence_integration(*arguments)
-            except SubmissionReadinessError:
-                rejected += 1
-            else:
-                raise AssertionError(
-                    "terminal-incidence submission adversary was accepted"
-                )
     review_rejected = _review_bundle_self_test()
     return {
         "self_test": "PASS",
@@ -2361,7 +1969,7 @@ def main(argv=None):
         "--review-bundle",
         nargs="+",
         metavar="PDF",
-        help="Audit the internal two-PDF double-blind review bundle.",
+        help="Audit the provisional two-PDF double-blind review bundle.",
     )
     args = parser.parse_args(argv)
     if args.self_test:

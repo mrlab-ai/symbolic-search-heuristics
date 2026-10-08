@@ -26,13 +26,10 @@ test. The repository vendors the untouched files `paper/aaai2027.sty`
 and `paper/aaai2027.bst` (SHA-256
 `5db7765ba99de5c1e4686f9b3940a0add9c5e702f2164514462bec130ccb6e3c`).
 Both the build and the standalone submission checker reject links or byte
-drift in these files.
-The ICAPS 2027 CFP published on 2026-09-06 independently requires AAAI format
-and fixes the long-paper limit at eight content pages plus additional reference
-pages; the project audit retains eight as an explicit configurable target.
-Because the CFP is silent about a separate supplementary upload, the two-PDF
-bundle remains an internal review artifact until the submission form confirms
-that attachment.
+drift in these files. AAAI 2027's own page rule is not used as an ICAPS rule;
+until ICAPS 2027 publishes its author instructions, the project audit retains
+the preceding ICAPS eight-content-page assumption as an explicit configurable
+target.
 
 ## Executable sources
 
@@ -52,26 +49,6 @@ that attachment.
 - Independent post-hoc diagnostics analyzer and fail-closed renderer:
   `experiments/analyze_pdb_cap_grid_posthoc_review.py` and
   `experiments/render_pdb_cap_grid_posthoc_review.py`
-- Prospective profile holdout runner, execution audit, recovery, and analyzer:
-  `experiments/exp_pdb_profile_certificate_holdout.py`,
-  `experiments/audit_pdb_profile_certificate_holdout.py`,
-  `experiments/recover_pdb_profile_certificate_holdout.py`, and
-  `experiments/analyze_pdb_profile_certificate_holdout.py`
-- Frozen denominator audit and fail-closed holdout renderer:
-  `experiments/analyze_pdb_profile_denominator_audit.py` and
-  `experiments/render_pdb_profile_certificate_holdout_paper.py`
-- Fixed-heuristic variable-order intervention runner and analyzer:
-  `experiments/exp_pdb_profile_order_intervention.py` and
-  `experiments/analyze_pdb_profile_order_intervention.py`
-- Prospective unseen-order protocol, runner, audit, recovery, analyzer, and
-  fail-closed renderer:
-  `experiments/pdb_profile_joint_seed_validation_protocol.md`,
-  `experiments/pdb_profile_joint_seed_validation_protocol.py`,
-  `experiments/exp_pdb_profile_joint_seed_validation.py`,
-  `experiments/audit_pdb_profile_joint_seed_validation.py`,
-  `experiments/recover_pdb_profile_joint_seed_validation.py`,
-  `experiments/analyze_pdb_profile_joint_seed_validation.py`, and
-  `experiments/render_pdb_profile_joint_seed_validation_paper.py`
 
 ## Common benchmark and planner identity
 
@@ -258,88 +235,13 @@ byte for byte. Thus the committed diagnostics remain independently bound to
 the canonical logical properties digest even where the Lab/account environment
 needed for raw regeneration is unavailable.
 
-## Prospective unseen-order validation
-
-This experiment uses the 1,052-task, 45-domain remeasurement cohort but new
-representation perturbations. Seeds 1, 2, 3, and 4 were fixed before any
-corresponding planner output; legacy seed 0 was excluded. It is therefore an
-unseen-order validation and not an unseen-task holdout.
-
-- Measurement protocol: `pdb-profile-joint-seed-validation-measurement-v1`
-- Analysis protocol: `pdb-profile-joint-seed-validation-analysis-v1`
-- Frozen protocol SHA-256:
-  `08cc498981d3dd90bcb496e1a48929cd52677b27419e2b61221ef188403f4ce9`
-- Planner revision:
-  `28278042f797aebf70198945cdabb822187385ad`
-- Stripped planner binary SHA-256:
-  `9f8688fd5eb9b8a5484ce566a4c623e62bb0dbe60fdad59da49f28622a31bf20`
-- Copied preprocessor SHA-256:
-  `d32e7de1dc194ca63664e223b177a2ccae2e82e259ccd682596ff10cc6b0fbd6`
-- Revision-cache tree-manifest SHA-256:
-  `d247414fe6a3e665475ceaf3a705eb4e57c33d2db6b2a438848feb98959d0dd7`
-- Cohort-manifest SHA-256:
-  `e9ffcc16c2e73e4c92c0ccbb71c60203ba643f5ed76bf943f731e86e11169694`
-- Four-configuration option-matrix SHA-256:
-  `9cd55581fb1a7382103a1eb140b854b26056930a7f1c531b13827c632f17e9af`
-- Matrix: 1,052 tasks x 4 seeds = 4,208 cells
-- Execution: 842 unthrottled array elements on the `fat` partition, five
-  serial cells per element, 300 aggregate process-CPU seconds and 8,192 MiB
-  per cell
-- Launch receipt:
-  `experiments/artifacts/pdb-profile-joint-seed-validation/launch-receipt-v1.json`,
-  SHA-256
-  `785042f8fccbcdbd37391f3cd87bc3e13d5af24f3c89c9d820b9618ba84e24f4`
-- Primary scheduler job: `1812576`; 824 array elements completed and 18 hit
-  the outer scheduler limit
-- Exact recovery job: `1813623`; all 18 selected array elements completed,
-  with no throttle and unchanged planner limits and options
-- Sealed execution receipt:
-  `experiments/artifacts/pdb-profile-joint-seed-validation/execution-receipt-v1.json`,
-  SHA-256
-  `179c3be041c158a8f1d57ff9df2a457dc3657679111d8ef3eb4adc639495fd0a`
-- Sealed dynamic tree: 18,539 files, SHA-256
-  `a6e8ffd9740c217d695dd97f8c5a76fbf7ccf505b176e7754172e582f03d4759`;
-  all 4,208 cells are complete
-- Fetched properties: 196,528,991 bytes, SHA-256
-  `0cdd1d1cd4be1555d54183c91d5d392c2483a08515e45bfa983cc6b001fd9dd9`
-- Canonical analysis:
-  `experiments/artifacts/pdb-profile-joint-seed-validation/analysis-v1.json`
-  (2,256,796 bytes), SHA-256
-  `2b854d13fc92d9f394a2248271e1173d66bd43f1360fee1ce44564c9627cb3b7`
-- Analysis sidecar:
-  `experiments/artifacts/pdb-profile-joint-seed-validation/analysis-v1.json.sha256`
-- Generated paper input:
-  `paper/generated/pdb-profile-joint-seed-validation-v1.tex`, SHA-256
-  `972c00b9db41f5aca38f7dbe921a4c12551cdecc83927efb88ad3c750d78380e`
-
-The analyzer was run twice and produced byte-identical canonical JSON. The
-primary normalized gate fails: the co-occurring score has equal-domain
-concordance 0.631 versus 0.641 for the inverse-union null. The prespecified
-absolute co-occurring gate passes at 0.733. The paper reports both decisions
-and follows the protocol's theory-first consequence.
-
-The verified raw archive is
-`experiments/data/exp_pdb_profile_joint_seed_validation.tar.zst` (233,668,207
-bytes), SHA-256
-`8dea52d83539feab352fca64de142a0a7d42ef2c34aba28640e4afd616786008`.
-It has 47,250 safe-path members and compares byte-for-byte with the expanded
-tree. The fetched properties remain separately available at
-`experiments/data/exp_pdb_profile_joint_seed_validation-eval/properties`.
-Interrupted pre-recovery files are retained in the independently verified
-archive
-`experiments/artifacts/pdb-profile-joint-seed-validation/recovery/wave-0001/interrupted-cell-files.tar.zst`,
-SHA-256
-`919253f0c9389f8bc2f68e3ea9c0771abbc491534966b7095a4219609f525414`.
-
 ## Exclusions and claim boundary
 
-Earlier cap-grid P4/P5/P6 cluster runs are not used by this paper.  The
-development screen determines only whether the cap-aware method advances to
-the already frozen full protocol.  The full matrix reruns all controls and
-both selector variants under one environment.  The profile remeasurement,
-developmental two-order intervention, and prospective four-seed validation
-are separate studies recorded above; no prior-order cell substitutes for a
-four-seed validation cell.
+Earlier cluster runs and the earlier P4/P5/P6 study are not used by this paper.
+The development screen determines only whether the cap-aware method advances
+to the already frozen full protocol. The full matrix reruns all controls and
+both selector variants under one environment. No missing cell is filled and no
+old cell is reused.
 
 The accepted primary result favors cap-aware over same-K exact selection, but
 uncapped unaligned M&S is the best descriptive full-census coverage row.
