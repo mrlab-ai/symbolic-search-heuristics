@@ -1,6 +1,0 @@
-Traceback (most recent call last):
-  File "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-representation-safe/experiments/pdb_within_family_a_analysis.py", line 13, in <module>
-    import exp_pdb_within_family_a_v1 as Runner
-  File "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-representation-safe/experiments/exp_pdb_within_family_a_v1.py", line 10, in <module>
-    from downward.experiment import FastDownwardAlgorithm, FastDownwardExperiment, FastDownwardRun
-ModuleNotFoundError: No module named 'downward'

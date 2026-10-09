@@ -1,3 +1,0 @@
-{"event":"schema","version":2,"node_count_convention":"inner_nodes_per_piece","image_count_convention":"per_piece_attempted_completed","expansion_count_convention":"completed_with_attempts"}
-{"event":"heuristic","add_nodes":6486,"num_values":22,"num_terminals":22,"add_level_nodes":[1,0,2,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,8,0,16,0,32,0,48,0,96,0,162,0,0,0,0,0,0,0,0,0,0,0,0,0,126,0,252,0,504,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,752,0,1473,0,1878,0,0,0,0,0,0,0,841,0,232,0,59,0,0,0,0,0,0,0,0,0,0,0,0,0],"width_upper_bound":6508}
-{"event":"construction","heuristic":"pdb_shadow_cegar","seconds":0.299952,"size_bound":100000,"value_cap":-1,"completed":true}
