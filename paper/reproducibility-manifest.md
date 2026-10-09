@@ -297,8 +297,14 @@ Lab data are in the `symk-representation-safe` workspace under
   pinned holdout analysis and writes
   `experiments/artifacts/pdb-profile-harm-decomposition/analysis-v1.json`
   (SHA-256 `0814ae2554b139ed71f9aaf30440f5c1855ddf34731bcc70dd17bdb8575b3512`);
-  its `render` subcommand produces
-  `paper/generated/pdb-profile-harm-decomposition-v1.tex`.
+    its `render` subcommand produces
+  `paper/generated/pdb-profile-harm-decomposition-v1.tex`. The same run writes
+  the per-pair points
+  `experiments/artifacts/pdb-profile-harm-decomposition/points-v1.json`
+  (SHA-256 `6a25fa29210d818407be7fecde08d6c01fffc6eae1210c0690fc9b373bc05f95`),
+  from which `experiments/plot_pdb_profile_harm_decomposition.py` draws the
+  deterministic figure `paper/generated/pdb-profile-harm-decomposition-v1.pdf`
+  with the pinned `matplotlib==3.9.4`.
 
 ## Exclusions and claim boundary
 

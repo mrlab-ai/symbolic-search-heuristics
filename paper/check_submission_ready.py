@@ -148,12 +148,12 @@ REVIEW_BUNDLE_FILENAMES = (
 
 REVIEW_DOCUMENT_MARKERS = {
     "paper.pdf": {
-        "required": ("Cofactor Width", "Anonymous submission", "Abstract"),
+        "required": ("When Heuristics Hurt Symbolic Search", "Anonymous submission", "Abstract"),
         "forbidden": ("Supplementary Material",),
     },
     "supplement.pdf": {
         "required": (
-            "Cofactor Width",
+            "When Heuristics Hurt Symbolic Search",
             "Supplementary Material",
             "Anonymous for review",
             "Guide.",
@@ -422,6 +422,8 @@ REQUIRED_MANIFEST = (
     "paper/generated/pdb-profile-certificate-slack-v1.tex",
     "experiments/analyze_pdb_profile_harm_decomposition.py",
     "paper/generated/pdb-profile-harm-decomposition-v1.tex",
+    "experiments/plot_pdb_profile_harm_decomposition.py",
+    "paper/generated/pdb-profile-harm-decomposition-v1.pdf",
     "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-pdb-cap-grid-full-protocol/experiments/data/exp_pdb_cap_grid_full-eval.tar.gz",
     "logical basename `exp_pdb_cap_grid_full-eval.tar.gz`",
     "`WBH_ACCOUNT=naiss2025-5-561-cpu`",
@@ -1304,7 +1306,7 @@ def _review_bundle_self_test():
     # direct infrastructure/provenance scans, not by suppressing citations.
     safe_text = "SymK builds on prior work by Jendrik Seipp.\n"
     safe_first_page = (
-        "Bounding Heuristic Fragmentation with Cofactor Width\n"
+        "When Heuristics Hurt Symbolic Search: Fragmentation and Tight\n"
         "Anonymous submission\nAbstract\n"
     )
     safe_action_markup = "<html><body>anonymous paper</body></html>"

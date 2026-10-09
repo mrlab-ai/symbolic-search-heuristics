@@ -61,8 +61,8 @@
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
 \input{generated/pdb-profile-harm-decomposition-v1.tex}
 
-\title{Tight Cofactor-Width Bounds on Heuristic Fragmentation
-in Symbolic \astar{}: Supplementary Material}
+\title{When Heuristics Hurt Symbolic Search:\\
+Fragmentation and Tight Cofactor-Width Bounds\\Supplementary Material}
 \author{Anonymous for review}
 \date{}
 
@@ -976,6 +976,14 @@ $n=q+m+2B+1\leq4B$.  The ratio is consequently at least
 $\values WB/30\geq\values Wn/120$.  The heuristic itself has an $O(BW)$
 ordered ADD, so the entire construction is polynomial-size.
 \end{proof}
+
+In this family, every bucket of every layer below \copt\ is expanded. In the
+notation of the proof, generation layers have $g\leq NC$ and values at most $C$, so
+$g+v\leq NC+C\leq\copt$, and the persistent layers were treated above. The
+expanded unsplit set at each cost $g$ is therefore the whole layer $L_g$, so
+$\unioneffort(\task,h)=\effort(\task,\hblind)$ and the fragmentation factor
+equals the effort ratio. This gives the lower bound of the main paper's
+fragmentation corollary.
 
 For each fixed power-of-two $B$, the construction permits every pair
 $2\leq\values\leq W\leq B/4$; varying $B$ changes

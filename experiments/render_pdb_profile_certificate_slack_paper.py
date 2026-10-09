@@ -152,6 +152,7 @@ def _write_atomic(path, raw):
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
+        os.chmod(temporary, 0o644)
         os.replace(temporary, path)
     except Exception:
         try:

@@ -66,9 +66,12 @@ HARM_ARTIFACT_DIR := ../experiments/artifacts/pdb-profile-harm-decomposition
 HARM_ARTIFACT := $(HARM_ARTIFACT_DIR)/analysis-v1.json
 HARM_SIDECAR := $(HARM_ARTIFACT).sha256
 HARM_SCRIPT := ../experiments/analyze_pdb_profile_harm_decomposition.py
+HARM_POINTS := $(HARM_ARTIFACT_DIR)/points-v1.json
+HARM_FIGURE := generated/pdb-profile-harm-decomposition-v1.pdf
+HARM_PLOTTER := ../experiments/plot_pdb_profile_harm_decomposition.py
 PROFILE_STUDY_RESULTS := $(HOLDOUT_GENERATED_RESULT) \
 	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT) \
-	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT)
+	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT) $(HARM_FIGURE)
 
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
@@ -133,6 +136,10 @@ $(SLACK_GENERATED_RESULT): $(SLACK_RENDERER) $(HOLDOUT_ARTIFACT) \
 $(HARM_GENERATED_RESULT): $(HARM_SCRIPT) $(HARM_ARTIFACT) $(HARM_SIDECAR)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(HARM_SCRIPT) render \
 		--artifact $(HARM_ARTIFACT) --output $@ --write
+
+$(HARM_FIGURE): $(HARM_PLOTTER) $(HARM_POINTS) $(HARM_POINTS).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(HARM_PLOTTER) \
+		--points $(HARM_POINTS) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -230,6 +237,10 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(HARM_SCRIPT) render --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(HARM_SCRIPT) render \
 		--artifact $(HARM_ARTIFACT) --output $(HARM_GENERATED_RESULT) --check
+	cd $(HARM_ARTIFACT_DIR) && sha256sum -c points-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(HARM_PLOTTER) \
+		--points $(HARM_POINTS) --output $(HARM_FIGURE) --check
+
 
 
 

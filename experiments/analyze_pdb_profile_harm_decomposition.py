@@ -46,6 +46,7 @@ EXPECTED_PROPERTIES_SHA256 = (
 )
 ARTIFACT_DIR = SCRIPT_DIR / "artifacts" / "pdb-profile-harm-decomposition"
 DEFAULT_ARTIFACT = ARTIFACT_DIR / "analysis-v1.json"
+DEFAULT_POINTS = ARTIFACT_DIR / "points-v1.json"
 EXPECTED_ARTIFACT_SHA256 = (
     "0814ae2554b139ed71f9aaf30440f5c1855ddf34731bcc70dd17bdb8575b3512"
 )
@@ -208,7 +209,12 @@ def analyze(properties, holdout):
     if any(not isinstance(value, (int, float)) for value in construction):
         raise RenderError("a lost run lacks its construction time")
     summary["losses_max_construction_seconds"] = _ratio(max(construction))
-    return summary
+    points = sorted(
+        [round(float(p["u"]), 6), round(float(p["f"]), 6), int(p["r"] > 1),
+         int(p["blind_time"] >= HARD_BLIND_SECONDS), round(float(p["time"]), 4)]
+        for p in pairs
+    )
+    return summary, points
 
 
 def _canonical(value):
@@ -226,6 +232,7 @@ def _write_atomic(path, raw, allowed):
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
+        os.chmod(temporary, 0o644)
         os.replace(temporary, path)
     except Exception:
         try:
@@ -246,7 +253,7 @@ def command_analyze(args):
     )
     with open(args.properties) as stream:
         properties = json.load(stream)
-    summary = analyze(properties, holdout)
+    summary, points = analyze(properties, holdout)
     artifact = {
         "analysis_role": "post-hoc-descriptive-harm-decomposition",
         "holdout_analysis_sha256": holdout_digest,
@@ -266,6 +273,20 @@ def command_analyze(args):
     _write_atomic(str(args.artifact) + ".sha256", sidecar,
                   str(DEFAULT_ARTIFACT) + ".sha256")
     print(digest)
+    points_raw = _canonical({
+        "analysis_role": "post-hoc-descriptive-harm-decomposition-points",
+        "columns": ["unsplit_ratio", "fragmentation", "effort_above_blind",
+                    "hard", "search_time_ratio"],
+        "holdout_analysis_sha256": holdout_digest,
+        "points": points,
+        "properties_sha256": EXPECTED_PROPERTIES_SHA256,
+    })
+    _write_atomic(DEFAULT_POINTS, points_raw, DEFAULT_POINTS)
+    points_digest = hashlib.sha256(points_raw).hexdigest()
+    _write_atomic(str(DEFAULT_POINTS) + ".sha256",
+                  "{}  {}\n".format(points_digest, DEFAULT_POINTS.name).encode("ascii"),
+                  str(DEFAULT_POINTS) + ".sha256")
+    print(points_digest)
     return 0
 
 
