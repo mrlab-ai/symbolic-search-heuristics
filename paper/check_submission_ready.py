@@ -41,6 +41,20 @@ GENERATED = ROOT / "generated" / "pdb-cap-grid-full-v1.tex"
 GENERATED_INPUT = r"\input{generated/pdb-cap-grid-full-v1.tex}"
 POSTHOC_GENERATED = ROOT / "generated" / "pdb-cap-grid-posthoc-v1.tex"
 POSTHOC_GENERATED_INPUT = r"\input{generated/pdb-cap-grid-posthoc-v1.tex}"
+HOLDOUT_GENERATED_INPUT = (
+    r"\input{generated/pdb-profile-certificate-holdout-v1.tex}"
+)
+ORDER_GENERATED_INPUT = (
+    r"\input{generated/pdb-profile-order-intervention-v1.tex}"
+)
+SEED_GENERATED_INPUT = (
+    r"\input{generated/pdb-profile-joint-seed-validation-v1.tex}"
+)
+PROFILE_STUDY_INPUTS = (
+    HOLDOUT_GENERATED_INPUT,
+    ORDER_GENERATED_INPUT,
+    SEED_GENERATED_INPUT,
+)
 CAP_STUDY_INPUT = r"\input{cap-study.tex}"
 REFERENCES_START_LABEL = r"\label{paper:references-start}"
 
@@ -337,8 +351,9 @@ REQUIRED_MAIN = (
     "/TemplateVersion (2027.1)",
     r"\author{Anonymous Submission}",
     r"\affiliations{}",
-    GENERATED_INPUT,
+        GENERATED_INPUT,
     POSTHOC_GENERATED_INPUT,
+    *PROFILE_STUDY_INPUTS,
     r"\CapFullContextRows",
     r"\CapPrimaryContrastRows",
     r"\CapPrimaryMechanismRows",
@@ -350,6 +365,7 @@ REQUIRED_MAIN = (
 REQUIRED_SUPPLEMENT = (
     GENERATED_INPUT,
     POSTHOC_GENERATED_INPUT,
+    *PROFILE_STUDY_INPUTS,
     CAP_STUDY_INPUT,
 )
 
@@ -383,7 +399,17 @@ REQUIRED_MANIFEST = (
     "experiments/render_pdb_cap_grid_posthoc_review.py",
     "`experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json`",
     "`experiments/artifacts/pdb-cap-grid-posthoc-review/analysis-v1.json.sha256`",
-    "paper/generated/pdb-cap-grid-posthoc-v1.tex",
+        "paper/generated/pdb-cap-grid-posthoc-v1.tex",
+    "experiments/analyze_pdb_profile_certificate_holdout.py",
+    "experiments/analyze_pdb_profile_denominator_audit.py",
+    "experiments/render_pdb_profile_certificate_holdout_paper.py",
+    "paper/generated/pdb-profile-certificate-holdout-v1.tex",
+    "experiments/analyze_pdb_profile_order_intervention.py",
+    "experiments/render_pdb_profile_order_intervention_paper.py",
+    "paper/generated/pdb-profile-order-intervention-v1.tex",
+    "experiments/analyze_pdb_profile_joint_seed_validation.py",
+    "experiments/render_pdb_profile_joint_seed_validation_paper.py",
+    "paper/generated/pdb-profile-joint-seed-validation-v1.tex",
     "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-pdb-cap-grid-full-protocol/experiments/data/exp_pdb_cap_grid_full-eval.tar.gz",
     "logical basename `exp_pdb_cap_grid_full-eval.tar.gz`",
     "`WBH_ACCOUNT=naiss2025-5-561-cpu`",
@@ -1110,9 +1136,11 @@ def _validate_source(name: str, text: str, required) -> None:
             raise SubmissionReadinessError(
                 f"{name}:{line}: unresolved submission marker ({description})"
             )
-    identity_text = active.replace(GENERATED_INPUT, "").replace(
+        identity_text = active.replace(GENERATED_INPUT, "").replace(
         POSTHOC_GENERATED_INPUT, ""
     )
+    for profile_input in PROFILE_STUDY_INPUTS:
+        identity_text = identity_text.replace(profile_input, "")
     for description, pattern in FORBIDDEN_IDENTITY:
         match = pattern.search(identity_text)
         if match:

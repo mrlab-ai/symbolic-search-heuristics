@@ -189,6 +189,15 @@ The archive contains the fetched `exp_pdb_cap_grid_full-eval/properties`
 whose raw-file and canonical logical digests are recorded in the focused-full
 section above.
 
+Availability note (2026-10-09): this archive and the pilot archive
+`exp_pdb_cap_grid_pilot-eval.tar.gz` (SHA-256
+`6124f186ba66a4f9e0d2411b2ef15ee8fc4b0b87af8281345b66e05e57b14d3d`) are no
+longer at their recorded paths; their worktrees were removed on 2026-10-03
+and no copy has been found. The sealed analysis artifacts and their digests
+remain committed, so every reported value can still be checked against them,
+but the analyses cannot be recomputed from properties until an archive copy
+is restored.
+
 Raw experiment regeneration requires the clean launch revision, planner,
 benchmark checkout, revision cache, scheduler envelope, and account binding
 declared above. The Python environment is installed exactly from
@@ -234,6 +243,47 @@ self-test and `--check` gate validate the artifact pin and the generated TeX
 byte for byte. Thus the committed diagnostics remain independently bound to
 the canonical logical properties digest even where the Lab/account environment
 needed for raw regeneration is unavailable.
+
+## Profile-predictor studies
+
+Three later studies supply the main paper's two-effect result and its
+negative predictor evidence. Each has a frozen protocol, runner, execution
+audit, scheduler-only recovery, analyzer, and fail-closed renderer; the raw
+Lab data are in the `symk-representation-safe` workspace under
+`experiments/data/`.
+
+- Prospective certificate holdout (1,052 tasks, 45 domains, 17,884 cells):
+  `experiments/pdb_profile_certificate_holdout_protocol.md`,
+  `experiments/exp_pdb_profile_certificate_holdout.py`,
+  `experiments/analyze_pdb_profile_certificate_holdout.py`,
+  `experiments/analyze_pdb_profile_denominator_audit.py`, and
+  `experiments/render_pdb_profile_certificate_holdout_paper.py`.
+  Artifacts `experiments/artifacts/pdb-profile-certificate-holdout/analysis-v1.json`
+  (SHA-256 `17e06a7d2c946dc34d5a171b0edb8f61eeae4895601563c1ff87ca0383ab9d97`)
+  and `denominator-audit-v1.json`
+  (SHA-256 `49f3d7d75c6e7d0374c60e6dc041aa47a1cd2e748dfcce48ba0c9286cec26bc0`)
+  render `paper/generated/pdb-profile-certificate-holdout-v1.tex`
+  (SHA-256 `d4bd4b7f426cef0fafa1f653e27e90229c5071f5ff24fbcdb69bba00a6491c20`).
+- Fixed-heuristic variable-order intervention (2,104 cells):
+  `experiments/pdb_profile_order_intervention_protocol.md`,
+  `experiments/exp_pdb_profile_order_intervention.py`,
+  `experiments/analyze_pdb_profile_order_intervention.py`, and
+  `experiments/render_pdb_profile_order_intervention_paper.py`.
+  Artifact `experiments/artifacts/pdb-profile-order-intervention/analysis-v1.json`
+  (SHA-256 `1683e6d743267d444b6d1ce1dfdb24450a24f06150c658ccf49814685210d959`)
+  renders `paper/generated/pdb-profile-order-intervention-v1.tex`
+  (SHA-256 `39e9f476c145344c1fb3acae9924e9432c63120e29a63dd10519ed0cea1b2b75`).
+- Unseen-order replication (Gamer seeds 1--4, 4,208 cells):
+  `experiments/pdb_profile_joint_seed_validation_protocol.md`,
+  `experiments/exp_pdb_profile_joint_seed_validation.py`,
+  `experiments/analyze_pdb_profile_joint_seed_validation.py`, and
+  `experiments/render_pdb_profile_joint_seed_validation_paper.py`.
+  Artifact `experiments/artifacts/pdb-profile-joint-seed-validation/analysis-v1.json`
+  (SHA-256 `2b854d13fc92d9f394a2248271e1173d66bd43f1360fee1ce44564c9627cb3b7`)
+  renders `paper/generated/pdb-profile-joint-seed-validation-v1.tex`
+  (SHA-256 `972c00b9db41f5aca38f7dbe921a4c12551cdecc83927efb88ad3c750d78380e`).
+  Its primary gate failed; by its frozen rule the paper makes no empirical
+  predictor claim for the profile.
 
 ## Exclusions and claim boundary
 
