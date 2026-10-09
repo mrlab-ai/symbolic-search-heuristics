@@ -17,6 +17,8 @@
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{booktabs}
 \usepackage{tikz}
+\usepackage{numprint}
+\npthousandsep{,}
 \pdfinfo{
 /TemplateVersion (2027.1)
 }
@@ -59,6 +61,8 @@
 \newcommand{\symba}{SymBA\ensuremath{^{*}}}
 % A bar of the given width from x-position #1 to height #2 with style #3.
 \newcommand{\cbar}[4]{\path[#4] (#1,0) rectangle ++(#2,#3);}
+% A number with thousands separators.
+\newcommand{\num}[1]{\numprint{#1}}
 
 \theoremstyle{plain}
 \newtheorem{theorem}{Theorem}
@@ -76,9 +80,10 @@
 \input{generated/pdb-profile-certificate-holdout-v1.tex}
 \input{generated/pdb-profile-order-intervention-v1.tex}
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
+\input{generated/pdb-profile-certificate-slack-v1.tex}
 
-\title{Tight Cofactor-Width Bounds for Heuristic Fragmentation
-in Forward Symbolic \astar{}}
+\title{Tight Cofactor-Width Bounds on Heuristic Fragmentation
+in Symbolic \astar{}}
 \author{Anonymous Submission}
 \affiliations{}
 
@@ -94,7 +99,7 @@ heuristic value, a heuristic has two effects: it shrinks the set of expanded
 states, and it splits that set into separately represented binary decision
 diagrams (BDDs). We factor the cumulative number of expanded BDD nodes exactly
 into the BDD size of the unsplit expanded sets and a fragmentation factor. On a
-prospective holdout of \HoldoutTasks\ planning tasks, the more informative of
+prospective holdout of \num{\HoldoutTasks} planning tasks, the more informative of
 two heuristics expands fewer states and smaller unsplit sets in most
 comparisons (domain-averaged concordance \HoldoutStatesQualityMacro\ and
 \HoldoutUnionQualityMacro) but fragments them more in about three quarters of
@@ -104,13 +109,12 @@ heuristic's algebraic decision diagram. If $W$ is the largest residual count of
 the heuristic (its cofactor width), $V$ its number of finite values and $n$ the
 number of state bits, heuristic search expands at most $2VWn$ times as many BDD
 nodes as blind search, and a polynomial-size planning family attains
-$VWn/120$. Safe value caps never increase the certificate, which yields a
-width-constrained pattern database selector; at width budget $K=8$, cap-aware
-selection changes domain-averaged coverage by \CapPrimaryMacroDeltaPoints\
-percentage points relative to exact-width selection and expands 11.6\% fewer
-BDD nodes on completed pairs. As an empirical predictor of fragmentation, however,
-the profile does not replicate under unseen variable orders, so we present it
-only as a certificate.
+$VWn/120$. Safe value caps never increase the certificate and yield a
+width-constrained pattern database selector that changes domain-averaged
+coverage by \CapPrimaryMacroDeltaPoints\ percentage points over exact-width
+selection. On the holdout, the profile exceeds the observed
+fragmentation by a median factor of only \SlackProfileMedian, but it does not
+replicate as a predictor of fragmentation under unseen variable orders.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -143,54 +147,43 @@ existing worst-case guarantees for symbolic versus explicit search concern
 transition relations and goal formulas and explicitly leave heuristics aside
 \citep{speck-helmert-ecai2025}.
 
-We give such a characterization relative to blind symbolic search. At each
-cut of the fixed BDD variable order, our \emph{cofactor-profile product}
-multiplies the number of residual functions of a state set by that of the
-heuristic. This product bounds the residual pairs that actually co-occur
-without modeling their correlation. Its heuristic factor, maximized over all
-cuts, is the standard residual width of a multi-terminal BDD (MTBDD)
+We characterize this damage relative to blind symbolic search. A heuristic
+has two effects there: as in explicit search, it reduces the set of expanded
+states, and in addition it splits that set into separately represented
+buckets. At each cut of the fixed BDD variable order, our
+\emph{cofactor-profile product} multiplies the number of residual functions
+of a state set by that of the heuristic, and it bounds the BDD of every
+subset that the heuristic selects by value. Its heuristic factor, maximized
+over all cuts, is the standard residual width of a multi-terminal BDD (MTBDD)
 \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}, which we call \emph{cofactor
-width}, and the product argument behind binary synthesis is also standard
-\citep[Thm.~3.3.6]{wegener-2000}. Our contribution is to connect these
-quantities to the exact buckets of symbolic search, to accumulate them over
-cost layers and to derive tight bounds relative to blind search. Cofactor
-width, the frontier-independent relaxation of the profile, can be measured
-before search.
-
-For fixed-order forward symbolic \astar\ that partitions each frontier by
-heuristic value, our main theorem bounds the cumulative number of expanded BDD
-nodes by $O(VWn)$ times that of blind search, where $V$ is the number of
-finite heuristic values, $W$ the cofactor width and $n$ the number of state
-bits. A polynomial-size planning family attains $\Omega(VWn)$ throughout the
-feasible parameter range, so none of the three factors can be dropped. The
-known exponential example has exponential width under its analyzed order.
-Bounded width thus protects against this pathology; it is sufficient, but not
-necessary, for compact splits.
-
-Safe terminal maps such as uniform caps never increase any cut count. We bound
-the width of integer potentials, PDBs and linear merge-and-shrink (M\&S)
-aligned with the search order, and we use caps in a width-constrained PDB
-selector. Whenever the cap-aware and the exact-width selector complete on the
-same raw pool, the cap-aware candidate set contains every exact-feasible
-candidate and therefore cannot lower their shared information score. This
-guarantees candidate-set and score dominance, not faster search.
-
-Our bounds address one of two effects of a heuristic in symbolic search: it
-reduces the set of expanded states, and it splits that set into separately
-represented buckets. We factor search effort exactly into the size of the
-unsplit sets and a fragmentation factor. On a prospective holdout of \HoldoutTasks\ tasks in SymK
-\citep{speck-et-al-jair2025}, more informative heuristics shrink the unsplit
-sets but fragment them more in about three quarters of the comparisons
-(Figure~\ref{fig:two-effects}). The bounds control this second effect. As an
-empirical predictor of fragmentation, however, the profile only ties cofactor
-width, barely beats a baseline that uses the unsplit size alone, and predicts
-the effect of one change of variable order but not of unseen orders.
-
-With width budget $K=8$, cap-aware selection changes domain-averaged coverage
-by \CapPrimaryMacroDeltaPoints\ percentage points
-(\CapPrimaryWins/\CapPrimaryLosses\ task wins/losses) and expands 11.6\% fewer
-BDD nodes on 590 completed pairs, while unaligned M\&S retains higher
-coverage.
+width}, and the product argument is also standard
+\citep[Thm.~3.3.6]{wegener-2000}. Our contributions connect these quantities
+to the exact buckets of symbolic search:
+\begin{itemize}
+\item \emph{Tight bounds.} Forward symbolic \astar\ that partitions each
+  frontier by heuristic value expands at most $2VWn$ times as many BDD nodes
+  as blind search, where $V$ is the number of finite heuristic values, $W$ the
+  cofactor width and $n$ the number of state bits. A polynomial-size planning
+  family attains $VWn/120$, so none of the three factors can be dropped. The
+  known exponential pathology has exponential width.
+\item \emph{Two effects.} Search effort factors exactly into the size of the
+  unsplit expanded sets and a fragmentation factor, which the profile bounds.
+  On a prospective holdout of \num{\HoldoutTasks} tasks in SymK
+  \citep{speck-et-al-jair2025}, more informative heuristics shrink the unsplit
+  sets but fragment them more in about three quarters of the comparisons
+  (Figure~\ref{fig:two-effects}).
+\item \emph{Heuristic design.} Integer potentials, PDBs and aligned linear
+  merge-and-shrink (M\&S) have bounded width, and safe value caps never
+  increase the certificate. A cap-aware, width-constrained PDB selector
+  changes coverage by \CapPrimaryMacroDeltaPoints\ percentage points over
+  exact-width selection and expands 11.6\% fewer BDD nodes.
+\item \emph{Tightness in practice.} No certificate is violated on
+  \num{\SlackObservations} runs, and the profile overestimates fragmentation
+  by a median factor of \SlackProfileMedian, compared with \SlackAddMedian\
+  for the certificate based on total ADD size. As a predictor of
+  fragmentation, however, the profile does not replicate under unseen
+  variable orders.
+\end{itemize}
 
 % ============================ background =================================
 \section{Background}
@@ -388,7 +381,7 @@ so its cut counts, its profile product with any fixed set and its width are no
 larger. Caps therefore form a nested ladder between safety and
 informativeness: increasing $\kappa$ weakly strengthens the heuristic, while
 decreasing it weakly contracts both the profile-sensitive bound and the coarse
-$2\values Wn$ bound of Section~\ref{sec-effort}.
+$2\values Wn$ bound of Corollary~\ref{cor-effort}.
 
 Width is closely related to the size of the reduced ordered ADD
 $\mathrm{ADD}_\pi(h)$ under $\pi$ \citep{bahar-et-al-iccad1993}.
@@ -446,6 +439,61 @@ The theorem covers single buckets ($U=\{v\}$), the removal of recognized dead
 ends and threshold pruning. Up to the additive term, no subset selected by
 heuristic value has a reduced BDD more than $Wn$ times as large as that of its
 source set.
+
+\begin{example}
+\label{ex-parity}
+Let $S=\{x_1=1\}$ and let $h=x_1\oplus x_2\oplus x_3$ be a parity heuristic
+with values $0$ and $1$ (Figure~\ref{fig:example}). The BDD of $S$ has one
+node, but its slice $S\cap h^{-1}(0)$, the states with $x_1=1$ and
+$x_2\oplus x_3=1$, has four as drawn. At the cut after $x_2$, $S$ has two cofactors
+(true and false) and $h$ has two ($x_3$ and $\neg x_3$), so the slice has at
+most four; it has three: $x_3$, $\neg x_3$ and false. With $n$ bits, the same
+slice has $\Theta(n)$ nodes even with complemented edges, so the factor $n$
+in the theorem is needed.
+\end{example}
+
+\begin{figure}[tb]
+  \centering
+  \scriptsize
+  \begin{tikzpicture}[x=0.62cm,y=0.5cm,
+      dd/.style={circle,draw,inner sep=0.6pt,minimum size=3.6mm},
+      tm/.style={rectangle,draw,inner sep=1.2pt,minimum size=3mm},
+      hi/.style={-},lo/.style={densely dashed}]
+    % (a) heuristic MTBDD of x1 xor x2 xor x3
+    \node[dd] (a1) at (1,3) {$x_1$};
+    \node[dd] (a2) at (0.3,2) {$x_2$}; \node[dd] (a2') at (1.7,2) {$x_2$};
+    \node[dd] (a3) at (0.3,1) {$x_3$}; \node[dd] (a3') at (1.7,1) {$x_3$};
+    \node[tm] (a0) at (0.3,0) {0}; \node[tm] (a1t) at (1.7,0) {1};
+    \draw[lo] (a1)--(a2); \draw[hi] (a1)--(a2');
+    \draw[lo] (a2)--(a3); \draw[hi] (a2)--(a3');
+    \draw[lo] (a2')--(a3'); \draw[hi] (a2')--(a3);
+    \draw[lo] (a3)--(a0); \draw[hi] (a3)--(a1t);
+    \draw[lo] (a3')--(a1t); \draw[hi] (a3')--(a0);
+    \node at (1,-0.9) {(a) heuristic $h$};
+    % (b) state set S = {x1 = 1}
+    \node[dd] (b1) at (3.6,3) {$x_1$};
+    \node[tm] (bf) at (3.1,0) {0}; \node[tm] (bt) at (4.1,0) {1};
+    \draw[lo] (b1)--(bf); \draw[hi] (b1)--(bt);
+    \node at (3.6,-0.9) {(b) set $S$};
+    % (c) slice S and h = 0
+    \node[dd] (c1) at (6.4,3) {$x_1$};
+    \node[dd] (c2) at (7.1,2) {$x_2$};
+    \node[dd] (c3) at (6.4,1) {$x_3$}; \node[dd] (c3') at (7.8,1) {$x_3$};
+    \node[tm] (cf) at (5.7,0) {0}; \node[tm] (ct) at (7.1,0) {1};
+    \draw[lo] (c1)--(cf); \draw[hi] (c1)--(c2);
+    \draw[lo] (c2)--(c3'); \draw[hi] (c2)--(c3);
+    \draw[lo] (c3)--(ct); \draw[hi] (c3)--(cf);
+    \draw[lo] (c3')--(cf); \draw[hi] (c3')--(ct);
+    \node at (6.7,-0.9) {(c) slice $S\cap h^{-1}(0)$};
+    % cut after x2
+    \draw[gray,dotted,thick] (-0.3,1.5) -- (8.4,1.5);
+    \node[gray,right] at (8.4,1.5) {cut 2};
+  \end{tikzpicture}
+  \caption{Example~\ref{ex-parity}: diagrams drawn without complemented
+    edges; dashed edges are 0-branches. At cut 2, each slice cofactor is
+    determined by a pair of a cofactor of $S$ and a cofactor of $h$.}
+  \label{fig:example}
+\end{figure}
 
 \begin{theorem}[partition bound]
 \label{thm-partition}
@@ -764,7 +812,7 @@ Raising the cap weakly strengthens the heuristic, and lowering it cannot
 increase any cut count, so the selector keeps the strongest feasible member of
 each pattern's ladder before comparing patterns.
 
-Both selectors then rank the remaining candidates by the same frozen
+Both selectors then rank the remaining candidates by the same fixed
 lexicographic score: initial-state dead-end recognition, initial value, mean
 finite value and fraction of abstract dead ends, with smaller width, fewer
 abstract states and the pattern as tie-breakers. The score is a surrogate for
@@ -814,126 +862,55 @@ For attribution, we certify pairwise that both traces are complete and that
 the reconstructed raw pools are identical; the supplement gives the
 contracts.
 
-\begin{table*}[t]
-  \centering
-  \small
-  \setlength{\tabcolsep}{4pt}
-  \begin{minipage}[t]{0.46\textwidth}
-    \centering
-    \textbf{(a) Full-census context}\\[2pt]
-    \begin{tabular}{lrr}
-      \toprule
-      Configuration & Solved & PAR2 \\
-      \midrule
-      \CapFullContextRows
-      \bottomrule
-    \end{tabular}
-  \end{minipage}\hfill
-  \begin{minipage}[t]{0.52\textwidth}
-    \centering
-    \textbf{(b) Primary development complement}\\[2pt]
-    \begin{tabular}{lrr}
-      \toprule
-      Selector & Macro cov. (\%) & Solved \\
-      \midrule
-      \CapPrimaryContrastRows
-      \bottomrule
-    \end{tabular}\\[5pt]
-    \begin{tabular}{lr}
-      \toprule
-      Paired diagnostic & Count \\
-      \midrule
-      Task wins/losses & \CapPrimaryWins/\CapPrimaryLosses \\
-      Both solved/unsolved & \CapPrimaryBothSolved/\CapPrimaryBothUnsolved \\
-      \CapPrimaryMechanismRows
-      \bottomrule
-    \end{tabular}
-  \end{minipage}
-  \vspace{6pt}
-
-  \textbf{(c) Primary operational summaries}\\[2pt]
-  \small
-  \begin{tabular}{lrrrr}
-    \toprule
-    Metric & Eligible & Cap-aware & Exact & $\Delta$/ratio \\
-    \midrule
-    \CapPrimarySecondaryRows
-    \bottomrule
-  \end{tabular}
-  \begin{minipage}{0.98\textwidth}
-    \small \CapScopeCaveat\ \CapRatioCaveat\ \CapCensoringCaveat
-  \end{minipage}
-  \normalsize
-  \caption{Focused cap-aware evaluation. Panel (a) gives descriptive
-    full-census context; panel (b) gives the primary fixed-set contrast and
-    its mechanism denominators; panel (c) gives the separately frozen primary
-    operational summaries. PAR2 and time totals are in seconds.}
-  \label{tab:cap-aware-main}
-\end{table*}
 
 % ============================ experiments ================================
 \section{Experiments}
 \label{sec-experiments}
 
-We ask five questions about fixed task sets. \emph{Q1:} Do the two effects of
-a heuristic, search reduction and fragmentation, separate empirically?
-\emph{Q2:} Does the normalized profile certificate predict fragmentation
-better than simpler quantities? \emph{Q3:} On completed pairs with identical
-pools, how often does the larger cap-aware candidate set yield a
-semantic-nontrivial selection? \emph{Q4:} Does cap-aware selection improve
-coverage over exact-width selection? \emph{Q5:} Which construction and search
-costs accompany this difference?
+All experiments use SymK \citep{speck-et-al-jair2025} with
+product-at-evaluation forward symbolic \astar\ and a fixed, task-specific BDD
+variable order, the Gamer order unless stated otherwise; blind search uses
+$h\equiv0$. Removing 290 tasks with zero-cost operators and 30 tasks with
+axioms leaves \num{\CapFullTasks} of \num{1697} optimal sequential IPC tasks
+from \CapFullDomains\ domains. Each run is limited to 300 seconds of process
+CPU time and 8\,GiB of memory. For every experiment, the protocol, the
+analysis and the decision thresholds were fixed before any outcome was
+inspected; the supplement gives them together with full provenance. We ask
+five questions. \emph{Q1:} Do the two effects of a heuristic separate
+empirically? \emph{Q2:} How tight are the certificates, and do they predict
+fragmentation? \emph{Q3:} How often does cap-aware selection yield an
+informative PDB? \emph{Q4:} Does it improve coverage over exact-width
+selection? \emph{Q5:} What does it cost?
 
-For Q1 and Q2, the \CapPrimaryTasks\ tasks outside the development screen
-described below were split into a deterministic, domain-balanced 275-task
-cohort for formula development and a disjoint holdout of \HoldoutTasks\ tasks
-from \HoldoutDomains\ domains. On the holdout, profiled blind search and 16
-PDB selections (exact-width, cap-aware width and cap-aware selection under
-matched ADD-size budgets at five budgets, and unconstrained selection) give
-\HoldoutCells\ cells. On solved, completely profiled runs, we
-compare the frozen information score of the previous section and the
-normalized certificates by their \emph{concordance}: the fraction of
-within-task pairs, ordered strictly by target and predictors, that a predictor
-orders correctly (higher information, smaller target; higher certificate,
-more fragmentation), averaged equally over domains. All thresholds were fixed
-before any holdout outcome was parsed.
+\paragraph{Cap-Aware Selection.}
+The $K=8$ study runs blind search, unaligned causal-graph M\&S with
+\num{10000} states, one CEGAR PDB with \num{100000} states and both selectors
+with $K=8$ on all tasks (\num{\CapFullCells} runs). A 50-task screen decided
+beforehand whether the cap-aware selector would be evaluated at all. The
+remaining \num{\CapPrimaryTasks} tasks, which span all \CapFullDomains\
+domains, form the primary set, and all tasks serve as a sensitivity check. The
+primary measure is coverage averaged equally over domains; micro-PAR2 counts
+an unsolved run as 600 seconds.
 
-Two further experiments hold one deterministic goal-fill PDB fixed and change
-only the BDD variable order: from the Gamer order to the Fast Downward order,
-and among the Gamer orders of four unseen random seeds
-(\SeedValidationCells\ cells). Expanded states must agree across orders, so only
-the representation changes. The supplement gives all protocols and gates.
+\paragraph{Prospective Holdout.}
+The primary set was further split into a domain-balanced 275-task cohort,
+used to develop all formulas, and a disjoint holdout of \num{\HoldoutTasks}
+tasks from \HoldoutDomains\ domains. On the holdout, we ran profiled blind
+search and 16 PDB selectors (exact-width, cap-aware and ADD-size-constrained
+selection at five budgets, and unconstrained selection), \num{\HoldoutCells}
+runs in total. On solved, completely profiled runs, we compare the
+selectors' information score and the normalized certificates by their
+\emph{concordance}: the fraction of within-task pairs, strictly ordered by
+the target and all compared predictors, that a predictor orders correctly
+(higher information, smaller target; higher certificate, more
+fragmentation), averaged equally over domains.
 
-For Q3--Q5, frozen exclusions of 290 tasks with zero-cost operators and 30 tasks with
-axioms after normalization leave \CapFullTasks\ of 1697 optimal sequential IPC
-tasks, from \CapFullDomains\ domains. Using one planner revision, the matrix
-runs blind search, unaligned causal-graph M\&S with 10,000 states, one CEGAR
-PDB with 100,000 states, and the exact and cap-aware selectors with $K=8$.
-Every run uses product-at-evaluation forward symbolic \astar\ with the same
-task-specific BDD order; blind search uses $h\equiv0$. Each run has a limit of
-300\,seconds of aggregate process CPU time and 8\,GiB of memory, and
-micro-PAR2 assigns 600\,seconds to unsolved runs. The matrix has
-\CapFullCells\ cells.
-
-We froze the $K=8$ contrast and the rule for promoting it before inspecting
-aggregate results of a separate 50-task development screen. The rule required
-complete records, matching raw pools and solution costs, more
-semantic-nontrivial selections for the cap-aware selector and nonnegative
-coverage discordance; $K=32$ could not substitute. The primary task set is
-the complement of the screen: \CapPrimaryTasks\ tasks that span all
-\CapFullDomains\ domains but are neither random nor unseen in earlier project
-stages. The primary estimand is the difference in coverage between cap-aware
-and exact selection, averaged equally over domains, and task-level counts
-report the paired discordance. Adding the screen tasks back gives the
-prespecified sensitivity analysis on all \CapFullTasks\ tasks.
-
-Missing or duplicate cells, incomplete traces or disagreeing costs
-invalidate the analysis instead of changing a denominator. A separately frozen
-secondary contract reports micro-PAR2 including construction, planner CPU time
-on positive jointly solved pairs, and image time, expanded nodes and
-construction time on eligible pairs. The audit of expansion effort is post
-hoc and changes no frozen estimand. The supplement records launch rules,
-digests and parser checks.
+\paragraph{Variable Orders.}
+Two further experiments keep one deterministic goal-fill PDB and change only
+the BDD variable order: from the Gamer order to the Fast Downward order
+(\num{\OrderCells} runs), and among the Gamer orders of four unseen random
+seeds (\num{\SeedValidationCells} runs). The expanded states must agree across
+orders, so only the representation changes.
 
 \subsection{Results}
 
@@ -954,104 +931,123 @@ digests and parser checks.
     \node[below] at (1.35,0) {unsplit};
     \node[below] at (2.25,0) {frag.};
     \node[above] at (1.35,1.02) {(a) information};
-    % Panel (b): fragmentation predictors in three studies.
-    \begin{scope}[xshift=3.3cm]
-      \draw[gray] (0,0) -- (4.05,0);
-      \draw[gray,densely dashed] (0,0.5) -- (4.05,0.5);
+    % Panel (b): certificate slack on a log scale from 1 to 10^3.2.
+    \begin{scope}[xshift=4.0cm]
+      \def\ly#1{{log10(#1)/3.2}}
+      \draw[gray] (0,0) -- (2.9,0);
       \draw[gray] (0,0) -- (0,1);
-      \cbar{0.1}{0.27}{\HoldoutRepresentationProfileMacro}{fill=black!85}
-      \cbar{0.37}{0.27}{\HoldoutRepresentationWidthMacro}{fill=black!50}
-      \cbar{0.64}{0.27}{\HoldoutRepresentationAddMacro}{fill=black!20}
-      \cbar{0.91}{0.27}{\HoldoutDenominatorNullMacro}{draw=black,densely dashed}
-      \cbar{1.6}{0.27}{\OrderProfileMacro}{fill=black!85}
-      \cbar{1.87}{0.27}{\OrderWidthMacro}{fill=black!50}
-      \cbar{2.14}{0.27}{\OrderAddMacro}{fill=black!20}
-      \cbar{2.85}{0.27}{\SeedCartesianMacro}{fill=black!85}
-      \cbar{3.12}{0.27}{\SeedWidthMacro}{fill=black!50}
-      \cbar{3.39}{0.27}{\SeedAddMacro}{fill=black!20}
-      \cbar{3.66}{0.27}{\SeedNullMacro}{draw=black,densely dashed}
-      \node[below] at (0.64,0) {holdout};
-      \node[below] at (2.0,0) {order pair};
-      \node[below] at (3.39,0) {seeds};
-      \node[above] at (2.0,1.02) {(b) fragmentation predictors};
+      \foreach \v/\l in {1/1,10/10,100/100,1000/1000}
+        {\node[left,inner sep=1pt] at (0,\ly{\v}) {\l};
+         \draw[gray!40] (0,\ly{\v}) -- (2.9,\ly{\v});}
+      \node[rotate=90] at (-0.95,0.5) {slack};
+      \foreach \x/\lo/\md/\hi/\name in {
+          0.45/\SlackProfileTen/\SlackProfileMedian/\SlackProfileNinety/profile,
+          1.45/\SlackWidthTen/\SlackWidthMedian/\SlackWidthNinety/width,
+          2.45/\SlackAddTen/\SlackAddMedian/\SlackAddNinety/ADD}
+        {\fill[black!25] (\x-0.18,\ly{\lo}) rectangle (\x+0.18,\ly{\hi});
+         \draw[very thick] (\x-0.25,\ly{\md}) -- (\x+0.25,\ly{\md});
+         \node[below] at (\x,0) {\name};}
+      \node[above] at (1.45,1.02) {(b) certificate slack};
     \end{scope}
   \end{tikzpicture}
-  \caption{Equal-domain concordance. (a) More informative heuristics expand
-    fewer states and smaller unsplit sets but tend to fragment them more. (b)
-    Normalized profile, width and ADD-size certificates (dark to light) and
-    the denominator-only null $1/\unioneffort$ (dashed; holdout value on its
-    own audit pairs). The dashed line marks chance.}
+  \caption{Prospective holdout. (a) Equal-domain concordance: more
+    informative heuristics expand fewer states and smaller unsplit sets but
+    tend to fragment them more; the dashed line marks chance. (b) Factor by
+    which each normalized certificate exceeds the observed fragmentation
+    (post hoc, log scale): bars span the 10th to 90th percentile and ticks
+    mark the median.}
   \label{fig:two-effects}
 \end{figure}
+
+\begin{table}[tb]
+  \centering
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{lrr}
+    \toprule
+    Configuration & Solved & PAR2 \\
+    \midrule
+    \CapFullContextRows
+    \bottomrule
+  \end{tabular}\\[4pt]
+  \begin{tabular}{lrr}
+    \toprule
+    Primary set & Coverage (\%) & Solved \\
+    \midrule
+    \CapPrimaryContrastRows
+    \bottomrule
+  \end{tabular}
+  \caption{The $K=8$ study on all \num{\CapFullTasks} tasks (top) and on the
+    primary set of \num{\CapPrimaryTasks} tasks, with coverage averaged
+    equally over domains (bottom). PAR2 is in seconds.}
+  \label{tab:cap-aware-main}
+\end{table}
 
 \paragraph{Two Effects (Q1).}
 On pairs from \HoldoutStatesPairTasks\ and \HoldoutUnionPairTasks\ tasks,
 the more informative heuristic expands fewer states and has smaller unsplit
 effort with concordance \HoldoutStatesQualityMacro\ and
 \HoldoutUnionQualityMacro\ (Figure~\ref{fig:two-effects}a). On
-\HoldoutFragmentPairs\ pairs from \HoldoutFragmentPairTasks\ tasks and
+\num{\HoldoutFragmentPairs} pairs from \HoldoutFragmentPairTasks\ tasks and
 \HoldoutFragmentPairDomains\ domains, however, its concordance with lower
 fragmentation is only \HoldoutFragmentQualityMacro: in about three quarters
-of the pairs, the more informative heuristic fragments more. The frozen
-two-effect gate passes.
+of the pairs, the more informative heuristic fragments more.
 
-\paragraph{Profile as a Predictor (Q2).}
-On \HoldoutRepresentationPairs\ pairs, the normalized profile orders
-fragmentation with concordance \HoldoutRepresentationProfileMacro, tied with
-width (\HoldoutRepresentationWidthMacro) and above ADD size
-(\HoldoutRepresentationAddMacro). Since $\profilescore$ and \fragfactor\ share
-the denominator \unioneffort, a separately frozen audit compares the profile
-with the null predictor $1/\unioneffort$: on \HoldoutDenominatorPairs\ shared
-pairs, the null reaches \HoldoutDenominatorNullMacro\ against
-\HoldoutDenominatorProfileMacro, short of the required margin of 0.20. When
-only the order changes from Gamer's to Fast Downward's, the profile predicts
-the direction of the fragmentation change with concordance
-\OrderProfileMacro, against \OrderWidthMacro\ for width and \OrderAddMacro\ for
-ADD size. Among unseen Gamer orders, however, it reaches only
-\SeedCartesianMacro, below the null's \SeedNullMacro, and a co-occurring
-refinement of the profile also stays below the null. By the frozen rule, the
-profile bounds fragmentation but is not a validated predictor of it.
+\paragraph{Certificates (Q2).}
+No observed fragmentation exceeds its certificates on any of the
+\num{\SlackObservations} eligible holdout runs. For these PDBs, fragmentation
+is moderate: it exceeds one in \SlackFragAboveOnePercent\% of the runs, with
+median \SlackFragMedian, 90th percentile \SlackFragNinety\ and maximum
+\SlackFragMax. Figure~\ref{fig:two-effects}b shows the slack, the factor by
+which a certificate exceeds the observed fragmentation. Its median is
+\SlackProfileMedian\ for the profile, \SlackWidthMedian\ for the width
+relaxation and \SlackAddMedian\ for the certificate based on total ADD size;
+this analysis is post hoc. As a predictor, the profile orders fragmentation
+with concordance \HoldoutRepresentationProfileMacro, tied with width
+(\HoldoutRepresentationWidthMacro), but the predictor $1/\unioneffort$, which
+shares its denominator, already reaches \HoldoutDenominatorNullMacro\ on its
+own pairs. The profile predicts the effect of changing from the Gamer to the
+Fast Downward order (concordance \OrderProfileMacro), but among unseen Gamer
+orders it falls to \SeedCartesianMacro, below the \SeedNullMacro\ of
+$1/\unioneffort$. The profile thus bounds fragmentation closely but is not a
+validated predictor of it.
 
 \paragraph{Selection Behavior (Q3).}
-All \CapPrimaryTracePairs\ completed selector pairs have identical
-reconstructed raw pools, so Proposition~\ref{prop-selector-dominance} rules
-out semantic loss. Cap-aware selection adds \CapPrimarySemanticWins\
-semantic-nontrivial winners and removes \CapPrimarySemanticLosses\ (totals
-\CapPrimaryCapNontrivial\ versus \CapPrimaryExactNontrivial). The other 21
-tasks stay in the fixed coverage and PAR2 denominators. Of the 1,306 completed
-cap-aware traces, \CapPosthocPrimaryFinitePairs\ select a finite cap, 887 of
-them cap 2 or 4; the median selected pattern has size 7 and width 6, versus
-size 1 and width 2 for exact selection. Corollary~\ref{cor-selector-safety}
-certifies every selection within $128n$ times blind effort, with the sharper
-limits $48n$ and $80n$ for caps 2 and 4.
+All \num{\CapPrimaryTracePairs} completed selector pairs see identical raw
+pools, so by Proposition~\ref{prop-selector-dominance} capping never loses
+information. Cap-aware selection yields \CapPrimarySemanticWins\ additional
+semantic-nontrivial selections and loses none (\num{\CapPrimaryCapNontrivial}
+versus \CapPrimaryExactNontrivial). Of its \num{1306} completed selections,
+\num{\CapPosthocPrimaryFinitePairs} use a finite cap, 887 of them cap 2 or 4.
+The median selected pattern has 7 variables and width 6, versus 1 and 2 for
+exact selection, so capping uses the width budget instead of bypassing it.
+Corollary~\ref{cor-selector-safety} certifies every selection within $128n$
+times blind effort, and within $48n$ and $80n$ for caps 2 and 4.
 
 \paragraph{Coverage (Q4).}
-\CapPrimaryText\ \CapSensitivityText\ The five full-census rows in
-Table~\ref{tab:cap-aware-main} keep their fixed denominator and played no role
-in selecting a configuration. Across domains, the coverage difference is
-positive in 8, negative in 3 and zero in 35 domains.
+On the primary set, cap-aware selection reaches a domain-averaged coverage of
+\CapPrimaryCapMacroPercent\% versus \CapPrimaryExactMacroPercent\% for
+exact-width selection (Table~\ref{tab:cap-aware-main}), a difference of
+\CapPrimaryMacroDeltaPoints\ points with \CapPrimaryWins\ tasks gained and
+\CapPrimaryLosses\ lost; on all tasks, the difference is
+\CapCensusMacroDeltaPoints\ points (\CapCensusWins\ gained, \CapCensusLosses\
+lost). It is positive in 8 domains, negative in 3 and zero in 35. Neither
+selector solves more tasks than blind search, and unaligned M\&S, whose merge
+order violates the alignment of Proposition~\ref{prop-ms}, solves the most.
 
-\paragraph{Operational Behavior (Q5).}
-\CapPrimarySecondaryText\
-On 590 pairs with certified complete traces, cap-aware selection reduces the
-total number of expanded BDD nodes from 1,299,208,237 to 1,149,000,940
-(11.6\%) and image time from 7,502.7 to 6,699.7\,seconds (10.7\%). On the
-1,306 pairs with completed construction, its total construction time is 2.3\%
-higher. 
-
-
-
-\paragraph{Descriptive Controls.}
-Unaligned M\&S solves \CapFullMsExactSolved/\CapFullTasks\ tasks, versus
-\CapFullCapSolved\ for cap-aware selection, \CapFullBlindSolved\ for blind
-search, \CapFullExactSolved\ for exact-width selection and
-\CapFullCegarSolved\ for CEGAR. Its higher coverage is descriptive: it
-violates the order alignment of Proposition~\ref{prop-ms} and is not
-certified by width.
+\paragraph{Cost (Q5).}
+On the 590 primary pairs with complete traces, cap-aware selection expands
+11.6\% fewer BDD nodes than exact selection and spends 10.7\% less time in
+image computations. On the 579 pairs that both solve, its planner CPU time is
+lower by a geometric-mean factor of 0.969, and its micro-PAR2 on the primary
+set is 3.2 seconds lower. Constructing its PDBs takes 2.3\% longer.
 
 \section{Related Work}
 
-Even \hstar\ can cause exponential BDD effort in symbolic search
+\citet{edelkamp-kissmann-aaai2008} study domains in which the layers of
+symbolic search have small or necessarily large BDDs; we instead bound
+heuristic search relative to blind search on the same task. Even \hstar\ can
+cause exponential BDD effort in symbolic search
 \citep{speck-et-al-icaps2020}; we show that their construction has
 exponential cofactor width. Residual width, products and Apply are standard
 \citep{wegener-2000,bryant-ieeecomp1986}. New here are their connection to
@@ -1082,28 +1078,31 @@ Our guarantee is specific to fixed-order forward product-at-evaluation search
 with positive costs, consistent heuristics and our duplicate policy. It bounds
 BDD nodes, not time or memory; bounded width is sufficient but not necessary,
 and the matching construction is a worst case. Concordances condition on
-solved, completely profiled runs, cannot explain timeouts and are
-descriptive; the information score is a frozen surrogate for heuristic
-quality.
+solved, completely profiled runs, cannot explain timeouts and are descriptive;
+the information score is a surrogate for heuristic quality, and the slack
+analysis is post hoc. The profile did not replicate as a predictor of
+fragmentation under unseen variable orders.
 
-The $K=8$ case study runs each configuration once per task with a hard cutoff,
-and its outcome-informed development screen is disclosed and excluded. Its effort ratios condition on completed pairs. In two replications
-with five budgets, width-constrained and
-cap-aware selection lose coverage at $K=16$ and no aggregate construction gate
-passes; we select no favorable budget.
+The $K=8$ study runs each configuration once per task with a hard cutoff, and
+its effort ratios condition on completed pairs. In two replications with five
+budgets, width-constrained and cap-aware selection lose coverage at $K=16$, so
+we claim no robust coverage gain, and no PDB selector solves more tasks than
+blind search.
 
 % ============================ conclusions ================================
 \section{Conclusions}
 
-The exact factorization $\effort=\unioneffort\cdot\fragfactor$ separates
-two effects of a heuristic in symbolic search. On a
-prospective holdout, more informative heuristics shrank the unsplit search but
-tended to fragment it more. Cut-aligned cofactor profiles bound the second
-effect: heuristic search costs at most $2\values Wn$ times blind search, a
-planning family attains $\values Wn/120$, and safe coarsening never increases
-the certificate. Since the profile did not replicate as an empirical
-predictor, cofactor width is a representation certificate with a scoped
-practical use, not a guarantee of runtime or planner dominance.
+The exact factorization $\effort=\unioneffort\cdot\fragfactor$ separates two
+effects of a heuristic in symbolic search. On a prospective holdout, more
+informative heuristics shrank the unsplit search but tended to fragment it
+more. Cut-aligned cofactor profiles bound the second effect: heuristic search
+costs at most $2\values Wn$ times blind search, a planning family attains
+$\values Wn/120$, and safe coarsening never increases the certificate. In
+practice, the profile exceeded the observed fragmentation by a median factor
+of \SlackProfileMedian, an order of magnitude less than the certificate based
+on ADD size, but it did not predict fragmentation under unseen variable
+orders. Cofactor width is thus a close representation certificate with a
+scoped practical use, not a guarantee of runtime or planner dominance.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
 % Flush every body float before measuring the final content page. The 2027

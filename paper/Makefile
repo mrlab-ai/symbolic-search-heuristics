@@ -59,8 +59,11 @@ SEED_ARTIFACT := $(SEED_ARTIFACT_DIR)/analysis-v1.json
 SEED_SIDECAR := $(SEED_ARTIFACT).sha256
 SEED_RENDERER := \
 	../experiments/render_pdb_profile_joint_seed_validation_paper.py
+SLACK_GENERATED_RESULT := generated/pdb-profile-certificate-slack-v1.tex
+SLACK_RENDERER := ../experiments/render_pdb_profile_certificate_slack_paper.py
 PROFILE_STUDY_RESULTS := $(HOLDOUT_GENERATED_RESULT) \
-	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT)
+	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT) \
+	$(SLACK_GENERATED_RESULT)
 
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
@@ -77,7 +80,7 @@ paper.pdf: paper.tex $(AUTHOR_KIT_STYLE) $(AUTHOR_KIT_BST) \
 supplement: supplement.pdf
 
 supplement.pdf: supplement.tex cap-study.tex $(GENERATED_RESULT) \
-				$(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
+		$(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		$(SEMANTIC_UNION_GENERATED_RESULT) $(PROFILE_STUDY_RESULTS) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) $<
@@ -113,6 +116,12 @@ $(ORDER_GENERATED_RESULT): $(ORDER_RENDERER) $(ORDER_ARTIFACT) \
 $(SEED_GENERATED_RESULT): $(SEED_RENDERER) $(SEED_ARTIFACT) $(SEED_SIDECAR)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SEED_RENDERER) \
 		--analysis $(SEED_ARTIFACT) --output $@ --write
+
+# Post-hoc, descriptive certificate slack on the sealed holdout analysis.
+$(SLACK_GENERATED_RESULT): $(SLACK_RENDERER) $(HOLDOUT_ARTIFACT) \
+		$(HOLDOUT_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SLACK_RENDERER) \
+		--analysis $(HOLDOUT_ARTIFACT) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -185,7 +194,7 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		$(SEMANTIC_UNION_RENDERER) --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
-				$(SEMANTIC_UNION_RENDERER) --analysis $(SEMANTIC_UNION_ARTIFACT) \
+		$(SEMANTIC_UNION_RENDERER) --analysis $(SEMANTIC_UNION_ARTIFACT) \
 		--output $(SEMANTIC_UNION_GENERATED_RESULT) --check
 	cd $(HOLDOUT_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256 && \
 		sha256sum -c denominator-audit-v1.json.sha256
@@ -202,6 +211,11 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SEED_RENDERER) --self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SEED_RENDERER) \
 		--analysis $(SEED_ARTIFACT) --output $(SEED_GENERATED_RESULT) --check
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SLACK_RENDERER) --self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(SLACK_RENDERER) \
+		--analysis $(HOLDOUT_ARTIFACT) \
+		--output $(SLACK_GENERATED_RESULT) --check
+
 
 
 # Provisional project audit assumption only, not an ICAPS 2027 requirement:

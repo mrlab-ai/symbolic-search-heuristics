@@ -282,8 +282,12 @@ Lab data are in the `symk-representation-safe` workspace under
   (SHA-256 `2b854d13fc92d9f394a2248271e1173d66bd43f1360fee1ce44564c9627cb3b7`)
   renders `paper/generated/pdb-profile-joint-seed-validation-v1.tex`
   (SHA-256 `972c00b9db41f5aca38f7dbe921a4c12551cdecc83927efb88ad3c750d78380e`).
-  Its primary gate failed; by its frozen rule the paper makes no empirical
+    Its primary gate failed; by its frozen rule the paper makes no empirical
   predictor claim for the profile.
+- Post-hoc certificate slack (descriptive; changes no frozen estimand or
+  gate): `experiments/render_pdb_profile_certificate_slack_paper.py` reads
+  the pinned holdout analysis above and renders
+  `paper/generated/pdb-profile-certificate-slack-v1.tex`.
 
 ## Exclusions and claim boundary
 
