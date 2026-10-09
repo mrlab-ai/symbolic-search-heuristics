@@ -287,7 +287,18 @@ Lab data are in the `symk-representation-safe` workspace under
 - Post-hoc certificate slack (descriptive; changes no frozen estimand or
   gate): `experiments/render_pdb_profile_certificate_slack_paper.py` reads
   the pinned holdout analysis above and renders
-  `paper/generated/pdb-profile-certificate-slack-v1.tex`.
+    `paper/generated/pdb-profile-certificate-slack-v1.tex`.
+- Post-hoc harm decomposition (descriptive; changes no frozen estimand or
+  gate): `experiments/analyze_pdb_profile_harm_decomposition.py analyze`
+  reads the raw holdout properties
+  (`symk-representation-safe/experiments/data/exp_pdb_profile_certificate_holdout-eval/properties`,
+  SHA-256 `8519abd2891cc74f6ee927a7aeb2170772c2db2a1af2eadb7d47b6789b706928`,
+  as recorded in the holdout parser-correction receipt) together with the
+  pinned holdout analysis and writes
+  `experiments/artifacts/pdb-profile-harm-decomposition/analysis-v1.json`
+  (SHA-256 `0814ae2554b139ed71f9aaf30440f5c1855ddf34731bcc70dd17bdb8575b3512`);
+  its `render` subcommand produces
+  `paper/generated/pdb-profile-harm-decomposition-v1.tex`.
 
 ## Exclusions and claim boundary
 

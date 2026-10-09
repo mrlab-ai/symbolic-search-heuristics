@@ -53,6 +53,9 @@ SEED_GENERATED_INPUT = (
 SLACK_GENERATED_INPUT = (
     r"\input{generated/pdb-profile-certificate-slack-v1.tex}"
 )
+HARM_GENERATED_INPUT = (
+    r"\input{generated/pdb-profile-harm-decomposition-v1.tex}"
+)
 PROFILE_STUDY_INPUTS = (
     HOLDOUT_GENERATED_INPUT,
     ORDER_GENERATED_INPUT,
@@ -358,6 +361,7 @@ REQUIRED_MAIN = (
     POSTHOC_GENERATED_INPUT,
     *PROFILE_STUDY_INPUTS,
     SLACK_GENERATED_INPUT,
+    HARM_GENERATED_INPUT,
     r"\CapFullContextRows",
     r"\CapPrimaryContrastRows",
 )
@@ -366,6 +370,7 @@ REQUIRED_SUPPLEMENT = (
     GENERATED_INPUT,
     POSTHOC_GENERATED_INPUT,
     *PROFILE_STUDY_INPUTS,
+    HARM_GENERATED_INPUT,
     CAP_STUDY_INPUT,
 )
 
@@ -415,6 +420,8 @@ REQUIRED_MANIFEST = (
     "paper/generated/pdb-profile-joint-seed-validation-v1.tex",
     "experiments/render_pdb_profile_certificate_slack_paper.py",
     "paper/generated/pdb-profile-certificate-slack-v1.tex",
+    "experiments/analyze_pdb_profile_harm_decomposition.py",
+    "paper/generated/pdb-profile-harm-decomposition-v1.tex",
     "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-pdb-cap-grid-full-protocol/experiments/data/exp_pdb_cap_grid_full-eval.tar.gz",
     "logical basename `exp_pdb_cap_grid_full-eval.tar.gz`",
     "`WBH_ACCOUNT=naiss2025-5-561-cpu`",
@@ -1144,7 +1151,9 @@ def _validate_source(name: str, text: str, required) -> None:
         identity_text = active.replace(GENERATED_INPUT, "").replace(
         POSTHOC_GENERATED_INPUT, ""
     )
-    for profile_input in (*PROFILE_STUDY_INPUTS, SLACK_GENERATED_INPUT):
+    for profile_input in (
+        *PROFILE_STUDY_INPUTS, SLACK_GENERATED_INPUT, HARM_GENERATED_INPUT
+    ):
         identity_text = identity_text.replace(profile_input, "")
     for description, pattern in FORBIDDEN_IDENTITY:
         match = pattern.search(identity_text)

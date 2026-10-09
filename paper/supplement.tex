@@ -59,6 +59,7 @@
 \input{generated/pdb-profile-certificate-holdout-v1.tex}
 \input{generated/pdb-profile-order-intervention-v1.tex}
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
+\input{generated/pdb-profile-harm-decomposition-v1.tex}
 
 \title{Tight Cofactor-Width Bounds on Heuristic Fragmentation
 in Symbolic \astar{}: Supplementary Material}
@@ -1624,6 +1625,47 @@ better.
     \bottomrule
   \end{tabular}
 \end{table}
+
+\FloatBarrier
+\subsection{Post-Hoc Harm Decomposition}
+
+This analysis was defined after the holdout outcomes were known and changes
+no frozen estimand or gate.  Each eligible heuristic observation of the
+sealed holdout analysis, one per task and heuristic semantics, is paired with
+the profiled blind run of its task when that run solved with certified
+profiles.  The first selector configuration in the observation's duplicate
+group supplies run times and image counts.  For a pair, let
+$r=\effort(\task,h)/\effort(\task,\hblind)$ and
+$u=\unioneffort(\task,h)/\effort(\task,\hblind)$.  Blind search expands one
+bucket per layer, so $\unioneffort(\task,\hblind)=\effort(\task,\hblind)$
+and $r=u\cdot\fragfactor(\task,h)$ exactly.
+
+There are \HarmPairs\ pairs from \HarmPairTasks\ tasks in \HarmPairDomains\
+domains.  The heuristic needs more BDD nodes than blind search ($r>1$) in
+\HarmHurt\ pairs and fewer in \HarmHelped.  In the harmful pairs, $u$ has
+median \HarmHurtUnionMedian\ and exceeds one in \HarmHurtUnionAboveOne\
+pairs, while $\fragfactor$ has median \HarmHurtFragMedian; summed over these
+pairs, $\ln u$ contributes \HarmHurtLogUnion\ and $\ln\fragfactor$
+contributes \HarmHurtLogFrag\ to $\sum\ln r$.  All \HarmDoubled\ pairs with
+$r>2$ have $\fragfactor>2$, and \HarmDoubledUnionAboveTwo\ have $u>2$.
+
+On the \HarmHard\ pairs whose blind search takes at least 10 seconds, we call
+a heuristic run slow if its search time is more than 1.5 times that of blind
+search and fast if it is less than two thirds.  The \HarmTimeHarm\ slow runs
+have median $u=\HarmTimeHarmUnion$, median $\fragfactor=\HarmTimeHarmFrag$
+and \HarmTimeHarmImages\ times as many image computations as blind search;
+\HarmTimeHarmEffortAboveOne\ of them also need more BDD nodes.  The
+\HarmTimeHelp\ fast runs have median $u=\HarmTimeHelpUnion$ and median
+$\fragfactor=\HarmTimeHelpFrag$.  Search times are single measurements.
+
+Fragmentation over the first \HarmPrefixLayers\ expanded cost layers with
+recorded unions has pooled pairwise concordance
+\HarmPrefixFragConcordance\ with final fragmentation, but only
+\HarmHardPrefixTimeConcordance\ with the search-time ratio on the harder
+pairs.  Finally, \HarmLosses\ task--configuration runs fail on tasks that
+blind search solves; all \HarmLossesTimeout\ exceed the search time limit,
+and none spends more than \HarmLossesMaxConstruction\ seconds constructing
+its PDB.
 
 \FloatBarrier
 \section{Additional Related-Work Detail}

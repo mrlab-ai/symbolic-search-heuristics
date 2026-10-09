@@ -81,6 +81,7 @@
 \input{generated/pdb-profile-order-intervention-v1.tex}
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
 \input{generated/pdb-profile-certificate-slack-v1.tex}
+\input{generated/pdb-profile-harm-decomposition-v1.tex}
 
 \title{Tight Cofactor-Width Bounds on Heuristic Fragmentation
 in Symbolic \astar{}}
@@ -168,6 +169,8 @@ to the exact buckets of symbolic search:
   known exponential pathology has exponential width.
 \item \emph{Two effects.} Search effort factors exactly into the size of the
   unsplit expanded sets and a fragmentation factor, which the profile bounds.
+  Whenever the PDB heuristics we study cost more BDD nodes than blind
+  search, the excess comes from fragmentation.
   On a prospective holdout of \num{\HoldoutTasks} tasks in SymK
   \citep{speck-et-al-jair2025}, more informative heuristics shrink the unsplit
   sets but fragment them more in about three quarters of the comparisons
@@ -877,7 +880,7 @@ CPU time and 8\,GiB of memory. For every experiment, the protocol, the
 analysis and the decision thresholds were fixed before any outcome was
 inspected; the supplement gives them together with full provenance. We ask
 five questions. \emph{Q1:} Do the two effects of a heuristic separate
-empirically? \emph{Q2:} How tight are the certificates, and do they predict
+empirically, and which of them explains when a heuristic hurts? \emph{Q2:} How tight are the certificates, and do they predict
 fragmentation? \emph{Q3:} How often does cap-aware selection yield an
 informative PDB? \emph{Q4:} Does it improve coverage over exact-width
 selection? \emph{Q5:} What does it cost?
@@ -993,6 +996,29 @@ effort with concordance \HoldoutStatesQualityMacro\ and
 fragmentation is only \HoldoutFragmentQualityMacro: in about three quarters
 of the pairs, the more informative heuristic fragments more.
 
+\paragraph{When Heuristics Hurt (Q1).}
+We pair each heuristic run with the blind run of its task; since blind search
+has fragmentation one, the ratio of their efforts factors exactly into the
+ratio of unsplit efforts and the fragmentation factor. Of
+\num{\HarmPairs} jointly solved pairs from \HarmPairTasks\ tasks, the
+heuristic needs more BDD nodes than blind search in \num{\HarmHurt} and fewer
+in \HarmHelped. In the harmful pairs, the median unsplit ratio is
+\HarmHurtUnionMedian\ and the median fragmentation \HarmHurtFragMedian; all
+\HarmDoubled\ pairs that need more than twice the effort of blind search
+fragment by more than two, and none has unsplit effort twice as large. On the
+\HarmHard\ pairs whose blind search takes at least 10 seconds, the
+\HarmTimeHarm\ heuristic runs that take 1.5 times as long as blind search
+prune nothing (median unsplit ratio \HarmTimeHarmUnion), fragment by
+\HarmTimeHarmFrag\ and need \HarmTimeHarmImages\ times as many image
+computations, whereas the \HarmTimeHelp\ runs that take at most two thirds as
+long prune strongly (\HarmTimeHelpUnion) and fragment little
+(\HarmTimeHelpFrag). All \HarmLosses\ runs that lose a task solved by blind
+search exceed the time limit during search, after at most
+\HarmLossesMaxConstruction\ seconds of PDB construction. These PDB heuristics
+thus hurt symbolic search through fragmentation that pruning fails to repay,
+which is exactly the quantity that our bounds control. This analysis is post
+hoc.
+
 \paragraph{Certificates (Q2).}
 No observed fragmentation exceeds its certificates on any of the
 \num{\SlackObservations} eligible holdout runs. For these PDBs, fragmentation
@@ -1081,7 +1107,11 @@ and the matching construction is a worst case. Concordances condition on
 solved, completely profiled runs, cannot explain timeouts and are descriptive;
 the information score is a surrogate for heuristic quality, and the slack
 analysis is post hoc. The profile did not replicate as a predictor of
-fragmentation under unseen variable orders.
+fragmentation under unseen variable orders. Fragmentation on the first
+\HarmPrefixLayers\ layers tracks final fragmentation (pooled concordance
+\HarmPrefixFragConcordance) but not search time on harder tasks
+(\HarmHardPrefixTimeConcordance), because pruning pays off late, so it does
+not by itself justify an online fallback to blind search.
 
 The $K=8$ study runs each configuration once per task with a hard cutoff, and
 its effort ratios condition on completed pairs. In two replications with five
@@ -1095,7 +1125,8 @@ blind search.
 The exact factorization $\effort=\unioneffort\cdot\fragfactor$ separates two
 effects of a heuristic in symbolic search. On a prospective holdout, more
 informative heuristics shrank the unsplit search but tended to fragment it
-more. Cut-aligned cofactor profiles bound the second effect: heuristic search
+more, and whenever a heuristic cost more than twice as many BDD nodes as
+blind search, fragmentation was the cause. Cut-aligned cofactor profiles bound the second effect: heuristic search
 costs at most $2\values Wn$ times blind search, a planning family attains
 $\values Wn/120$, and safe coarsening never increases the certificate. In
 practice, the profile exceeded the observed fragmentation by a median factor
