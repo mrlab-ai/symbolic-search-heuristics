@@ -24,7 +24,9 @@ import audit_pdb_profile_certificate_holdout as Audit  # noqa: E402
 
 INPUT_NAMES = ("run", "static-properties", "domain.pddl", "problem.pddl")
 # Pinned after launch from the committed launch receipt.
-LAUNCH_RECEIPT_SHA256 = "TO_PIN"
+LAUNCH_RECEIPT_SHA256 = (
+    "44d68996ac77076b34f40512375d573dcb9bd647b1ed3f27e1f7f8262b31062d"
+)
 
 
 def post_run_input_tree_digest():
