@@ -39,10 +39,13 @@ ENTRY_TEMPLATE = (
 )
 COMMIT_TEMPLATE = 'commit_id ++ "\\t" ++ if(conflict, "1", "0") ++ "\\n"'
 PATH_TEMPLATE = 'path ++ "\\n"'
-JJ_EXECUTABLE = Path("/home/jendrik/bin/jj")
+JJ_EXECUTABLE = Path("/home/jendrik/.local/bin/jj")
 JJ_EXECUTABLE_SHA256 = (
-    "d1d69a0f87df266eebf0d2592dd019eb288c300b15fd019afe26cb1ed11ba152"
+    "cd5efc3eb281d606bf9b5523167f79661da0f8c76a5aa32d61c07c7a351b6b44"
 )
+# Build configurations whose binaries the cache can attest.  release needs an
+# LP solver (cplex_DIR) in the environment of the caching process.
+BUILD_NAMES = ("release_no_lp", "release")
 
 
 def _verify_jj_identity() -> None:
@@ -406,6 +409,9 @@ class JjCachedFastDownwardRevision:
         self.local_rev = resolve_pinned_commit(self.repo, revision)
         self.global_rev = self.local_rev
         self.build_options = list(build_options)
+        if len(self.build_options) != 1 or self.build_options[0] not in BUILD_NAMES:
+            raise JjCacheError("revision cache needs exactly one known build")
+        self.build_name = self.build_options[0]
         identity = json.dumps(
             {
                 "protocol": EXPORT_PROTOCOL,
@@ -451,10 +457,12 @@ class JjCachedFastDownwardRevision:
             manifest_digest = export_revision(self.repo, self.local_rev, source)
             command = ["./build.py", *self.build_options]
             subprocess.run(command, cwd=source, check=True)
-            binary = source / "builds" / "release_no_lp" / "bin" / "downward"
-            preprocess = source / "builds" / "release_no_lp" / "bin" / "preprocess"
+            binary = source / "builds" / self.build_name / "bin" / "downward"
+            preprocess = source / "builds" / self.build_name / "bin" / "preprocess"
             if not binary.is_file() or not preprocess.is_file():
-                raise JjCacheError("release_no_lp build did not create both binaries")
+                raise JjCacheError(
+                    "{} build did not create both binaries".format(self.build_name)
+                )
             self._restore_source_tree(source)
             sentinel = {
                 "protocol": EXPORT_PROTOCOL,
@@ -585,8 +593,8 @@ class JjCachedFastDownwardRevision:
         ):
             raise JjCacheError("revision-cache sentinel identity changed")
         if verify_binaries:
-            binary = path / "builds" / "release_no_lp" / "bin" / "downward"
-            preprocess = path / "builds" / "release_no_lp" / "bin" / "preprocess"
+            binary = path / "builds" / self.build_name / "bin" / "downward"
+            preprocess = path / "builds" / self.build_name / "bin" / "preprocess"
             try:
                 binary_hash = sha256_file(binary)
                 preprocess_hash = sha256_file(preprocess)

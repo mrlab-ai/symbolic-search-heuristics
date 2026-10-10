@@ -98,6 +98,8 @@ POST_PARSE_SEALER = None
 PRE_FETCH_VALIDATOR = None
 POST_FETCH_SEALER = None
 RUN_ORDER_BUILDER = None
+# Driver build name; it must match the single entry of P.BUILD_OPTIONS.
+BUILD_NAME = "release_no_lp"
 
 
 def _sha256_file(path: Path) -> str:
@@ -839,8 +841,10 @@ def make_experiment(cohort, cached):
         "--overall-memory-limit",
         "{}M".format(P.MEMORY_LIMIT_MIB),
         "--build",
-        "release_no_lp",
+        BUILD_NAME,
     ]
+    if list(P.BUILD_OPTIONS) != [BUILD_NAME]:
+        raise LaunchError("driver build differs from the cached build")
     for label, search in P.CONFIGS:
         experiment.add_cached_algorithm(
             label,
