@@ -159,9 +159,37 @@ def validate_order_and_lengths(events):
             )
 
 
+def validate_heuristic_layers(events):
+    """Check the per-g closed unions of an attached heuristic search."""
+    assert sum(event["event"] == "heuristic_profile" for event in events) == 1
+    layers = [event for event in events if event["event"] == "layer_profile"]
+    assert layers
+    assert [event["g"] for event in layers] == sorted(
+        {event["g"] for event in layers}
+    )
+    assert all(event["completed"] is True for event in layers)
+    assert all(event["piece_count"] == 1 for event in layers)
+    done = [event for event in events if event["event"] == "done"]
+    assert len(done) == 1
+    assert done[0]["layer_union_effort"] == sum(
+        event["bdd_nodes"]
+        for event in layers
+        if event["g"] < done[0]["solution_cost"]
+    )
+    assert done[0]["layer_union_effort"] > 0
+    summary = [event for event in events if event["event"] == "summary"]
+    assert len(summary) == 1
+    assert summary[0]["heuristic_profiled"] is True
+    assert summary[0]["profiled_layers"] == len(layers)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build", default="release_no_lp")
+    parser.add_argument(
+        "--lp-build",
+        help="build with an LP solver; if given, also check sym_fw_pot",
+    )
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory(prefix="wbh-complete-profile-") as tmp:
@@ -257,15 +285,7 @@ def main():
         heuristic = heuristics[0]
         assert heuristic["cofactor_counts"][-1] == heuristic["num_terminals"]
         assert heuristic["cofactor_seconds"] >= 0
-        assert not any(
-            event["event"] == "layer_profile" for event in heuristic_events
-        )
-        summary = [
-            event for event in heuristic_events if event["event"] == "summary"
-        ]
-        assert len(summary) == 1 and summary[0]["heuristic_profiled"] is True
-        assert summary[0]["profiled_layer_attempts"] == 0
-        assert summary[0]["profiled_layers"] == 0
+        validate_heuristic_layers(heuristic_events)
 
         pdb_profile = directory / "pdb-profile.jsonl"
         run_search(
@@ -284,38 +304,27 @@ def main():
         pdb_events = read_events(pdb_profile)
         assert pdb_events[0] == PROFILE_SCHEMA_V3
         validate_order_and_lengths(pdb_events)
-        assert sum(
-            event["event"] == "heuristic_profile" for event in pdb_events
-        ) == 1
-        layers = [
-            event for event in pdb_events
-            if event["event"] == "layer_profile"
-        ]
-        assert layers
-        assert [event["g"] for event in layers] == sorted(
-            {event["g"] for event in layers}
-        )
-        assert all(event["completed"] is True for event in layers)
-        assert all(event["piece_count"] == 1 for event in layers)
-        done = [event for event in pdb_events if event["event"] == "done"]
-        assert len(done) == 1
-        assert done[0]["layer_union_effort"] == sum(
-            event["bdd_nodes"]
-            for event in layers
-            if event["g"] < done[0]["solution_cost"]
-        )
-        assert done[0]["layer_union_effort"] > 0
-        summary = [
-            event for event in pdb_events if event["event"] == "summary"
-        ]
-        assert len(summary) == 1
-        assert summary[0]["heuristic_profiled"] is True
-        assert summary[0]["profiled_layers"] == len(layers)
+        validate_heuristic_layers(pdb_events)
+
+        if args.lp_build:
+            potential_profile = directory / "potential-profile.jsonl"
+            run_search(
+                args.lp_build,
+                sas_file,
+                directory,
+                "potential-profile",
+                f'sym_fw_pot(m=4,wbh_profile_log="{potential_profile}")',
+            )
+            potential_events = read_events(potential_profile)
+            assert potential_events[0] == PROFILE_SCHEMA_V3
+            validate_order_and_lengths(potential_events)
+            validate_heuristic_layers(potential_events)
 
     print(
         "complete cofactor profiles passed: complement polarity, unprimed "
-        "projection, blind and heuristic exact layer unions, heuristic "
-        "profile, cost/effort, timings, and frozen schema-v2 invariance"
+        "projection, blind and heuristic exact layer unions (M&S, PDB, and "
+        "potentials with --lp-build), heuristic profile, cost/effort, "
+        "timings, and frozen schema-v2 invariance"
     )
 
 

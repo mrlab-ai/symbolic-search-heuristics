@@ -38,18 +38,21 @@ forward symbolic A*, the task-specific Gamer variable order with dynamic
 reordering disabled, `wbh_log` and `wbh_profile_log`, 300 seconds of process
 CPU time, and 8,192 MiB.
 
-| Label | Search |
-|---|---|
-| `blind_fw_profiled` | `sym_fw(...)` (rerun with the new binary) |
-| `ms_unaligned_10k` | `sym_fw_ms(max_states=10000, align_merge_order=false)` |
-| `ms_aligned_10k` | `sym_fw_ms(max_states=10000, align_merge_order=true)` |
-| `ms_unaligned_50k` | `sym_fw_ms(max_states=50000, align_merge_order=false)` |
-| `pdb_cegar_1m` | `sym_fw_pdb(budget=1000000, pattern_selection=cegar)` |
-| `pot_m4` (conditional) | `sym_fw_pot(m=4)`, only if an LP build is available |
+| Label | Family | Search (plus `wbh_log="wbh.jsonl",wbh_profile_log="wbh-profile.jsonl"`) |
+|---|---|---|
+| `blind_fw_profiled` | blind | `sym_fw()` |
+| `ms_unaligned_10k` | M&S | `sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity)` |
+| `ms_aligned_10k` | M&S | `sym_fw_ms(max_states=10000,align_merge_order=true,build_time_limit=infinity)` |
+| `ms_unaligned_50k` | M&S | `sym_fw_ms(max_states=50000,align_merge_order=false,build_time_limit=infinity)` |
+| `pdb_cegar_1m` | PDB | `sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011)` |
+| `pot_m4` | potentials | `sym_fw_pot(m=4)` |
 
-The exact option strings, including M&S shrink and label-reduction defaults
-and the CEGAR seed, are fixed in the frozen version.  If no LP solver can be
-built, `pot_m4` is dropped before freezing, not after launch.
+All other options keep their defaults, as in the earlier holdout studies.
+`build_time_limit=infinity` is the default and is stated explicitly so that
+no M&S run silently falls back to blind search.  All six configurations use
+one binary built with CPLEX 22.11 (`USE_LP=YES`), so potentials need no
+separate build.  The non-PDB families are M&S and potentials; the three M&S
+configurations are one family.
 
 ## 4. Cohort
 
@@ -72,17 +75,41 @@ Primary estimand, per family and pooled: over harmful pairs (r > 1), the
 share of the log excess carried by fragmentation,
 `S = sum(ln frag) / sum(ln r)`.
 
-Proposed decision rule (to be confirmed before freezing):
+S can exceed one: it does whenever harmful pairs have unsplit effort below
+blind effort on average, so fragmentation carries more than the whole
+excess.
+
+Decision rule:
 
 1. Support: at least 100 harmful pairs from at least 20 domains per family
    for a family-level claim, and the same pooled.
 2. The paper may say that fragmentation explains harm for a family only if
-   S >= 0.8 for that family and at least 90% of the pairs with r > 2 have
-   frag > u.
+   S >= 0.9 for that family and, if the family has at least 20 pairs with
+   r > 2, at least 95% of them have frag > u.
 3. The paper may state the claim beyond PDBs only if rule 2 holds pooled and
-   for at least two non-PDB families.
+   for both non-PDB families (M&S and potentials).
 4. A failed rule is reported as such and triggers no new threshold, subset,
    or configuration.
+
+Calibration of the thresholds.  The thresholds were set from data that
+existed before any configuration of Section 3 ran: all 16 width-constrained
+PDB configurations of the sealed holdout (7,207 eligible pairs, 3,318
+harmful, 41 domains).  There, pooled S = 1.13, per-configuration S ranges
+from 0.91 (the narrowest widths, k = 2) to 1.30, a domain-cluster bootstrap
+over 20 resampled domains gives a 1st percentile of 1.03, and all 512 pairs
+with r > 2 have frag > u.  S >= 0.9 therefore asks a new family to show the
+effect at least as strongly as the weakest PDB configuration; 95% leaves one
+exception in 20 for sampling noise.  Per domain, S is below 0.9 only in
+tetris (0.42) and movie (0.71), so the rule is applied to families, not
+domains.  The pilot of Section 6 does not inform the thresholds.
+
+Timing.  Profiling the attached closed unions happens after a heuristic
+search has found its plan, and blind layers are profiled during search.  All
+time-based quantities therefore use process time minus the overhead seconds
+(union, cofactor, joint-cofactor, masked, serialization, and output) that
+the profile summary reports.  A run counts as solved for coverage when it
+finds a valid plan, even if the profile is incomplete; only the primary
+estimand requires complete profiles.
 
 Secondary, descriptive: medians of u and frag among harmful and helpful
 pairs; the same split on pairs whose blind search takes at least 10 seconds
@@ -99,12 +126,31 @@ the tasks for every family, the online fallback guard is not pursued.
    unions; add a regression check like `misc/tests/check-wbh-complete-profiles.py`.
 2. Build and pin the planner binary in the revision cache; record its
    SHA-256.  The local `builds/release_no_lp` predates `wbh_profile_log`.
-3. LP: decide whether a solver for potentials is available
-   (`cplex_DIR` points to a missing directory); otherwise drop `pot_m4`.
+3. LP: CPLEX 22.11 is installed at
+   `/nobackup/proj/disk/dfsplan/personal/jendrik/opt/ibm/ILOG/CPLEX_Studio2211/cplex`
+   (the `cplex_DIR` in `~/.profile` points to an old location).  The
+   revision cache in `jj_cached_revision.py` builds only `release_no_lp`
+   and pins a jj binary that no longer exists; both must be updated before
+   launch.
 4. Pilot on 10 tasks from the 275-task development cohort, never the
-   holdout: check that every configuration runs, logs complete profiles, and
+   holdout.  The cohort archive was lost on 2026-10-03; the task list was
+   recovered from the joint-pilot properties and matches the frozen
+   manifest digest.  Pilot tasks: hash-ranked, one per domain, among tasks
+   the joint pilot's Gamer-order PDB solved in 1 to 60 seconds: check that every configuration runs, logs complete profiles, and
    that profiling overhead keeps runs within limits.  Pilot outcomes are not
    analyzed scientifically.
+
+   Pilot result (2026-10-10, Slurm job 3616272, local build of the working
+   copy with CPLEX, `builds/release/bin/downward` SHA-256
+   `2693e84423fbaba955c0ce587ef0d1d8e9482ce491947070504f31d50ca28791`):
+   all 60 cells exited normally; 57 solved, and every solved run logged a
+   complete profile with a positive unsplit effort.  The three unsolved
+   cells are the three M&S configurations on airport, which ran out of time
+   during abstraction construction.  The profiling overhead was at most 4.5%
+   of process time for blind search and at most 12% (M&S 10k), 16% (M&S
+   50k), 18% (CEGAR PDB), and 30% (potentials) for the heuristics, hence the
+   timing rule in Section 5.  The extended regression check
+   `misc/tests/check-wbh-complete-profiles.py --lp-build release` passes.
 5. Freeze this document, the option matrix, the cohort manifest, and the
    analysis code by hash before launch.
 
