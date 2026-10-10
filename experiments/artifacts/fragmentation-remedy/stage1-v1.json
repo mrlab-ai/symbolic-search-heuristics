@@ -1,0 +1,221 @@
+{
+ "cohort_manifest_sha256": "5c43a5d0891d32285c248c14cfe81ab5fa308b8eeb3d3d34e7d22ee782fcda2e",
+ "configs": 18,
+ "cost_conflicts": [],
+ "schema": "symbolic-search-heuristics/fragmentation-remedy-stage1/v1",
+ "selected_windows": {
+  "ms": "1",
+  "pdb": "1",
+  "pot": "1"
+ },
+ "stats": {
+  "bd_ms_prune": {
+   "exit_codes": {
+    "0": 131,
+    "12": 2,
+    "20": 5,
+    "22": 1,
+    "23": 136
+   },
+   "par2_sum": 89662.519,
+   "search": "sym_bd_ms(max_states=10000,wbh_log=\"wbh.jsonl\")",
+   "solved": 131
+  },
+  "blind_bd": {
+   "exit_codes": {
+    "0": 130,
+    "12": 2,
+    "20": 5,
+    "22": 1,
+    "23": 137
+   },
+   "par2_sum": 89461.65,
+   "search": "sym_bd(wbh_log=\"wbh.jsonl\")",
+   "solved": 130
+  },
+  "blind_fw": {
+   "exit_codes": {
+    "0": 114,
+    "12": 2,
+    "20": 5,
+    "23": 154
+   },
+   "par2_sum": 99071.645,
+   "search": "sym_fw(wbh_log=\"wbh.jsonl\")",
+   "solved": 114
+  },
+  "ms_batch_w1": {
+   "exit_codes": {
+    "0": 119,
+    "11": 2,
+    "20": 5,
+    "23": 149
+   },
+   "par2_sum": 96631.409,
+   "search": "sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity,batch_f_window=1,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 119
+  },
+  "ms_batch_w8": {
+   "exit_codes": {
+    "0": 107,
+    "11": 2,
+    "20": 4,
+    "23": 161,
+    "247": 1
+   },
+   "par2_sum": 103144.164,
+   "search": "sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity,batch_f_window=8,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 107
+  },
+  "ms_batch_winf": {
+   "exit_codes": {
+    "0": 106,
+    "11": 2,
+    "20": 5,
+    "23": 162
+   },
+   "par2_sum": 104464.315,
+   "search": "sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity,batch_f_window=infinity,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 106
+  },
+  "ms_plain": {
+   "exit_codes": {
+    "0": 119,
+    "11": 2,
+    "20": 4,
+    "21": 1,
+    "23": 149
+   },
+   "par2_sum": 96471.033,
+   "search": "sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity,wbh_log=\"wbh.jsonl\")",
+   "solved": 119
+  },
+  "ms_prune": {
+   "exit_codes": {
+    "0": 113,
+    "11": 2,
+    "20": 4,
+    "23": 155,
+    "247": 1
+   },
+   "par2_sum": 100227.505,
+   "search": "sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity,prune_only=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 113
+  },
+  "pdb_batch_w1": {
+   "exit_codes": {
+    "0": 114,
+    "11": 2,
+    "20": 5,
+    "23": 154
+   },
+   "par2_sum": 99449.619,
+   "search": "sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011,batch_f_window=1,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 114
+  },
+  "pdb_batch_w8": {
+   "exit_codes": {
+    "0": 111,
+    "11": 2,
+    "20": 5,
+    "23": 157
+   },
+   "par2_sum": 101087.331,
+   "search": "sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011,batch_f_window=8,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 111
+  },
+  "pdb_batch_winf": {
+   "exit_codes": {
+    "0": 107,
+    "11": 2,
+    "20": 4,
+    "23": 161,
+    "247": 1
+   },
+   "par2_sum": 103470.008,
+   "search": "sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011,batch_f_window=infinity,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 107
+  },
+  "pdb_plain": {
+   "exit_codes": {
+    "0": 115,
+    "11": 2,
+    "20": 5,
+    "23": 153
+   },
+   "par2_sum": 99141.126,
+   "search": "sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011,wbh_log=\"wbh.jsonl\")",
+   "solved": 115
+  },
+  "pdb_prune": {
+   "exit_codes": {
+    "0": 113,
+    "11": 2,
+    "20": 4,
+    "23": 155,
+    "247": 1
+   },
+   "par2_sum": 99384.086,
+   "search": "sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011,prune_only=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 113
+  },
+  "pot_batch_w1": {
+   "exit_codes": {
+    "0": 108,
+    "12": 2,
+    "20": 5,
+    "23": 160
+   },
+   "par2_sum": 102927.525,
+   "search": "sym_fw_pot(m=4,batch_f_window=1,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 108
+  },
+  "pot_batch_w8": {
+   "exit_codes": {
+    "0": 105,
+    "12": 2,
+    "20": 5,
+    "23": 163
+   },
+   "par2_sum": 104843.738,
+   "search": "sym_fw_pot(m=4,batch_f_window=8,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 105
+  },
+  "pot_batch_winf": {
+   "exit_codes": {
+    "0": 106,
+    "12": 2,
+    "20": 5,
+    "23": 162
+   },
+   "par2_sum": 104094.762,
+   "search": "sym_fw_pot(m=4,batch_f_window=infinity,batch_max_union_ratio=1.0,wbh_log=\"wbh.jsonl\")",
+   "solved": 106
+  },
+  "pot_plain": {
+   "exit_codes": {
+    "0": 110,
+    "12": 2,
+    "20": 4,
+    "23": 158,
+    "247": 1
+   },
+   "par2_sum": 102212.616,
+   "search": "sym_fw_pot(m=4,wbh_log=\"wbh.jsonl\")",
+   "solved": 110
+  },
+  "pot_prune": {
+   "exit_codes": {
+    "0": 114,
+    "12": 2,
+    "20": 4,
+    "23": 154,
+    "247": 1
+   },
+   "par2_sum": 99055.596,
+   "search": "sym_fw_pot(m=4,prune_only=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 114
+  }
+ },
+ "tasks": 275
+}
