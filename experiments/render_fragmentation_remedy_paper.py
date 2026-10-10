@@ -29,8 +29,23 @@ REPOSITORY_ROOT = SCRIPT_DIR.parent
 DEFAULT_ANALYSIS = (
     SCRIPT_DIR / "artifacts" / "fragmentation-remedy" / "analysis-v1.json"
 )
-EXPECTED_ANALYSIS_SHA256 = "TO_PIN"
-EXPECTED_CLAIMS = "TO_PIN"
+EXPECTED_ANALYSIS_SHA256 = (
+    "773234a6f4757265f05899cb6eededfa7eec3d70ebc6db96e84fa1e8b9ae024b"
+)
+EXPECTED_CLAIMS = {
+    "H1:ms_batch": "not_significant",
+    "H1:ms_prune": "not_significant",
+    "H1:pdb_batch": "not_significant",
+    "H1:pdb_prune": "not_significant",
+    "H1:pot_batch": "not_significant",
+    "H1:pot_prune": "better",
+    "H2:ms_batch": "not_significant",
+    "H2:ms_prune": "not_significant",
+    "H2:pdb_batch": "not_significant",
+    "H2:pdb_prune": "not_significant",
+    "H2:pot_batch": "worse",
+    "H2:pot_prune": "not_significant",
+}
 DEFAULT_OUTPUT = (
     REPOSITORY_ROOT / "paper" / "generated" / "fragmentation-remedy-v1.tex"
 )
@@ -97,7 +112,7 @@ def _delta(test):
 
 
 def render(data, digest):
-    macros = []
+    macros = [("RemCells", str(P.CELL_COUNT))]
     coverage = data["coverage"]
     tests = data["primary_tests"]
     for label, name in MACRO_NAMES.items():
@@ -152,6 +167,10 @@ def render(data, digest):
             ("RemEffTime{}Same".format(prefix),
              _fixed(100 * record["same_side_fraction"], 0)),
         ]
+    rhos = [data["effort_time"][family]["spearman"]
+            for family in ("ms", "pdb", "pot")]
+    macros += [("RemEffTimeMinRho", _fixed(min(rhos), 2)),
+               ("RemEffTimeMaxRho", _fixed(max(rhos), 2))]
     rows = []
     for label, name in ROW_NAMES:
         family = label.split("_")[0]
