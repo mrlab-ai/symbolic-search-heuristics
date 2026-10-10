@@ -83,6 +83,8 @@
 \input{generated/pdb-profile-certificate-slack-v1.tex}
 \input{generated/pdb-profile-harm-decomposition-v1.tex}
 \input{generated/pdb-profile-harm-generality-v1.tex}
+\input{generated/fragmentation-remedy-v1.tex}
+\input{generated/fragmentation-remedy-posthoc-v1.tex}
 
 \title{When Heuristics Hurt Symbolic Search:\\
 Fragmentation and Tight Cofactor-Width Bounds}
@@ -96,23 +98,24 @@ Fragmentation and Tight Cofactor-Width Bounds}
 % Keep the abstract within the provisional 250-word target.
 \begin{abstract}
 Heuristics guide explicit \astar\ well but often hurt symbolic search, which
-represents sets of states as binary decision diagrams (BDDs). We explain when
-and why for forward symbolic \astar\ that partitions each frontier by
-heuristic value. Its cumulative number of expanded BDD nodes factors exactly
-into the BDD size of the unsplit expanded sets and a fragmentation factor. On
-a prospective holdout of \num{\HoldoutTasks} planning tasks, whenever pattern
+represents sets of states as binary decision diagrams (BDDs). We explain why
+for forward symbolic \astar, which partitions each frontier by heuristic
+value. Its cumulative number of expanded BDD nodes factors exactly into the
+BDD size of the unsplit expanded sets and a fragmentation factor. On a
+prospective holdout of \num{\HoldoutTasks} planning tasks, whenever pattern
 database (PDB), merge-and-shrink or potential heuristics need more than twice
 as many BDD nodes as blind search, fragmentation is the cause: the harmful
-runs barely prune, but they fragment. We bound fragmentation by a cofactor-profile product that
-multiplies, at every variable cut, the numbers of residual functions of a
-search layer and of the heuristic. If $W$ is the largest such count of the
-heuristic (its cofactor width), $V$ its number of finite values and $n$ the
-number of state bits, both fragmentation and the effort relative to blind
-search are at most $2VWn$, and a polynomial-size planning family attains
-$VWn/120$. On the holdout, the certificate exceeds the observed fragmentation
-by a median factor of \SlackProfileMedian. Safe value caps never increase it
-and yield a width-constrained PDB selector, which changes coverage by
-\CapPrimaryMacroDeltaPoints\ percentage points over exact-width selection.
+runs barely prune, but they fragment. We bound fragmentation by a
+cofactor-profile product. If $W$ is the cofactor width of the heuristic, $V$
+its number of finite values and $n$ the number of state bits, both
+fragmentation and the effort relative to blind search are at most $2VWn$, and
+a polynomial-size planning family attains $VWn/120$. On the holdout, the
+certificate exceeds the observed fragmentation by a median factor of
+\SlackProfileMedian. Removing fragmentation confirms it as the cause: using
+potentials only for pruning recovers their loss. Without fragmentation,
+however, forward search prunes almost nothing, no forward use of a heuristic
+beats blind forward search significantly, and blind bidirectional search
+solves more tasks than every forward configuration.
 \end{abstract}
 
 % ============================ introduction ===============================
@@ -155,14 +158,15 @@ subset that the heuristic selects by value. Its heuristic factor, maximized
 over all cuts, is the standard residual width of a multi-terminal BDD (MTBDD)
 \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}, which we call \emph{cofactor
 width}, and the product argument is also standard
-\citep[Thm.~3.3.6]{wegener-2000}. Our contributions connect these quantities
-to the exact buckets of symbolic search:
+\citep[Thm.~3.3.6]{wegener-2000}. The factorization of effort into unsplit
+size and fragmentation holds by construction; its use is that it separates
+the two effects so that each can be measured and bounded. Our contributions
+connect these quantities to the exact buckets of symbolic search:
 \begin{itemize}
-\item \emph{When heuristics hurt.} Search effort factors exactly into the size
-  of the unsplit expanded sets and a fragmentation factor. On a prospective
-  holdout of \num{\HoldoutTasks} tasks in SymK \citep{speck-et-al-jair2025},
-  more informative heuristics shrink the unsplit sets but fragment them more.
-  A second prospective study confirms for PDB, merge-and-shrink (M\&S) and
+\item \emph{Why heuristics hurt.} On a prospective holdout of
+  \num{\HoldoutTasks} tasks in SymK \citep{speck-et-al-jair2025}, more
+  informative heuristics shrink the unsplit sets but fragment them more. A
+  second prospective study shows for PDB, merge-and-shrink (M\&S) and
   potential heuristics alike that whenever they cost more than twice as many
   BDD nodes as blind search, fragmentation is the cause.
 \item \emph{Tight bounds.} Both fragmentation and the number of BDD nodes
@@ -170,17 +174,20 @@ to the exact buckets of symbolic search:
   number of finite heuristic values, $W$ the cofactor width and $n$ the
   number of state bits. A polynomial-size planning family attains $VWn/120$,
   so none of the three factors can be dropped, and the known exponential
-  pathology has exponential width.
-\item \emph{Tightness in practice.} No certificate is violated on
-  \num{\SlackObservations} runs, and the profile overestimates fragmentation
-  by a median factor of \SlackProfileMedian, compared with \SlackAddMedian\
-  for the certificate based on total ADD size. As a predictor of
-  fragmentation, however, it does not replicate under unseen variable orders.
-\item \emph{Heuristic design.} Integer potentials, PDBs and aligned linear
-  M\&S have bounded width, and safe value caps never
-  increase the certificate. A cap-aware, width-constrained PDB selector
-  changes coverage by \CapPrimaryMacroDeltaPoints\ percentage points over
-  exact-width selection and expands 11.6\% fewer BDD nodes.
+  pathology has exponential width. Integer potentials, PDBs and aligned
+  linear M\&S have bounded width.
+\item \emph{A guarantee, not a predictor.} No certificate is violated on
+  \num{\SlackObservations} runs, and the profile exceeds the observed
+  fragmentation by a median factor of \SlackProfileMedian, compared with
+  \SlackAddMedian\ for total ADD size. It does not predict fragmentation
+  under unseen variable orders, so we use it as a design guarantee: safe
+  value caps never increase it, and a cap-aware PDB selector fits more
+  informative heuristics into a width budget.
+\item \emph{Using heuristics without fragmentation.} A third prospective
+  study removes fragmentation: used only for pruning, potentials recover
+  their loss (\RemSolvedPotPlain\ to \RemSolvedPotPrune\ solved tasks), but
+  forward search then prunes almost nothing, and blind bidirectional search
+  solves more tasks than every forward configuration.
 \end{itemize}
 
 % ============================ background =================================
@@ -724,7 +731,6 @@ sufficient but not necessary for small buckets. Moreover, \hstar\ takes only
 $O(n)$ values here, so the number of values alone does not control
 fragmentation.
 
-
 % ============================ instances ==================================
 \section{Width-Bounded Heuristic Families}
 \label{sec-instances}
@@ -790,45 +796,19 @@ M\&S control, the formula does not certify it. We give no analogous family
 bound for $h^{\max}$, $h^{\mathrm{add}}$ or LM-cut, but the exact width
 measured after construction can still instantiate the general theorems.
 
-% ============================ synthesis ==================================
-\section{Case Study: Cap-Aware Width-Constrained PDB Selection}
+\subsection{Safe Caps Under a Width Budget}
 \label{sec-synthesis}
 
-Capping a heuristic never increases its width, so a cap can make an
-informative PDB fit a width budget that its uncapped version exceeds. We
-compare two selectors over the same pool of PDBs with at most
-\num{100000} abstract states from five pattern generators, including one
-CEGAR pattern \citep{rovner-et-al-icaps2019}; the supplement lists them. For
-each PDB, we build its total ADD in the fixed search order and count the
-distinct residual nodes after every prefix of Boolean bits, which gives the
-exact cofactor width of the heuristic that the search uses. A candidate is
-feasible if its width is at most the budget $K$.
-
-The exact selector tests only uncapped PDBs. The cap-aware selector also
-tries $\min\{h,\kappa\}$, which keeps $h=\infty$, for
-$\kappa\in\{0,1,2,4,\ldots,256\}$ below the largest finite value, and keeps
-the strongest feasible member of each pattern's cap ladder;
-Proposition~\ref{prop-transform} keeps it admissible and consistent. Both
-selectors rank the remaining candidates by the same lexicographic
-information score: initial-state dead-end recognition, initial value, mean
-finite value and fraction of abstract dead ends. We call a selection
-\emph{informative} if its finite values have a positive sum or it recognizes
-an abstract dead end.
-
-\begin{proposition}[candidate-set and score dominance]
-\label{prop-selector-dominance}
-Suppose both selectors complete on the same pool. Then the cap-aware
-candidate set contains the exact selector's candidate set, and its selected
-score is no smaller. Consequently, if the exact winner recognizes the initial
-state as a dead end or is informative, so is the cap-aware winner, and if the
-cap-aware winner is uncapped, both selectors return the same heuristic.
-\end{proposition}
-
-The uncapped PDB ends every cap ladder, so every exact candidate remains
-available to the cap-aware selector; the supplement gives the full proof. By
-Corollary~\ref{cor-effort}, every selection costs at most $2K^2n$ times the
-effort of blind search, and at most $2K\min\{K,\kappa+1\}n$ times with cap
-$\kappa$. These guarantees concern representation effort, not runtime.
+Since caps never increase width (Proposition~\ref{prop-transform}), a cap can
+make an informative heuristic fit a width budget $K$ that its uncapped
+version exceeds. A \emph{cap-aware} PDB selector uses this: for every PDB of a
+fixed candidate pool, it tries the caps $\min\{h,\kappa\}$ for
+$\kappa\in\{0,1,2,4,\ldots,256\}$, keeps the strongest one whose exact width
+in the search order is at most $K$, and ranks the survivors by the same
+information score as an \emph{exact-width} selector that tests only uncapped
+PDBs. Its candidate set contains that of the exact selector, so its selected
+score is never smaller (supplement), and by Corollary~\ref{cor-effort} every
+selection costs at most $2K^2n$ times the effort of blind search.
 
 % ============================ experiments ================================
 \section{Experiments}
@@ -837,7 +817,8 @@ $\kappa$. These guarantees concern representation effort, not runtime.
 All experiments use SymK \citep{speck-et-al-jair2025} with
 product-at-evaluation forward symbolic \astar\ and a fixed, task-specific BDD
 variable order, the Gamer order unless stated otherwise; blind search uses
-$h\equiv0$. Removing 290 tasks with zero-cost operators and 30 tasks with
+$h\equiv0$. Only the bidirectional baselines of the third study search in both
+directions. Removing 290 tasks with zero-cost operators and 30 tasks with
 axioms leaves \num{\CapFullTasks} of \num{1697} optimal sequential IPC tasks
 from \CapFullDomains\ domains. Each run is limited to 300 seconds of process
 CPU time and 8\,GiB of memory. For every experiment, the protocol, the
@@ -846,18 +827,15 @@ inspected; the supplement gives them together with full provenance. We ask
 three questions. \emph{Q1:} Do the two effects of a heuristic separate
 empirically, and which of them explains when a heuristic hurts?
 \emph{Q2:} How tight are the certificates, and do they predict
-fragmentation? \emph{Q3:} Does cap-aware selection improve on exact-width
-selection?
+fragmentation? \emph{Q3:} Can heuristics be used without fragmenting the
+frontier, and do they then beat blind search?
 
 \paragraph{Cap-Aware Selection.}
-The $K=8$ study runs blind search, uncapped M\&S with a causal-graph merge
-strategy that is not aligned with the BDD order and \num{10000} states, one CEGAR PDB with \num{100000} states and both selectors
-with $K=8$ on all tasks (\num{\CapFullCells} runs). A 50-task screen decided
-beforehand whether the cap-aware selector would be evaluated at all. The
-remaining \num{\CapPrimaryTasks} tasks, which span all \CapFullDomains\
-domains, form the primary set, and all tasks serve as a sensitivity check. The
-primary measure is coverage averaged equally over domains; micro-PAR2 counts
-an unsolved run as 600 seconds.
+The $K=8$ study runs blind search, uncapped M\&S, one CEGAR PDB and both
+selectors with $K=8$ on all tasks (\num{\CapFullCells} runs). After a 50-task
+screen, the remaining \num{\CapPrimaryTasks} tasks from all \CapFullDomains\
+domains form the primary set; its measure is coverage averaged equally over
+domains.
 
 \paragraph{Prospective Holdout.}
 The primary set was further split into a domain-balanced 275-task cohort,
@@ -887,6 +865,23 @@ that fragmentation explains harm for a family only if, over its pairs with $r>1$
 fragmentation carries a share $S=\sum\ln\fragfactor/\sum\ln r$ of at least
 \GenShareThreshold\ and, among pairs with $r>2$, at least
 \GenStrongThresholdPercent\% have $\fragfactor>u$.
+
+\paragraph{Avoiding Fragmentation.}
+A third prospective study runs, on the same holdout and without profiling,
+two ways to use each of these heuristics without splitting the expanded
+sets (\num{\RemCells} runs). \emph{Prune-only} search keeps the blind layers
+whole and uses the heuristic only to remove recognized dead ends, so its
+fragmentation is one. \emph{Batched} search keeps the order of \astar\ but
+images the fresh buckets with the same $g$ and an $f$-value at most $w$
+above the selected one as a single BDD whenever their union has no more
+nodes than its parts; $w=1$ won a screen over $w\in\{1,8,\infty\}$ on the
+development cohort for every family. Exact sign tests on the tasks that
+only one of two configurations solves compare each remedy with its plain
+heuristic and with blind forward search, with Holm correction over all
+twelve tests. As context, the study also runs blind bidirectional search,
+bidirectional search that prunes with M\&S once a first plan is known,
+and potentials optimized for the average
+over all states \citep{fiser-et-al-aij2024}.
 
 \paragraph{Variable Orders.}
 Two further experiments keep one deterministic goal-fill PDB and change only
@@ -941,31 +936,6 @@ orders, so only the representation changes.
     mark the median.}
   \label{fig:two-effects}
 \end{figure}
-
-\begin{table}[tb]
-  \centering
-  \small
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{lrr}
-    \toprule
-    Configuration & Solved & PAR2 \\
-    \midrule
-    \CapFullContextRows
-    \bottomrule
-  \end{tabular}\\[4pt]
-  \begin{tabular}{lrr}
-    \toprule
-    Primary set & Coverage (\%) & Solved \\
-    \midrule
-    \CapPrimaryContrastRows
-    \bottomrule
-  \end{tabular}
-  \caption{The $K=8$ study on all \num{\CapFullTasks} tasks (top) and on the
-    primary set of \num{\CapPrimaryTasks} tasks, with coverage averaged
-    equally over domains (bottom). PAR2 is in seconds.}
-  \label{tab:cap-aware-main}
-\end{table}
-
 \paragraph{Two Effects (Q1).}
 On pairs from \HoldoutStatesPairTasks\ and \HoldoutUnionPairTasks\ tasks,
 the more informative heuristic expands fewer states and has smaller unsplit
@@ -1044,25 +1014,57 @@ own pairs. The profile predicts the effect of changing from the Gamer to the
 Fast Downward order (concordance \OrderProfileMacro), but among unseen Gamer
 orders it falls to \SeedCartesianMacro, below the \SeedNullMacro\ of
 $1/\unioneffort$. The profile thus bounds fragmentation closely but is not a
-validated predictor of it.
+validated predictor of it; its role is that of a guarantee that design
+choices such as caps provably preserve.
 
-\paragraph{Cap-Aware Selection (Q3).}
-All \num{\CapPrimaryTracePairs} completed selector pairs see identical pools,
-so Proposition~\ref{prop-selector-dominance} applies: cap-aware selection
-yields \CapPrimarySemanticWins\ additional informative selections and loses
-none (\num{\CapPrimaryCapNontrivial} versus \CapPrimaryExactNontrivial). Of
-its completed selections, \num{\CapPosthocPrimaryFinitePairs} use a finite
-cap, mostly 2 or 4, and the median selected pattern has 7 variables and width
-6, versus 1 and 2 for exact selection, so capping uses the width budget
-instead of bypassing it. On the primary set, domain-averaged coverage rises
-from \CapPrimaryExactMacroPercent\% to \CapPrimaryCapMacroPercent\%
-(Table~\ref{tab:cap-aware-main}; \CapPrimaryWins\ tasks gained,
-\CapPrimaryLosses\ lost), and by \CapCensusMacroDeltaPoints\ points on all
-tasks. On the 590 pairs with complete traces, cap-aware selection expands
-11.6\% fewer BDD nodes and spends 10.7\% less time in image computations,
-while constructing its PDBs takes 2.3\% longer. Neither selector solves more
-tasks than blind search, and uncapped M\&S, whose unaligned merge order
-Proposition~\ref{prop-ms} does not cover, solves the most.
+\paragraph{Capping.}
+On identical pools, cap-aware selection yields \CapPrimarySemanticWins\
+additional informative selections and loses none. It selects larger patterns
+(median 7 variables versus 1) and caps them mostly at 2 or 4, so capping uses
+the width budget instead of bypassing it. Domain-averaged coverage on the
+primary set rises from \CapPrimaryExactMacroPercent\% to
+\CapPrimaryCapMacroPercent\% (\CapPrimaryWins\ tasks gained,
+\CapPrimaryLosses\ lost), and cap-aware selection expands 11.6\% fewer BDD
+nodes, but neither selector solves more tasks than blind search, and the
+gain does not replicate at $K=16$ (supplement).
+
+\begin{table}[tb]
+  \centering
+  \small
+  \begin{tabular}{lrrr}
+    \toprule
+    Configuration & Solved & vs.\ plain & vs.\ blind fw \\
+    \midrule
+    \RemCoverageRows
+    \bottomrule
+  \end{tabular}
+  \caption{Third prospective study on \num{\HoldoutTasks} holdout tasks:
+    solved tasks, and tasks gained/lost against the plain heuristic and
+    against blind forward search ($^{*}$: significant after Holm
+    correction).}
+  \label{tab:remedy}
+\end{table}
+
+\paragraph{Avoiding Fragmentation (Q3).}
+Prune-only search significantly improves on plain potentials (+\RemPotPruneVsPlainGains/$-$\RemPotPruneVsPlainLosses), the
+CEGAR PDB shows the same trend (+\RemPdbPruneVsPlainGains/$-$%
+\RemPdbPruneVsPlainLosses, not significant after correction), and M\&S,
+whose median node ratio to blind search is already below one
+(\RemMsPruneEffortPlain), is unchanged (Table~\ref{tab:remedy}). Without splitting, however, forward
+search keeps little pruning: prune-only runs expand as many BDD nodes as
+blind forward search (median ratio \RemPotPruneEffortRemedy\ for every
+family) and prune dead ends on at most \RemPhMaxPruneDeadEnds\ tasks, so none differs significantly
+from it. Batching merges image calls but leaves the expanded buckets
+unchanged; it helps no heuristic significantly, and batched potentials lose
+to blind forward search
+(+\RemPotBatchVsBlindGains/$-$\RemPotBatchVsBlindLosses). Blind
+bidirectional search solves \RemSolvedBlindBd\ tasks, \RemBdVsFwGains\ more
+than blind forward search and none fewer; M\&S pruning leaves it unchanged
+(+\RemBdMsVsBdGains/$-$\RemBdMsVsBdLosses), and a per-task oracle of it with
+any other configuration gains at most \RemMaxHeadroomOverBd\ tasks. Effort
+tracks time: for plain heuristics against blind forward search, node and
+time ratios have Spearman correlation \RemEffTimeAllRho\
+(\RemEffTimeMinRho--\RemEffTimeMaxRho\ per family).
 
 \section{Related Work}
 
@@ -1086,9 +1088,19 @@ not a new primitive but a way to meet an exact width budget while preserving
 consistency.
 
 Factored M\&S mappings and potential heuristics are established
-\citep{torralba-phd2015,helmert-et-al-icaps2015,pommerening-et-al-aaai2015,
-fiser-et-al-aaai2022,fiser-et-al-aij2024}; \ghseta\ with delta partitions is a
-different architecture. Relaxed BDD heuristics bound action-choice diagrams
+\citep{torralba-phd2015,helmert-et-al-icaps2015,pommerening-et-al-aaai2015}.
+\citet{fiser-et-al-aaai2022,fiser-et-al-aij2024} use operator potentials in
+\ghseta, which expands the same $(g,h)$ buckets as \bddastar\ but obtains
+$h$ by splitting transition relations. Compared with blind forward search,
+their best potentials expand more BDDs, each smaller on average, and often
+fewer nodes in total \citep{fiser-et-al-aaai2022}: in our terms,
+fragmentation grows but pruning outweighs it. Those potentials are optimized
+for the average state while keeping the initial value maximal, whereas ours
+are capped integers optimized for the initial state, an objective with which
+their forward search gains much less; with an all-states
+objective, our potentials solve \RemSolvedPotAllPlain\ tasks, against
+\RemSolvedPotPlain\ for the initial state and \RemSolvedBlindFw\ for blind
+forward search. Relaxed BDD heuristics bound action-choice diagrams
 \citep{castro-et-al-icaps2019}. Our certificate depends on the variable order
 \citep{kissmann-hoffmann-jair2014}. Guarantees for symbolic versus explicit
 search \citep{speck-helmert-ecai2025} and symbolic perimeter abstractions
@@ -1115,7 +1127,9 @@ The $K=8$ study runs each configuration once per task with a hard cutoff, and
 its effort ratios condition on completed pairs. In two replications with five
 budgets, width-constrained and cap-aware selection lose coverage at $K=16$, so
 we claim no robust coverage gain, and no PDB selector solves more tasks than
-blind search.
+blind search. The third study tests one batching window per family and only
+M\&S pruning in bidirectional search, and the small edge of prune-only over
+blind forward search stems from faster image code (supplement).
 
 % ============================ conclusions ================================
 \section{Conclusions}
@@ -1132,11 +1146,13 @@ certificate. In
 practice, the profile exceeded the observed fragmentation by a median factor
 of \SlackProfileMedian, an order of magnitude less than the certificate based
 on ADD size, but it did not predict fragmentation under unseen variable
-orders. For planner design, this suggests measuring
-cofactor width before search and capping, rather than discarding,
-informative heuristics that exceed a width budget. The gain we observed was
-small, however, and cofactor width is a representation certificate, not a
-guarantee of runtime or planner dominance.
+orders. Removing fragmentation confirmed it as the cause: used only for
+pruning, potentials recovered their loss. Yet without splitting, forward
+search pruned almost nothing, and blind bidirectional search solved more
+tasks than every forward configuration. Heuristics thus pay off in symbolic
+search only if their pruning outweighs the fragmentation they cause; cofactor
+width bounds that cost before search, but it is a representation
+certificate, not a runtime guarantee.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
 % Flush every body float before measuring the final content page. The 2027

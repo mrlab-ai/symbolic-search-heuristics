@@ -1,0 +1,113 @@
+% Generated from the frozen fragmentation-remedy analysis.
+% Analysis SHA-256: 773234a6f4757265f05899cb6eededfa7eec3d70ebc6db96e84fa1e8b9ae024b
+\newcommand{\RemCells}{13676}
+\newcommand{\RemSolvedBlindFw}{457}
+\newcommand{\RemSolvedBlindBd}{516}
+\newcommand{\RemSolvedBdMsPrune}{516}
+\newcommand{\RemSolvedMsPlain}{455}
+\newcommand{\RemSolvedMsPrune}{454}
+\newcommand{\RemSolvedMsBatch}{454}
+\newcommand{\RemSolvedPdbPlain}{447}
+\newcommand{\RemSolvedPdbPrune}{457}
+\newcommand{\RemSolvedPdbBatch}{445}
+\newcommand{\RemSolvedPotPlain}{432}
+\newcommand{\RemSolvedPotPrune}{461}
+\newcommand{\RemSolvedPotBatch}{439}
+\newcommand{\RemSolvedPotAllPlain}{465}
+\newcommand{\RemWindowMs}{1}
+\newcommand{\RemMsPruneVsPlainGains}{24}
+\newcommand{\RemMsPruneVsPlainLosses}{25}
+\newcommand{\RemMsPruneVsBlindGains}{1}
+\newcommand{\RemMsPruneVsBlindLosses}{4}
+\newcommand{\RemMsPruneMechTasks}{429}
+\newcommand{\RemMsPruneEffortPlain}{0.81}
+\newcommand{\RemMsPruneEffortRemedy}{1.00}
+\newcommand{\RemMsPruneTimePlain}{1.40}
+\newcommand{\RemMsPruneTimeRemedy}{1.12}
+\newcommand{\RemMsBatchVsPlainGains}{3}
+\newcommand{\RemMsBatchVsPlainLosses}{4}
+\newcommand{\RemMsBatchVsBlindGains}{24}
+\newcommand{\RemMsBatchVsBlindLosses}{27}
+\newcommand{\RemMsBatchMechTasks}{429}
+\newcommand{\RemMsBatchEffortPlain}{0.81}
+\newcommand{\RemMsBatchEffortRemedy}{0.81}
+\newcommand{\RemMsBatchTimePlain}{1.40}
+\newcommand{\RemMsBatchTimeRemedy}{1.38}
+\newcommand{\RemWindowPdb}{1}
+\newcommand{\RemPdbPruneVsPlainGains}{16}
+\newcommand{\RemPdbPruneVsPlainLosses}{6}
+\newcommand{\RemPdbPruneVsBlindGains}{1}
+\newcommand{\RemPdbPruneVsBlindLosses}{1}
+\newcommand{\RemPdbPruneMechTasks}{440}
+\newcommand{\RemPdbPruneEffortPlain}{1.37}
+\newcommand{\RemPdbPruneEffortRemedy}{1.00}
+\newcommand{\RemPdbPruneTimePlain}{0.98}
+\newcommand{\RemPdbPruneTimeRemedy}{0.88}
+\newcommand{\RemPdbBatchVsPlainGains}{1}
+\newcommand{\RemPdbBatchVsPlainLosses}{3}
+\newcommand{\RemPdbBatchVsBlindGains}{5}
+\newcommand{\RemPdbBatchVsBlindLosses}{17}
+\newcommand{\RemPdbBatchMechTasks}{439}
+\newcommand{\RemPdbBatchEffortPlain}{1.37}
+\newcommand{\RemPdbBatchEffortRemedy}{1.37}
+\newcommand{\RemPdbBatchTimePlain}{0.98}
+\newcommand{\RemPdbBatchTimeRemedy}{1.03}
+\newcommand{\RemWindowPot}{1}
+\newcommand{\RemPotPruneVsPlainGains}{32}
+\newcommand{\RemPotPruneVsPlainLosses}{3}
+\newcommand{\RemPotPruneVsBlindGains}{5}
+\newcommand{\RemPotPruneVsBlindLosses}{1}
+\newcommand{\RemPotPruneMechTasks}{428}
+\newcommand{\RemPotPruneEffortPlain}{1.29}
+\newcommand{\RemPotPruneEffortRemedy}{1.00}
+\newcommand{\RemPotPruneTimePlain}{1.34}
+\newcommand{\RemPotPruneTimeRemedy}{0.87}
+\newcommand{\RemPotBatchVsPlainGains}{9}
+\newcommand{\RemPotBatchVsPlainLosses}{2}
+\newcommand{\RemPotBatchVsBlindGains}{4}
+\newcommand{\RemPotBatchVsBlindLosses}{22}
+\newcommand{\RemPotBatchMechTasks}{427}
+\newcommand{\RemPotBatchEffortPlain}{1.29}
+\newcommand{\RemPotBatchEffortRemedy}{1.29}
+\newcommand{\RemPotBatchTimePlain}{1.34}
+\newcommand{\RemPotBatchTimeRemedy}{1.02}
+\newcommand{\RemBdVsFwGains}{59}
+\newcommand{\RemBdVsFwLosses}{0}
+\newcommand{\RemBdMsVsFwGains}{59}
+\newcommand{\RemBdMsVsFwLosses}{0}
+\newcommand{\RemBdMsVsBdGains}{2}
+\newcommand{\RemBdMsVsBdLosses}{2}
+\newcommand{\RemPotAllVsFwGains}{35}
+\newcommand{\RemPotAllVsFwLosses}{27}
+\newcommand{\RemPotAllVsPotGains}{38}
+\newcommand{\RemPotAllVsPotLosses}{5}
+\newcommand{\RemPotAllEffort}{1.00}
+\newcommand{\RemPotAllTime}{0.96}
+\newcommand{\RemMaxHeadroomOverBd}{15}
+\newcommand{\RemEffTimeMsPairs}{161}
+\newcommand{\RemEffTimeMsRho}{0.85}
+\newcommand{\RemEffTimeMsSame}{86}
+\newcommand{\RemEffTimePdbPairs}{171}
+\newcommand{\RemEffTimePdbRho}{0.71}
+\newcommand{\RemEffTimePdbSame}{79}
+\newcommand{\RemEffTimePotPairs}{159}
+\newcommand{\RemEffTimePotRho}{0.89}
+\newcommand{\RemEffTimePotSame}{90}
+\newcommand{\RemEffTimeAllPairs}{491}
+\newcommand{\RemEffTimeAllRho}{0.82}
+\newcommand{\RemEffTimeAllSame}{85}
+\newcommand{\RemEffTimeMinRho}{0.71}
+\newcommand{\RemEffTimeMaxRho}{0.89}
+\newcommand{\RemCoverageRows}{Blind forward & 457 & -- & -- \\
+Blind bidirectional & 516 & -- & -- \\
+Bidir.\ + M\&S pruning & 516 & -- & -- \\
+M\&S & 455 & -- & -- \\
+\quad prune-only & 454 & +24/$-$25 & +1/$-$4 \\
+\quad batched & 454 & +3/$-$4 & +24/$-$27 \\
+CEGAR PDB & 447 & -- & -- \\
+\quad prune-only & 457 & +16/$-$6 & +1/$-$1 \\
+\quad batched & 445 & +1/$-$3 & +5/$-$17 \\
+Potentials & 432 & -- & -- \\
+\quad prune-only & 461 & +32/$-$3$^{*}$ & +5/$-$1 \\
+\quad batched & 439 & +9/$-$2 & +4/$-$22$^{*}$ \\
+Potentials, all states & 465 & -- & -- \\}

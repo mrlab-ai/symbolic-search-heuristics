@@ -330,6 +330,50 @@ Lab data are in the `symk-representation-safe` workspace under
   `0ba27ebdbb256e2dd6d7a60a365c584603150044e6ef1ccc34fce3950d62d376`, `matplotlib==3.9.4`), and refuses to render unless the frozen
   decisions are those the paper states: the claim holds for M&S, PDB and
   potentials and pooled, and the online guard is not pursued.
+- Post-hoc per-domain view of the harm-generality study (descriptive;
+  changes no frozen decision): `experiments/analyze_harm_generality_domains.py
+  analyze` reuses the frozen pairing on the same properties and writes
+  `experiments/artifacts/pdb-profile-harm-generality/domains-v1.json` (SHA-256
+  `7579f878d2cd0df6dc1b2c8ed016014dc86eca04680f4bd9cf1a20f9ba2138c0`); its
+  `render` subcommand produces
+  `paper/generated/pdb-profile-harm-generality-domains-v1.tex` (SHA-256
+  `61e9a1d38a1a9299ebfaa431aff32f2e1c25130d21366f4ebafb654683baba46`).
+- Prospective fragmentation-remedy study (frozen protocol
+  `experiments/fragmentation_remedy_protocol.md`, SHA-256
+  `2f3b61d1cd8d3eb96f83fba0c8352c86d8ccab9738b8f7cca7e81a6c5a3fc772`,
+  pinned with the option matrix, cohort manifests, planner revision
+  `580a6ee3b39489cb0a3f1d4e187b52601b751eab` and binaries in
+  `experiments/fragmentation_remedy_protocol.py`).  Stage 1 selected the
+  batching windows on the 275-task development cohort (Slurm job 3636794;
+  `experiments/select_fragmentation_remedy_windows.py` writes
+  `experiments/artifacts/fragmentation-remedy/stage1-v1.json`, SHA-256
+  `f87d29d86fd57fafa7066819ae23e1c64318c5de852fd950636fd800c6869228`).
+  Stage 2: 1,052 holdout tasks x 13 configurations = 13,676 cells, launched
+  by `experiments/exp_fragmentation_remedy.py` (Slurm job 3639149, 977 array
+  tasks, all completed, no recovery) and sealed by
+  `experiments/audit_fragmentation_remedy.py --seal`
+  (`experiments/artifacts/fragmentation-remedy/execution-receipt-v1.json`,
+  SHA-256 `49405ccb42dce7c71b394f8a2be21004302394f154cd0b695fe6111cdca2c84f`).
+  The frozen `experiments/analyze_fragmentation_remedy.py analyze` reads the
+  fetched properties (SHA-256
+  `fbcf76f4bde39a7bf1203d8e5cbed79df76a3d31bf0aa2c644dedb1d2dc9b17f`, backed
+  up in `symk-representation-safe/experiments/data/exp_fragmentation_remedy-eval/properties`)
+  and writes `experiments/artifacts/fragmentation-remedy/analysis-v1.json`
+  (SHA-256 `773234a6f4757265f05899cb6eededfa7eec3d70ebc6db96e84fa1e8b9ae024b`).
+  `experiments/render_fragmentation_remedy_paper.py` renders
+  `paper/generated/fragmentation-remedy-v1.tex` (SHA-256
+  `c2528d0612cbe18b6b4b6df59c1084f461a1972759c242e95cdb29b7a53df815`) and
+  refuses to render unless the frozen claims are those the paper states:
+  prune-only potentials improve on plain potentials, batched potentials lose
+  to blind forward search, and no other test is significant.
+- Post-hoc mechanism view of the remedy study (descriptive; changes no
+  frozen decision): `experiments/analyze_fragmentation_remedy_posthoc.py
+  analyze` reuses the frozen outcomes on the same properties and writes
+  `experiments/artifacts/fragmentation-remedy/posthoc-v1.json` (SHA-256
+  `ece88e410b3d498724fce5f0168c9181a5b7b0cc9ce822851800bd5d0f53cf2a`); its
+  `render` subcommand produces
+  `paper/generated/fragmentation-remedy-posthoc-v1.tex` (SHA-256
+  `cb6b61c0a5d9549fa6f720ed789941ad2f7e73fadaf64729e8d469115d3d01ef`).
 
 ## Exclusions and claim boundary
 

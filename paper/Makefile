@@ -75,10 +75,23 @@ GEN_ARTIFACT_DIR := ../experiments/artifacts/pdb-profile-harm-generality
 GEN_ARTIFACT := $(GEN_ARTIFACT_DIR)/analysis-v1.json
 GEN_SIDECAR := $(GEN_ARTIFACT).sha256
 GEN_RENDERER := ../experiments/render_pdb_profile_harm_generality_paper.py
+GEN_DOMAINS_RESULT := generated/pdb-profile-harm-generality-domains-v1.tex
+GEN_DOMAINS_ARTIFACT := $(GEN_ARTIFACT_DIR)/domains-v1.json
+GEN_DOMAINS_SCRIPT := ../experiments/analyze_harm_generality_domains.py
+REM_GENERATED_RESULT := generated/fragmentation-remedy-v1.tex
+REM_ARTIFACT_DIR := ../experiments/artifacts/fragmentation-remedy
+REM_ARTIFACT := $(REM_ARTIFACT_DIR)/analysis-v1.json
+REM_SIDECAR := $(REM_ARTIFACT).sha256
+REM_RENDERER := ../experiments/render_fragmentation_remedy_paper.py
+REM_POSTHOC_RESULT := generated/fragmentation-remedy-posthoc-v1.tex
+REM_POSTHOC_ARTIFACT := $(REM_ARTIFACT_DIR)/posthoc-v1.json
+REM_POSTHOC_SCRIPT := ../experiments/analyze_fragmentation_remedy_posthoc.py
 PROFILE_STUDY_RESULTS := $(HOLDOUT_GENERATED_RESULT) \
 	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT) \
 	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT) $(HARM_FIGURE) \
-	$(GEN_GENERATED_RESULT) $(GEN_FIGURE)
+	$(GEN_GENERATED_RESULT) $(GEN_FIGURE) $(REM_GENERATED_RESULT) \
+	$(REM_POSTHOC_RESULT)
+SUPPLEMENT_ONLY_RESULTS := $(GEN_DOMAINS_RESULT)
 
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
@@ -97,6 +110,7 @@ supplement: supplement.pdf
 supplement.pdf: supplement.tex cap-study.tex $(GENERATED_RESULT) \
 		$(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		$(SEMANTIC_UNION_GENERATED_RESULT) $(PROFILE_STUDY_RESULTS) \
+		$(SUPPLEMENT_ONLY_RESULTS) \
 		$(wildcard bib/*.bib) $(wildcard extra.bib)
 	$(LATEXMK) $(LATEXFLAGS) $<
 
@@ -157,6 +171,23 @@ $(GEN_GENERATED_RESULT): $(GEN_RENDERER) $(GEN_ARTIFACT) $(GEN_SIDECAR)
 $(GEN_FIGURE): $(GEN_RENDERER) $(GEN_ARTIFACT) $(GEN_SIDECAR)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_RENDERER) figure \
 		--analysis $(GEN_ARTIFACT) --output $@ --write
+
+# Post-hoc per-domain view of the frozen harm-generality analysis.
+$(GEN_DOMAINS_RESULT): $(GEN_DOMAINS_SCRIPT) $(GEN_DOMAINS_ARTIFACT) \
+		$(GEN_DOMAINS_ARTIFACT).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_DOMAINS_SCRIPT) render \
+		--artifact $(GEN_DOMAINS_ARTIFACT) --output $@ --write
+
+# Prospective fragmentation-remedy study.
+$(REM_GENERATED_RESULT): $(REM_RENDERER) $(REM_ARTIFACT) $(REM_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(REM_RENDERER) \
+		--analysis $(REM_ARTIFACT) --output $@ --write
+
+# Post-hoc mechanism view of the frozen remedy analysis.
+$(REM_POSTHOC_RESULT): $(REM_POSTHOC_SCRIPT) $(REM_POSTHOC_ARTIFACT) \
+		$(REM_POSTHOC_ARTIFACT).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(REM_POSTHOC_SCRIPT) render \
+		--artifact $(REM_POSTHOC_ARTIFACT) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -265,6 +296,17 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		--analysis $(GEN_ARTIFACT) --output $(GEN_GENERATED_RESULT) --check
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_RENDERER) figure \
 		--analysis $(GEN_ARTIFACT) --output $(GEN_FIGURE) --check
+	cd $(GEN_ARTIFACT_DIR) && sha256sum -c domains-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_DOMAINS_SCRIPT) render \
+		--artifact $(GEN_DOMAINS_ARTIFACT) --output $(GEN_DOMAINS_RESULT) --check
+	cd $(REM_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		../experiments/analyze_fragmentation_remedy.py self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(REM_RENDERER) \
+		--analysis $(REM_ARTIFACT) --output $(REM_GENERATED_RESULT) --check
+	cd $(REM_ARTIFACT_DIR) && sha256sum -c posthoc-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(REM_POSTHOC_SCRIPT) render \
+		--artifact $(REM_POSTHOC_ARTIFACT) --output $(REM_POSTHOC_RESULT) --check
 
 
 

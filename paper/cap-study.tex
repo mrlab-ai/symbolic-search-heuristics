@@ -284,6 +284,29 @@ micro-PAR2, solved-runtime summaries, and completed-construction summaries.
 Missing observations are never imputed.
 
 \section{Focused Full-Evaluation Results}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabular}{lrr}
+    \toprule
+    Configuration & Solved & PAR2 \\
+    \midrule
+    \CapFullContextRows
+    \bottomrule
+  \end{tabular}\\[4pt]
+  \begin{tabular}{lrr}
+    \toprule
+    Primary set & Coverage (\%) & Solved \\
+    \midrule
+    \CapPrimaryContrastRows
+    \bottomrule
+  \end{tabular}
+  \caption{The $K=8$ study on all \num{\CapFullTasks} tasks (top) and on the
+    primary set of \num{\CapPrimaryTasks} tasks, with coverage averaged
+    equally over domains (bottom). PAR2 is in seconds.}
+  \label{tab:cap-aware-main}
+\end{table}
 \label{sec:supp-cap-tables}
 
 \CapPrimaryText\ \CapSensitivityText\ Under the prespecified all-scope rule,

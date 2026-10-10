@@ -59,6 +59,11 @@ HARM_GENERATED_INPUT = (
 GEN_GENERATED_INPUT = (
     r"\input{generated/pdb-profile-harm-generality-v1.tex}"
 )
+GEN_DOMAINS_INPUT = (
+    r"\input{generated/pdb-profile-harm-generality-domains-v1.tex}"
+)
+REM_GENERATED_INPUT = r"\input{generated/fragmentation-remedy-v1.tex}"
+REM_POSTHOC_INPUT = r"\input{generated/fragmentation-remedy-posthoc-v1.tex}"
 PROFILE_STUDY_INPUTS = (
     HOLDOUT_GENERATED_INPUT,
     ORDER_GENERATED_INPUT,
@@ -268,6 +273,7 @@ SAFE_PDF_PRODUCERS = re.compile(
 
 FORBIDDEN_CONTENT = (
     ("placeholder", re.compile(r"placeholder", re.IGNORECASE)),
+    ("unresolved TODO marker", re.compile(r"\b(?:TODO|FIXME|XXX)\b")),
     (
         "synthetic or rehearsal result content",
         re.compile(r"\b(?:synthetic|rehearsal)\b", re.IGNORECASE),
@@ -366,8 +372,8 @@ REQUIRED_MAIN = (
     SLACK_GENERATED_INPUT,
     HARM_GENERATED_INPUT,
     GEN_GENERATED_INPUT,
-    r"\CapFullContextRows",
-    r"\CapPrimaryContrastRows",
+    REM_GENERATED_INPUT,
+    REM_POSTHOC_INPUT,
 )
 
 REQUIRED_SUPPLEMENT = (
@@ -376,10 +382,15 @@ REQUIRED_SUPPLEMENT = (
     *PROFILE_STUDY_INPUTS,
     HARM_GENERATED_INPUT,
     GEN_GENERATED_INPUT,
+    GEN_DOMAINS_INPUT,
+    REM_GENERATED_INPUT,
+    REM_POSTHOC_INPUT,
     CAP_STUDY_INPUT,
 )
 
 REQUIRED_CAP_STUDY = (
+    r"\CapFullContextRows",
+    r"\CapPrimaryContrastRows",
     r"\CapCensusContrastRows",
     r"\CapPrimaryMechanismRows",
     r"\CapPrimarySecondaryText",
@@ -434,6 +445,14 @@ REQUIRED_MANIFEST = (
     "experiments/render_pdb_profile_harm_generality_paper.py",
     "paper/generated/pdb-profile-harm-generality-v1.tex",
     "paper/generated/pdb-profile-harm-generality-v1.pdf",
+    "experiments/analyze_harm_generality_domains.py",
+    "paper/generated/pdb-profile-harm-generality-domains-v1.tex",
+    "experiments/fragmentation_remedy_protocol.md",
+    "experiments/analyze_fragmentation_remedy.py",
+    "experiments/render_fragmentation_remedy_paper.py",
+    "paper/generated/fragmentation-remedy-v1.tex",
+    "experiments/analyze_fragmentation_remedy_posthoc.py",
+    "paper/generated/fragmentation-remedy-posthoc-v1.tex",
     "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-pdb-cap-grid-full-protocol/experiments/data/exp_pdb_cap_grid_full-eval.tar.gz",
     "logical basename `exp_pdb_cap_grid_full-eval.tar.gz`",
     "`WBH_ACCOUNT=naiss2025-5-561-cpu`",
@@ -465,6 +484,8 @@ REQUIRED_MANIFEST_DIGESTS = (
     "211ba15a3b15235175d5f98ec4d374dada5d00cacf8997a5f919543041a06312",
     "1350601f4134b78d480e500749f6a5546c041894cfe70fe2d3169aa329599b14",
     "445f8774906b2aa84ee60e00db612d22685756213bd550ef30aa3f38f474bd38",
+    "2f3b61d1cd8d3eb96f83fba0c8352c86d8ccab9738b8f7cca7e81a6c5a3fc772",
+    "773234a6f4757265f05899cb6eededfa7eec3d70ebc6db96e84fa1e8b9ae024b",
 )
 
 EXPECTED_GENERATED_SHA256 = (
@@ -1167,7 +1188,8 @@ def _validate_source(name: str, text: str, required) -> None:
     )
     for profile_input in (
         *PROFILE_STUDY_INPUTS, SLACK_GENERATED_INPUT, HARM_GENERATED_INPUT,
-        GEN_GENERATED_INPUT,
+        GEN_GENERATED_INPUT, GEN_DOMAINS_INPUT, REM_GENERATED_INPUT,
+        REM_POSTHOC_INPUT,
     ):
         identity_text = identity_text.replace(profile_input, "")
     for description, pattern in FORBIDDEN_IDENTITY:

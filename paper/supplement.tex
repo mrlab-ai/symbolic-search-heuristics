@@ -64,6 +64,9 @@
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
 \input{generated/pdb-profile-harm-decomposition-v1.tex}
 \input{generated/pdb-profile-harm-generality-v1.tex}
+\input{generated/pdb-profile-harm-generality-domains-v1.tex}
+\input{generated/fragmentation-remedy-v1.tex}
+\input{generated/fragmentation-remedy-posthoc-v1.tex}
 
 \title{When Heuristics Hurt Symbolic Search:\\
 Fragmentation and Tight Cofactor-Width Bounds\\Supplementary Material}
@@ -1810,6 +1813,202 @@ headroom, \GenMaxHeadroom\ tasks for M\&S, is below the threshold of
     blind search does not.}
   \label{tab:supp-harm-coverage}
 \end{table}
+
+\paragraph{Per-domain view (post hoc).}
+This view was defined after the frozen analysis and changes none of its
+decisions.  Resampling domains with replacement (\GenBootstrapResamples\
+resamples) gives 95\% intervals for $S$ of [\GenMsBootLow, \GenMsBootHigh]
+for M\&S, [\GenPdbBootLow, \GenPdbBootHigh] for the CEGAR PDB,
+[\GenPotBootLow, \GenPotBootHigh] for potentials and [\GenAllBootLow,
+\GenAllBootHigh] pooled, so no family's result rests on a few domains.
+Table~\ref{tab:supp-harm-domains} pools all heuristics per domain.  Of the
+\GenDomainsShown\ domains with at least \GenDomainMinHarmful\ harmful pairs,
+\GenDomainsBelow\ have $S<0.9$: in \texttt{movie}, harmful runs exceed
+blind effort only slightly and partly through larger unsplit sets, and in
+\texttt{rovers} $S$ is just below the threshold although every pair with
+$r>2$ has $\fragfactor>u$.
+
+\begin{table}[tb]
+  \centering
+  \small
+  \begin{tabular}{lrrrr}
+    \toprule
+    Domain & Pairs & Harmful & $S$ & $r>2$: $\fragfactor>u$ \\
+    \midrule
+    \GenDomainRows
+    \bottomrule
+  \end{tabular}
+  \caption{Post-hoc per-domain share $S$ over all heuristics of the
+    prospective family study, for domains with at least
+    \GenDomainMinHarmful\ harmful pairs, sorted by $S$.}
+  \label{tab:supp-harm-domains}
+\end{table}
+
+\FloatBarrier
+\subsection{Avoiding Fragmentation: Prospective Remedy Study}
+\label{sec:supp-remedy}
+
+The family study shows that harmful heuristic runs barely prune but
+fragment.  A third protocol, frozen together with its option matrix, cohort manifests, planner revision,
+binaries and analysis code before any holdout run, asks whether the same
+heuristics help once fragmentation is removed, and places all results next
+to blind bidirectional search.
+
+\paragraph{Configurations.}
+All runs use the binary of the family study, the Gamer order, 300 seconds and
+8\,GiB, and no profiling.  Blind forward search (\texttt{sym\_fw}), blind
+bidirectional search (\texttt{sym\_bd}) and bidirectional search that prunes
+with M\&S (\num{10000} states) once a first plan is known
+(\texttt{sym\_bd\_ms}) are the baselines.  For each family, the plain
+heuristic is the configuration of the family study (for M\&S, the unaligned
+\num{10000}-state variant, which had the highest coverage).  \emph{Prune-only}
+search (\texttt{prune\_only=true}) expands whole $g$-layers and uses the
+heuristic only to remove dead ends and states outside the cost bound, so its
+fragmentation is one.  \emph{Batched} search
+(\texttt{batch\_f\_window=$w$}, \texttt{batch\_max\_union\_ratio=1}) keeps the
+\astar\ order, goal tests and closing, but images the fresh buckets with the
+same $g$ and $f$ at most $w$ above the selected bucket as one BDD whenever
+the union has at most as many inner nodes as its parts.  Potentials
+optimized for the average over all states are a descriptive addition.
+
+\paragraph{Window selection.}
+Before the holdout, all configurations ran on the 275 development tasks with
+$w\in\{1,8,\infty\}$ (\num{4950} runs).  The frozen rule picks per family the
+window with the highest coverage, then the lowest PAR2 score, then the
+smallest window.  Table~\ref{tab:supp-remedy-stage1} gives the coverage; the
+rule selects $w=1$ for every family.
+
+\begin{table}[tb]
+  \centering
+  \small
+  \begin{tabular}{lrrrrr}
+    \toprule
+    & & & \multicolumn{3}{c}{batched, $w=$} \\
+    Family & Plain & Prune-only & 1 & 8 & $\infty$ \\
+    \midrule
+    M\&S & 119 & 113 & 119 & 107 & 106 \\
+    CEGAR PDB & 115 & 113 & 114 & 111 & 107 \\
+    Potentials & 110 & 114 & 108 & 105 & 106 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Window selection on the 275 development tasks: solved tasks.
+    Blind forward search solves 114, blind bidirectional search 130 and
+    bidirectional search with M\&S pruning 131.}
+  \label{tab:supp-remedy-stage1}
+\end{table}
+
+\paragraph{Tests and decision rule.}
+For each family and remedy, H1 compares the remedy with the plain heuristic
+and H2 with blind forward search.  Each test counts the tasks that exactly
+one of the two configurations solves and applies an exact two-sided sign
+test; the twelve $p$-values are adjusted by Holm's method at family-wise
+level 0.05.  A remedy improves on (or loses to) its reference only if the
+adjusted test is significant and the gains exceed the losses (or the
+reverse); otherwise we report no significant difference.  Tasks whose solved
+runs disagree on the plan cost would count as unsolved for every
+configuration; there were none.  Bidirectional comparisons, the all-states
+potentials, the mechanism medians and the effort--time correlation are
+descriptive.  The holdout ran as \num{\RemCells} cells in 977 Slurm array
+tasks, all of which completed; the audit found every cell complete and every
+input unchanged.
+
+\paragraph{Results.}
+Only two tests are significant (Table~\ref{tab:supp-remedy-coverage}):
+prune-only potentials improve on plain potentials
+(+\RemPotPruneVsPlainGains/$-$\RemPotPruneVsPlainLosses), and batched
+potentials lose to blind forward search
+(+\RemPotBatchVsBlindGains/$-$\RemPotBatchVsBlindLosses).
+Table~\ref{tab:supp-remedy-mechanism} shows why the remedies help so little.
+On tasks that blind forward search, the plain heuristic and the remedy all
+solve, prune-only search expands exactly as many BDD nodes as blind forward
+search on the median task, so the plain heuristics' pruning disappears with
+their fragmentation; its time is lower than that of the plain heuristic.
+Batching does not change the effort, which counts the nodes of the expanded
+buckets, but saves image calls.  Potentials optimized for all states solve
+\RemSolvedPotAllPlain\ tasks (+\RemPotAllVsPotGains/$-$\RemPotAllVsPotLosses\
+against initial-state potentials, +\RemPotAllVsFwGains/$-$%
+\RemPotAllVsFwLosses\ against blind forward search, both unadjusted and
+descriptive), with median effort ratio \RemPotAllEffort\ and time ratio
+\RemPotAllTime\ to blind forward search.  Blind bidirectional search solves
+\RemSolvedBlindBd\ tasks (+\RemBdVsFwGains/$-$\RemBdVsFwLosses\ against blind
+forward search), and M\&S pruning in bidirectional search gains and loses
+the same number of tasks (+\RemBdMsVsBdGains/$-$\RemBdMsVsBdLosses).
+
+\begin{table}[tb]
+  \centering
+  \small
+  \begin{tabular}{lrrr}
+    \toprule
+    Configuration & Solved & vs.\ plain & vs.\ blind fw \\
+    \midrule
+    \RemCoverageRows
+    \bottomrule
+  \end{tabular}
+  \caption{Prospective remedy study on \num{\HoldoutTasks} holdout tasks:
+    solved tasks, and tasks gained/lost against the plain heuristic and
+    against blind forward search ($^{*}$: significant after Holm
+    correction).}
+  \label{tab:supp-remedy-coverage}
+\end{table}
+
+\begin{table}[tb]
+  \centering
+  \small
+  \begin{tabular}{llrrrrr}
+    \toprule
+    & & & \multicolumn{2}{c}{effort ratio} & \multicolumn{2}{c}{time ratio} \\
+    Family & Remedy & Tasks & plain & remedy & plain & remedy \\
+    \midrule
+    M\&S & prune-only & \RemMsPruneMechTasks & \RemMsPruneEffortPlain
+      & \RemMsPruneEffortRemedy & \RemMsPruneTimePlain & \RemMsPruneTimeRemedy \\
+    & batched & \RemMsBatchMechTasks & \RemMsBatchEffortPlain
+      & \RemMsBatchEffortRemedy & \RemMsBatchTimePlain & \RemMsBatchTimeRemedy \\
+    CEGAR PDB & prune-only & \RemPdbPruneMechTasks & \RemPdbPruneEffortPlain
+      & \RemPdbPruneEffortRemedy & \RemPdbPruneTimePlain & \RemPdbPruneTimeRemedy \\
+    & batched & \RemPdbBatchMechTasks & \RemPdbBatchEffortPlain
+      & \RemPdbBatchEffortRemedy & \RemPdbBatchTimePlain & \RemPdbBatchTimeRemedy \\
+    Potentials & prune-only & \RemPotPruneMechTasks & \RemPotPruneEffortPlain
+      & \RemPotPruneEffortRemedy & \RemPotPruneTimePlain & \RemPotPruneTimeRemedy \\
+    & batched & \RemPotBatchMechTasks & \RemPotBatchEffortPlain
+      & \RemPotBatchEffortRemedy & \RemPotBatchTimePlain & \RemPotBatchTimeRemedy \\
+    \bottomrule
+  \end{tabular}
+  \caption{Median ratios of BDD-node effort and total time to blind forward
+    search, for the plain heuristic and the remedy, on the tasks that all
+    three solve.}
+  \label{tab:supp-remedy-mechanism}
+\end{table}
+
+\paragraph{Effort and time.}
+Over the pairs of a plain heuristic and blind forward search that both solve
+a task on which blind search takes at least one second, the Spearman
+correlation of the logarithms of the effort ratio and the time ratio is
+\RemEffTimeMsRho\ for M\&S (\RemEffTimeMsPairs\ pairs), \RemEffTimePdbRho\
+for the CEGAR PDB (\RemEffTimePdbPairs), \RemEffTimePotRho\ for potentials
+(\RemEffTimePotPairs) and \RemEffTimeAllRho\ pooled, and \RemEffTimeMsSame\%,
+\RemEffTimePdbSame\%, \RemEffTimePotSame\% and \RemEffTimeAllSame\% of the
+pairs have both ratios on the same side of one.  The time ratios include
+heuristic construction.
+
+\paragraph{Mechanism (post hoc).}
+The following counts were defined after the frozen analysis and change none
+of its decisions.  Batching happens on \RemPhMsBatchFired, \RemPhPdbBatchFired\
+and \RemPhPotBatchFired\ of the \RemPhMsBatchTasks, \RemPhPdbBatchTasks\ and
+\RemPhPotBatchTasks\ tasks that the batched and the plain heuristic both
+solve (M\&S, PDB, potentials), with median image-call ratios
+\RemPhMsBatchCalls, \RemPhPdbBatchCalls\ and \RemPhPotBatchCalls, and the
+effort is identical on all of them.  Prune-only search prunes a dead end on
+\RemPhMsPruneDeadEnds, \RemPhPdbPruneDeadEnds\ and \RemPhPotPruneDeadEnds\
+of its solved tasks, and its effort equals that of blind forward search on
+\RemPhMsPruneSameEffort, \RemPhPdbPruneSameEffort\ and
+\RemPhPotPruneSameEffort\ of the \RemPhMsPruneTasks, \RemPhPdbPruneTasks\ and
+\RemPhPotPruneTasks\ tasks that both solve.  On those of these
+identical-effort tasks on which blind forward search spends at least one
+second in images, the median ratio of image time is
+\RemPhMsPruneImageTime, \RemPhPdbPruneImageTime\ and
+\RemPhPotPruneImageTime: the heuristic search engine images the same sets
+faster than SymK's blind forward search, which explains why prune-only search
+can solve slightly more tasks than blind forward search without pruning.
 
 \FloatBarrier
 \section{Additional Related-Work Detail}
