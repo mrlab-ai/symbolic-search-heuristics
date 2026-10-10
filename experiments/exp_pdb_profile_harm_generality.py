@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import collections
 import os
 from pathlib import Path
 
@@ -38,8 +39,44 @@ def _validate_cplex() -> None:
         raise Base.LaunchError("CPLEX runtime library changed")
 
 
+SourcedTask = collections.namedtuple(
+    "SourcedTask",
+    "domain problem domain_file problem_file domain_sha256 problem_sha256",
+)
+
+
+class _Protocol:
+    """The frozen protocol module, with source provenance on cohort tasks.
+
+    Lab links domain.pddl and problem.pddl into every run directory; the
+    shared runner replaces those links with regular files only when each
+    task names its source files and their hashes.
+    """
+
+    def __getattr__(self, name):
+        return getattr(P, name)
+
+    @staticmethod
+    def load_cohort(archive=None):
+        records = Base._source_records()
+        tasks = []
+        for task in P.load_cohort(archive):
+            record = records.get((task.domain, task.problem))
+            if record is None:
+                raise Base.LaunchError("cohort task lacks a source record")
+            tasks.append(SourcedTask(
+                task.domain,
+                task.problem,
+                record["domain_file"],
+                record["problem_file"],
+                record["domain_sha256"],
+                record["problem_sha256"],
+            ))
+        return tuple(tasks)
+
+
 def configure() -> None:
-    Base.P = P
+    Base.P = _Protocol()
     Base.PLANNER_REVISION = P.PLANNER_REVISION
     Base.PLANNER_BINARY_SHA256 = P.PLANNER_BINARY_SHA256
     Base.PREPROCESS_BINARY_SHA256 = P.PREPROCESS_BINARY_SHA256
@@ -65,6 +102,7 @@ def configure() -> None:
     Base.SOURCE_PROTOCOL = P.Holdout.PROTOCOL
     Base.RUNNER_SOURCE_FILES = RUNNER_SOURCE_FILES
     Base.VALIDATE_MATCHED_BUDGET_PROVENANCE = False
+    Base.MATERIALIZE_PDDL_INPUTS = True
     Base.ENVIRONMENT_REQUIREMENTS_FILE = Base.SCRIPT_DIR / "requirements.txt"
     Base.EXTRA_RECEIPT_PROPERTIES = {
         "build_name": "release",
