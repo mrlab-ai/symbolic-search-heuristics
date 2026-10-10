@@ -8,6 +8,9 @@
 \usepackage{microtype}
 \usepackage{pdflscape}
 \usepackage{placeins}
+\usepackage{numprint}
+\npthousandsep{,}
+\newcommand{\num}[1]{\numprint{#1}}
 \usepackage[hyphens]{url}
 \def\UrlBreaks{\do\/\do-\do\_\do,\do=\do(\do)}
 
@@ -60,6 +63,7 @@
 \input{generated/pdb-profile-order-intervention-v1.tex}
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
 \input{generated/pdb-profile-harm-decomposition-v1.tex}
+\input{generated/pdb-profile-harm-generality-v1.tex}
 
 \title{When Heuristics Hurt Symbolic Search:\\
 Fragmentation and Tight Cofactor-Width Bounds\\Supplementary Material}
@@ -1648,6 +1652,16 @@ $u=\unioneffort(\task,h)/\effort(\task,\hblind)$.  Blind search expands one
 bucket per layer, so $\unioneffort(\task,\hblind)=\effort(\task,\hblind)$
 and $r=u\cdot\fragfactor(\task,h)$ exactly.
 
+\begin{figure}[tb]
+  \centering
+  \includegraphics[width=0.6\textwidth]{generated/pdb-profile-harm-decomposition-v1.pdf}
+  \caption{Post-hoc harm decomposition: heuristic versus blind search on
+    \num{\HarmPairs} jointly solved holdout pairs of the 16 PDB selectors.
+    The effort ratio is the product of both axes; the solid and dashed lines
+    mark heuristic effort equal to and twice that of blind search.}
+  \label{fig:supp-harm-pdb}
+\end{figure}
+
 There are \HarmPairs\ pairs from \HarmPairTasks\ tasks in \HarmPairDomains\
 domains.  The heuristic needs more BDD nodes than blind search ($r>1$) in
 \HarmHurt\ pairs and fewer in \HarmHelped.  In the harmful pairs, $u$ has
@@ -1674,6 +1688,128 @@ pairs.  Finally, \HarmLosses\ task--configuration runs fail on tasks that
 blind search solves; all \HarmLossesTimeout\ exceed the search time limit,
 and none spends more than \HarmLossesMaxConstruction\ seconds constructing
 its PDB.
+
+\FloatBarrier
+\subsection{Harm Beyond PDBs: Prospective Family Study}
+\label{sec:supp-harm-generality}
+
+The post-hoc decomposition above covers one heuristic family and was defined
+after its outcomes were known.  We therefore froze a second protocol before
+any of its heuristic configurations had run on the holdout and tested the
+claim that, when a heuristic needs more BDD nodes than blind search, the
+excess is carried by fragmentation rather than by unsplit effort.  The
+protocol (\texttt{pdb\_profile\_harm\_generality\_protocol.md}), the option
+matrix, the cohort manifest, the planner revision, the binaries and the
+analysis code are pinned by SHA-256, and the launch receipt records the hash
+of every runner source file.
+
+\paragraph{Configurations.}
+All six configurations use one planner binary built with CPLEX 22.11,
+product-at-evaluation forward symbolic \astar, the Gamer order, and the
+limits of 300 seconds and 8\,GiB: profiled blind search; M\&S with
+\num{10000} abstract states and an unaligned or aligned merge order; M\&S
+with \num{50000} states and an unaligned merge order (all with unlimited
+construction time, so that no run falls back to blind search); a CEGAR PDB
+collection with at most \num{1000000} states, at most 10 seconds of CEGAR
+time and seed 2011; and integer potentials with $|P(v,w)|\leq4$ optimized for
+the initial state.  To log per-layer unsplit unions, the planner revision
+attaches the closed lists of the M\&S and potential searches to the profile,
+as the PDB search already did.  The holdout has \num{\GenTasks} tasks from \HoldoutDomains\
+domains, giving \num{\GenCells} runs.  Of the 902 Slurm array tasks, 99
+failed in the scheduler (node failures and cancellations by the
+administrator); an audit confirmed that their cells were incomplete and that
+no input had changed, and one recovery wave reran exactly these array
+indices.  All \num{\GenCells} cells completed.
+
+\paragraph{Pairs and estimand.}
+A pair is a heuristic run and the blind run of the same task.  It is
+eligible when both runs solved the task, all profile streams are certified
+and complete, the efforts and the unsplit effort are positive, and the
+solution costs agree.  For $r$ and $u$ as above, the primary estimand per
+family and pooled is $S=\sum\ln\fragfactor/\sum\ln r$ over harmful pairs
+($r>1$).  $S$ exceeds one when the harmful pairs have, on balance, unsplit
+effort below that of blind search.
+
+\paragraph{Decision rule.}
+Fixed before launch: (1) a claim for a family requires at least
+\GenSupportPairs\ harmful pairs from at least \GenSupportDomains\ domains;
+(2) fragmentation explains harm for a family only if $S\geq\GenShareThreshold$
+and, if it has at least \GenStrongSupportPairs\ pairs with $r>2$, at least
+\GenStrongThresholdPercent\% of them have $\fragfactor>u$; (3) the claim
+extends beyond PDBs only if rule~2 holds pooled and for both M\&S and
+potentials; (4) a failed rule triggers no new threshold, subset or
+configuration.  The thresholds were calibrated on the 16 PDB configurations
+of the sealed holdout, where per-configuration $S$ ranges from 0.91 to 1.30.
+If no family solves at least \GenGuardTasks\ tasks (\GenGuardPercent\%) that
+blind search does not, the online fallback guard is not pursued.  Time-based quantities subtract the profiling overhead that
+the profile summary reports, since heuristic searches profile their closed
+unions after the plan is found.
+
+\paragraph{Results.}
+All rules hold for every family and pooled (Table~\ref{tab:supp-harm-families}),
+so the claim extends beyond PDBs.  Every pair with $r>2$ has
+$\fragfactor>u$.  Table~\ref{tab:supp-harm-configs} gives the same
+quantities per configuration, descriptively.  On the pairs whose blind
+search takes at least 10 seconds, the \GenAllTimeHarm\ heuristic runs that
+take more than 1.5 times as long as blind search have median
+$u=\GenAllTimeHarmUnion$ and median $\fragfactor=\GenAllTimeHarmFrag$, while
+the \GenAllTimeHelp\ runs that take less than two thirds as long have median
+$u=\GenAllTimeHelpUnion$ and $\fragfactor=\GenAllTimeHelpFrag$.  No
+configuration solves more tasks than blind search, and the largest family
+headroom, \GenMaxHeadroom\ tasks for M\&S, is below the threshold of
+\GenGuardTasks\ (Table~\ref{tab:supp-harm-coverage}).
+
+\begin{table}[tb]
+  \centering
+  \small
+  \begin{tabular}{lrrrrrrrr}
+    \toprule
+    & & & & & \multicolumn{2}{c}{harmful} & \multicolumn{2}{c}{helpful} \\
+    Family & Pairs & Harmful (dom.) & $S$ & $r>2$: $\fragfactor>u$
+      & $u$ & \fragfactor & $u$ & \fragfactor \\
+    \midrule
+    \GenFamilyRows
+    \bottomrule
+  \end{tabular}
+  \caption{Prospective family study: eligible pairs, harmful pairs ($r>1$)
+    with their number of domains, the share $S$, pairs with $r>2$ that have
+    $\fragfactor>u$, and medians of $u$ and \fragfactor\ among harmful and
+    helpful ($r<1$) pairs.}
+  \label{tab:supp-harm-families}
+\end{table}
+
+\begin{table}[tb]
+  \centering
+  \small
+  \begin{tabular}{lrrrrrrrr}
+    \toprule
+    & & & & & \multicolumn{2}{c}{harmful} & \multicolumn{2}{c}{helpful} \\
+    Configuration & Pairs & Harmful (dom.) & $S$ & $r>2$: $\fragfactor>u$
+      & $u$ & \fragfactor & $u$ & \fragfactor \\
+    \midrule
+    \GenConfigRows
+    \bottomrule
+  \end{tabular}
+  \caption{The quantities of Table~\ref{tab:supp-harm-families} per
+    configuration (descriptive).}
+  \label{tab:supp-harm-configs}
+\end{table}
+
+\begin{table}[tb]
+  \centering
+  \small
+  \begin{tabular}{lrr}
+    \toprule
+    Configuration & Solved & Headroom \\
+    \midrule
+    \GenCoverageRows
+    \bottomrule
+  \end{tabular}
+  \caption{Coverage of the prospective family study on \num{\GenTasks}
+    tasks, and headroom: the number of tasks a configuration solves and
+    blind search does not.}
+  \label{tab:supp-harm-coverage}
+\end{table}
 
 \FloatBarrier
 \section{Additional Related-Work Detail}

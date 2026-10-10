@@ -82,6 +82,7 @@
 \input{generated/pdb-profile-joint-seed-validation-v1.tex}
 \input{generated/pdb-profile-certificate-slack-v1.tex}
 \input{generated/pdb-profile-harm-decomposition-v1.tex}
+\input{generated/pdb-profile-harm-generality-v1.tex}
 
 \title{When Heuristics Hurt Symbolic Search:\\
 Fragmentation and Tight Cofactor-Width Bounds}
@@ -100,9 +101,9 @@ and why for forward symbolic \astar\ that partitions each frontier by
 heuristic value. Its cumulative number of expanded BDD nodes factors exactly
 into the BDD size of the unsplit expanded sets and a fragmentation factor. On
 a prospective holdout of \num{\HoldoutTasks} planning tasks, whenever pattern
-database (PDB) heuristics need more than twice as many BDD nodes as blind
-search, fragmentation is the cause: the harmful runs barely prune, but they
-fragment. We bound fragmentation by a cofactor-profile product that
+database (PDB), merge-and-shrink or potential heuristics need more than twice
+as many BDD nodes as blind search, fragmentation is the cause: the harmful
+runs barely prune, but they fragment. We bound fragmentation by a cofactor-profile product that
 multiplies, at every variable cut, the numbers of residual functions of a
 search layer and of the heuristic. If $W$ is the largest such count of the
 heuristic (its cofactor width), $V$ its number of finite values and $n$ the
@@ -160,9 +161,10 @@ to the exact buckets of symbolic search:
 \item \emph{When heuristics hurt.} Search effort factors exactly into the size
   of the unsplit expanded sets and a fragmentation factor. On a prospective
   holdout of \num{\HoldoutTasks} tasks in SymK \citep{speck-et-al-jair2025},
-  more informative heuristics shrink the unsplit sets but fragment them more,
-  and whenever the PDB heuristics we study cost more than twice as many BDD
-  nodes as blind search, fragmentation is the cause.
+  more informative heuristics shrink the unsplit sets but fragment them more.
+  A second prospective study confirms for PDB, merge-and-shrink (M\&S) and
+  potential heuristics alike that whenever they cost more than twice as many
+  BDD nodes as blind search, fragmentation is the cause.
 \item \emph{Tight bounds.} Both fragmentation and the number of BDD nodes
   expanded relative to blind search are at most $2VWn$, where $V$ is the
   number of finite heuristic values, $W$ the cofactor width and $n$ the
@@ -175,7 +177,7 @@ to the exact buckets of symbolic search:
   for the certificate based on total ADD size. As a predictor of
   fragmentation, however, it does not replicate under unseen variable orders.
 \item \emph{Heuristic design.} Integer potentials, PDBs and aligned linear
-  merge-and-shrink (M\&S) have bounded width, and safe value caps never
+  M\&S have bounded width, and safe value caps never
   increase the certificate. A cap-aware, width-constrained PDB selector
   changes coverage by \CapPrimaryMacroDeltaPoints\ percentage points over
   exact-width selection and expands 11.6\% fewer BDD nodes.
@@ -870,6 +872,22 @@ the target and all compared predictors, that a predictor orders correctly
 (higher information, smaller target; higher certificate, more
 fragmentation), averaged equally over domains.
 
+\paragraph{Heuristic Families.}
+A second prospective study runs profiled blind search and five heuristics from
+three families on the same holdout (\num{\GenCells} runs): M\&S with
+\num{10000} abstract states and a merge strategy that is or is not aligned
+with the BDD order, unaligned M\&S with \num{50000} states, a CEGAR PDB
+collection with \num{1000000} states, and integer potentials with
+$|P(v,w)|\leq4$ optimized for the initial state. We pair each heuristic run
+with the blind run of its task, both solved and completely profiled, and let
+$r=\effort(\task,h)/\effort(\task,\hblind)$ and
+$u=\unioneffort(\task,h)/\effort(\task,\hblind)$. Blind search has
+fragmentation one, so $r=u\cdot\fragfactor$. The protocol permits the claim
+that fragmentation explains harm for a family only if, over its pairs with $r>1$,
+fragmentation carries a share $S=\sum\ln\fragfactor/\sum\ln r$ of at least
+\GenShareThreshold\ and, among pairs with $r>2$, at least
+\GenStrongThresholdPercent\% have $\fragfactor>u$.
+
 \paragraph{Variable Orders.}
 Two further experiments keep one deterministic goal-fill PDB and change only
 the BDD variable order: from the Gamer order to the Fast Downward order
@@ -960,20 +978,20 @@ of the pairs, the more informative heuristic fragments more.
 
 \begin{figure}[tb]
   \centering
-  \includegraphics[width=\columnwidth]{generated/pdb-profile-harm-decomposition-v1.pdf}
-  \caption{Heuristic versus blind search on \num{\HarmPairs} jointly solved
-    holdout pairs. The effort ratio is the product of both axes; the solid
-    and dashed lines mark heuristic effort equal to and twice that of blind
-    search (post hoc).}
+  \includegraphics[width=\columnwidth]{generated/pdb-profile-harm-generality-v1.pdf}
+  \caption{Heuristic versus blind search on the jointly solved pairs of the
+    second prospective study, with pair counts per family (M\&S pools three
+    configurations). The effort ratio $r$ is the product of both axes; the
+    solid and dashed lines mark $r=1$ and $r=2$, and dark points have
+    $r>1$.}
   \label{fig:harm}
 \end{figure}
 
 \paragraph{When Heuristics Hurt (Q1).}
 We pair each heuristic run with the blind run of its task; since blind search
 has fragmentation one, the ratio of their efforts factors exactly into the
-ratio of unsplit efforts and the fragmentation factor
-(Figure~\ref{fig:harm}). Of \num{\HarmPairs} jointly solved pairs from
-\HarmPairTasks\ tasks, the heuristic needs more BDD nodes than blind search in
+ratio of unsplit efforts and the fragmentation factor. Of \num{\HarmPairs}
+jointly solved pairs from \HarmPairTasks\ tasks, the heuristic needs more BDD nodes than blind search in
 \num{\HarmHurt} and fewer in \HarmHelped. The harmful pairs barely prune
 (median unsplit ratio \HarmHurtUnionMedian) but fragment (median
 \HarmHurtFragMedian); all \HarmDoubled\ pairs that need more than twice the
@@ -991,6 +1009,23 @@ search exceed the time limit during search, after at most
 thus hurt symbolic search through fragmentation that pruning fails to repay,
 which is exactly the quantity that our bounds control. This analysis is post
 hoc.
+
+\paragraph{Beyond PDBs (Q1).}
+The second prospective study confirms this for every family
+(Figure~\ref{fig:harm}). Fragmentation carries a share $S$ of
+\GenMsShare\ for M\&S, \GenPdbShare\ for the CEGAR PDB and \GenPotShare\
+for potentials (\num{\GenMsHarmful}, \GenPdbHarmful\ and \GenPotHarmful\
+harmful pairs from \GenMinHarmfulDomains\ to \GenMaxHarmfulDomains\ domains);
+$S>1$ means that the harmful runs have, on balance, smaller unsplit effort
+than blind search. All \GenAllStrong\ pairs with $r>2$ have $\fragfactor>u$.
+Harmful pairs barely prune (median $u$ from \GenMinHurtUnion\ to
+\GenMaxHurtUnion) but fragment (median \fragfactor\ from \GenMinHurtFrag\ to
+\GenMaxHurtFrag), whereas helpful pairs prune strongly (median $u$
+\GenAllHelpUnion) and fragment little (\GenAllHelpFrag). No heuristic solves
+more tasks than blind search (\GenBlindSolved), and choosing the better of
+blind search and one heuristic per task would gain at most \GenMaxHeadroom\
+tasks, fewer than the \GenGuardTasks\ that the protocol required for pursuing
+an online fallback to blind search.
 
 \paragraph{Certificates (Q2).}
 No observed fragmentation exceeds its certificates on any of the
@@ -1073,7 +1108,8 @@ fragmentation under unseen variable orders. Fragmentation on the first
 \HarmPrefixLayers\ layers tracks final fragmentation (pooled concordance
 \HarmPrefixFragConcordance) but not search time on harder tasks
 (\HarmHardPrefixTimeConcordance), because pruning pays off late, so it does
-not by itself justify an online fallback to blind search.
+not by itself justify an online fallback to blind search, which the
+prespecified headroom criterion also rejects.
 
 The $K=8$ study runs each configuration once per task with a hard cutoff, and
 its effort ratios condition on completed pairs. In two replications with five
@@ -1087,9 +1123,9 @@ blind search.
 The exact factorization $\effort=\unioneffort\cdot\fragfactor$ separates two
 effects of a heuristic in symbolic search. On a prospective holdout, more
 informative heuristics shrank the unsplit search but tended to fragment it
-more, and whenever a heuristic cost more than twice as many BDD nodes as
-blind search, fragmentation was the cause. Cut-aligned cofactor profiles bound
-this second effect: fragmentation, and the effort of heuristic search
+more, and whenever a PDB, M\&S or potential heuristic cost more than twice as
+many BDD nodes as blind search, fragmentation was the cause. Cut-aligned
+cofactor profiles bound this second effect: fragmentation, and the effort of heuristic search
 relative to blind search, are at most $2\values Wn$, a planning family
 attains $\values Wn/120$, and safe coarsening never increases the
 certificate. In

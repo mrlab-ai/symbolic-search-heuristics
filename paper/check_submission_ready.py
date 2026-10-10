@@ -56,6 +56,9 @@ SLACK_GENERATED_INPUT = (
 HARM_GENERATED_INPUT = (
     r"\input{generated/pdb-profile-harm-decomposition-v1.tex}"
 )
+GEN_GENERATED_INPUT = (
+    r"\input{generated/pdb-profile-harm-generality-v1.tex}"
+)
 PROFILE_STUDY_INPUTS = (
     HOLDOUT_GENERATED_INPUT,
     ORDER_GENERATED_INPUT,
@@ -362,6 +365,7 @@ REQUIRED_MAIN = (
     *PROFILE_STUDY_INPUTS,
     SLACK_GENERATED_INPUT,
     HARM_GENERATED_INPUT,
+    GEN_GENERATED_INPUT,
     r"\CapFullContextRows",
     r"\CapPrimaryContrastRows",
 )
@@ -371,6 +375,7 @@ REQUIRED_SUPPLEMENT = (
     POSTHOC_GENERATED_INPUT,
     *PROFILE_STUDY_INPUTS,
     HARM_GENERATED_INPUT,
+    GEN_GENERATED_INPUT,
     CAP_STUDY_INPUT,
 )
 
@@ -424,6 +429,11 @@ REQUIRED_MANIFEST = (
     "paper/generated/pdb-profile-harm-decomposition-v1.tex",
     "experiments/plot_pdb_profile_harm_decomposition.py",
     "paper/generated/pdb-profile-harm-decomposition-v1.pdf",
+    "experiments/pdb_profile_harm_generality_protocol.md",
+    "experiments/analyze_pdb_profile_harm_generality.py",
+    "experiments/render_pdb_profile_harm_generality_paper.py",
+    "paper/generated/pdb-profile-harm-generality-v1.tex",
+    "paper/generated/pdb-profile-harm-generality-v1.pdf",
     "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-pdb-cap-grid-full-protocol/experiments/data/exp_pdb_cap_grid_full-eval.tar.gz",
     "logical basename `exp_pdb_cap_grid_full-eval.tar.gz`",
     "`WBH_ACCOUNT=naiss2025-5-561-cpu`",
@@ -453,6 +463,8 @@ REQUIRED_MANIFEST_DIGESTS = (
     "7408736632aaa534614e319322fe09a5ca9bb8e0874d7b6e7096a940e4bcfb63",
     "e944922a633c08594e48a2c667bf84cd35d6b8121d85d2b1c672aed4abea533e",
     "211ba15a3b15235175d5f98ec4d374dada5d00cacf8997a5f919543041a06312",
+    "1350601f4134b78d480e500749f6a5546c041894cfe70fe2d3169aa329599b14",
+    "445f8774906b2aa84ee60e00db612d22685756213bd550ef30aa3f38f474bd38",
 )
 
 EXPECTED_GENERATED_SHA256 = (
@@ -1154,7 +1166,8 @@ def _validate_source(name: str, text: str, required) -> None:
         POSTHOC_GENERATED_INPUT, ""
     )
     for profile_input in (
-        *PROFILE_STUDY_INPUTS, SLACK_GENERATED_INPUT, HARM_GENERATED_INPUT
+        *PROFILE_STUDY_INPUTS, SLACK_GENERATED_INPUT, HARM_GENERATED_INPUT,
+        GEN_GENERATED_INPUT,
     ):
         identity_text = identity_text.replace(profile_input, "")
     for description, pattern in FORBIDDEN_IDENTITY:

@@ -305,6 +305,31 @@ Lab data are in the `symk-representation-safe` workspace under
   from which `experiments/plot_pdb_profile_harm_decomposition.py` draws the
   deterministic figure `paper/generated/pdb-profile-harm-decomposition-v1.pdf`
   with the pinned `matplotlib==3.9.4`.
+- Prospective harm-generality study (frozen protocol
+  `experiments/pdb_profile_harm_generality_protocol.md`, SHA-256
+  `1350601f4134b78d480e500749f6a5546c041894cfe70fe2d3169aa329599b14`,
+  pinned with the option matrix, cohort manifest, planner revision
+  `580a6ee3b39489cb0a3f1d4e187b52601b751eab` and binaries in
+  `experiments/pdb_profile_harm_generality_protocol.py`): 1,052 holdout tasks
+  x 6 configurations = 6,312 cells, launched by
+  `experiments/exp_pdb_profile_harm_generality.py` (Slurm job 3619433),
+  scheduler-only recovery of 99 array indices by
+  `experiments/recover_pdb_profile_harm_generality.py` (job 3623205), and
+  sealed by `experiments/audit_pdb_profile_harm_generality.py --seal`
+  (`experiments/artifacts/pdb-profile-harm-generality/execution-receipt-v1.json`).
+  The frozen `experiments/analyze_pdb_profile_harm_generality.py analyze`
+  reads the fetched properties (SHA-256
+  `451d10ee4c26e5115ca2d88fac50dc97ad8089c7c1782ffe0c014ae940eff105`, backed
+  up in `symk-representation-safe/experiments/data/exp_pdb_profile_harm_generality-eval/properties`)
+  and writes `experiments/artifacts/pdb-profile-harm-generality/analysis-v1.json`
+  (SHA-256 `445f8774906b2aa84ee60e00db612d22685756213bd550ef30aa3f38f474bd38`).
+  `experiments/render_pdb_profile_harm_generality_paper.py` renders
+  `paper/generated/pdb-profile-harm-generality-v1.tex` (SHA-256
+  `ca5875e0f429b701747e1657e92105e9ef674438658115c33775c057d6f75d36`) and the deterministic figure
+  `paper/generated/pdb-profile-harm-generality-v1.pdf` (SHA-256
+  `0ba27ebdbb256e2dd6d7a60a365c584603150044e6ef1ccc34fce3950d62d376`, `matplotlib==3.9.4`), and refuses to render unless the frozen
+  decisions are those the paper states: the claim holds for M&S, PDB and
+  potentials and pooled, and the online guard is not pursued.
 
 ## Exclusions and claim boundary
 

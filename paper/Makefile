@@ -69,9 +69,16 @@ HARM_SCRIPT := ../experiments/analyze_pdb_profile_harm_decomposition.py
 HARM_POINTS := $(HARM_ARTIFACT_DIR)/points-v1.json
 HARM_FIGURE := generated/pdb-profile-harm-decomposition-v1.pdf
 HARM_PLOTTER := ../experiments/plot_pdb_profile_harm_decomposition.py
+GEN_GENERATED_RESULT := generated/pdb-profile-harm-generality-v1.tex
+GEN_FIGURE := generated/pdb-profile-harm-generality-v1.pdf
+GEN_ARTIFACT_DIR := ../experiments/artifacts/pdb-profile-harm-generality
+GEN_ARTIFACT := $(GEN_ARTIFACT_DIR)/analysis-v1.json
+GEN_SIDECAR := $(GEN_ARTIFACT).sha256
+GEN_RENDERER := ../experiments/render_pdb_profile_harm_generality_paper.py
 PROFILE_STUDY_RESULTS := $(HOLDOUT_GENERATED_RESULT) \
 	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT) \
-	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT) $(HARM_FIGURE)
+	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT) $(HARM_FIGURE) \
+	$(GEN_GENERATED_RESULT) $(GEN_FIGURE)
 
 
 .PHONY: paper supplement author-kit-preflight submission-check submission-audit \
@@ -140,6 +147,16 @@ $(HARM_GENERATED_RESULT): $(HARM_SCRIPT) $(HARM_ARTIFACT) $(HARM_SIDECAR)
 $(HARM_FIGURE): $(HARM_PLOTTER) $(HARM_POINTS) $(HARM_POINTS).sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(HARM_PLOTTER) \
 		--points $(HARM_POINTS) --output $@ --write
+
+# Prospective harm-generality study. The frozen analysis artifact is written
+# once by ../experiments/analyze_pdb_profile_harm_generality.py analyze.
+$(GEN_GENERATED_RESULT): $(GEN_RENDERER) $(GEN_ARTIFACT) $(GEN_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_RENDERER) tex \
+		--analysis $(GEN_ARTIFACT) --output $@ --write
+
+$(GEN_FIGURE): $(GEN_RENDERER) $(GEN_ARTIFACT) $(GEN_SIDECAR)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_RENDERER) figure \
+		--analysis $(GEN_ARTIFACT) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -240,6 +257,14 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 	cd $(HARM_ARTIFACT_DIR) && sha256sum -c points-v1.json.sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(HARM_PLOTTER) \
 		--points $(HARM_POINTS) --output $(HARM_FIGURE) --check
+	cd $(GEN_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		../experiments/analyze_pdb_profile_harm_generality.py self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_RENDERER) self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_RENDERER) tex \
+		--analysis $(GEN_ARTIFACT) --output $(GEN_GENERATED_RESULT) --check
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_RENDERER) figure \
+		--analysis $(GEN_ARTIFACT) --output $(GEN_FIGURE) --check
 
 
 
