@@ -735,12 +735,15 @@ def make_experiment(cohort, cached):
                         )
             return header
 
-        def _submit_job(self, job_file, dependency=None):
+        def _submit_job(self, job_name, job_file, job_dir, dependency=None):
+            # Lab 8.0 passes the job name, file, and directory.
             job_file = Path(job_file)
-            if job_file.name != EXPECTED_JOB_NAME:
+            if job_name != EXPECTED_JOB_NAME or job_file.name != EXPECTED_JOB_NAME:
                 raise LaunchError("unexpected launch job name")
             materials = _prepare_launch_materials(job_file, cached)
-            job_id = super()._submit_job(job_file, dependency=dependency)
+            job_id = super()._submit_job(
+                job_name, str(job_file), job_dir, dependency=dependency
+            )
             _write_launch_receipt(job_id, materials)
             return job_id
 
