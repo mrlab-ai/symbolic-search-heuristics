@@ -125,20 +125,20 @@ Relative to blind symbolic search, a heuristic has two effects: as in explicit s
 The number of expanded BDD nodes thus factors, by definition, into the BDD size of the unsplit sets and a fragmentation factor, which separates the two effects so that each can be measured and bounded.
 To bound fragmentation, our \emph{cofactor-profile product} multiplies, at each cut of the fixed BDD variable order, the number of residual functions of a state set by that of the heuristic, and it bounds the BDD of every subset that the heuristic selects by value.
 Its heuristic factor, maximized over all cuts, is the standard residual width of a multi-terminal BDD (MTBDD) \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}, which we call \emph{cofactor width}, and the product argument is also standard \citep[Thm.~3.3.6]{wegener-2000}.
-New are the connection of these quantities to the exact buckets of symbolic search, cumulative bounds relative to blind search with a matching lower bound, and three prospective studies of what they explain:
+New are the connection of these quantities to the exact buckets of symbolic search, cumulative bounds relative to blind search with a matching lower bound, and three prospective studies, which yield four results:
 \begin{itemize}
-\item \emph{Why heuristics hurt.}
-  On a prospective holdout of \num{\HoldoutTasks} tasks in SymK \citep{speck-et-al-jair2025}, more informative pattern database (PDB) heuristics shrink the unsplit sets but fragment them more.
-  For PDB, merge-and-shrink (M\&S) and potential heuristics alike, whenever they cost more than twice as many BDD nodes as blind search, fragmentation is the cause.
-\item \emph{Tight bounds.}
-  Both fragmentation and the number of BDD nodes expanded relative to blind search are at most $2VWn$, where $V$ is the number of finite heuristic values, $W$ the cofactor width and $n$ the number of state bits.
-  A polynomial-size planning family attains $VWn/120$, so none of the three factors can be dropped, and the known exponential pathology has exponential width.
-  Integer potentials, PDBs and aligned linear M\&S have bounded width.
-\item \emph{A guarantee, not a predictor.}
-  No certificate is violated on \num{\SlackObservations} runs, and the profile exceeds the observed fragmentation by a median factor of \SlackProfileMedian\ (total ADD size: \SlackAddMedian).
-  Since it does not predict fragmentation under unseen variable orders, we use it as a design guarantee: safe value caps never increase it, which lets a PDB selector fit more informative heuristics into a width budget.
-\item \emph{Using heuristics without fragmentation.}
-  Used only for pruning, potentials recover their loss (\RemSolvedPotPlain\ to \RemSolvedPotPrune\ solved tasks; blind forward search: \RemSolvedBlindFw), but forward search then prunes almost nothing: no forward use of a heuristic beats blind forward search significantly, and blind bidirectional search solves more tasks than every forward configuration.
+\item \emph{Heuristics hurt through fragmentation.}
+  On a prospective holdout of \num{\HoldoutTasks} tasks in SymK \citep{speck-et-al-jair2025}, whenever a pattern database (PDB), merge-and-shrink (M\&S) or potential heuristic expands more than twice as many BDD nodes as blind search, its unsplit sets are barely smaller than those of blind search, but splitting them into buckets multiplies their size.
+\item \emph{Cofactor width bounds fragmentation tightly.}
+  With $V$ finite heuristic values, cofactor width $W$ and $n$ state bits, both fragmentation and the number of expanded BDD nodes relative to blind search are at most $2VWn$.
+  A family of polynomial-size planning tasks attains $VWn/120$, so no factor can be dropped.
+  The perfect heuristic in the example of \citet{speck-et-al-icaps2020} has exponential width, whereas the width of PDBs and aligned linear M\&S is at most linear in their abstraction size.
+\item \emph{The bound is a guarantee, not a predictor.}
+  Observed fragmentation never exceeds the bounds on \num{\SlackObservations} runs, and the cofactor-profile product exceeds it by a median factor of \SlackProfileMedian\ (total ADD size: \SlackAddMedian).
+  Since it does not predict fragmentation under unseen variable orders, we use it as a design guarantee: capping heuristic values never increases width, so a PDB selector can fit more informative PDBs into a width budget.
+\item \emph{Without fragmentation, heuristics barely help.}
+  Potentials that only remove dead ends, without splitting the expanded sets, recover their loss (\RemSolvedPotPlain\ to \RemSolvedPotPrune\ solved tasks; blind forward search: \RemSolvedBlindFw).
+  However, they then expand as many BDD nodes as blind search: no forward use of a heuristic beats blind forward search significantly, and blind bidirectional search solves more tasks than every forward configuration.
 \end{itemize}
 
 % ============================ background =================================
