@@ -304,12 +304,41 @@ union. The \emph{unsplit effort} and the \emph{fragmentation factor} are
  \end{aligned}
 \]
 whenever the denominator is positive, so that
-$\effort=\unioneffort\cdot\fragfactor$ exactly. The first factor measures the
+$\effort=\unioneffort\cdot\fragfactor$ exactly
+(Figure~\ref{fig:factorization}). The first factor measures the
 expanded states as one BDD per layer would represent them, and the second
 measures the cost of splitting them by value. Blind search has one bucket per
 layer, so $\fragfactor(\task,\hblind)=1$. The factor can be smaller than one,
 because the BDD of a union can be larger than the BDDs of its disjoint parts
 together.
+
+\begin{figure}[tb]
+  \centering
+  \scriptsize
+  \begin{tikzpicture}[x=0.3cm,y=0.42cm,
+      bar/.style={draw,fill=black!20,minimum height=0.32cm,inner sep=0pt}]
+    \node[left] at (0,2) {blind $L_g$};
+    \draw[fill=black!20] (0,1.8) rectangle (10,2.2);
+    \node[right] at (10,2) {100 nodes};
+    \node[left] at (0,1) {unsplit $S_g^h$};
+    \draw[fill=black!20] (0,0.8) rectangle (6,1.2);
+    \draw[densely dashed] (6,0.8) rectangle (10,1.2);
+    \node[right] at (10,1) {60 ($u=0.6$)};
+    \node[left] at (0,0) {buckets $B(g,v)$};
+    \draw[fill=black!20] (0,-0.2) rectangle (5,0.2);
+    \draw[fill=black!20] (5,-0.2) rectangle (9.5,0.2);
+    \draw[fill=black!20] (9.5,-0.2) rectangle (15,0.2);
+    \node at (2.5,0) {$v=0$}; \node at (7.25,0) {$v=1$};
+    \node at (12.25,0) {$v=2$};
+    \node[right] at (15,0) {150 ($\fragfactor=2.5$)};
+  \end{tikzpicture}
+  \caption{One layer under a harmful heuristic (illustrative node counts).
+    Pruning shrinks its BDD from 100 to 60 nodes ($u=0.6$), but storing the
+    remaining states in three buckets costs 150 nodes ($\fragfactor=2.5$),
+    so the heuristic expands $r=u\cdot\fragfactor=1.5$ times as many nodes as
+    blind search.}
+  \label{fig:factorization}
+\end{figure}
 
 % ===================== width-bounded heuristics ==========================
 \section{Bounded Cofactor Width}
@@ -966,16 +995,9 @@ jointly solved pairs from \HarmPairTasks\ tasks, the heuristic needs more BDD no
 (median unsplit ratio \HarmHurtUnionMedian) but fragment (median
 \HarmHurtFragMedian); all \HarmDoubled\ pairs that need more than twice the
 effort of blind search fragment by more than two, and none has unsplit effort
-twice as large. On the
-\HarmHard\ pairs whose blind search takes at least 10 seconds, the
-\HarmTimeHarm\ heuristic runs that take 1.5 times as long as blind search
-prune nothing (median unsplit ratio \HarmTimeHarmUnion), fragment by
-\HarmTimeHarmFrag\ and need \HarmTimeHarmImages\ times as many image
-computations, whereas the \HarmTimeHelp\ runs that take at most two thirds as
-long prune strongly (\HarmTimeHelpUnion) and fragment little
-(\HarmTimeHelpFrag). All \HarmLosses\ runs that lose a task solved by blind
-search exceed the time limit during search, after at most
-\HarmLossesMaxConstruction\ seconds of PDB construction. These PDB heuristics
+twice as large. The same pattern
+separates slow from fast runs in search time, and no lost task is due to PDB
+construction (supplement). These PDB heuristics
 thus hurt symbolic search through fragmentation that pruning fails to repay,
 which is exactly the quantity that our bounds control. This analysis is post
 hoc.
@@ -1135,24 +1157,18 @@ blind forward search stems from faster image code (supplement).
 \section{Conclusions}
 
 The exact factorization $\effort=\unioneffort\cdot\fragfactor$ separates two
-effects of a heuristic in symbolic search. On a prospective holdout, more
-informative heuristics shrank the unsplit search but tended to fragment it
-more, and whenever a PDB, M\&S or potential heuristic cost more than twice as
-many BDD nodes as blind search, fragmentation was the cause. Cut-aligned
-cofactor profiles bound this second effect: fragmentation, and the effort of heuristic search
-relative to blind search, are at most $2\values Wn$, a planning family
-attains $\values Wn/120$, and safe coarsening never increases the
-certificate. In
-practice, the profile exceeded the observed fragmentation by a median factor
-of \SlackProfileMedian, an order of magnitude less than the certificate based
-on ADD size, but it did not predict fragmentation under unseen variable
-orders. Removing fragmentation confirmed it as the cause: used only for
-pruning, potentials recovered their loss. Yet without splitting, forward
-search pruned almost nothing, and blind bidirectional search solved more
-tasks than every forward configuration. Heuristics thus pay off in symbolic
-search only if their pruning outweighs the fragmentation they cause; cofactor
-width bounds that cost before search, but it is a representation
-certificate, not a runtime guarantee.
+effects of a heuristic in symbolic search. Whenever a PDB, M\&S or potential
+heuristic cost more than twice as many BDD nodes as blind search,
+fragmentation was the cause, and removing it recovered the loss of
+potentials. Cofactor profiles bound fragmentation, and the effort relative
+to blind search, by $2\values Wn$, tightly up to a constant, and exceeded the
+observed fragmentation by a median factor of \SlackProfileMedian, but they
+did not predict it under unseen variable orders. Without splitting, however,
+forward search pruned almost nothing, and blind bidirectional search solved
+more tasks than every forward configuration. Heuristics thus pay off in
+symbolic search only if their pruning outweighs the fragmentation they
+cause; cofactor width bounds that cost before search, but it is a
+representation certificate, not a runtime guarantee.
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.
 % Flush every body float before measuring the final content page. The 2027
