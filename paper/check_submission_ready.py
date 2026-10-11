@@ -156,12 +156,12 @@ REVIEW_BUNDLE_FILENAMES = (
 
 REVIEW_DOCUMENT_MARKERS = {
     "paper.pdf": {
-        "required": ("When Heuristics Hurt Symbolic Search", "Anonymous submission", "Abstract"),
+        "required": ("Why Heuristics Rarely Pay Off", "Anonymous submission", "Abstract"),
         "forbidden": ("Supplementary Material",),
     },
     "supplement.pdf": {
         "required": (
-            "When Heuristics Hurt Symbolic Search",
+            "Why Heuristics Rarely Pay Off",
             "Supplementary Material",
             "Anonymous for review",
             "Guide.",
@@ -1341,7 +1341,7 @@ def _review_bundle_self_test():
     # direct infrastructure/provenance scans, not by suppressing citations.
     safe_text = "SymK builds on prior work by Jendrik Seipp.\n"
     safe_first_page = (
-        "When Heuristics Hurt Symbolic Search: Fragmentation and Tight\n"
+        "Why Heuristics Rarely Pay Off in Symbolic Search: Fragmentation\n"
         "Anonymous submission\nAbstract\n"
     )
     safe_action_markup = "<html><body>anonymous paper</body></html>"
