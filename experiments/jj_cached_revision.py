@@ -41,7 +41,7 @@ COMMIT_TEMPLATE = 'commit_id ++ "\\t" ++ if(conflict, "1", "0") ++ "\\n"'
 PATH_TEMPLATE = 'path ++ "\\n"'
 JJ_EXECUTABLE = Path("/home/jendrik/.local/bin/jj")
 JJ_EXECUTABLE_SHA256 = (
-    "cd5efc3eb281d606bf9b5523167f79661da0f8c76a5aa32d61c07c7a351b6b44"
+    "dbf80e7290f00005908aaa9aa576fd1906156049af0fba94d2dec48ff4193534"
 )
 # Build configurations whose binaries the cache can attest.  release needs an
 # LP solver (cplex_DIR) in the environment of the caching process.
