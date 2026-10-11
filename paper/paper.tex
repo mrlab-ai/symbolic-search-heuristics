@@ -97,97 +97,48 @@ Fragmentation and Tight Cofactor-Width Bounds}
 % ============================== abstract =================================
 % Keep the abstract within the provisional 250-word target.
 \begin{abstract}
-Heuristics guide explicit \astar\ well but often hurt symbolic search, which
-represents sets of states as binary decision diagrams (BDDs). We explain why
-for forward symbolic \astar, which partitions each frontier by heuristic
-value. Its cumulative number of expanded BDD nodes factors exactly into the
-BDD size of the unsplit expanded sets and a fragmentation factor. On a
-prospective holdout of \num{\HoldoutTasks} planning tasks, whenever pattern
-database (PDB), merge-and-shrink or potential heuristics need more than twice
-as many BDD nodes as blind search, fragmentation is the cause: the harmful
-runs barely prune, but they fragment. We bound fragmentation by a
-cofactor-profile product. If $W$ is the cofactor width of the heuristic, $V$
-its number of finite values and $n$ the number of state bits, both
-fragmentation and the effort relative to blind search are at most $2VWn$, and
-a polynomial-size planning family attains $VWn/120$. On the holdout, the
-certificate exceeds the observed fragmentation by a median factor of
-\SlackProfileMedian. Removing fragmentation confirms it as the cause: using
-potentials only for pruning recovers their loss. Without fragmentation,
-however, forward search prunes almost nothing, no forward use of a heuristic
-beats blind forward search significantly, and blind bidirectional search
-solves more tasks than every forward configuration.
+Heuristics guide explicit \astar\ well but often hurt symbolic search, which represents sets of states as binary decision diagrams (BDDs).
+We explain why for forward symbolic \astar, which partitions each frontier by heuristic value.
+Its number of expanded BDD nodes factors exactly into the BDD size of the unsplit expanded sets and a fragmentation factor.
+Let $W$ be the cofactor width of the heuristic, the largest number of its residual functions at any variable cut.
+With $V$ finite heuristic values and $n$ state bits, both fragmentation and the effort relative to blind search are at most $2VWn$, and a polynomial-size planning family attains $VWn/120$.
+On a prospective holdout of \num{\HoldoutTasks} planning tasks, a cut-wise version of this bound exceeds the observed fragmentation by a median factor of \SlackProfileMedian.
+Whenever pattern database (PDB), merge-and-shrink or potential heuristics need more than twice as many BDD nodes as blind search, the harmful runs barely prune but fragment.
+Using potentials only for pruning removes their fragmentation and recovers their loss.
+Without fragmentation, however, forward search prunes almost nothing: no forward use of a heuristic beats blind forward search significantly, and blind bidirectional search solves more tasks than every forward configuration.
 \end{abstract}
 
 % ============================ introduction ===============================
 \section{Introduction}
 
-Heuristics guide explicit \astar\ by ranking individual states
-\citep{hart-et-al-ieeessc1968,pearl-1984}. Symbolic search instead expands
-sets of states represented as binary decision diagrams
-\citep[BDDs;][]{mcmillan-1993,edelkamp-helmert-ecp1999,bryant-ieeecomp1986},
-and a heuristic used there also partitions these sets. Since the BDD of a
-subset can be much larger than the BDD of its superset, a split that is
-informative for search can be costly to represent. This raises our central
-question: which structural property of a heuristic determines how much it
-fragments symbolic frontiers, and can this property guide heuristic
-construction?
+Heuristics guide explicit \astar\ by ranking individual states \citep{hart-et-al-ieeessc1968,pearl-1984}.
+Symbolic search instead expands sets of states represented as binary decision diagrams \citep[BDDs;][]{mcmillan-1993,edelkamp-helmert-ecp1999,bryant-ieeecomp1986}, and a heuristic used there also partitions these sets by heuristic value.
+Since the BDD of a subset can be much larger than the BDD of its superset, a split that is informative for search can be costly to represent.
+We therefore ask which property of a heuristic determines how much it fragments symbolic frontiers, and whether heuristics help once this fragmentation is removed.
 
-Heuristic accuracy, the usual explanation in explicit search, does not
-suffice. \citet{speck-et-al-icaps2020} show that even the perfect heuristic
-\hstar\ can increase the cumulative size of the expanded BDDs exponentially.
-In practice, \bddastar\ \citep{edelkamp-reffel-ki1998},
-SetA\ensuremath{^{*}} and \ghseta\ \citep{jensen-et-al-aij2008}, and
-ADDA\ensuremath{^{*}} \citep{hansen-et-al-sara2002}, which stores the
-heuristic as an algebraic decision diagram (ADD), each help in some domains
-and hurt in others \citep{torralba-phd2015,torralba-et-al-aij2017}. Blind symbolic search thus
-remains strong for cost-optimal planning
-\citep{torralba-et-al-aij2017,speck-et-al-jair2025,speck-ipc2023}. Work on operator-potential heuristics reports
-little BDD growth in practice \citep{fiser-et-al-aaai2022,fiser-et-al-aij2024}
-but does not characterize when partitioning by a heuristic is safe, and
-existing worst-case guarantees for symbolic versus explicit search concern
-transition relations and goal formulas and explicitly leave heuristics aside
-\citep{speck-helmert-ecai2025}.
+Heuristic accuracy, the usual explanation in explicit search, does not suffice: \citet{speck-et-al-icaps2020} show that even the perfect heuristic \hstar\ can increase the cumulative size of the expanded BDDs exponentially.
+In practice, \bddastar\ \citep{edelkamp-reffel-ki1998}, SetA\ensuremath{^{*}} and \ghseta\ \citep{jensen-et-al-aij2008}, and ADDA\ensuremath{^{*}} \citep{hansen-et-al-sara2002}, which stores the heuristic as an algebraic decision diagram (ADD), each help in some domains and hurt in others \citep{torralba-phd2015,torralba-et-al-aij2017}, and blind symbolic search remains strong for cost-optimal planning \citep{torralba-et-al-aij2017,speck-et-al-jair2025,speck-ipc2023}.
+Work on operator-potential heuristics reports little BDD growth in practice \citep{fiser-et-al-aaai2022,fiser-et-al-aij2024} but does not characterize when partitioning by a heuristic is safe.
+Existing worst-case guarantees for symbolic versus explicit search concern transition relations and goal formulas and explicitly leave heuristics aside \citep{speck-helmert-ecai2025}.
 
-We characterize this damage relative to blind symbolic search. A heuristic
-has two effects there: as in explicit search, it reduces the set of expanded
-states, and in addition it splits that set into separately represented
-buckets. At each cut of the fixed BDD variable order, our
-\emph{cofactor-profile product} multiplies the number of residual functions
-of a state set by that of the heuristic, and it bounds the BDD of every
-subset that the heuristic selects by value. Its heuristic factor, maximized
-over all cuts, is the standard residual width of a multi-terminal BDD (MTBDD)
-\citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}, which we call \emph{cofactor
-width}, and the product argument is also standard
-\citep[Thm.~3.3.6]{wegener-2000}. The factorization of effort into unsplit
-size and fragmentation holds by construction; its use is that it separates
-the two effects so that each can be measured and bounded. Our contributions
-connect these quantities to the exact buckets of symbolic search:
+Relative to blind symbolic search, a heuristic has two effects: as in explicit search, it reduces the set of expanded states, and in addition it splits that set into separately represented buckets.
+The number of expanded BDD nodes thus factors, by definition, into the BDD size of the unsplit sets and a fragmentation factor, which separates the two effects so that each can be measured and bounded.
+To bound fragmentation, our \emph{cofactor-profile product} multiplies, at each cut of the fixed BDD variable order, the number of residual functions of a state set by that of the heuristic, and it bounds the BDD of every subset that the heuristic selects by value.
+Its heuristic factor, maximized over all cuts, is the standard residual width of a multi-terminal BDD (MTBDD) \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}, which we call \emph{cofactor width}, and the product argument is also standard \citep[Thm.~3.3.6]{wegener-2000}.
+New are the connection of these quantities to the exact buckets of symbolic search, cumulative bounds relative to blind search with a matching lower bound, and three prospective studies of what they explain:
 \begin{itemize}
-\item \emph{Why heuristics hurt.} On a prospective holdout of
-  \num{\HoldoutTasks} tasks in SymK \citep{speck-et-al-jair2025}, more
-  informative heuristics shrink the unsplit sets but fragment them more. A
-  second prospective study shows for PDB, merge-and-shrink (M\&S) and
-  potential heuristics alike that whenever they cost more than twice as many
-  BDD nodes as blind search, fragmentation is the cause.
-\item \emph{Tight bounds.} Both fragmentation and the number of BDD nodes
-  expanded relative to blind search are at most $2VWn$, where $V$ is the
-  number of finite heuristic values, $W$ the cofactor width and $n$ the
-  number of state bits. A polynomial-size planning family attains $VWn/120$,
-  so none of the three factors can be dropped, and the known exponential
-  pathology has exponential width. Integer potentials, PDBs and aligned
-  linear M\&S have bounded width.
-\item \emph{A guarantee, not a predictor.} No certificate is violated on
-  \num{\SlackObservations} runs, and the profile exceeds the observed
-  fragmentation by a median factor of \SlackProfileMedian, compared with
-  \SlackAddMedian\ for total ADD size. It does not predict fragmentation
-  under unseen variable orders, so we use it as a design guarantee: safe
-  value caps never increase it, and a cap-aware PDB selector fits more
-  informative heuristics into a width budget.
-\item \emph{Using heuristics without fragmentation.} A third prospective
-  study removes fragmentation: used only for pruning, potentials recover
-  their loss (\RemSolvedPotPlain\ to \RemSolvedPotPrune\ solved tasks), but
-  forward search then prunes almost nothing, and blind bidirectional search
-  solves more tasks than every forward configuration.
+\item \emph{Why heuristics hurt.}
+  On a prospective holdout of \num{\HoldoutTasks} tasks in SymK \citep{speck-et-al-jair2025}, more informative pattern database (PDB) heuristics shrink the unsplit sets but fragment them more.
+  For PDB, merge-and-shrink (M\&S) and potential heuristics alike, whenever they cost more than twice as many BDD nodes as blind search, fragmentation is the cause.
+\item \emph{Tight bounds.}
+  Both fragmentation and the number of BDD nodes expanded relative to blind search are at most $2VWn$, where $V$ is the number of finite heuristic values, $W$ the cofactor width and $n$ the number of state bits.
+  A polynomial-size planning family attains $VWn/120$, so none of the three factors can be dropped, and the known exponential pathology has exponential width.
+  Integer potentials, PDBs and aligned linear M\&S have bounded width.
+\item \emph{A guarantee, not a predictor.}
+  No certificate is violated on \num{\SlackObservations} runs, and the profile exceeds the observed fragmentation by a median factor of \SlackProfileMedian\ (total ADD size: \SlackAddMedian).
+  Since it does not predict fragmentation under unseen variable orders, we use it as a design guarantee: safe value caps never increase it, which lets a PDB selector fit more informative heuristics into a width budget.
+\item \emph{Using heuristics without fragmentation.}
+  Used only for pruning, potentials recover their loss (\RemSolvedPotPlain\ to \RemSolvedPotPrune\ solved tasks; blind forward search: \RemSolvedBlindFw), but forward search then prunes almost nothing: no forward use of a heuristic beats blind forward search significantly, and blind bidirectional search solves more tasks than every forward configuration.
 \end{itemize}
 
 % ============================ background =================================
