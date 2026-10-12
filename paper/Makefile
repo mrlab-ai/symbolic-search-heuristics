@@ -78,6 +78,11 @@ GEN_RENDERER := ../experiments/render_pdb_profile_harm_generality_paper.py
 GEN_DOMAINS_RESULT := generated/pdb-profile-harm-generality-domains-v1.tex
 GEN_DOMAINS_ARTIFACT := $(GEN_ARTIFACT_DIR)/domains-v1.json
 GEN_DOMAINS_SCRIPT := ../experiments/analyze_harm_generality_domains.py
+GEN_PRUNING_RESULT := generated/pdb-profile-harm-pruning-v1.tex
+GEN_PRUNING_FIGURE := generated/pdb-profile-harm-pruning-v1.pdf
+GEN_LAYERS_FIGURE := generated/pdb-profile-harm-layers-v1.pdf
+GEN_PRUNING_ARTIFACT := $(GEN_ARTIFACT_DIR)/pruning-v1.json
+GEN_PRUNING_SCRIPT := ../experiments/analyze_harm_pruning_posthoc.py
 REM_GENERATED_RESULT := generated/fragmentation-remedy-v1.tex
 REM_ARTIFACT_DIR := ../experiments/artifacts/fragmentation-remedy
 REM_ARTIFACT := $(REM_ARTIFACT_DIR)/analysis-v1.json
@@ -90,7 +95,8 @@ PROFILE_STUDY_RESULTS := $(HOLDOUT_GENERATED_RESULT) \
 	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT) \
 	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT) $(HARM_FIGURE) \
 	$(GEN_GENERATED_RESULT) $(GEN_FIGURE) $(REM_GENERATED_RESULT) \
-	$(REM_POSTHOC_RESULT)
+	$(REM_POSTHOC_RESULT) $(GEN_PRUNING_RESULT) $(GEN_PRUNING_FIGURE) \
+	$(GEN_LAYERS_FIGURE)
 SUPPLEMENT_ONLY_RESULTS := $(GEN_DOMAINS_RESULT)
 
 
@@ -171,6 +177,22 @@ $(GEN_GENERATED_RESULT): $(GEN_RENDERER) $(GEN_ARTIFACT) $(GEN_SIDECAR)
 $(GEN_FIGURE): $(GEN_RENDERER) $(GEN_ARTIFACT) $(GEN_SIDECAR)
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_RENDERER) figure \
 		--analysis $(GEN_ARTIFACT) --output $@ --write
+
+# Post-hoc pruning view of the frozen harm-generality analysis.
+$(GEN_PRUNING_RESULT): $(GEN_PRUNING_SCRIPT) $(GEN_PRUNING_ARTIFACT) \
+		$(GEN_PRUNING_ARTIFACT).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_PRUNING_SCRIPT) render \
+		--artifact $(GEN_PRUNING_ARTIFACT) --output $@ --write
+
+$(GEN_PRUNING_FIGURE): $(GEN_PRUNING_SCRIPT) $(GEN_PRUNING_ARTIFACT) \
+		$(GEN_PRUNING_ARTIFACT).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_PRUNING_SCRIPT) figure \
+		--artifact $(GEN_PRUNING_ARTIFACT) --output $@ --write
+
+$(GEN_LAYERS_FIGURE): $(GEN_PRUNING_SCRIPT) $(GEN_PRUNING_ARTIFACT) \
+		$(GEN_PRUNING_ARTIFACT).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_PRUNING_SCRIPT) layers \
+		--artifact $(GEN_PRUNING_ARTIFACT) --output $@ --write
 
 # Post-hoc per-domain view of the frozen harm-generality analysis.
 $(GEN_DOMAINS_RESULT): $(GEN_DOMAINS_SCRIPT) $(GEN_DOMAINS_ARTIFACT) \
@@ -299,6 +321,13 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 	cd $(GEN_ARTIFACT_DIR) && sha256sum -c domains-v1.json.sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_DOMAINS_SCRIPT) render \
 		--artifact $(GEN_DOMAINS_ARTIFACT) --output $(GEN_DOMAINS_RESULT) --check
+	cd $(GEN_ARTIFACT_DIR) && sha256sum -c pruning-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_PRUNING_SCRIPT) render \
+		--artifact $(GEN_PRUNING_ARTIFACT) --output $(GEN_PRUNING_RESULT) --check
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_PRUNING_SCRIPT) figure \
+		--artifact $(GEN_PRUNING_ARTIFACT) --output $(GEN_PRUNING_FIGURE) --check
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(GEN_PRUNING_SCRIPT) layers \
+		--artifact $(GEN_PRUNING_ARTIFACT) --output $(GEN_LAYERS_FIGURE) --check
 	cd $(REM_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
 		../experiments/analyze_fragmentation_remedy.py self-test

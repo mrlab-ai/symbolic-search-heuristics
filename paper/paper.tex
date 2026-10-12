@@ -85,6 +85,7 @@
 \input{generated/pdb-profile-harm-generality-v1.tex}
 \input{generated/fragmentation-remedy-v1.tex}
 \input{generated/fragmentation-remedy-posthoc-v1.tex}
+\input{generated/pdb-profile-harm-pruning-v1.tex}
 
 \title{Pruning versus Fragmentation in Symbolic Heuristic Search}
 \author{Anonymous Submission}
@@ -99,6 +100,7 @@ Heuristics guide explicit \astar\ search well but rarely pay off in symbolic sea
 We explain why for symbolic \astar, which partitions every layer of the search by heuristic value.
 Its number of expanded BDD nodes factors exactly into two effects of the heuristic: pruning, which shrinks the BDDs of the expanded layers, and fragmentation, the cost of representing each layer by several BDDs.
 On \num{\HoldoutTasks} planning tasks, pattern database, merge-and-shrink and potential heuristics that expand more than twice as many BDD nodes as blind search barely prune but fragment.
+Since BDDs shrink much less than the state sets they represent, a heuristic pays off only if it removes most states.
 Using a heuristic only to prune dead ends removes the fragmentation, but then almost no pruning remains, and blind bidirectional search solves more tasks than every forward configuration.
 In theory, a heuristic with $V$ finite values and cofactor width $W$ on $n$ state bits fragments the search by at most $2VWn$, and a family of planning tasks attains $VWn/120$.
 This bound explains the known exponential cost of the perfect heuristic, but it does not predict fragmentation in practice.
@@ -122,6 +124,7 @@ The number of expanded BDD nodes therefore factors exactly into the BDD size of 
 
 With this factorization, we analyze pattern database (PDB), merge-and-shrink (M\&S) and potential heuristics in the symbolic planner SymK \citep{speck-et-al-jair2025} on \num{\HoldoutTasks} IPC tasks, with all analyses fixed before the experiments.
 Whenever one of these heuristics expands more than twice as many BDD nodes as blind search, it barely prunes and fragments the layers instead.
+Even a heuristic that removes half of the states can leave the BDDs almost as large as before, since BDDs shrink much less than the state sets they represent.
 Heuristics that help, in contrast, prune strongly.
 Removing the fragmentation does not make heuristics pay off, however.
 Search that uses potential heuristics only to prune dead ends no longer fragments the layers and recovers the loss of the potentials, but it then expands as many BDD nodes as blind search.
@@ -204,6 +207,8 @@ The fragmentation factor can be smaller than one, since the BDD of a union can b
 
 To compare a heuristic with blind search on the same task, we use the \emph{effort ratio} $r=\effort(\task,h)/\effort(\task,\hblind)$ and the \emph{unsplit ratio} $u=\unioneffort(\task,h)/\effort(\task,\hblind)$.
 Since blind search does not fragment, $r=u\cdot\fragfactor$: a heuristic reduces effort only if its pruning ($u<1$) outweighs its fragmentation.
+The two effects also act on different layers.
+By Lemma~\ref{lem-identity} below, \bddastar\ expands exactly the states of layer $g$ with $h\leq\copt-g$, so a heuristic with largest finite value $H$ prunes nothing in the layers $g\leq\copt-H$, whereas it can fragment every layer.
 
 \begin{figure}[tb]
   \centering
@@ -627,6 +632,7 @@ Our prespecified criterion for attributing harm to fragmentation asks that the s
 All three families meet it; a share above one means that harmful heuristics still prune slightly overall.
 The same pattern separates slow from fast runs in search time (supplement).
 In terms of coverage, no heuristic solves more tasks than blind search (\GenBlindSolved), and choosing the better of blind search and one heuristic for every task would solve at most \GenMaxHeadroom\ additional tasks.
+Pairs cover only tasks that both searches solve, so we cannot decompose the \PruneBlindOnlyMin--\PruneBlindOnlyMax\ tasks per heuristic configuration that only blind search solves, on which harm is presumably largest.
 
 The PDB study shows the same pattern in a post-hoc analysis.
 Of its \num{\HarmPairs} pairs, \num{\HarmHurt} are harmful and \num{\HarmHelped} helpful.
@@ -680,6 +686,42 @@ The more informative PDB of a pair expands fewer states and has smaller unsplit 
   \label{fig:two-effects}
 \end{figure}
 
+A post-hoc analysis shows why harmful heuristics prune so little.
+Figure~\ref{fig:layers} shows the layers of a typical harmful M\&S heuristic on a Miconic task with $\copt=\ExCost$ and $h(\sinit)=\ExInitH$.
+In the first \ExUnprunedLayers\ layers, the expanded part has exactly as many BDD nodes as the whole layer, but the heuristic splits it into up to \ExMaxBuckets\ buckets with up to \ExMaxUnprunedFrag\ times as many nodes.
+In layers \ExEnlargedFirst\ to \ExEnlargedLast, the heuristic prunes states, but the expanded part needs up to \ExMaxEnlarged\ times as many nodes as the whole layer.
+Overall, the heuristic expands only \ExS\ times as many states as blind search, but its unsplit ratio is \ExU, and with fragmentation factor \ExFrag\ its effort ratio is \ExR.
+
+\begin{figure}[tb]
+  \centering
+  \includegraphics[width=\columnwidth]{generated/pdb-profile-harm-layers-v1.pdf}
+  \caption{BDD nodes per layer of blind search, of the expanded part of the
+    layer and of its buckets for M\&S with \num{10000} abstract states and
+    an unaligned merge order on the Miconic task s10-0 (post hoc, chosen as
+    an illustration).}
+  \label{fig:layers}
+\end{figure}
+
+The same picture emerges across the family study when we compare $u$ with the \emph{state ratio} $s$, the number of states that the heuristic search expands relative to blind search (Figure~\ref{fig:pruning}).
+Harmful PDBs and potentials remove few states at all (median $s=\PrunePdbHurtStates$ and \PrunePotHurtStates).
+Harmful M\&S heuristics remove more states (median $s=\PruneMsHurtStates$), but their BDDs barely shrink (median $u=\PruneMsHurtUnion$).
+Harmful heuristics are also less informative, with median $h(\sinit)/\copt$ of \PruneHurtInitH\ versus \PruneHelpInitH\ for helpful ones.
+For the median harmful pair, \PruneHurtUnshrunk\% of the blind effort lies in layers whose expanded part has as many BDD nodes as the whole layer, versus \PruneHelpUnshrunk\% for helpful pairs.
+In general, BDDs shrink much less than the state sets they represent: $u$ exceeds $s$ on \PruneUnionAboveStates\ of the \PrunePairs\ pairs and on most pairs of \PruneDomainsUnionAboveStates\ of the \PruneDomains\ domains.
+Pruning can even enlarge them, since the expanded part of a layer is a subset selected by heuristic value, whose BDD Theorem~\ref{thm-bucket} bounds only by roughly $Wn$ times the BDD of the layer, and \PruneHurtUnionAboveOne\ harmful pairs have $u>1$.
+Fragmentation, in contrast, hardly depends on the state ratio (Spearman correlation \PruneSpearmanFrag, versus \PruneSpearmanUnion\ for $u$).
+A heuristic therefore pays off only if it removes most states: \PruneLowHelpful\ of the \PruneLowPairs\ pairs with $s<0.1$ are helpful, but only \PruneHighHelpful\ of the \PruneHighPairs\ pairs with $s\geq0.8$.
+
+\begin{figure}[tb]
+  \centering
+  \includegraphics[width=\columnwidth]{generated/pdb-profile-harm-pruning-v1.pdf}
+  \caption{State ratio $s$ (expanded states relative to blind search) versus
+    unsplit ratio $u$ (left) and fragmentation factor (right) for each pair
+    of the family study (post hoc). Dark points are harmful ($r>1$), and the
+    line marks $u=s$.}
+  \label{fig:pruning}
+\end{figure}
+
 \paragraph{Q2: Heuristics without Fragmentation.}
 To test whether heuristics pay off once they no longer fragment the layers, a third study runs two variants of each family heuristic on the holdout set (\num{\RemCells} runs).
 \emph{Prune-only} search expands the blind layers whole and uses the heuristic only to remove dead ends, so its fragmentation factor is one.
@@ -724,6 +766,7 @@ The profile bound orders the PDBs of a task by fragmentation with concordance \H
 Two further experiments keep one PDB and change only the variable order, so that only the representation changes.
 The profile bound predicts the effect of switching from the Gamer order to the Fast Downward order (concordance \OrderProfileMacro, \num{\OrderCells} runs).
 Among the Gamer orders of four unseen random seeds, however, its concordance falls to \SeedCartesianMacro\ (\num{\SeedValidationCells} runs), below the \SeedNullMacro\ of $1/\unioneffort$.
+Likewise, aligning the M\&S merge order with the BDD order, which bounds width by Proposition~\ref{prop-ms}, hardly changes fragmentation in a post-hoc comparison: on the \PruneAlignedTasks\ tasks that both M\&S configurations with \num{10000} states solve, alignment lowers fragmentation on \PruneAlignedLower\ and raises it on \PruneAlignedHigher, by a geometric mean factor of \PruneAlignedFragRatio.
 Nor does the bound yield better heuristics: since caps never increase width (Proposition~\ref{prop-transform}), a cap-aware PDB selector fits more informative PDBs into a width budget, but its coverage gain at a budget of 8 does not replicate at 16, and no PDB selector solves more tasks than blind search (supplement).
 
 % ============================ related work ===============================
@@ -745,6 +788,7 @@ Relaxed BDD heuristics bound action-choice diagrams \citep{castro-et-al-icaps201
 
 We separated the two effects of a heuristic in symbolic search by factoring the number of expanded BDD nodes into unsplit effort and fragmentation.
 On our benchmarks, PDB, M\&S and potential heuristics that expanded more than twice as many BDD nodes as blind search barely pruned but fragmented the layers.
+Even when they removed many states, the BDDs of the remaining states barely shrank.
 Removing the fragmentation did not make the heuristics pay off, since forward search that only removed dead ends pruned almost nothing, and blind bidirectional search solved more tasks than every forward configuration.
 Cofactor width bounds fragmentation, and the effort relative to blind search, by $2\values Wn$, tightly up to a constant factor, and explains the known exponential cost of the perfect heuristic, but it does not predict fragmentation under unseen variable orders.
 Heuristics therefore pay off in symbolic search only if they prune enough to repay the fragmentation they cause, which the heuristics we tested rarely did.

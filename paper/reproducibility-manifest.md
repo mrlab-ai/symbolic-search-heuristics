@@ -374,6 +374,23 @@ Lab data are in the `symk-representation-safe` workspace under
   `render` subcommand produces
   `paper/generated/fragmentation-remedy-posthoc-v1.tex` (SHA-256
   `cb6b61c0a5d9549fa6f720ed789941ad2f7e73fadaf64729e8d469115d3d01ef`).
+- Post-hoc pruning view of the family study (descriptive; changes no frozen
+  decision): `experiments/analyze_harm_pruning_posthoc.py analyze` reuses the
+  frozen pairing of the family-study analysis on
+  the same properties (SHA-256
+  `451d10ee4c26e5115ca2d88fac50dc97ad8089c7c1782ffe0c014ae940eff105`), adds
+  the ratio of expanded states, h(s_0)/C*, the per-layer comparison with blind
+  search and the illustrative per-layer sizes of M&S on Miconic s10-0, and
+  writes `experiments/artifacts/pdb-profile-harm-generality/pruning-v1.json`
+  (SHA-256
+  `5c3e460d6750e9a0973be48261442617b8efe7e6d6444cbd6ad1d3dc6a1eaa75`); its
+  `render`, `figure` and `layers` subcommands produce
+  `paper/generated/pdb-profile-harm-pruning-v1.tex` (SHA-256
+  `6bf8fe09cf88935b1c37723a8b4dbcda7647b94b56d5b61452f0c2d05c81e8ee`),
+  `paper/generated/pdb-profile-harm-pruning-v1.pdf` (SHA-256
+  `4e11361977391d69cbee4b42f6ec9a4b42abe5dcf112a35311f24084fb34963c`) and
+  `paper/generated/pdb-profile-harm-layers-v1.pdf` (SHA-256
+  `f47ec7a6e09633fdf226256f9853cd984ba79b04cc89b3fcd23adcfa9293d40a`).
 
 ## Exclusions and claim boundary
 
