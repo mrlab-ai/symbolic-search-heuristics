@@ -17,7 +17,11 @@ helpful pairs, of h(s_0) / C* and of the unshrunk share, the fraction of the
 blind effort that lies in layers whose expanded part has as many BDD nodes as
 the whole layer; counts the domains in which u exceeds s on most pairs; and it extracts the per-layer BDD sizes of one typical
 harmful M&S pair, the one closest to the medians of the harmful M&S pairs in
-log s, log u and log fragmentation.
+log s, log u and log fragmentation.  Finally, it resamples the domains with
+replacement (a domain-cluster bootstrap with a fixed seed) and reports 95%
+percentile intervals of the share S of fragmentation in the harmful log
+effort and of the median unsplit ratio of harmful pairs, per family and
+pooled.
 
   analyze  write artifacts/pdb-profile-harm-generality/pruning-v1.json
   render   write paper/generated/pdb-profile-harm-pruning-v1.tex
@@ -32,6 +36,7 @@ import hashlib
 import io
 import json
 import math
+import random
 import statistics
 from fractions import Fraction
 from pathlib import Path
@@ -49,7 +54,7 @@ EXPECTED_PROPERTIES_SHA256 = (
 )
 DEFAULT_ARTIFACT = Frozen.ARTIFACT_DIR / "pruning-v1.json"
 EXPECTED_ARTIFACT_SHA256 = (
-    "bef8c079b5087885f7b7bd87d45949c06a3b895b70bcd63be72ee305c2b59d39"
+    "9e1740d29701c28c7f90bb554f6ee86ba68f653db51153e7b77fb8b1b5c16c29"
 )
 GENERATED = REPOSITORY_ROOT / "paper" / "generated"
 DEFAULT_OUTPUT = GENERATED / "pdb-profile-harm-pruning-v1.tex"
@@ -60,6 +65,8 @@ LOW_STATE_RATIO = Fraction(1, 10)
 HIGH_STATE_RATIO = Fraction(4, 5)
 ALIGNED = "ms_aligned_10k"
 UNALIGNED = "ms_unaligned_10k"
+BOOTSTRAP_SAMPLES = 2000
+BOOTSTRAP_SEED = 20261013
 MAX_ARTIFACT_BYTES = 4 * 1024 * 1024
 MAX_TEX_BYTES = 16 * 1024
 MAX_PDF_BYTES = 4 * 1024 * 1024
@@ -179,6 +186,42 @@ def _example(runs, pairs):
     }
 
 
+def _bootstrap(pairs):
+    """95% domain-cluster bootstrap intervals of S and of the median u."""
+    by_domain = {}
+    for p in pairs:
+        by_domain.setdefault(p["domain"], []).append(
+            (p["family"], p["r"] > 1, math.log(p["r"]), math.log(p["f"]),
+             float(p["u"])))
+    domains = sorted(by_domain)
+    rng = random.Random(BOOTSTRAP_SEED)
+    groups = ("ms", "pdb", "pot", "pooled")
+    samples = {g: {"share": [], "u": []} for g in groups}
+    for _ in range(BOOTSTRAP_SAMPLES):
+        drawn = [rng.choice(domains) for _ in domains]
+        for g in groups:
+            harmful = [x for d in drawn for x in by_domain[d]
+                       if x[1] and (g == "pooled" or x[0] == g)]
+            log_r = sum(x[2] for x in harmful)
+            if not harmful or log_r <= 0:
+                continue
+            samples[g]["share"].append(sum(x[3] for x in harmful) / log_r)
+            samples[g]["u"].append(statistics.median(x[4] for x in harmful))
+
+    def interval(values):
+        values = sorted(values)
+        return [round(values[int(0.025 * (len(values) - 1))], 4),
+                round(values[int(0.975 * (len(values) - 1))], 4)]
+
+    return {
+        "samples": BOOTSTRAP_SAMPLES,
+        "seed": BOOTSTRAP_SEED,
+        "groups": {g: {"share": interval(samples[g]["share"]),
+                       "harmful_u_median": interval(samples[g]["u"])}
+                   for g in groups},
+    }
+
+
 def analyze(properties):
     cohort, runs = Frozen._index_runs(properties)
     pairs = Frozen.pairs_from_runs(cohort, runs)
@@ -243,6 +286,7 @@ def analyze(properties):
         "domains": len(domains),
         "domains_u_above_s": majority,
         "example": _example(runs, pairs),
+        "bootstrap": _bootstrap(pairs),
         "points": [
             [p["label"], round(float(p["s"]), 6), round(float(p["u"]), 6),
              round(float(p["f"]), 6)]
@@ -324,6 +368,17 @@ def render(data, digest):
             100 * data["families"]["pooled"]["helpful_extra"]["unshrunk_median"])),
         ("PruneDomainsUnionAboveStates", str(data["domains_u_above_s"])),
     ]
+    for family, prefix in (("ms", "Ms"), ("pdb", "Pdb"), ("pot", "Pot"),
+                           ("pooled", "All")):
+        record = data["bootstrap"]["groups"][family]
+        macros += [
+            ("Boot{}ShareLow".format(prefix), "{:.2f}".format(record["share"][0])),
+            ("Boot{}ShareHigh".format(prefix), "{:.2f}".format(record["share"][1])),
+            ("Boot{}UnionLow".format(prefix),
+             "{:.2f}".format(record["harmful_u_median"][0])),
+            ("Boot{}UnionHigh".format(prefix),
+             "{:.2f}".format(record["harmful_u_median"][1])),
+        ]
     example = data["example"]
     layers = example["layers"]
     unpruned = [l for l in layers if l[2] == l[1]]
