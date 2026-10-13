@@ -91,12 +91,16 @@ REM_RENDERER := ../experiments/render_fragmentation_remedy_paper.py
 REM_POSTHOC_RESULT := generated/fragmentation-remedy-posthoc-v1.tex
 REM_POSTHOC_ARTIFACT := $(REM_ARTIFACT_DIR)/posthoc-v1.json
 REM_POSTHOC_SCRIPT := ../experiments/analyze_fragmentation_remedy_posthoc.py
+POTALL_GENERATED_RESULT := generated/pot-all-decomposition-v1.tex
+POTALL_ARTIFACT_DIR := ../experiments/artifacts/pot-all-decomposition
+POTALL_ARTIFACT := $(POTALL_ARTIFACT_DIR)/analysis-v1.json
+POTALL_RENDERER := ../experiments/render_pot_all_decomposition_paper.py
 PROFILE_STUDY_RESULTS := $(HOLDOUT_GENERATED_RESULT) \
 	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT) \
 	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT) $(HARM_FIGURE) \
 	$(GEN_GENERATED_RESULT) $(GEN_FIGURE) $(REM_GENERATED_RESULT) \
 	$(REM_POSTHOC_RESULT) $(GEN_PRUNING_RESULT) $(GEN_PRUNING_FIGURE) \
-	$(GEN_LAYERS_FIGURE)
+	$(GEN_LAYERS_FIGURE) $(POTALL_GENERATED_RESULT)
 SUPPLEMENT_ONLY_RESULTS := $(GEN_DOMAINS_RESULT)
 
 
@@ -210,6 +214,12 @@ $(REM_POSTHOC_RESULT): $(REM_POSTHOC_SCRIPT) $(REM_POSTHOC_ARTIFACT) \
 		$(REM_POSTHOC_ARTIFACT).sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(REM_POSTHOC_SCRIPT) render \
 		--artifact $(REM_POSTHOC_ARTIFACT) --output $@ --write
+
+# Prospective pot-all decomposition study.
+$(POTALL_GENERATED_RESULT): $(POTALL_RENDERER) $(POTALL_ARTIFACT) \
+		$(POTALL_ARTIFACT).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(POTALL_RENDERER) \
+		--analysis $(POTALL_ARTIFACT) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -336,6 +346,11 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 	cd $(REM_ARTIFACT_DIR) && sha256sum -c posthoc-v1.json.sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(REM_POSTHOC_SCRIPT) render \
 		--artifact $(REM_POSTHOC_ARTIFACT) --output $(REM_POSTHOC_RESULT) --check
+	cd $(POTALL_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		../experiments/analyze_pot_all_decomposition.py self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(POTALL_RENDERER) \
+		--analysis $(POTALL_ARTIFACT) --output $(POTALL_GENERATED_RESULT) --check
 
 
 

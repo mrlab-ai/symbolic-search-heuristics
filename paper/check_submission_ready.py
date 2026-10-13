@@ -65,6 +65,7 @@ GEN_DOMAINS_INPUT = (
 REM_GENERATED_INPUT = r"\input{generated/fragmentation-remedy-v1.tex}"
 REM_POSTHOC_INPUT = r"\input{generated/fragmentation-remedy-posthoc-v1.tex}"
 GEN_PRUNING_INPUT = r"\input{generated/pdb-profile-harm-pruning-v1.tex}"
+POTALL_INPUT = r"\input{generated/pot-all-decomposition-v1.tex}"
 PROFILE_STUDY_INPUTS = (
     HOLDOUT_GENERATED_INPUT,
     ORDER_GENERATED_INPUT,
@@ -376,6 +377,7 @@ REQUIRED_MAIN = (
     REM_GENERATED_INPUT,
     REM_POSTHOC_INPUT,
     GEN_PRUNING_INPUT,
+    POTALL_INPUT,
 )
 
 REQUIRED_SUPPLEMENT = (
@@ -388,6 +390,7 @@ REQUIRED_SUPPLEMENT = (
     REM_GENERATED_INPUT,
     REM_POSTHOC_INPUT,
     GEN_PRUNING_INPUT,
+    POTALL_INPUT,
     CAP_STUDY_INPUT,
 )
 
@@ -460,6 +463,10 @@ REQUIRED_MANIFEST = (
     "paper/generated/pdb-profile-harm-pruning-v1.tex",
     "paper/generated/pdb-profile-harm-pruning-v1.pdf",
     "paper/generated/pdb-profile-harm-layers-v1.pdf",
+    "experiments/pot_all_decomposition_protocol.md",
+    "experiments/analyze_pot_all_decomposition.py",
+    "experiments/render_pot_all_decomposition_paper.py",
+    "paper/generated/pot-all-decomposition-v1.tex",
     "/nobackup/proj/disk/dfsplan/personal/jendrik/symk-pdb-cap-grid-full-protocol/experiments/data/exp_pdb_cap_grid_full-eval.tar.gz",
     "logical basename `exp_pdb_cap_grid_full-eval.tar.gz`",
     "`WBH_ACCOUNT=naiss2025-5-561-cpu`",
@@ -1196,7 +1203,7 @@ def _validate_source(name: str, text: str, required) -> None:
     for profile_input in (
         *PROFILE_STUDY_INPUTS, SLACK_GENERATED_INPUT, HARM_GENERATED_INPUT,
         GEN_GENERATED_INPUT, GEN_DOMAINS_INPUT, REM_GENERATED_INPUT,
-        REM_POSTHOC_INPUT, GEN_PRUNING_INPUT,
+        REM_POSTHOC_INPUT, GEN_PRUNING_INPUT, POTALL_INPUT,
     ):
         identity_text = identity_text.replace(profile_input, "")
     for description, pattern in FORBIDDEN_IDENTITY:

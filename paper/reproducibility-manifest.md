@@ -370,27 +370,52 @@ Lab data are in the `symk-representation-safe` workspace under
   frozen decision): `experiments/analyze_fragmentation_remedy_posthoc.py
   analyze` reuses the frozen outcomes on the same properties and writes
   `experiments/artifacts/fragmentation-remedy/posthoc-v1.json` (SHA-256
-  `ece88e410b3d498724fce5f0168c9181a5b7b0cc9ce822851800bd5d0f53cf2a`); its
+  `dc8d2ce8ba71deaeb1ede2e6c66efd802a76578ddc1573a6552b45eedace086e`); its
   `render` subcommand produces
   `paper/generated/fragmentation-remedy-posthoc-v1.tex` (SHA-256
-  `cb6b61c0a5d9549fa6f720ed789941ad2f7e73fadaf64729e8d469115d3d01ef`).
+  `c2d96acb6767be78718a6590f4f51e2ee84829c28d7d5c6655ca4bf79924ae3e`).
 - Post-hoc pruning view of the family study (descriptive; changes no frozen
   decision): `experiments/analyze_harm_pruning_posthoc.py analyze` reuses the
   frozen pairing of the family-study analysis on
   the same properties (SHA-256
   `451d10ee4c26e5115ca2d88fac50dc97ad8089c7c1782ffe0c014ae940eff105`), adds
   the ratio of expanded states, h(s_0)/C*, the per-layer comparison with blind
-  search and the illustrative per-layer sizes of M&S on Miconic s10-0, and
+  search and the per-layer sizes of the harmful M&S pair closest to the
+  medians of the harmful M&S pairs (M&S with 50,000 states on Trucks p05), and
   writes `experiments/artifacts/pdb-profile-harm-generality/pruning-v1.json`
   (SHA-256
-  `5c3e460d6750e9a0973be48261442617b8efe7e6d6444cbd6ad1d3dc6a1eaa75`); its
+  `bef8c079b5087885f7b7bd87d45949c06a3b895b70bcd63be72ee305c2b59d39`); its
   `render`, `figure` and `layers` subcommands produce
   `paper/generated/pdb-profile-harm-pruning-v1.tex` (SHA-256
-  `6bf8fe09cf88935b1c37723a8b4dbcda7647b94b56d5b61452f0c2d05c81e8ee`),
+  `7ec3b7c0faa476bb0cab87c8add485a40a9949a444c64b99a9e3547b3b423ee3`),
   `paper/generated/pdb-profile-harm-pruning-v1.pdf` (SHA-256
   `4e11361977391d69cbee4b42f6ec9a4b42abe5dcf112a35311f24084fb34963c`) and
   `paper/generated/pdb-profile-harm-layers-v1.pdf` (SHA-256
-  `f47ec7a6e09633fdf226256f9853cd984ba79b04cc89b3fcd23adcfa9293d40a`).
+  `ef605e46b0a02d16eb6bc00cc2d62082b72f924768956a3621aea3db5be49ce2`).
+- Prospective pot-all decomposition study (frozen protocol
+  `experiments/pot_all_decomposition_protocol.md`, SHA-256
+  `a81e6adb8f4ac879bf9ada1a8c10b4129dd71ed4957f07ce326d2e9f41768bcc`,
+  pinned with the option matrix, cohort manifest, planner revision
+  `580a6ee3b39489cb0a3f1d4e187b52601b751eab` and binaries in
+  `experiments/pot_all_decomposition_protocol.py`).  1,052 holdout tasks x 2
+  configurations (profiled blind forward search and profiled potentials
+  optimized for all states) = 2,104 cells, launched by
+  `experiments/exp_pot_all_decomposition.py` (Slurm job 3790467, 702 array
+  tasks, all completed, no recovery) and sealed by
+  `experiments/audit_pot_all_decomposition.py --seal`
+  (`experiments/artifacts/pot-all-decomposition/execution-receipt-v1.json`,
+  SHA-256 `9bef552a0ef9dcfea6d8859e7d335f6a3b56df8cfa213f84e8b4caa32ba36f7c`).
+  The frozen `experiments/analyze_pot_all_decomposition.py analyze` reads the
+  fetched properties (SHA-256
+  `dab36af2fa135e47f7d67653cabf589ff065f81fbd04d1340d20a9464ddb9cd0`, backed
+  up in `symk-representation-safe/experiments/data/exp_pot_all_decomposition-eval/properties`)
+  and writes `experiments/artifacts/pot-all-decomposition/analysis-v1.json`
+  (SHA-256 `c85c5d9a747d3ec85cd1d33bdac7ee5572fe98f1bcc0fc35b59aefbc45229cbb`).
+  `experiments/render_pot_all_decomposition_paper.py` renders
+  `paper/generated/pot-all-decomposition-v1.tex` (SHA-256
+  `e1a93748a89544cbdd1ba73818d4a639980614f94ef0faae0395135ff5fba178`) and
+  refuses to render unless the frozen decision is the one the paper states:
+  the diagnosis of the family study holds for these potentials.
 
 ## Exclusions and claim boundary
 
