@@ -97,13 +97,13 @@
 % ============================== abstract =================================
 \begin{abstract}
 Heuristics guide explicit \astar\ search well but rarely pay off in symbolic search, which represents sets of states as binary decision diagrams (BDDs).
-We explain why for symbolic \astar, which partitions every layer of the search by heuristic value.
-Its number of expanded BDD nodes factors exactly into two effects of the heuristic: pruning, which shrinks the BDDs of the expanded layers, and fragmentation, the cost of representing each layer by several BDDs.
-On \num{\HoldoutTasks} planning tasks, pattern database, merge-and-shrink and potential heuristics that expand more than twice as many BDD nodes as blind search barely prune but fragment.
-Since BDDs shrink much less than the state sets they represent, a heuristic pays off only if it removes most states.
-Using a heuristic only to prune dead ends removes the fragmentation, but then almost no pruning remains, and blind bidirectional search solves more tasks than every forward configuration.
-In theory, a heuristic with $V$ finite values and cofactor width $W$ on $n$ state bits fragments the search by at most $2VWn$, and a family of planning tasks attains $VWn/120$.
-This bound explains the known exponential cost of the perfect heuristic, but it does not predict fragmentation in practice.
+We explain why for symbolic \astar, which splits every layer of the search into buckets of states with the same heuristic value.
+We show that the number of BDD nodes it expands factors exactly into two effects of the heuristic: pruning, which removes states and thus shrinks the BDDs of the layers, and fragmentation, the cost of representing each layer by one BDD per bucket.
+On \num{\HoldoutTasks} planning tasks, the pattern database, merge-and-shrink and potential heuristics that expand more than twice as many BDD nodes as blind search barely shrink the layers and fragment them instead.
+A post-hoc analysis shows why: BDDs shrink much less than the state sets they represent, so a heuristic pays off only if it removes most states.
+Using a heuristic only to prune dead ends avoids fragmentation but leaves almost nothing to prune, and blind bidirectional search solves more tasks than every forward configuration.
+We also prove that fragmentation is at most $2VWn$ for a consistent heuristic with $V$ finite values and cofactor width $W$ on $n$ state bits, and a family of planning tasks attains $VWn/120$.
+This bound explains why the perfect heuristic can be exponentially costly, but it does not predict fragmentation in practice.
 \end{abstract}
 
 % ============================ introduction ===============================
