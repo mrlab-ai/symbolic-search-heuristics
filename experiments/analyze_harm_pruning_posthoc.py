@@ -15,9 +15,9 @@ number of tasks that blind search solves but a heuristic configuration does
 not, which no pair covers.  It also reports the medians, over harmful and
 helpful pairs, of h(s_0) / C* and of the unshrunk share, the fraction of the
 blind effort that lies in layers whose expanded part has as many BDD nodes as
-the whole layer; counts the domains in which u exceeds s on most pairs; and it extracts the per-layer BDD sizes of one illustrative
-pair (M&S with an unaligned merge order on Miconic s10-0, chosen by hand as
-a typical harmful M&S run).
+the whole layer; counts the domains in which u exceeds s on most pairs; and it extracts the per-layer BDD sizes of one typical
+harmful M&S pair, the one closest to the medians of the harmful M&S pairs in
+log s, log u and log fragmentation.
 
   analyze  write artifacts/pdb-profile-harm-generality/pruning-v1.json
   render   write paper/generated/pdb-profile-harm-pruning-v1.tex
@@ -49,13 +49,13 @@ EXPECTED_PROPERTIES_SHA256 = (
 )
 DEFAULT_ARTIFACT = Frozen.ARTIFACT_DIR / "pruning-v1.json"
 EXPECTED_ARTIFACT_SHA256 = (
-    "5c3e460d6750e9a0973be48261442617b8efe7e6d6444cbd6ad1d3dc6a1eaa75"
+    "bef8c079b5087885f7b7bd87d45949c06a3b895b70bcd63be72ee305c2b59d39"
 )
 GENERATED = REPOSITORY_ROOT / "paper" / "generated"
 DEFAULT_OUTPUT = GENERATED / "pdb-profile-harm-pruning-v1.tex"
 DEFAULT_FIGURE = GENERATED / "pdb-profile-harm-pruning-v1.pdf"
 DEFAULT_LAYERS = GENERATED / "pdb-profile-harm-layers-v1.pdf"
-EXAMPLE = ("ms_unaligned_10k", "miconic", "s10-0.pddl")
+EXAMPLE_FAMILY = "ms"
 LOW_STATE_RATIO = Fraction(1, 10)
 HIGH_STATE_RATIO = Fraction(4, 5)
 ALIGNED = "ms_aligned_10k"
@@ -136,15 +136,26 @@ def _unshrunk(blind, heur):
     return Fraction(same, total)
 
 
+def _typical(pairs):
+    # The harmful pair of the family closest to the family's harmful medians
+    # in log space; ties are broken by configuration and task.
+    harmful = [p for p in pairs
+               if p["family"] == EXAMPLE_FAMILY and p["r"] > 1]
+    if not harmful:
+        raise RenderError("no harmful pair for the example")
+    keys = ("s", "u", "f")
+    medians = {k: statistics.median(math.log(float(p[k])) for p in harmful)
+               for k in keys}
+    return min(harmful, key=lambda p: (
+        sum((math.log(float(p[k])) - medians[k]) ** 2 for k in keys),
+        p["label"], p["domain"], p["problem"]))
+
+
 def _example(runs, pairs):
-    label, domain, problem = EXAMPLE
-    pair = [p for p in pairs
-            if (p["label"], p["domain"], p["problem"]) == EXAMPLE]
-    if len(pair) != 1:
-        raise RenderError("the illustrative task is not an eligible pair")
-    pair = pair[0]
+    pair = _typical(pairs)
+    label, domain, problem = pair["label"], pair["domain"], pair["problem"]
     blind = runs[(P.BLIND_LABEL, domain, problem)]
-    heur = runs[EXAMPLE]
+    heur = runs[(label, domain, problem)]
     blind_layers = {e["g"]: e["effort"] for e in blind["wbh_expansion_profile"]}
     expanded = {e["g"]: e for e in heur["wbh_expansion_profile"]}
     unsplit = {l["g"]: l["bdd_nodes"] for l in heur["wbh_profile_layer_profiles"]

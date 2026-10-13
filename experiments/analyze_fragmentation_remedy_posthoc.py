@@ -13,7 +13,12 @@ cost-conflict rule) on the pinned properties and reports per family:
   solve: tasks whose effort is identical, solved prune-only runs that pruned
   at least one dead end, and, on identical-effort tasks whose blind image
   time is at least one second, the median ratio of image time (prune-only
-  over blind).
+  over blind);
+* state ratios, for the plain potentials and the potentials optimized for
+  all states, on tasks that the heuristic and blind forward search both
+  solve: harmful (effort above blind) and helpful (effort below blind) tasks
+  and the median ratio of expanded states (heuristic over blind) on each.
+  These runs do not record unsplit sets, so the effort is not decomposed.
 
   analyze  write artifacts/fragmentation-remedy/posthoc-v1.json
   render   write paper/generated/fragmentation-remedy-posthoc-v1.tex
@@ -24,6 +29,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import statistics
+from fractions import Fraction
 from pathlib import Path
 
 import analyze_fragmentation_remedy as Frozen
@@ -39,7 +46,7 @@ EXPECTED_PROPERTIES_SHA256 = (
 )
 DEFAULT_ARTIFACT = Frozen.ARTIFACT_DIR / "posthoc-v1.json"
 EXPECTED_ARTIFACT_SHA256 = (
-    "ece88e410b3d498724fce5f0168c9181a5b7b0cc9ce822851800bd5d0f53cf2a"
+    "dc8d2ce8ba71deaeb1ede2e6c66efd802a76578ddc1573a6552b45eedace086e"
 )
 DEFAULT_OUTPUT = (
     REPOSITORY_ROOT / "paper" / "generated" / "fragmentation-remedy-posthoc-v1.tex"
@@ -107,11 +114,31 @@ def analyze(properties):
             "image_time_ratio_median": Frozen._real(Frozen._median(time_ratios)),
         }
         families[family] = {"batch": batch_record, "prune": prune_record}
+    states = {}
+    for label in ("pot_plain", P.POT_ALL):
+        joint = [t for t in cohort if solved(label, t) and solved(P.BLIND_FW, t)]
+        harmful, helpful = [], []
+        for t in joint:
+            effort = Fraction(outcomes[(label, t)][2], outcomes[(P.BLIND_FW, t)][2])
+            ratio = (Fraction(run(label, t)["expanded_states"])
+                     / Fraction(run(P.BLIND_FW, t)["expanded_states"]))
+            if effort > 1:
+                harmful.append(ratio)
+            elif effort < 1:
+                helpful.append(ratio)
+        states[label] = {
+            "tasks": len(joint),
+            "harmful": len(harmful),
+            "helpful": len(helpful),
+            "harmful_state_ratio_median": round(float(statistics.median(harmful)), 4),
+            "helpful_state_ratio_median": round(float(statistics.median(helpful)), 4),
+        }
     return {
         "schema": "symbolic-search-heuristics/fragmentation-remedy-posthoc/v1",
         "descriptive": True,
         "min_image_seconds": MIN_IMAGE_SECONDS,
         "families": families,
+        "state_ratios": states,
     }
 
 
@@ -168,6 +195,17 @@ def render(data, digest):
     macros.append(("RemPhMaxPruneDeadEnds", str(max(
         data["families"][family]["prune"]["pruned_dead_ends"]
         for family in ("ms", "pdb", "pot")))))
+    for label, prefix in (("pot_plain", "Pot"), (P.POT_ALL, "PotAll")):
+        record = data["state_ratios"][label]
+        macros += [
+            ("RemPh{}StateTasks".format(prefix), str(record["tasks"])),
+            ("RemPh{}StateHurt".format(prefix), str(record["harmful"])),
+            ("RemPh{}StateHelp".format(prefix), str(record["helpful"])),
+            ("RemPh{}StateHurtMedian".format(prefix),
+             "{:.2f}".format(record["harmful_state_ratio_median"])),
+            ("RemPh{}StateHelpMedian".format(prefix),
+             "{:.2f}".format(record["helpful_state_ratio_median"])),
+        ]
     lines = [
         "% Generated post hoc from the fragmentation-remedy mechanism summary.",
         "% Descriptive only; changes no frozen estimand or decision.",
