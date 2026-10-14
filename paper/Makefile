@@ -99,12 +99,17 @@ UB_GENERATED_RESULT := generated/unsplit-bound-v1.tex
 UB_ARTIFACT_DIR := ../experiments/artifacts/unsplit-bound
 UB_ARTIFACT := $(UB_ARTIFACT_DIR)/analysis-v1.json
 UB_RENDERER := ../experiments/render_unsplit_bound_paper.py
+BS_GENERATED_RESULT := generated/bounded-search-v1.tex
+BS_ARTIFACT_DIR := ../experiments/artifacts/bounded-search
+BS_ARTIFACT := $(BS_ARTIFACT_DIR)/analysis-v1.json
+BS_RENDERER := ../experiments/render_bounded_search_paper.py
 PROFILE_STUDY_RESULTS := $(HOLDOUT_GENERATED_RESULT) \
 	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT) \
 	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT) $(HARM_FIGURE) \
 	$(GEN_GENERATED_RESULT) $(GEN_FIGURE) $(REM_GENERATED_RESULT) \
 	$(REM_POSTHOC_RESULT) $(GEN_PRUNING_RESULT) $(GEN_PRUNING_FIGURE) \
-	$(GEN_LAYERS_FIGURE) $(POTALL_GENERATED_RESULT) $(UB_GENERATED_RESULT)
+	$(GEN_LAYERS_FIGURE) $(POTALL_GENERATED_RESULT) $(UB_GENERATED_RESULT) \
+	$(BS_GENERATED_RESULT)
 SUPPLEMENT_ONLY_RESULTS := $(GEN_DOMAINS_RESULT)
 
 
@@ -229,6 +234,12 @@ $(POTALL_GENERATED_RESULT): $(POTALL_RENDERER) $(POTALL_ARTIFACT) \
 $(UB_GENERATED_RESULT): $(UB_RENDERER) $(UB_ARTIFACT) $(UB_ARTIFACT).sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(UB_RENDERER) \
 		--analysis $(UB_ARTIFACT) --output $@ --write
+
+# Prospective bounded-search study and the Q2 summary table.
+$(BS_GENERATED_RESULT): $(BS_RENDERER) $(BS_ARTIFACT) $(BS_ARTIFACT).sha256 \
+		$(REM_ARTIFACT) $(UB_ARTIFACT)
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(BS_RENDERER) \
+		--analysis $(BS_ARTIFACT) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -365,6 +376,11 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		../experiments/analyze_unsplit_bound.py self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(UB_RENDERER) \
 		--analysis $(UB_ARTIFACT) --output $(UB_GENERATED_RESULT) --check
+	cd $(BS_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		../experiments/analyze_bounded_search.py self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(BS_RENDERER) \
+		--analysis $(BS_ARTIFACT) --output $(BS_GENERATED_RESULT) --check
 
 
 

@@ -88,6 +88,7 @@
 \input{generated/pdb-profile-harm-pruning-v1.tex}
 \input{generated/pot-all-decomposition-v1.tex}
 \input{generated/unsplit-bound-v1.tex}
+\input{generated/bounded-search-v1.tex}
 
 \title{Pruning versus Fragmentation in Symbolic Heuristic Search}
 \author{Anonymous Submission}
@@ -104,7 +105,7 @@ We factor the number of BDD nodes it expands into two effects of the heuristic: 
 We test pattern database, merge-and-shrink and potential heuristics on \num{\HoldoutTasks} planning tasks.
 Whenever one of them more than doubles the number of expanded BDD nodes, it barely shrinks the layers and fragments them instead.
 A post-hoc analysis shows why: BDDs shrink much less than the state sets they represent, so a heuristic pays off only if it removes most states.
-Pruning without fragmentation would pay off much more often, but it needs a bound on the optimal plan cost, and finding the bound by iterative deepening costs more than the fragmentation it avoids.
+Pruning without fragmentation would pay off much more often, but it needs a tight bound on the optimal plan cost: finding the bound by iterative deepening costs more than the fragmentation it avoids, and the plan costs of a fast satisficing planner remove the harm of the heuristics but are too loose to prune much.
 We also prove that fragmentation is at most $2VWn$ for a consistent heuristic with $V$ finite values and cofactor width $W$ on $n$ state bits, and a family of planning tasks attains $VWn/120$.
 Hence, only heuristics of exponential width, such as the perfect heuristic on known pathological tasks, can increase the effort exponentially, but the bound does not predict fragmentation in practice.
 \end{abstract}
@@ -130,6 +131,7 @@ Whenever one of these heuristics expands more than twice as many BDD nodes as bl
 Even a heuristic that removes half of the states can leave the BDDs almost as large as before, since BDDs shrink much less than the state sets they represent.
 Without fragmentation, heuristics would pay off much more often: a search that knew the optimal plan cost and pruned by $f$-value without splitting the layers would expand fewer BDD nodes than blind search on \OracleAllUnsplitBelow\ of \num{\GenAllPairs} pairs of heuristic and task, compared with \OracleAllEffortBelow\ for symbolic \astar.
 Forward search knows no such bound, however: search that uses heuristics only to prune dead ends no longer fragments the layers but expands as many BDD nodes as blind search, and search that finds the bound by iterative deepening expands even more BDD nodes than symbolic \astar.
+With the plan cost of the satisficing planner LAMA as bound, heuristics no longer hurt, but this bound is too loose to prune much, and blind search with the same bound does as well.
 No forward use of a heuristic solves significantly more tasks than blind forward search, and blind bidirectional search solves more tasks than every forward configuration.
 Potentials optimized for all states, a stronger heuristic, solve slightly more tasks than blind forward search, but they help only where they remove most states and fragment the layers elsewhere.
 
@@ -678,47 +680,45 @@ The study of stronger potentials in Q2, which fixed these thresholds in advance,
 \paragraph{Q2: Heuristics without Fragmentation.}
 A search that knows \copt, expands the layers by increasing $g$ and removes states with $f>\copt$ without splitting the layers expands exactly the sets $S_g^h$ (Lemma~\ref{lem-identity}), so its effort ratio is $u$.
 In a post-hoc comparison, such an oracle search would expand fewer BDD nodes than blind search on \OracleAllUnsplitBelow\ of the \num{\GenAllPairs} pairs of the family study, compared with \OracleAllEffortBelow\ for \bddastar, and the geometric mean of $u$ is \OracleAllGeoU\ versus \OracleAllGeoR\ for $r$ (M\&S \OracleMsGeoU\ versus \OracleMsGeoR, PDB \OraclePdbGeoU\ versus \OraclePdbGeoR, potentials \OraclePotGeoU\ versus \OraclePotGeoR).
-Heuristics would thus pay off much more often without fragmentation, although harmful pairs would at best match blind search.
-Forward search learns \copt\ only when it finds a plan, so a third study runs two variants of the CEGAR PDB, the potentials and the M\&S heuristic with \num{10000} states and an unaligned merge order on the holdout set (\num{\RemCells} runs).
-\emph{Prune-only} search expands the blind layers whole and uses the heuristic only to remove dead ends, so its fragmentation factor is one.
-\emph{Batched} search keeps the bucket order of \bddastar, but whenever it selects a bucket, it also takes all new buckets with the same $g$-value and an $f$-value at most one higher and computes their successors as one BDD if their union has no more nodes than its parts.
-For context, we also run blind bidirectional search, bidirectional search that prunes with M\&S once it has found a first plan and potentials optimized for the average over all states \citep{fiser-et-al-aij2024}.
-Exact sign tests on the tasks that only one of two configurations solves compare each variant with its plain heuristic and with blind forward search, with Holm correction over all twelve tests.
+Forward search, however, learns \copt\ only when it finds a plan.
+Three further studies therefore compare practical searches that avoid fragmentation with \bddastar\ and blind forward search, each on the holdout set with its own runs of both and with Holm correction over its own sign tests (Table~\ref{tab:remedy}).
+\emph{Prune-only} search expands the blind layers whole and uses the heuristic only to remove dead ends.
+\emph{Batched} search keeps the order of \bddastar\ but computes the successors of buckets with the same $g$-value and $f$-values at most one apart as one BDD if their union has no more nodes than its parts.
+\emph{Unsplit} search runs iterative deepening on an $f$-bound $B$ that starts at $h(\sinit)$: each iteration expands the layers by increasing $g$, each as one BDD, and removes states with $g+h>B$, so the first plan it finds is optimal whenever $B\geq\copt$; otherwise, $B$ grows at least to the smallest removed $f$-value and by a step that doubles in every iteration.
+\emph{Bounded} search first runs LAMA \citep{richter-westphal-jair2010} for at most 30 seconds and then prune-only search that removes states whose $f$-value is at least the cost of LAMA's plan, so it either finds a cheaper plan, which is optimal, or proves LAMA's plan optimal.
+Development runs fixed the window of batching and the bound schedule of unsplit search and checked bounded search, which we did not tune.
 
 \begin{table}[tb]
   \centering
   \small
   \begin{tabular}{lrrr}
     \toprule
-    Configuration & Solved & vs.\ plain & vs.\ blind fw \\
+    Search & M\&S & PDB & Potentials \\
     \midrule
-    \RemCoverageRows
+    \RemedySummaryRows
     \bottomrule
   \end{tabular}
-  \caption{Number of solved holdout tasks (out of \num{\HoldoutTasks}) and
-    tasks gained/lost against the plain heuristic and against blind forward
-    search ($^{*}$: significant after Holm correction). Blind forward search
-    misses one task that it solved near the time limit in Q1.}
+  \caption{Solved holdout tasks minus those of blind forward search in the
+    same study (\RemSolvedBlindFw, \UbSolvedBlindFw\ and \BdSolvedBlindFw\
+    tasks). $^{\dagger}$ and $^{*}$: significantly different from \bddastar\
+    and from blind forward search after Holm correction.}
   \label{tab:remedy}
 \end{table}
 
-Table~\ref{tab:remedy} shows that prune-only search recovers the losses of potentials but does not beat blind search.
-Prune-only search solves significantly more tasks than plain potentials (+\RemPotPruneVsPlainGains/$-$\RemPotPruneVsPlainLosses), the CEGAR PDB shows the same trend without significance (+\RemPdbPruneVsPlainGains/$-$\RemPdbPruneVsPlainLosses), and M\&S, whose median effort ratio is already below one (\RemMsPruneEffortPlain), does not change.
-However, prune-only search expands as many BDD nodes as blind forward search (median ratio \RemPotPruneEffortRemedy\ for every family), because it prunes dead ends on at most \RemPhMaxPruneDeadEnds\ tasks, and no prune-only variant differs significantly from blind forward search.
-Batching leaves the expanded buckets unchanged and helps no heuristic significantly, and batched potentials even lose to blind forward search (+\RemPotBatchVsBlindGains/$-$\RemPotBatchVsBlindLosses).
-Blind bidirectional search solves \RemSolvedBlindBd\ tasks, \RemBdVsFwGains\ more than blind forward search and none fewer, and choosing the better of it and any other configuration for every task would solve at most \RemMaxHeadroomOverBd\ additional tasks.
+Without a bound, avoiding fragmentation does not make the heuristics pay off.
+Prune-only search recovers the losses of potentials (+\RemPotPruneVsPlainGains/$-$\RemPotPruneVsPlainLosses\ against \bddastar) but expands as many BDD nodes as blind search (median ratio \RemPotPruneEffortRemedy), since it removes dead ends on at most \RemPhMaxPruneDeadEnds\ tasks.
+Batching leaves the expanded buckets unchanged, and unsplit search spends more on earlier iterations and on overshooting \copt\ than it saves: the last iteration accounts for a median of only \UbMinLastShare--\UbMaxLastShare\% of its effort, and its median effort ratio to blind search exceeds that of \bddastar\ for every heuristic (potentials: \UbPotEffortUnsplit\ versus \UbPotEffortPlain).
+With the bound of LAMA, the heuristics no longer hurt: bounded search solves significantly more tasks than \bddastar\ with the PDB (+\BdPdbVsPlainGains/$-$\BdPdbVsPlainLosses) and potentials (+\BdPotVsPlainGains/$-$\BdPotVsPlainLosses) and slightly but not significantly more than blind forward search with every heuristic.
+The bound, however, does most of the work: blind search with the same bound solves \BdSolvedBlindBounded\ tasks, and no bounded heuristic search differs significantly from it.
+LAMA's plans cost a median of \BdBoundExcessMin--\BdBoundExcessMax\% more than optimal, so pruning with them removes few states, and the median effort ratio of bounded search to blind search is \BdPotEffortBounded\ for every heuristic.
+Pruning thus pays off only with bounds much closer to \copt.
+Blind bidirectional search solves \RemSolvedBlindBd\ tasks, \RemBdVsFwGains\ more than blind forward search and none fewer.
+
 Potentials optimized for all states solve \RemSolvedPotAllPlain\ tasks, more than our potentials (\RemSolvedPotPlain) and slightly but not significantly more than blind forward search (+\RemPotAllVsFwGains/$-$\RemPotAllVsFwLosses, unadjusted $p=0.37$).
-A fourth study reruns them and blind search with recording (\num{\PotAllCells} runs) and shows that the diagnosis of Q1 also holds for them (last row of Table~\ref{tab:families}).
+Another study reruns them and blind search with recording (\num{\PotAllCells} runs) and shows that the diagnosis of Q1 also holds for them (last row of Table~\ref{tab:families}).
 Their \PotAllHarmful\ harmful pairs from \PotAllHarmfulDomains\ domains meet the prespecified criterion of Q1 with $S=\PotAllShare$, and all \PotAllStrong\ pairs with $r>2$ have $\fragfactor>u$.
 They help on \PotAllHelpful\ of \PotAllPairs\ pairs, compared with \GenPotHelpful\ of \GenPotPairs\ for our potentials, and their helpful pairs remove most states (median state ratio \PotAllHelpStates), whereas their harmful pairs remove few (\PotAllHurtStates).
 Effort predicts runtime well: for the plain heuristics, the ratios of expanded BDD nodes and of search time to those of blind forward search have a Spearman correlation of \RemEffTimeAllRho\ (\RemEffTimeMinRho--\RemEffTimeMaxRho\ per family).
-
-A fifth study tests whether a search without fragmentation can find the bound itself.
-\emph{Unsplit} search runs iterative deepening on an $f$-bound $B$ that starts at $h(\sinit)$.
-Each iteration expands the layers by increasing $g$, each as one BDD, and removes states with $g+h>B$, so the first plan it finds is optimal whenever $B\geq\copt$.
-If an iteration finds no plan, the bound grows at least to the smallest $f$-value of a removed state and by a step that doubles in every iteration (chosen in a screening on the development set).
-On the holdout set (\UbCells\ runs with a new binary), unsplit search solves slightly but not significantly more tasks than \bddastar\ with every heuristic (M\&S \UbSolvedMsUnsplit\ versus \UbSolvedMsPlain, PDB \UbSolvedPdbUnsplit\ versus \UbSolvedPdbPlain, potentials \UbSolvedPotUnsplit\ versus \UbSolvedPotPlain), never beats blind forward search (\UbSolvedBlindFw) and loses to it with potentials (+\UbPotVsBlindGains/$-$\UbPotVsBlindLosses, significant after Holm correction).
-The earlier iterations and the overshoot of the bound cost more than the fragmentation they avoid: the last iteration accounts for a median of only \UbMinLastShare--\UbMaxLastShare\% of the effort, and the median effort ratio to blind search grows from \UbMsEffortPlain\ to \UbMsEffortUnsplit\ for M\&S, from \UbPdbEffortPlain\ to \UbPdbEffortUnsplit\ for the PDB and from \UbPotEffortPlain\ to \UbPotEffortUnsplit\ for potentials.
 
 \paragraph{Q3: Tightness of the Bounds.}
 No observed fragmentation exceeds its bounds on any of the \num{\SlackObservations} solved and completely recorded runs of the PDB study.
@@ -754,7 +754,7 @@ We separated the two effects of a heuristic in symbolic search by factoring the 
 On our benchmarks, PDB, M\&S and potential heuristics that more than doubled the expanded BDD nodes barely pruned but fragmented the layers, and even when they removed many states, their BDDs barely shrank.
 Cofactor width bounds fragmentation, pruned sets and the effort relative to blind search, tightly for a wide range of parameters, but it does not predict fragmentation under unseen variable orders.
 Heuristics therefore pay off in symbolic \astar\ only where they remove most states, which even stronger potentials did on fewer than half of the tasks.
-Pruning without fragmenting would pay off far more often, but iterative deepening on the bound cost more than it saved, so cheap and accurate bounds on the plan cost are the missing ingredient.
+Pruning without fragmenting would pay off far more often, but iterative deepening on the bound cost more than it saved, and the plan costs of LAMA removed the harm of the heuristics without enabling much pruning, so tight bounds on the plan cost are the missing ingredient.
 
 % ------------------------------------------------------------------------
 % Bibliography is managed by the Makefile's update-bib target.

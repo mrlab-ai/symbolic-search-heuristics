@@ -452,6 +452,45 @@ Lab data are in the `symk-representation-safe` workspace under
   refuses to render unless the frozen claims are those the paper states: no
   difference to BDDA* is significant, and unsplit search with potentials
   loses to blind forward search.
+- Prospective bounded-search study (frozen protocol
+  `experiments/bounded_search_protocol.md`, SHA-256
+  `3810aa0e510c38e708847d09a1a4ba6bc3cd8594a50c2ffbbe7024d7e2aaa06a`,
+  pinned with the option matrix, cohort manifest, planner revision
+  `61c127017e9404aeb8b0a9338f3edea0ac75fd75` and binaries in
+  `experiments/bounded_search_protocol.py`).  The development pilot (Slurm
+  job 3833072; inputs in `symk-bounded-dev`, backed up with all cell records
+  in `symk-representation-safe/experiments/data/symk-bounded-dev`;
+  `experiments/summarize_bounded_pilot.py` writes
+  `experiments/artifacts/bounded-search/pilot-v1.json`, SHA-256
+  `de91f891931586e875725330f32cdc515e3806bc46b8ebf054177d9b9d56b6ef`) selected nothing.
+  Stage 2: 1,052 holdout tasks x 9 configurations = 9,468 cells, launched by
+  `experiments/exp_bounded_search.py` (Slurm job 3839658, 947 array tasks,
+  all completed, no recovery) and sealed by
+  `experiments/audit_bounded_search.py --seal`
+  (`experiments/artifacts/bounded-search/execution-receipt-v1.json`, SHA-256
+  `9379b091c5b45907204ca532f629f1ecdf390d388cfd78245a0d4c7862d6d00f`).
+  `experiments/analyze_bounded_search.py analyze` reads the fetched
+  properties (SHA-256
+  `52370289273e7f5b68ab798cc9010e2c2c6be29adbb31b85045b435900b6f48a`, backed
+  up in `symk-representation-safe/experiments/data/exp_bounded_search-eval/properties`)
+  and writes `experiments/artifacts/bounded-search/analysis-v1.json` (SHA-256
+  `f018236c637f910e07dc7c31ab42ec23fba0377c12b61d3877a83f96c3694ff8`).
+  Deviation: the frozen analysis (SHA-256
+  `d6ac627048da73ab413ccfebcbecc8255e6ad99927bfb4ea08681659b198ebda`)
+  failed in its descriptive first-phase statistics because Lab stores plan
+  costs as floats; the only change computes `Fraction(bound) /
+  Fraction(cost)` instead of `Fraction(bound, cost)` (now SHA-256
+  `f31ad2e836b220bfd6f1b5c0773b5682ddc76950c5280cfe6b6d52ba7d1c8d44`) and
+  affects no primary estimand or decision.  Lab reports the iterated runs as
+  having unexplained errors because its single-search parser rejects their
+  repeated search statistics; the analysis uses only their exit code, best
+  plan cost and symbolic expansions.
+  `experiments/render_bounded_search_paper.py` renders
+  `paper/generated/bounded-search-v1.tex` (SHA-256
+  `754cfeb6a3188ad0513183fccb5653516385f09e4dc4253ff8dc5c458d852e68`), including the Q2 summary table from the pinned remedy, unsplit and
+  bounded analyses, and refuses to render unless the frozen claims are those
+  the paper states: bounded search beats BDDA* with the PDB and potentials,
+  and no other test is significant.
 
 ## Exclusions and claim boundary
 
