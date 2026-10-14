@@ -78,7 +78,8 @@ def _first_phase(cohort, runs, outcomes, label, optimal_costs):
         if cost is None or cost <= 0:
             continue
         optimal += bound == cost
-        ratios.append(Fraction(bound, cost))
+        # Lab stores plan costs as floats; both are integral.
+        ratios.append(Fraction(bound) / Fraction(cost))
     return {
         "first_phase_plans": found,
         "solved_with_bound": len(ratios),
