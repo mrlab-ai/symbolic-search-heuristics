@@ -52,6 +52,13 @@ void SymbolicSearch::initialize() {
     plan_data_base->print_options();
     cout << endl;
 
+    // An enclosing iterated search may tighten the bound after construction
+    // (pass_bound=true); plans must cost less than the bound.
+    upper_bound = min(upper_bound, bound);
+    if (bound < numeric_limits<int>::max()) {
+        utils::g_log << "Exclusive plan cost bound: " << bound << endl;
+    }
+
     if (cost_type != OperatorCost::NORMAL) {
         utils::g_log << "Cost transformation: " << cost_type << endl;
         search_task =
