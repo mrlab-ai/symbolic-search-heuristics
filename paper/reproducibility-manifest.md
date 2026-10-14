@@ -327,7 +327,7 @@ Lab data are in the `symk-representation-safe` workspace under
   `paper/generated/pdb-profile-harm-generality-v1.tex` (SHA-256
   `ca5875e0f429b701747e1657e92105e9ef674438658115c33775c057d6f75d36`) and the deterministic figure
   `paper/generated/pdb-profile-harm-generality-v1.pdf` (SHA-256
-  `0ba27ebdbb256e2dd6d7a60a365c584603150044e6ef1ccc34fce3950d62d376`, `matplotlib==3.9.4`), and refuses to render unless the frozen
+  `e0e329811ba1630d8843c5f5bb852cc8215af51eb405d7b0e2c1baa3e67657e5`, `matplotlib==3.9.4`), and refuses to render unless the frozen
   decisions are those the paper states: the claim holds for M&S, PDB and
   potentials and pooled, and the online guard is not pursued.
 - Post-hoc per-domain view of the harm-generality study (descriptive;
@@ -383,13 +383,14 @@ Lab data are in the `symk-representation-safe` workspace under
   search and the per-layer sizes of the harmful M&S pair closest to the
   medians of the harmful M&S pairs (M&S with 50,000 states on Trucks p05) and
   domain-cluster bootstrap intervals (2,000 samples, fixed seed) of S and of
-  the median unsplit ratio of harmful pairs, and
+  the median unsplit ratio of harmful pairs, the oracle comparison of the
+  unsplit ratio u with the effort ratio r and the neutral pairs (r = 1), and
   writes `experiments/artifacts/pdb-profile-harm-generality/pruning-v1.json`
   (SHA-256
-  `9e1740d29701c28c7f90bb554f6ee86ba68f653db51153e7b77fb8b1b5c16c29`); its
+  `5115bdec967984f5e2b1f4943a2f1a233aabbdc91799882ebd1739a633b86f4d`); its
   `render`, `figure` and `layers` subcommands produce
   `paper/generated/pdb-profile-harm-pruning-v1.tex` (SHA-256
-  `08dc53fdeb026ee985c701e51f26ec6a63a29e2996cf79db49a2f9e69f3f9bb6`),
+  `be29fc9b811fd89f98f8f2c441ca49064aac89ce1c9ea095735229b4c7a0a644`),
   `paper/generated/pdb-profile-harm-pruning-v1.pdf` (SHA-256
   `4e11361977391d69cbee4b42f6ec9a4b42abe5dcf112a35311f24084fb34963c`) and
   `paper/generated/pdb-profile-harm-layers-v1.pdf` (SHA-256

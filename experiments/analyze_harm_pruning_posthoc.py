@@ -21,7 +21,11 @@ log s, log u and log fragmentation.  Finally, it resamples the domains with
 replacement (a domain-cluster bootstrap with a fixed seed) and reports 95%
 percentile intervals of the share S of fragmentation in the harmful log
 effort and of the median unsplit ratio of harmful pairs, per family and
-pooled.
+pooled.  The oracle view compares, per family and pooled, the effort of
+an unsplit search that knows C* and prunes by f, which expands exactly the
+sets S_g^h and therefore has effort ratio u, with BDDA* (ratio r): pairs
+with u < 1 and with r < 1, and the geometric means of u and r.  It also
+counts the neutral pairs (r = 1) and those among them with u = frag = 1.
 
   analyze  write artifacts/pdb-profile-harm-generality/pruning-v1.json
   render   write paper/generated/pdb-profile-harm-pruning-v1.tex
@@ -54,7 +58,7 @@ EXPECTED_PROPERTIES_SHA256 = (
 )
 DEFAULT_ARTIFACT = Frozen.ARTIFACT_DIR / "pruning-v1.json"
 EXPECTED_ARTIFACT_SHA256 = (
-    "9e1740d29701c28c7f90bb554f6ee86ba68f653db51153e7b77fb8b1b5c16c29"
+    "5115bdec967984f5e2b1f4943a2f1a233aabbdc91799882ebd1739a633b86f4d"
 )
 GENERATED = REPOSITORY_ROOT / "paper" / "generated"
 DEFAULT_OUTPUT = GENERATED / "pdb-profile-harm-pruning-v1.tex"
@@ -222,6 +226,31 @@ def _bootstrap(pairs):
     }
 
 
+def _geomean(values):
+    return round(math.exp(statistics.mean(math.log(v) for v in values)), 4)
+
+
+def _oracle(pairs):
+    groups = {}
+    for family in ("ms", "pdb", "pot", "pooled"):
+        mine = pairs if family == "pooled" else [
+            p for p in pairs if p["family"] == family]
+        groups[family] = {
+            "pairs": len(mine),
+            "unsplit_below_one": sum(1 for p in mine if p["u"] < 1),
+            "effort_below_one": sum(1 for p in mine if p["r"] < 1),
+            "u_geomean": _geomean([float(p["u"]) for p in mine]),
+            "r_geomean": _geomean([float(p["r"]) for p in mine]),
+        }
+    neutral = [p for p in pairs if p["r"] == 1]
+    return {
+        "groups": groups,
+        "neutral": len(neutral),
+        "neutral_unsplit_and_frag_one": sum(
+            1 for p in neutral if p["u"] == 1 and p["f"] == 1),
+    }
+
+
 def analyze(properties):
     cohort, runs = Frozen._index_runs(properties)
     pairs = Frozen.pairs_from_runs(cohort, runs)
@@ -287,6 +316,7 @@ def analyze(properties):
         "domains_u_above_s": majority,
         "example": _example(runs, pairs),
         "bootstrap": _bootstrap(pairs),
+        "oracle": _oracle(pairs),
         "points": [
             [p["label"], round(float(p["s"]), 6), round(float(p["u"]), 6),
              round(float(p["f"]), 6)]
@@ -368,6 +398,22 @@ def render(data, digest):
             100 * data["families"]["pooled"]["helpful_extra"]["unshrunk_median"])),
         ("PruneDomainsUnionAboveStates", str(data["domains_u_above_s"])),
     ]
+    oracle = data["oracle"]
+    macros += [
+        ("NeutralPairs", str(oracle["neutral"])),
+        ("NeutralTrivial", str(oracle["neutral_unsplit_and_frag_one"])),
+    ]
+    for family, prefix in (("ms", "Ms"), ("pdb", "Pdb"), ("pot", "Pot"),
+                           ("pooled", "All")):
+        record = oracle["groups"][family]
+        macros += [
+            ("Oracle{}UnsplitBelow".format(prefix),
+             "\\num{{{}}}".format(record["unsplit_below_one"])),
+            ("Oracle{}EffortBelow".format(prefix),
+             "\\num{{{}}}".format(record["effort_below_one"])),
+            ("Oracle{}GeoU".format(prefix), "{:.2f}".format(record["u_geomean"])),
+            ("Oracle{}GeoR".format(prefix), "{:.2f}".format(record["r_geomean"])),
+        ]
     for family, prefix in (("ms", "Ms"), ("pdb", "Pdb"), ("pot", "Pot"),
                            ("pooled", "All")):
         record = data["bootstrap"]["groups"][family]

@@ -251,7 +251,7 @@ def render_figure(data):
             axis.set_major_formatter(
                 FuncFormatter(lambda value, _: "{:g}".format(value)))
     panels[0].set_ylabel("fragmentation")
-    panels[1].set_xlabel("unsplit effort / blind effort")
+    panels[1].set_xlabel("unsplit ratio $u$")
     figure.tight_layout(pad=0.2, w_pad=0.3)
     stream = io.BytesIO()
     figure.savefig(stream, format="pdf",
