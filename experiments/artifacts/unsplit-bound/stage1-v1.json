@@ -1,0 +1,125 @@
+{
+ "cohort_manifest_sha256": "5c43a5d0891d32285c248c14cfe81ab5fa308b8eeb3d3d34e7d22ee782fcda2e",
+ "configs": 10,
+ "cost_conflicts": [],
+ "schema": "symbolic-search-heuristics/unsplit-bound-stage1/v1",
+ "selected_schedules": {
+  "ms": "double",
+  "pdb": "double",
+  "pot": "double"
+ },
+ "stats": {
+  "blind_fw": {
+   "exit_codes": {
+    "0": 115,
+    "12": 2,
+    "20": 5,
+    "23": 153
+   },
+   "par2_sum": 98455.227,
+   "search": "sym_fw(wbh_log=\"wbh.jsonl\")",
+   "solved": 115
+  },
+  "ms_double": {
+   "exit_codes": {
+    "0": 119,
+    "11": 2,
+    "2": 1,
+    "20": 5,
+    "23": 148
+   },
+   "par2_sum": 96122.547,
+   "search": "sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity,unsplit_bound=true,unsplit_bound_doubling=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 120
+  },
+  "ms_next": {
+   "exit_codes": {
+    "0": 110,
+    "11": 2,
+    "20": 5,
+    "23": 158
+   },
+   "par2_sum": 101028.723,
+   "search": "sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity,unsplit_bound=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 110
+  },
+  "ms_plain": {
+   "exit_codes": {
+    "0": 120,
+    "11": 2,
+    "20": 5,
+    "23": 148
+   },
+   "par2_sum": 95731.961,
+   "search": "sym_fw_ms(max_states=10000,align_merge_order=false,build_time_limit=infinity,wbh_log=\"wbh.jsonl\")",
+   "solved": 120
+  },
+  "pdb_double": {
+   "exit_codes": {
+    "0": 111,
+    "11": 2,
+    "20": 5,
+    "23": 157
+   },
+   "par2_sum": 100170.072,
+   "search": "sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011,unsplit_bound=true,unsplit_bound_doubling=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 111
+  },
+  "pdb_next": {
+   "exit_codes": {
+    "0": 100,
+    "11": 2,
+    "20": 5,
+    "23": 168
+   },
+   "par2_sum": 107464.099,
+   "search": "sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011,unsplit_bound=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 100
+  },
+  "pdb_plain": {
+   "exit_codes": {
+    "0": 116,
+    "11": 2,
+    "20": 5,
+    "23": 152
+   },
+   "par2_sum": 98461.717,
+   "search": "sym_fw_pdb(budget=1000000,pattern_selection=cegar,cegar_max_time=10,cegar_seed=2011,wbh_log=\"wbh.jsonl\")",
+   "solved": 116
+  },
+  "pot_double": {
+   "exit_codes": {
+    "0": 113,
+    "12": 2,
+    "20": 5,
+    "23": 155
+   },
+   "par2_sum": 99814.843,
+   "search": "sym_fw_pot(m=4,unsplit_bound=true,unsplit_bound_doubling=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 113
+  },
+  "pot_next": {
+   "exit_codes": {
+    "0": 100,
+    "12": 2,
+    "20": 5,
+    "23": 168
+   },
+   "par2_sum": 107594.349,
+   "search": "sym_fw_pot(m=4,unsplit_bound=true,wbh_log=\"wbh.jsonl\")",
+   "solved": 100
+  },
+  "pot_plain": {
+   "exit_codes": {
+    "0": 110,
+    "12": 2,
+    "20": 5,
+    "23": 158
+   },
+   "par2_sum": 101794.221,
+   "search": "sym_fw_pot(m=4,wbh_log=\"wbh.jsonl\")",
+   "solved": 110
+  }
+ },
+ "tasks": 275
+}

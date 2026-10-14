@@ -1,10 +1,12 @@
 # Protocol: does unsplit f-bounded search recover the pruning of heuristics?
 
-Status: **draft, fixed before Stage 1.**  Section 4 (Stage 1) is fixed
-before any Stage 1 run; its SHA-256 is recorded with the Stage 1 inputs.
-Stage 1 results and the selected schedules will be added in Section 8, and
-the document will then be frozen and pinned in `unsplit_bound_protocol.py`
-before Stage 2.
+Status: **frozen on 2026-10-14 by author decision, after Stage 1 and before
+Stage 2.**  Section 4 (Stage 1) was fixed before any Stage 1 run (draft
+SHA-256 `d99a2bfaa5c0503c3ffffb86b5f3cee8025145e178c4875fd6dff0de09816e65`,
+recorded at submission in `symk-unsplit-dev/stage1-inputs.sha256`).  Stage 1
+results and the selected schedules are in Section 8.  This document, the
+option matrix, and the analysis code are pinned in
+`unsplit_bound_protocol.py`.
 
 ## 1. Motivation and claims
 
@@ -136,4 +138,26 @@ the task is reported and counts as unsolved for every configuration.
 
 ## 8. Stage 1 results
 
-To be added after Stage 1.
+Slurm job 3815065 (393 array tasks, all `COMPLETED`), revision-cache binary
+`builds/release/bin/downward` with the pinned SHA-256
+`03d708712b1e44c08b11180215c42b11b27d65ce9410e99a7a3c8c20d7663ca1`.  All
+2,750 cells produced a record; no solution costs disagree.  Unsolved cells
+are timeouts (exit 23), translator failures on organic-synthesis (exit 20),
+and the two unsolvable mystery tasks (exit 11 or 12).  One `ms_double` cell
+(floortile-opt14 p03-5-5-2) found its plan at 298.9 seconds and exited with
+code 2; it counts as solved.  Summary:
+`experiments/artifacts/unsplit-bound/stage1-v1.json` (SHA-256
+`a2376b52f9c5e0670b33ae6b853220a34c8cd0e145e7a68fe60bbd2874829e65`), written
+by `experiments/select_unsplit_schedules.py`.
+
+Coverage on the 275 development tasks (PAR2 sums in parentheses):
+
+| Configuration | Solved |
+|---|---|
+| `blind_fw` | 115 (98,455) |
+| `ms_plain` / `ms_next` / `ms_double` | 120 / 110 / 120 (96,122 for `ms_double`) |
+| `pdb_plain` / `pdb_next` / `pdb_double` | 116 / 100 / 111 |
+| `pot_plain` / `pot_next` / `pot_double` | 110 / 100 / 113 |
+
+Selected schedules by the rule of Section 4: `double` for M&S, PDB, and
+potentials.
