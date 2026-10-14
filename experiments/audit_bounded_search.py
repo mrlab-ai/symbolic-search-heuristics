@@ -25,7 +25,7 @@ import audit_pdb_profile_certificate_holdout as Audit  # noqa: E402
 INPUT_NAMES = ("run", "static-properties", "domain.pddl", "problem.pddl")
 # Pinned after launch from the committed launch receipt.
 LAUNCH_RECEIPT_SHA256 = (
-    "TO_PIN"
+    "a44611975d3664105492125361844c9b843735e69a54172fee5bfcfa45e83c69"
 )
 
 
