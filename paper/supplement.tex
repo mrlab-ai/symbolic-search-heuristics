@@ -72,7 +72,7 @@
 \input{generated/unsplit-bound-v1.tex}
 \input{generated/bounded-search-v1.tex}
 
-\title{Pruning versus Fragmentation in Symbolic Heuristic Search\\Supplementary Material}
+\title{Pruning versus Fragmentation in Symbolic A*\\Supplementary Material}
 \author{Anonymous for review}
 \date{}
 
@@ -1715,8 +1715,8 @@ product-at-evaluation forward symbolic \astar, the Gamer order, and the
 limits of 300 seconds and 8\,GiB: profiled blind search; M\&S with
 \num{10000} abstract states and an unaligned or aligned merge order; M\&S
 with \num{50000} states and an unaligned merge order (all with unlimited
-construction time, so that no run falls back to blind search); a CEGAR PDB
-collection with at most \num{1000000} states, at most 10 seconds of CEGAR
+construction time, so that no run falls back to blind search); a single PDB
+whose pattern CEGAR selects within at most \num{1000000} states, at most 10 seconds of CEGAR
 time and seed 2011; and integer potentials with $|P(v,w)|\leq4$ optimized for
 the initial state.  To log per-layer unsplit unions, the planner revision
 attaches the closed lists of the M\&S and potential searches to the profile,

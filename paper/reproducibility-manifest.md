@@ -384,13 +384,15 @@ Lab data are in the `symk-representation-safe` workspace under
   medians of the harmful M&S pairs (M&S with 50,000 states on Trucks p05) and
   domain-cluster bootstrap intervals (2,000 samples, fixed seed) of S and of
   the median unsplit ratio of harmful pairs, the oracle comparison of the
-  unsplit ratio u with the effort ratio r and the neutral pairs (r = 1), and
+  unsplit ratio u with the effort ratio r and the neutral pairs (r = 1), the
+  partial effort of runs on tasks that only blind search solves, and the
+  exact cofactor widths of the heuristics against 2TWn, and
   writes `experiments/artifacts/pdb-profile-harm-generality/pruning-v1.json`
   (SHA-256
-  `5115bdec967984f5e2b1f4943a2f1a233aabbdc91799882ebd1739a633b86f4d`); its
+  `e507c0015c52790d8769829645aa4d97adead84c951d06b803a4967a01e349e7`); its
   `render`, `figure` and `layers` subcommands produce
   `paper/generated/pdb-profile-harm-pruning-v1.tex` (SHA-256
-  `be29fc9b811fd89f98f8f2c441ca49064aac89ce1c9ea095735229b4c7a0a644`),
+  `6e0068fdd564f5417b4f89d9fbd17c41524902bed0036d97f2e243295129914e`),
   `paper/generated/pdb-profile-harm-pruning-v1.pdf` (SHA-256
   `4e11361977391d69cbee4b42f6ec9a4b42abe5dcf112a35311f24084fb34963c`) and
   `paper/generated/pdb-profile-harm-layers-v1.pdf` (SHA-256

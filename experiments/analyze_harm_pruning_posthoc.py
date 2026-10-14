@@ -26,6 +26,13 @@ an unsplit search that knows C* and prunes by f, which expands exactly the
 sets S_g^h and therefore has effort ratio u, with BDDA* (ratio r): pairs
 with u < 1 and with r < 1, and the geometric means of u and r.  It also
 counts the neutral pairs (r = 1) and those among them with u = frag = 1.
+The unsolved view covers the runs that fail on a task blind search solves:
+their expanded BDD nodes until the timeout relative to the whole blind
+effort, and how many of their layers already had more bucket nodes than the
+whole blind layer.  The width view reports, per configuration, the medians
+of the exact cofactor width W of the heuristic, of its number of ADD values
+T (at least V) and of the state bits n, and the factor by which 2TWn
+exceeds the observed fragmentation factor.
 
   analyze  write artifacts/pdb-profile-harm-generality/pruning-v1.json
   render   write paper/generated/pdb-profile-harm-pruning-v1.tex
@@ -58,7 +65,7 @@ EXPECTED_PROPERTIES_SHA256 = (
 )
 DEFAULT_ARTIFACT = Frozen.ARTIFACT_DIR / "pruning-v1.json"
 EXPECTED_ARTIFACT_SHA256 = (
-    "5115bdec967984f5e2b1f4943a2f1a233aabbdc91799882ebd1739a633b86f4d"
+    "e507c0015c52790d8769829645aa4d97adead84c951d06b803a4967a01e349e7"
 )
 GENERATED = REPOSITORY_ROOT / "paper" / "generated"
 DEFAULT_OUTPUT = GENERATED / "pdb-profile-harm-pruning-v1.tex"
@@ -251,6 +258,64 @@ def _oracle(pairs):
     }
 
 
+def _unsolved(cohort, runs):
+    ratios, above, layers = [], 0, 0
+    for label in P.LABELS[1:]:
+        for task in cohort:
+            blind = runs[(P.BLIND_LABEL, task.domain, task.problem)]
+            heur = runs[(label, task.domain, task.problem)]
+            if not Frozen._solved(blind) or Frozen._solved(heur):
+                continue
+            profile = heur.get("wbh_expansion_profile") or []
+            if not profile:
+                continue
+            blind_layers = {e["g"]: e["effort"]
+                            for e in blind["wbh_expansion_profile"]}
+            effort = {}
+            for event in profile:
+                effort[event["g"]] = effort.get(event["g"], 0) + event["effort"]
+            ratios.append(Fraction(sum(effort.values()), blind["effort"]))
+            for g, nodes in effort.items():
+                if g in blind_layers:
+                    layers += 1
+                    above += nodes > blind_layers[g]
+    return {
+        "runs": len(ratios),
+        "partial_effort_ratio_median": _median([float(x) for x in ratios]),
+        "layers": layers,
+        "layers_above_blind": above,
+    }
+
+
+def _widths(pairs, runs):
+    groups = {}
+    slack_all = []
+    for label in P.LABELS[1:]:
+        widths, values, bits, slack = [], [], [], []
+        for p in pairs:
+            if p["label"] != label:
+                continue
+            run = runs[(label, p["domain"], p["problem"])]
+            profile = run.get("wbh_profile_heuristic_profile") or {}
+            w, t, n = (profile.get("cofactor_width"), profile.get("num_values"),
+                       run.get("wbh_profile_state_bits"))
+            if not all(isinstance(x, int) and x > 0 for x in (w, t, n)):
+                raise RenderError("pair without a heuristic profile")
+            widths.append(w)
+            values.append(t)
+            bits.append(n)
+            slack.append(2 * t * w * n / float(p["f"]))
+        slack_all += slack
+        groups[label] = {
+            "width_median": _median(widths),
+            "values_median": _median(values),
+            "bits_median": _median(bits),
+            "slack_median": _median(slack),
+        }
+    return {"groups": groups, "slack_median": _median(slack_all),
+            "slack_min": round(min(slack_all), 4)}
+
+
 def analyze(properties):
     cohort, runs = Frozen._index_runs(properties)
     pairs = Frozen.pairs_from_runs(cohort, runs)
@@ -317,6 +382,8 @@ def analyze(properties):
         "example": _example(runs, pairs),
         "bootstrap": _bootstrap(pairs),
         "oracle": _oracle(pairs),
+        "unsolved": _unsolved(cohort, runs),
+        "widths": _widths(pairs, runs),
         "points": [
             [p["label"], round(float(p["s"]), 6), round(float(p["u"]), 6),
              round(float(p["f"]), 6)]
@@ -397,6 +464,26 @@ def render(data, digest):
         ("PruneHelpUnshrunk", "{:.0f}".format(
             100 * data["families"]["pooled"]["helpful_extra"]["unshrunk_median"])),
         ("PruneDomainsUnionAboveStates", str(data["domains_u_above_s"])),
+    ]
+    unsolved, widths = data["unsolved"], data["widths"]
+    groups = widths["groups"].values()
+    macros += [
+        ("UnsolvedRuns", str(unsolved["runs"])),
+        ("UnsolvedEffortMedian",
+         "{:.2f}".format(unsolved["partial_effort_ratio_median"])),
+        ("UnsolvedLayersAbove", "\\num{{{}}}".format(unsolved["layers_above_blind"])),
+        ("UnsolvedLayers", "\\num{{{}}}".format(unsolved["layers"])),
+        ("UnsolvedLayersPercent", "{:.0f}".format(
+            100 * unsolved["layers_above_blind"] / unsolved["layers"])),
+        ("WidthMedianMin", "{:.0f}".format(min(g["width_median"] for g in groups))),
+        ("WidthMedianMax", "{:.0f}".format(max(g["width_median"] for g in groups))),
+        ("ValuesMedianMin", "{:.0f}".format(min(g["values_median"] for g in groups))),
+        ("ValuesMedianMax", "{:.0f}".format(max(g["values_median"] for g in groups))),
+        ("BitsMedianMin", "{:.0f}".format(min(g["bits_median"] for g in groups))),
+        ("BitsMedianMax", "{:.0f}".format(max(g["bits_median"] for g in groups))),
+        ("WidthSlackMedian", "\\num{{{:.0f}}}".format(
+            float("{:.2g}".format(widths["slack_median"])))),
+        ("WidthSlackMin", "{:.0f}".format(widths["slack_min"])),
     ]
     oracle = data["oracle"]
     macros += [
