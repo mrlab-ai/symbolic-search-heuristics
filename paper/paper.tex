@@ -102,11 +102,9 @@
 Heuristics guide explicit \astar\ search well but rarely pay off in symbolic search, which represents sets of states as binary decision diagrams (BDDs).
 We analyze why for symbolic \astar, which splits every layer of the search into buckets of states with the same heuristic value.
 We factor the number of BDD nodes it expands into two effects of the heuristic: pruning, which removes states and thus shrinks the BDDs of the layers, and fragmentation, the cost of representing each layer by one BDD per bucket.
-We test pattern database, merge-and-shrink and potential heuristics on \num{\HoldoutTasks} planning tasks.
-Whenever one of them more than doubles the number of expanded BDD nodes, it barely shrinks the layers and fragments them instead.
-A post-hoc analysis shows why: BDDs shrink much less than the state sets they represent, so a heuristic pays off only if it removes most states.
-Pruning without fragmentation would pay off much more often, but it needs a tight bound on the optimal plan cost: finding the bound by iterative deepening costs more than the fragmentation it avoids, and the plan costs of a fast satisficing planner remove the harm of the heuristics but are too loose to prune much.
-We also prove that fragmentation is at most $2VWn$ for a consistent heuristic with $V$ finite values and cofactor width $W$ on $n$ state bits, and a family of planning tasks attains $VWn/120$.
+On \num{\HoldoutTasks} planning tasks, pattern database, merge-and-shrink and potential heuristics that more than double the expanded BDD nodes barely shrink the layers and fragment them instead, since BDDs shrink much less than the state sets they represent.
+A search that knew the optimal plan cost could prune without fragmenting and would beat blind search far more often, but finding the bound by iterative deepening costs more than the fragmentation it avoids, and the plan costs of a fast satisficing planner are too loose to prune much.
+We also prove that cofactor width bounds both effects: fragmentation is at most $2VWn$ for a consistent heuristic with $V$ finite values and width $W$ on $n$ state bits, and a family of planning tasks attains $VWn/120$.
 Hence, only heuristics of exponential width, such as the perfect heuristic on known pathological tasks, can increase the effort exponentially, but the bound does not predict fragmentation in practice.
 \end{abstract}
 
@@ -126,14 +124,16 @@ In addition, it partitions the remaining states of every layer into buckets with
 Since the BDD of a subset can be much larger than the BDD of its superset, the buckets of a layer can together need many more nodes than the layer.
 We therefore factor the number of expanded BDD nodes into the BDD size of the expanded layers without the partition, which pruning reduces, and a \emph{fragmentation factor}, which measures the cost of the partition.
 
-With this factorization, we analyze pattern database (PDB), merge-and-shrink (M\&S) and potential heuristics in the symbolic planner SymK \citep{speck-et-al-jair2025} on \num{\HoldoutTasks} IPC tasks, with the protocol and the primary analyses fixed before the experiments.
+With this factorization, we analyze pattern database (PDB), merge-and-shrink (M\&S) and potential heuristics in the symbolic planner SymK \citep{speck-et-al-jair2025} on \num{\HoldoutTasks} IPC tasks, with the protocol and the primary analyses of every study fixed before the experiments.
 Whenever one of these heuristics expands more than twice as many BDD nodes as blind search, it barely prunes and fragments the layers instead.
 Even a heuristic that removes half of the states can leave the BDDs almost as large as before, since BDDs shrink much less than the state sets they represent.
+The same diagnosis holds for potentials optimized for all states, a stronger heuristic: they help where they remove most states and fragment the layers elsewhere.
+
 Without fragmentation, heuristics would pay off much more often: a search that knew the optimal plan cost and pruned by $f$-value without splitting the layers would expand fewer BDD nodes than blind search on \OracleAllUnsplitBelow\ of \num{\GenAllPairs} pairs of heuristic and task, compared with \OracleAllEffortBelow\ for symbolic \astar.
-Forward search knows no such bound, however: search that uses heuristics only to prune dead ends no longer fragments the layers but expands as many BDD nodes as blind search, and search that finds the bound by iterative deepening expands even more BDD nodes than symbolic \astar.
+Forward search knows no such bound, however.
+Using heuristics only to prune dead ends removes the fragmentation but almost all pruning with it, and finding the bound by iterative deepening costs more than the fragmentation it avoids.
 With the plan cost of the satisficing planner LAMA as bound, heuristics no longer hurt, but this bound is too loose to prune much, and blind search with the same bound does as well.
-No forward use of a heuristic solves significantly more tasks than blind forward search, and blind bidirectional search solves more tasks than every forward configuration.
-Potentials optimized for all states, a stronger heuristic, solve slightly more tasks than blind forward search, but they help only where they remove most states and fragment the layers elsewhere.
+No forward use of a heuristic solves significantly more tasks than blind forward search, and blind bidirectional search solves the most tasks.
 
 To understand how much a heuristic can fragment the search, we bound fragmentation by the \emph{cofactor width} of the heuristic, the largest number of distinct residual functions of the heuristic at any cut of the BDD variable order.
 Cofactor width is the standard width of a multi-terminal BDD, and our bounds build on the standard product construction \citep{wegener-2000}.
@@ -245,7 +245,7 @@ By Lemma~\ref{lem-identity} below, \bddastar\ expands exactly the states of laye
 
 To bound fragmentation, we need a property of the heuristic that controls the BDD size of every subset it selects by value.
 We use the number of distinct cofactors of the heuristic at each cut.
-The supplement contains full proofs of all results in this and the following three sections.
+The supplement contains full proofs of all results in this and the following two sections.
 
 \begin{definition}[cofactor width]
 \label{def-width}
@@ -256,36 +256,18 @@ We call $h$ \emph{$(\pi,W)$-width-bounded} if $\width_\pi(h) \leq W$, and we wri
 The cofactors of $h$ are the states of a layered deterministic automaton that reads the bits in order $\pi$, so width is the largest level of the quasi-reduced multi-terminal BDD (MTBDD) of $h$ \citep[Thm.~3.2.2; Sec.~9.2]{wegener-2000}.
 Width is thus a standard representation property applied to heuristics, and it is unrelated to novelty width in planning \citep{lipovetzky-geffner-ecai2012}.
 Width bounds the number of heuristic values, since the cofactors at the last cut are the attained constants.
-
-\begin{proposition}[value range]
-\label{prop-range}
-If $\width_\pi(h) \leq W$, then $|\hrange(h)| \leq W$.
-\end{proposition}
-
 We write $\values=|h(\states)\setminus\{\infty\}|$ for the number of finite values on planning states and $T=|\hrange(h)|$ for the number of values of the total extension, so $\values\leq T\leq W$.
-Since a cofactor of a combined heuristic is determined by a pair of cofactors of its operands, width is also closed under the usual ways of combining heuristics.
+Since a cofactor of a combined heuristic is determined by a pair of cofactors of its operands, the width of a sum, maximum or minimum of two heuristics is at most the product of their widths.
+Mapping the values of an admissible and consistent estimate by a nondecreasing function $\phi$ with $\phi(0)=0$ and $\phi(a+c)\leq\phi(a)+c$ for all $c\geq0$, such as rectification $\max(0,q)$ or a cap $\min(\max(0,q),\kappa)$, preserves admissibility and consistency and never increases width.
+Width and the size of the reduced ordered algebraic decision diagram (ADD) of the heuristic \citep{bahar-et-al-iccad1993} bound each other up to a factor $n$ and an additive $|\hrange(h)|$, but only under the variable order that the search actually uses \citep{kissmann-hoffmann-jair2014}.
+The supplement proves these properties.
 
-\begin{proposition}[closure]
-\label{prop-closure}
-Let $h_1, h_2$ have widths $W_1, W_2$ under $\pi$ and let $\oplus \in \{+, \max, \min\}$.
-Then $\width_\pi(h_1 \oplus h_2) \leq W_1 \cdot W_2$.
-\end{proposition}
-
-Potential heuristics are computed from functions that can be negative.
-We call a function $q\colon\states\to\mathbb Z\cup\{\infty\}$ a \emph{raw admissible and consistent estimate} if $q(s)\leq \hstar(s)$ for every state, $q(s)\leq c+q(s')$ for every transition $s\xrightarrow{c}s'$ and $q(s)\leq0$ on goals.
-The following proposition shows that rectifying or capping such an estimate preserves admissibility and consistency and never increases width.
-
-\begin{proposition}[safe terminal transforms]
-\label{prop-transform}
-Let $q$ be a raw admissible and consistent estimate with a total extension $q \colon \{0,1\}^{n} \to \mathbb{Z} \cup \{\infty\}$.
-Let $\phi \colon \mathbb{Z} \cup \{\infty\} \to \mathbb{Z}_{\geq 0} \cup \{\infty\}$ be nondecreasing with $\phi(0)=0$, $\phi(\infty)=\infty$ and $\phi(a+c) \leq \phi(a)+c$ for every $a\in\mathbb Z$ and integer $c\geq0$.
-Then $h=\phi\circ q$ is admissible and consistent, and $\cutcount{i}{h}\leq\cutcount{i}{q}$ for every cut $i$.
-\end{proposition}
-
-Monotonicity and the cost condition transfer consistency and imply $\phi(a)\leq\max(0,a)$, and mapping terminals cannot create cofactors.
-Hence, rectification $\max(0,q)$ and the cap $\min(\max(0,q),\kappa)$ are safe and do not increase width.
-
-Width and the size of the reduced ordered algebraic decision diagram (ADD) of the heuristic \citep{bahar-et-al-iccad1993} bound each other up to a factor $n$ and an additive $|\hrange(h)|$ (supplement), but only under the variable order that the search actually uses \citep{kissmann-hoffmann-jair2014}.
+\paragraph{Common Heuristics.}
+Under a variable-contiguous order, three common families have bounded width (supplement).
+A pattern database \citep[PDB;][]{culberson-schaeffer-compint1998,edelkamp-ecp2001} for a pattern $P$ has width at most the number $|\states^P|$ of its abstract states.
+A merge-and-shrink (M\&S) heuristic \citep{helmert-et-al-jacm2014} with a linear merge order that agrees with the BDD order has width at most $d(N+1)$, where $d$ is the largest domain size and $N$ bounds the outputs of every table in its cascade \citep{helmert-et-al-icaps2015}.
+A rectified potential heuristic \citep{pommerening-et-al-aaai2015} with integer potentials in $[-M,M]$ on $m$ variables has width at most $d(2mM+1)$.
+We give no analogous bound for $h^{\max}$, $h^{\mathrm{add}}$ or LM-cut, but their width can be measured after construction.
 
 % ======================= fragmentation theorems ==========================
 \section{Bounding Fragmentation}
@@ -525,45 +507,6 @@ By Corollary~\ref{cor-effort} and $\values\leq W$, a heuristic can increase the 
 Exponential width is necessary for such an increase but not sufficient, and bounded width is sufficient but not necessary for small buckets.
 Moreover, \hstar\ takes only $O(n)$ values here, so the number of values alone does not control fragmentation.
 
-% ============================ instances ==================================
-\section{Heuristics with Bounded Width}
-\label{sec-instances}
-
-Three common heuristic families have bounded width.
-Throughout, $\pi$ is variable-contiguous, $d=\max_{v\in\vars}|D_v|$ and $m=|\vars|$.
-
-\paragraph{Potential Heuristics.}
-A potential heuristic \citep{pommerening-et-al-aaai2015,fiser-et-al-aaai2022} sums integer fact potentials $P(v,w)$ into $p(s)=\sum_vP(v,s(v))$, and we use the rectification $\hpot=\max(0,p)$, which is admissible and consistent by Proposition~\ref{prop-transform}.
-If all potentials, including the values of the induced lookup tables on invalid codes, lie in $[-M,M]$, then $\width_\pi(\hpot)\leq d(2mM+1)$ and $|\hrange(\hpot)|\leq mM+1$ (supplement).
-This bound is pseudo-polynomial: it is polynomial in $M$ but not in its bit length.
-
-\paragraph{Pattern Databases.}
-A pattern database \citep[PDB;][]{culberson-schaeffer-compint1998,edelkamp-ecp2001} projects \task\ onto a pattern $P\subseteq\vars$ and stores the abstract goal distance $h^P(s)$ of the abstract state of $s$, which is admissible and consistent.
-
-\begin{proposition}
-\label{prop-pdb}
-Let $P\subseteq\vars$ be a pattern under a variable-contiguous order $\pi$.
-Extend its table to invalid encodings by ignoring the bits of variables outside $P$ and mapping an invalid code of a pattern variable to $0$, and let $|\states^P|=\prod_{v\in P}|D_v|$.
-Then $\width_\pi(h^P)\leq |\states^P|$.
-\end{proposition}
-
-A limit on the number of abstract states thus directly bounds width, and since a PDB has at most $|\states^P|$ finite values, its effort ratio is at most $2|\states^P|^2n$.
-By Proposition~\ref{prop-closure}, maxima and sums of PDBs have at most the product of the component widths.
-
-\paragraph{Linear Merge-and-Shrink.}
-Merge-and-shrink (M\&S) abstractions \citep{helmert-et-al-jacm2014} iteratively merge the factors of a factored transition system and shrink intermediate abstractions.
-A linear merge strategy represents the abstraction mapping as a cascade of tables \citep{helmert-et-al-icaps2015}.
-The supplement proves the following bound for merge orders that agree with the BDD variable order.
-
-\begin{proposition}
-\label{prop-ms}
-If a linear merge order agrees with a variable-contiguous order $\pi$, every cascade table has at most $N$ valid outputs and invalid codes share a sink, then $\width_\pi(h^{\alpha}) \leq d \cdot (N+1)$.
-\end{proposition}
-
-The premise bounds the output of every table, not only of the final abstraction, and yields an effort ratio of at most $2dN(N+1)n$.
-Without this agreement, the bound does not apply.
-We give no analogous bound for $h^{\max}$, $h^{\mathrm{add}}$ or LM-cut, but their width can be measured after construction to instantiate the general theorems.
-
 % ============================ experiments ================================
 \section{Experiments}
 \label{sec-experiments}
@@ -633,11 +576,10 @@ All three families meet it; a share above one means that harmful heuristics stil
 A post-hoc bootstrap that resamples domains gives 95\% intervals for $S$ above \GenShareThreshold\ for every family (lowest \BootPotShareLow--\BootPotShareHigh\ for potentials, pooled \BootAllShareLow--\BootAllShareHigh) and \BootAllUnionLow--\BootAllUnionHigh\ for the pooled median $u$ of harmful pairs.
 Since $S=1-\sum\ln u/\sum\ln r$, and since $r>2$ implies $\fragfactor>u$ whenever $u<\sqrt2$, the criterion fails only if harmful heuristics substantially enlarge the expanded parts of the layers, so it mainly rules out this alternative explanation, and the medians of $u$ above carry the main evidence.
 In terms of coverage, no heuristic solves more tasks than blind search (\GenBlindSolved).
-Pairs cover only tasks that both searches solve, so we cannot decompose the \PruneBlindOnlyMin--\PruneBlindOnlyMax\ tasks per heuristic configuration that only blind search solves, on which harm is presumably largest.
 
 The PDB study shows the same pattern in a post-hoc analysis.
 Harmful PDBs barely prune (median $u=\HarmHurtUnionMedian$) but fragment (median \HarmHurtFragMedian), and all \HarmDoubled\ pairs with $r>2$ have a fragmentation factor above two, while none has $u>2$.
-More informative PDBs prune more but also fragment more (supplement).
+More informative PDBs prune more but also fragment more: with \emph{concordance}, the fraction of pairs of PDBs for the same task that a score orders correctly, averaged equally over domains, the more informative PDB expands fewer states and has smaller unsplit effort (\HoldoutStatesQualityMacro\ and \HoldoutUnionQualityMacro), but fragments less only with concordance \HoldoutFragmentQualityMacro.
 
 
 A post-hoc analysis shows why harmful heuristics prune so little.
@@ -725,9 +667,14 @@ No observed fragmentation exceeds its bounds on any of the \num{\SlackObservatio
 For these PDBs, fragmentation is moderate: it exceeds one in \SlackFragAboveOnePercent\% of the runs, with median \SlackFragMedian, 90th percentile \SlackFragNinety\ and maximum \SlackFragMax.
 In a post-hoc analysis, the median factor by which a bound exceeds the observed fragmentation is \SlackProfileMedian\ for the profile bound, \SlackWidthMedian\ for its relaxation to width and \SlackAddMedian\ for the ADD bound.
 However, the bounds do not predict fragmentation.
-The profile bound orders the PDBs of a task by fragmentation with \emph{concordance}, the fraction of correctly ordered pairs averaged equally over domains, of \HoldoutRepresentationProfileMacro, but $1/\unioneffort$, which shares its denominator, already reaches \HoldoutDenominatorNullMacro.
+The profile bound orders the PDBs of a task by fragmentation with concordance \HoldoutRepresentationProfileMacro, but $1/\unioneffort$, which shares its denominator, already reaches \HoldoutDenominatorNullMacro.
 When only the variable order of one PDB changes, the profile bound predicts the effect of switching from the Gamer to the Fast Downward order (concordance \OrderProfileMacro), but not among the Gamer orders of four unseen random seeds (\SeedCartesianMacro, below the \SeedNullMacro\ of $1/\unioneffort$).
-Likewise, aligning the M\&S merge order with the BDD order, which bounds width by Proposition~\ref{prop-ms}, changes fragmentation by a geometric mean factor of only \PruneAlignedFragRatio\ on \PruneAlignedTasks\ tasks (post hoc).
+Likewise, aligning the M\&S merge order with the BDD order, which bounds its width, changes fragmentation by a geometric mean factor of only \PruneAlignedFragRatio\ on \PruneAlignedTasks\ tasks (post hoc).
+
+\paragraph{Limitations.}
+Pairs cover only tasks that both searches solve, so we cannot decompose the \PruneBlindOnlyMin--\PruneBlindOnlyMax\ tasks per heuristic configuration that only blind search solves, on which harm is presumably largest.
+We exclude tasks with zero-cost operators, which Lemma~\ref{lem-identity} does not cover, and study forward product-at-evaluation search with one variable order per task and three heuristic families; operator potentials in \ghseta\ and symbolic PDBs as in Gamer remain open.
+Coverage near the time limit of 300 seconds is noisy: blind forward search solves between \RemSolvedBlindFw\ and \UbSolvedBlindFw\ holdout tasks in different studies, so we compare configurations only within a study.
 
 % ============================ related work ===============================
 \section{Related Work}
