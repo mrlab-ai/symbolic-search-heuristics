@@ -419,6 +419,39 @@ Lab data are in the `symk-representation-safe` workspace under
   `e1a93748a89544cbdd1ba73818d4a639980614f94ef0faae0395135ff5fba178`) and
   refuses to render unless the frozen decision is the one the paper states:
   the diagnosis of the family study holds for these potentials.
+- Prospective unsplit-bound study (frozen protocol
+  `experiments/unsplit_bound_protocol.md`, SHA-256
+  `3c955c8c5d982db92f0350bfd119cd45743ac8d0bef1cf5543eb2539b52d8c83`,
+  pinned with the option matrix, cohort manifest, planner revision
+  `4a719d8b3da3b606f4f246a61c2189859a5c825e` and binaries in
+  `experiments/unsplit_bound_protocol.py`).  Stage 1 selected the bound
+  schedule on the 275-task development cohort (Slurm job 3815065; inputs in
+  `symk-unsplit-dev`, backed up with all cell records in
+  `symk-representation-safe/experiments/data/symk-unsplit-dev`;
+  `experiments/select_unsplit_schedules.py` writes
+  `experiments/artifacts/unsplit-bound/stage1-v1.json`, SHA-256
+  `a2376b52f9c5e0670b33ae6b853220a34c8cd0e145e7a68fe60bbd2874829e65`).
+  Stage 2: 1,052 holdout tasks x 8 configurations = 8,416 cells, launched by
+  `experiments/exp_unsplit_bound.py` (Slurm job 3819585, 936 array tasks,
+  all completed, no recovery) and sealed by
+  `experiments/audit_unsplit_bound.py --seal`
+  (`experiments/artifacts/unsplit-bound/execution-receipt-v1.json`, SHA-256
+  `c5252f5037e9842afaea8037417d261ead2484918466041a1e408830656c6275`).
+  The frozen `experiments/analyze_unsplit_bound.py analyze` reads the fetched
+  properties (SHA-256
+  `b7fb182b413c716f23b941b453288a7ced140076ba3941213ae32bb497cb4625`, backed
+  up in `symk-representation-safe/experiments/data/exp_unsplit_bound-eval/properties`)
+  and writes `experiments/artifacts/unsplit-bound/analysis-v1.json` (SHA-256
+  `26ca6de0e34e2a468e2bf62bf9cbaf33bb6216bf0099d83951c8c84bee03031f`).  Lab
+  reports the solved unsplit runs as having unexplained errors because the
+  per-bucket expansion validator rejects the repeated layers of iterative
+  deepening; coverage and the done-event effort are unaffected.
+  `experiments/render_unsplit_bound_paper.py` renders
+  `paper/generated/unsplit-bound-v1.tex` (SHA-256
+  `42719d6befb679d70df92eb84b992eb6618bbb79024e91299e7558016756dfc3`) and
+  refuses to render unless the frozen claims are those the paper states: no
+  difference to BDDA* is significant, and unsplit search with potentials
+  loses to blind forward search.
 
 ## Exclusions and claim boundary
 
