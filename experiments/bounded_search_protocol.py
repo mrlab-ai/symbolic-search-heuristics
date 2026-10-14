@@ -21,7 +21,9 @@ class ProtocolError(RuntimeError):
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROTOCOL_PATH = SCRIPT_DIR / "bounded_search_protocol.md"
-PROTOCOL_SHA256 = "TO_PIN"
+PROTOCOL_SHA256 = (
+    "3810aa0e510c38e708847d09a1a4ba6bc3cd8594a50c2ffbbe7024d7e2aaa06a"
+)
 PROTOCOL = "bounded-search-measurement-v1"
 ANALYSIS_PROTOCOL = "bounded-search-analysis-v1"
 COHORT_ROLE = "prospective-bounded-search-holdout"
@@ -103,7 +105,9 @@ SEARCHES = dict(CONFIGS)
 BOUNDED_LABELS = tuple(label for label in LABELS if label.endswith("_bounded"))
 CONFIG_COUNT = len(CONFIGS)
 CELL_COUNT = COHORT_TASKS * CONFIG_COUNT
-OPTION_MATRIX_SHA256 = "TO_PIN"
+OPTION_MATRIX_SHA256 = (
+    "ff2b6541e6de8d79abb5ad271ea6f0f227dc278fe91f83c20677649505314e80"
+)
 
 # Decision rule (Section 5).
 ALPHA = Fraction(5, 100)

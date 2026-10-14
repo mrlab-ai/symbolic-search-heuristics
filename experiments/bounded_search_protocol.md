@@ -1,9 +1,11 @@
 # Protocol: do heuristics pay off in symbolic search given a plan-cost bound?
 
-Status: **draft, fixed before the development pilot.**  The configurations,
-the analysis and the decision rule are fixed before any run of this study.
-Section 8 will record the pilot; the document will then be frozen and pinned
-in `bounded_search_protocol.py` before Stage 2.  The pilot selects nothing.
+Status: **frozen on 2026-10-14 by author decision, after the development pilot
+and before Stage 2.**  The configurations, the analysis and the decision rule
+were fixed before any run of this study (draft SHA-256
+`f0cce1fb35d60169142ea640658a6180b75e19d9e52cafaca926b35c30abc1a1`, recorded
+in `symk-bounded-dev/pilot-inputs.sha256`); only Section 8 and this status
+were added since.  The pilot selected nothing.
 
 ## 1. Motivation and claims
 
@@ -134,4 +136,18 @@ the task is reported and counts as unsolved for every configuration.
 
 ## 8. Development pilot results
 
-To be added after the pilot.
+Slurm job 3833072 (354 array tasks, all `COMPLETED`), revision-cache binary
+`builds/release/bin/downward` with the pinned SHA-256
+`79ab63e5cd85be776131bdb0963d07bf60753f33aeaed18fcf9e69958e872f95`.  All
+2,475 cells produced a record and no solution costs disagree, so every check
+of Section 4 passes.  Bounded runs that found a first-phase plan but whose
+second phase ran out of time exit with code 2 and count as unsolved; the
+other unsolved cells are timeouts (exit 23), translator failures on
+organic-synthesis (exit 20), the two unsolvable mystery tasks (exit 11 or
+12) and one out-of-memory run of `blind_bd` (exit 22).  Summary:
+`experiments/artifacts/bounded-search/pilot-v1.json` (SHA-256
+`de91f891931586e875725330f32cdc515e3806bc46b8ebf054177d9b9d56b6ef`), written by `experiments/summarize_bounded_pilot.py`.
+
+Coverage on the 275 development tasks: `blind_fw` 116, `blind_bd` 132,
+`blind_bounded` 117, `ms_plain` / `ms_bounded` 120 / 117, `pdb_plain` /
+`pdb_bounded` 117 / 116, `pot_plain` / `pot_bounded` 111 / 115.
