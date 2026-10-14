@@ -25,6 +25,8 @@ SymbolicPotentialForwardSearch::SymbolicPotentialForwardSearch(
       m(opts.get<int>("m")),
       prune_only(opts.get<bool>("prune_only")),
       batch_f_window(opts.get<int>("batch_f_window")),
+      unsplit_bound(opts.get<bool>("unsplit_bound")),
+      unsplit_bound_doubling(opts.get<bool>("unsplit_bound_doubling")),
       objective_all_states(opts.get<bool>("all_states_objective")),
       lp_solver_type(opts.get<lp::LPSolverType>("lpsolver")) {
 }
@@ -85,7 +87,8 @@ void SymbolicPotentialForwardSearch::initialize() {
     // Potentials never produce infinity, so the dead-end set is empty.
     search_ptr->init(
         mgr, &level_sets->get_level_sets(), vars->zeroBDD(), prune_only,
-        batch_f_window);
+        batch_f_window, unsplit_bound,
+        unsplit_bound_doubling);
     if (sym_params.profile) {
         sym_params.profile->attach_heuristic_closed(
             vars.get(), search_ptr->getClosedShared());
@@ -131,6 +134,19 @@ public:
             "Use the heuristic only for pruning (dead ends and, once an "
             "anytime upper bound is known, the g+h >= bound slice); layers "
             "stay whole as in blind search (paper Cor. cor-prune).",
+            "false");
+        add_option<bool>(
+            "unsplit_bound",
+            "Keep every layer as one BDD and run iterative deepening on an "
+            "f-bound, starting at h(s0): each iteration discards successors "
+            "with g + h above the bound and raises the bound to the smallest "
+            "discarded f-value if it finds no plan. The last iteration "
+            "expands exactly the unsplit sets of BDDA*.",
+            "false");
+        add_option<bool>(
+            "unsplit_bound_doubling",
+            "With unsplit_bound, raise the bound in every iteration at least "
+            "by a step that starts at 1 and doubles.",
             "false");
         add_option<int>(
             "batch_f_window",

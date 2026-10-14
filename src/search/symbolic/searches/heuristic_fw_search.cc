@@ -31,6 +31,14 @@ HeuristicFwSearch::HeuristicFwSearch(
       stats(nullptr),
       prune_only(false),
       batch_f_window(0),
+      unsplit_bound(false),
+      unsplit_bound_doubling(false),
+      f_bound(0),
+      next_f_bound(numeric_limits<int>::max()),
+      bound_step(1),
+      iteration(0),
+      iteration_nodes(0),
+      iteration_layers(0),
       has_current_f(false),
       current_f(0) {
 }
@@ -61,12 +69,18 @@ HeuristicFwSearch::~HeuristicFwSearch() {
 bool HeuristicFwSearch::init(
     shared_ptr<SymStateSpaceManager> manager,
     const map<int, BDD> *level_sets_, const BDD &dead_ends_,
-    bool prune_only_, int batch_f_window_) {
+    bool prune_only_, int batch_f_window_, bool unsplit_bound_,
+    bool unsplit_bound_doubling_) {
     mgr = manager;
     level_sets = level_sets_;
     dead_ends = dead_ends_;
     prune_only = prune_only_;
     batch_f_window = batch_f_window_;
+    unsplit_bound = unsplit_bound_;
+    unsplit_bound_doubling = unsplit_bound_doubling_;
+    if (unsplit_bound_doubling && !unsplit_bound) {
+        ABORT("unsplit_bound_doubling requires unsplit_bound.");
+    }
     stats = sym_params.stats.get();
 
     if (batch_f_window < 0) {
@@ -75,6 +89,10 @@ bool HeuristicFwSearch::init(
     if (prune_only && batch_f_window > 0) {
         ABORT("batch_f_window is only supported for heuristic bucket search, "
               "not prune_only search.");
+    }
+    if (unsplit_bound && (prune_only || batch_f_window > 0)) {
+        ABORT("unsplit_bound cannot be combined with prune_only or "
+              "batch_f_window.");
     }
 
     // The search relies on the level sets being a total, disjoint partition
@@ -100,7 +118,7 @@ bool HeuristicFwSearch::init(
         ABORT("Heuristic level sets do not cover every valid state.");
     }
 
-    if (prune_only) {
+    if (prune_only || unsplit_bound) {
         // Cumulative slices P_t = union_{v <= t} H_v for one-intersection
         // interval pruning.
         BDD acc = mgr->zeroBDD();
@@ -128,7 +146,7 @@ bool HeuristicFwSearch::init(
     perfectHeuristic->init(mgr.get());
     perfectHeuristic->insert(0, mgr->get_goal());
 
-    BDD initial_state = mgr->get_initial_state();
+    initial_state = mgr->get_initial_state();
     int v0 = value_of_state(initial_state);
     if (v0 == NO_FINITE_VALUE) {
         // The initial state maps to an infinite heuristic value (e.g. a
@@ -140,7 +158,11 @@ bool HeuristicFwSearch::init(
     }
     // In prune-only mode the open list is keyed by g alone (v = 0), matching
     // blind expansion order; the heuristic acts only through slice pruning.
-    insert_open(0, prune_only ? 0 : v0, initial_state);
+    // The unsplit f-bound variant keys open by g alone as well and starts
+    // with the bound h(s0).
+    insert_open(0, (prune_only || unsplit_bound) ? 0 : v0, initial_state);
+    f_bound = v0;
+    iteration = 1;
 
     engine->setLowerBound(prune_only ? 0 : 0 + v0);
     engine->setMinG(0);
@@ -166,6 +188,37 @@ int HeuristicFwSearch::value_of_state(const BDD &state) const {
         }
     }
     return NO_FINITE_VALUE;
+}
+
+void HeuristicFwSearch::restart_iteration() {
+    // Every plan of cost at most the old bound would have been found, so C*
+    // is at least the smallest f-value of a discarded state. With doubling,
+    // the new bound may exceed this lower bound.
+    const int lower = next_f_bound;
+    f_bound = next_f_bound;
+    if (unsplit_bound_doubling) {
+        long long stepped = static_cast<long long>(f_bound) + bound_step;
+        stepped = min<long long>(stepped, numeric_limits<int>::max() - 1);
+        f_bound = max(f_bound, static_cast<int>(stepped));
+        bound_step = bound_step >= (1 << 29) ? bound_step : 2 * bound_step;
+    }
+    next_f_bound = numeric_limits<int>::max();
+    ++iteration;
+    iteration_nodes = 0;
+    iteration_layers = 0;
+    open.clear();
+    preexpanded.clear();
+    closed->init(mgr.get());
+    insert_open(0, 0, initial_state);
+    engine->setLowerBound(lower);
+}
+
+void HeuristicFwSearch::log_iteration(bool solved) const {
+    utils::g_log << "WBH unsplit f-bound iteration: index=" << iteration
+                 << ", bound=" << f_bound
+                 << ", expanded_bdd_nodes=" << iteration_nodes
+                 << ", expanded_layers=" << iteration_layers
+                 << ", solved=" << (solved ? "true" : "false") << endl;
 }
 
 void HeuristicFwSearch::insert_open(int g, int v, const BDD &bdd) {
@@ -207,6 +260,11 @@ int HeuristicFwSearch::min_open_f() const {
     };
     consider(open);
     consider(preexpanded);
+    if (unsplit_bound && best == numeric_limits<int>::max()) {
+        // An exhausted iteration restarts with the next bound, which is a
+        // lower bound on C*; only an infinite next bound ends the search.
+        return next_f_bound;
+    }
     return best;
 }
 
@@ -216,7 +274,14 @@ void HeuristicFwSearch::step() {
 
 void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
     pair<int, int> key;
-    if (!select_min(key)) {
+    bool found = select_min(key);
+    if (!found && unsplit_bound &&
+        next_f_bound < numeric_limits<int>::max()) {
+        log_iteration(false);
+        restart_iteration();
+        found = select_min(key);
+    }
+    if (!found) {
         has_current_f = false;
         engine->setLowerBound(numeric_limits<int>::max());
         return;
@@ -269,13 +334,16 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
     fresh_states *= !cached_states;
 
     if (engine->solved()) {
+        if (unsplit_bound) {
+            log_iteration(true);
+        }
         return;
     }
 
     // Prune-only: re-apply the interval slice at selection time, since the
     // anytime upper bound may have tightened after this bucket was generated
     // (e.g. by the solution cut just above).
-    if (prune_only) {
+    if (prune_only || unsplit_bound) {
         int upper_bound = engine->getUpperBound();
         if (upper_bound < numeric_limits<int>::max()) {
             cached_states *= keep_slice(upper_bound - 1 - g);
@@ -318,6 +386,10 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
 
     long bdd_nodes = inner_node_count(states);
     double num_states = mgr->getVars()->numStates(states);
+    if (unsplit_bound) {
+        iteration_nodes += bdd_nodes;
+        ++iteration_layers;
+    }
 
     // Image (cost transitions only; positive-cost assumption checked in init).
     // With batching, add fresh buckets at the same g whose f lies in the
@@ -530,6 +602,33 @@ void HeuristicFwSearch::stepImage(int maxTime, int maxNodes) {
                     continue;
                 }
             }
+        }
+
+        if (unsplit_bound) {
+            // Unsplit f-bound variant: keep the layer whole and discard the
+            // successors with g2 + h > B. Record the smallest f-value of a
+            // discarded state that is not closed as the next bound.
+            BDD keep = keep_slice(f_bound - g2);
+            BDD discarded = successors * !keep * closed->notClosed();
+            if (!discarded.IsZero()) {
+                for (const auto &[value, level] : *level_sets) {
+                    if (value <= f_bound - g2) {
+                        continue;
+                    }
+                    if (g2 + value >= next_f_bound) {
+                        break;
+                    }
+                    if (!(discarded * level).IsZero()) {
+                        next_f_bound = g2 + value;
+                        break;
+                    }
+                }
+            }
+            successors *= keep;
+            if (!successors.IsZero()) {
+                insert_open(g2, 0, successors);
+            }
+            continue;
         }
 
         if (prune_only) {

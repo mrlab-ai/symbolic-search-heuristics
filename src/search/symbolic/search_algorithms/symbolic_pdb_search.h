@@ -33,6 +33,8 @@ class SymbolicPdbForwardSearch : public SymbolicSearch {
     const bool shadow_partition;
     const bool prune_only;
     const int batch_f_window;
+    const bool unsplit_bound;
+    const bool unsplit_bound_doubling;
     const std::string incidence_selector_log;
 
     std::shared_ptr<PdbLevelSets> level_sets;

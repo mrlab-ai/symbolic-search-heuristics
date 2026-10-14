@@ -41,6 +41,8 @@ SymbolicPdbForwardSearch::SymbolicPdbForwardSearch(const plugins::Options &opts)
       shadow_partition(opts.get<bool>("shadow_partition")),
       prune_only(opts.get<bool>("prune_only")),
       batch_f_window(opts.get<int>("batch_f_window")),
+      unsplit_bound(opts.get<bool>("unsplit_bound")),
+      unsplit_bound_doubling(opts.get<bool>("unsplit_bound_doubling")),
       incidence_selector_log(opts.get<string>("incidence_selector_log")) {
 }
 
@@ -360,7 +362,8 @@ void SymbolicPdbForwardSearch::initialize() {
         unique_ptr<HeuristicFwSearch>(new HeuristicFwSearch(this, sym_params));
     search_ptr->init(
         mgr, &level_sets->get_level_sets(), level_sets->get_dead_ends(),
-        prune_only, batch_f_window);
+        prune_only, batch_f_window, unsplit_bound,
+        unsplit_bound_doubling);
     if (sym_params.profile) {
         sym_params.profile->attach_heuristic_closed(
             vars.get(), search_ptr->getClosedShared());
@@ -482,6 +485,19 @@ public:
             "Use the heuristic only for pruning (dead ends and, once an "
             "anytime upper bound is known, the g+h >= bound slice); layers "
             "stay whole as in blind search (paper Cor. cor-prune).",
+            "false");
+        add_option<bool>(
+            "unsplit_bound",
+            "Keep every layer as one BDD and run iterative deepening on an "
+            "f-bound, starting at h(s0): each iteration discards successors "
+            "with g + h above the bound and raises the bound to the smallest "
+            "discarded f-value if it finds no plan. The last iteration "
+            "expands exactly the unsplit sets of BDDA*.",
+            "false");
+        add_option<bool>(
+            "unsplit_bound_doubling",
+            "With unsplit_bound, raise the bound in every iteration at least "
+            "by a step that starts at 1 and doubles.",
             "false");
         add_option<int>(
             "batch_f_window",

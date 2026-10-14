@@ -48,6 +48,22 @@ class WbhStats;
   experiment suite excludes zero-cost operators). Solution detection and plan
   reconstruction reuse the standard forward closed list and cut machinery.
 
+  UNSPLIT f-BOUND VARIANT: with unsplit_bound=true the search keeps each
+  layer as a single BDD, as prune-only search does, and runs iterative
+  deepening on an f-bound B, starting at B = h(s0). An iteration expands the
+  layers by increasing g and discards the successors with g + h > B; the
+  first goal found is optimal, since every plan of cost c <= B only visits
+  states with f <= c. If an iteration ends without a plan, the next bound is
+  the smallest f-value of a discarded state, which never exceeds C*. Hence
+  the last iteration has B = C* and expands exactly the sets
+  L_g cap {h <= C* - g}, the unsplit sets of BDDA* (paper Lemma
+  lem-identity). Each iteration restarts from s0 with an empty closed list
+  and is summarized in the planner log. With unsplit_bound_doubling=true,
+  the bound grows at least by a step that doubles in every iteration
+  (1, 2, 4, ...). Since layers are expanded by increasing g, the first goal
+  found is still optimal for any bound B >= C*; overshooting only prunes
+  less in the last iteration.
+
   OPT-IN SAME-g f-WINDOW BATCHING: batch_f_window > 0 speculatively computes
   one image for the selected fresh bucket and fresh buckets with the same g
   and f <= selected_f + batch_f_window. Same-g is essential because a BDD
@@ -74,8 +90,22 @@ class HeuristicFwSearch : public SymSearch {
     WbhStats *stats;
     bool prune_only;
     int batch_f_window;
+    bool unsplit_bound;
+    bool unsplit_bound_doubling;
 
-    // For prune_only: cumulative level sets P_t = union of H_v for v <= t,
+    // Unsplit f-bound state: current bound, smallest f-value of a discarded
+    // state in this iteration, and per-iteration counters for the log.
+    int f_bound;
+    int next_f_bound;
+    int bound_step;
+    BDD initial_state;
+    int iteration;
+    long iteration_nodes;
+    int iteration_layers;
+    void restart_iteration();
+    void log_iteration(bool solved) const;
+
+    // For prune_only and unsplit_bound: cumulative level sets P_t = union of H_v for v <= t,
     // sorted by value; used to slice a layer to { s : h(s) <= t } with one
     // intersection.
     std::vector<std::pair<int, BDD>> cumulative_levels;
@@ -123,7 +153,8 @@ public:
     bool init(
         std::shared_ptr<SymStateSpaceManager> manager,
         const std::map<int, BDD> *level_sets, const BDD &dead_ends,
-        bool prune_only = false, int batch_f_window = 0);
+        bool prune_only = false, int batch_f_window = 0,
+        bool unsplit_bound = false, bool unsplit_bound_doubling = false);
 
     std::shared_ptr<ClosedList> getClosedShared() const {
         return closed;
