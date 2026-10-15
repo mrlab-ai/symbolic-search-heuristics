@@ -493,6 +493,31 @@ Lab data are in the `symk-representation-safe` workspace under
   bounded analyses, and refuses to render unless the frozen claims are those
   the paper states: bounded search beats BDDA* with the PDB and potentials,
   and no other test is significant.
+- Prospective CPDDL GHSETA* study (frozen protocol
+  `experiments/cpddl_ghseta_protocol.md`, SHA-256
+  `c6a350176349389a9b301af0cd500150fb89dd2cf182662a7f2a9312a1a53ddc`).  The
+  vendored CPDDL in `baselines/cpddl` (upstream 2c7de0ec) lacked
+  `third-party/cudd/cudd/cudd.h`, which CPDDL's own `.gitignore` had dropped;
+  revision `fea354d6c0b880aa8afbd74781e4f01b510fa997` restores it from upstream
+  and adds an opt-in expansion log (`PDDL_WBH_LOG`).  The binary
+  `cpddl-cache/fea354d6c0b880aa/baselines/cpddl/bin/pddl-symba` (SHA-256
+  `dee50c341ee7959c070a3eeaa7b2f29f5c9ab8a558777d71cff8edd7babc22fb`) runs
+  through `experiments/cpddl_ghseta_run_cells.py`, which verifies the binary
+  and both PDDL files by SHA-256 before every run.  The development pilot
+  needed a second attempt after two harness fixes (Slurm jobs 3862687 and
+  3863283; the first attempt is kept in `symk-cpddl/dev/runs-attempt1`) and
+  selected nothing.  Stage 2: 1,052 holdout tasks x 6 configurations = 6,312
+  cells (Slurm job 3864092, 902 array tasks, all completed;
+  `experiments/artifacts/cpddl-ghseta/execution-receipt-v1.json` hashes all
+  cell records).  Cell records, configurations, inputs and the forward
+  expansion logs are backed up in
+  `symk-representation-safe/experiments/data/symk-cpddl`.
+  `experiments/analyze_cpddl_ghseta_study.py analyze --cohort holdout` writes
+  `experiments/artifacts/cpddl-ghseta/analysis-v1.json` (SHA-256
+  `e011a14034efb934027d38f6f59e8f597156388ea5dd38153a83cb4b5056afa2`), and
+  `experiments/render_cpddl_ghseta_paper.py` renders
+  `paper/generated/cpddl-ghseta-v1.tex` (SHA-256
+  `58ff37b13023e958a82016ff7971cf5cc6eda84d62a2178411e06a37e29c18c9`) only if both primary tests favor the potentials, as the paper states.
 
 ## Exclusions and claim boundary
 
