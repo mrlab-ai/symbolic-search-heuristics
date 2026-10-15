@@ -1,0 +1,11 @@
+{
+ "array_tasks": 902,
+ "cell_records_sha256": "88e77067ff1214f16bc850a99bbc514bfe00e0c9a3e63bdab27c81671ee4de1b",
+ "cells": 6312,
+ "inputs_sha256_file": "09bae847e95e5b897528ebff39ea7384e73fcc7ad9a63cfd653dc875dbea66cc",
+ "scheduler_states": {
+  "COMPLETED": 902
+ },
+ "schema": "symbolic-search-heuristics/cpddl-ghseta-execution/v1",
+ "slurm_job": "3864092"
+}
