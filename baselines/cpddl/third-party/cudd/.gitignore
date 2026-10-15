@@ -26,3 +26,7 @@ aclocal.m4
 autom4te.cache/
 configure
 html/
+
+# Restored from upstream cpddl 2c7de0ec: a real CUDD source header that the
+# vendoring dropped because of the pattern above.
+!/cudd/cudd.h

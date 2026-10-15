@@ -69,8 +69,43 @@ struct pddl_symbolic_search {
     unsigned long num_expanded_states;
     float avg_expanded_bdd_nodes;
     int dirty;
+    /* Optional expansion log (environment variable PDDL_WBH_LOG): the union
+       of the expanded sets per g-value, indexed by g. */
+    pddl_bdd_t **wbh_layer;
+    int wbh_layer_size;
 };
 typedef struct pddl_symbolic_search pddl_symbolic_search_t;
+
+/* Opt-in JSON-lines log of every expanded BDD and, at the end of the
+   search, of the per-g union of the expanded sets.  It is written only if
+   the environment variable PDDL_WBH_LOG names a file and changes no search
+   decision. */
+static FILE *wbh_log = NULL;
+static int wbh_log_checked = 0;
+
+static FILE *wbhLog(void)
+{
+    if (!wbh_log_checked){
+        wbh_log_checked = 1;
+        const char *path = getenv("PDDL_WBH_LOG");
+        if (path != NULL && path[0] != 0x0)
+            wbh_log = fopen(path, "w");
+    }
+    return wbh_log;
+}
+
+static void wbhLayersFree(pddl_bdd_manager_t *mgr,
+                          pddl_symbolic_search_t *search)
+{
+    for (int g = 0; g < search->wbh_layer_size; ++g){
+        if (search->wbh_layer[g] != NULL)
+            pddlBDDDel(mgr, search->wbh_layer[g]);
+    }
+    if (search->wbh_layer != NULL)
+        FREE(search->wbh_layer);
+    search->wbh_layer = NULL;
+    search->wbh_layer_size = 0;
+}
 
 struct pddl_symbolic_task {
     pddl_symbolic_task_config_t cfg; /*!< Configuration */
@@ -404,6 +439,7 @@ static void searchReinit(pddl_symbolic_task_t *ss,
     search->num_expanded_bdd_nodes = 0ul;
     search->num_expanded_states = 0ul;
     search->avg_expanded_bdd_nodes = 0.f;
+    wbhLayersFree(ss->mgr, search);
     search->dirty = 0;
     LOG(err, "Re-init %s search. DONE", (search->fw ? "fw" : "bw"));
 }
@@ -425,6 +461,62 @@ static void searchFree(pddl_symbolic_task_t *ss,
     if (search->goal != NULL)
         pddlBDDDel(ss->mgr, search->goal);
     pddlIArrFree(&search->plan);
+    wbhLayersFree(ss->mgr, search);
+}
+
+static void wbhLogExpand(pddl_symbolic_task_t *ss,
+                         pddl_symbolic_search_t *search,
+                         const pddl_symbolic_state_t *state,
+                         pddl_bdd_t *bdd)
+{
+    FILE *log = wbhLog();
+    if (log == NULL)
+        return;
+    int num_vars = ss->vars.bdd_var_size / 2;
+    int g = state->cost.cost;
+    fprintf(log, "{\"event\":\"expand\",\"dir\":\"%s\",\"g\":%d,"
+                 "\"zero_g\":%d,\"h\":%d,\"nodes\":%d,\"states\":%.17g}\n",
+            (search->fw ? "fw" : "bw"), g, state->cost.zero_cost,
+            state->heur.cost, pddlBDDSize(bdd),
+            pddlBDDCountMinterm(ss->mgr, bdd, num_vars));
+    if (g < 0)
+        return;
+    if (g >= search->wbh_layer_size){
+        int size = 2 * g + 2;
+        search->wbh_layer = REALLOC_ARR(search->wbh_layer, pddl_bdd_t *, size);
+        for (int i = search->wbh_layer_size; i < size; ++i)
+            search->wbh_layer[i] = NULL;
+        search->wbh_layer_size = size;
+    }
+    if (search->wbh_layer[g] == NULL){
+        search->wbh_layer[g] = pddlBDDClone(ss->mgr, bdd);
+    }else{
+        pddlBDDOrUpdate(ss->mgr, &search->wbh_layer[g], bdd);
+    }
+}
+
+static void wbhLogLayers(pddl_symbolic_task_t *ss,
+                         pddl_symbolic_search_t *search,
+                         int res)
+{
+    FILE *log = wbhLog();
+    if (log == NULL)
+        return;
+    int num_vars = ss->vars.bdd_var_size / 2;
+    for (int g = 0; g < search->wbh_layer_size; ++g){
+        if (search->wbh_layer[g] == NULL)
+            continue;
+        fprintf(log, "{\"event\":\"layer\",\"dir\":\"%s\",\"g\":%d,"
+                     "\"nodes\":%d,\"states\":%.17g}\n",
+                (search->fw ? "fw" : "bw"), g,
+                pddlBDDSize(search->wbh_layer[g]),
+                pddlBDDCountMinterm(ss->mgr, search->wbh_layer[g], num_vars));
+    }
+    fprintf(log, "{\"event\":\"done\",\"dir\":\"%s\",\"result\":%d,"
+                 "\"expanded_nodes\":%lu,\"expanded_sets\":%lu}\n",
+            (search->fw ? "fw" : "bw"), res,
+            search->num_expanded_bdd_nodes, search->num_expanded_states);
+    fflush(log);
 }
 
 static pddl_bdd_t *bddStateSelectOne(pddl_symbolic_task_t *ss,
@@ -758,6 +850,7 @@ static int searchExpandState(pddl_symbolic_task_t *ss,
         pddlBDDDel(ss->mgr, bdd_in);
         return 0;
     }
+    wbhLogExpand(ss, search, state_in, bdd_in);
 
     for (int tri = 0; tri < search->trans.trans_size; ++tri){
         const pddl_cost_t *tr_cost = &search->trans.trans[tri].cost;
@@ -1561,6 +1654,7 @@ static int searchOneDir(pddl_symbolic_task_t *ss,
     while (res == PDDL_SYMBOLIC_CONT){
         res = searchStep(ss, search, NULL, NULL, err);
     }
+    wbhLogLayers(ss, search, res);
     LOG(err, "Expanded BDD Nodes: %lu",
         search->num_expanded_bdd_nodes);
     LOG(err, "Expanded States: %lu",
@@ -1780,6 +1874,8 @@ int pddlSymbolicTaskSearchFwBw(pddl_symbolic_task_t *ss,
         }
     }
 
+    wbhLogLayers(ss, &ss->search_fw, res);
+    wbhLogLayers(ss, &ss->search_bw, res);
     LOG(err, "Fw Expanded BDD Nodes: %lu",
         ss->search_fw.num_expanded_bdd_nodes);
     LOG(err, "Fw Expanded States: %lu",
