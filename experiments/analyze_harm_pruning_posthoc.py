@@ -27,7 +27,8 @@ sets S_g^h and therefore has effort ratio u, with BDDA* (ratio r): pairs
 with u < 1 and with r < 1, and the geometric means of u and r.  It also
 counts the neutral pairs (r = 1) and those among them with u = frag = 1.
 The unsolved view covers the runs that fail on a task blind search solves:
-their expanded BDD nodes until the timeout relative to the whole blind
+how many of them did not complete the construction of the heuristic, their
+expanded BDD nodes until the timeout relative to the whole blind
 effort, and how many of their layers already had more bucket nodes than the
 whole blind layer.  The width view reports, per configuration, the medians
 of the exact cofactor width W of the heuristic, of its number of ADD values
@@ -65,7 +66,7 @@ EXPECTED_PROPERTIES_SHA256 = (
 )
 DEFAULT_ARTIFACT = Frozen.ARTIFACT_DIR / "pruning-v1.json"
 EXPECTED_ARTIFACT_SHA256 = (
-    "e507c0015c52790d8769829645aa4d97adead84c951d06b803a4967a01e349e7"
+    "53fb8ae2347ff150133d77a2466e515b099c9b3a77c28696eddf1a3c8fdaa5f6"
 )
 GENERATED = REPOSITORY_ROOT / "paper" / "generated"
 DEFAULT_OUTPUT = GENERATED / "pdb-profile-harm-pruning-v1.tex"
@@ -260,12 +261,15 @@ def _oracle(pairs):
 
 def _unsolved(cohort, runs):
     ratios, above, layers = [], 0, 0
+    failed, unconstructed = 0, 0
     for label in P.LABELS[1:]:
         for task in cohort:
             blind = runs[(P.BLIND_LABEL, task.domain, task.problem)]
             heur = runs[(label, task.domain, task.problem)]
             if not Frozen._solved(blind) or Frozen._solved(heur):
                 continue
+            failed += 1
+            unconstructed += heur.get("construction_completed") is not True
             profile = heur.get("wbh_expansion_profile") or []
             if not profile:
                 continue
@@ -280,6 +284,8 @@ def _unsolved(cohort, runs):
                     layers += 1
                     above += nodes > blind_layers[g]
     return {
+        "failed_runs": failed,
+        "unconstructed_runs": unconstructed,
         "runs": len(ratios),
         "partial_effort_ratio_median": _median([float(x) for x in ratios]),
         "layers": layers,
@@ -469,6 +475,8 @@ def render(data, digest):
     groups = widths["groups"].values()
     macros += [
         ("UnsolvedRuns", str(unsolved["runs"])),
+        ("UnsolvedFailed", str(unsolved["failed_runs"])),
+        ("UnsolvedUnconstructed", str(unsolved["unconstructed_runs"])),
         ("UnsolvedEffortMedian",
          "{:.2f}".format(unsolved["partial_effort_ratio_median"])),
         ("UnsolvedLayersAbove", "\\num{{{}}}".format(unsolved["layers_above_blind"])),

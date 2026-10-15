@@ -389,10 +389,10 @@ Lab data are in the `symk-representation-safe` workspace under
   exact cofactor widths of the heuristics against 2TWn, and
   writes `experiments/artifacts/pdb-profile-harm-generality/pruning-v1.json`
   (SHA-256
-  `e507c0015c52790d8769829645aa4d97adead84c951d06b803a4967a01e349e7`); its
+  `53fb8ae2347ff150133d77a2466e515b099c9b3a77c28696eddf1a3c8fdaa5f6`); its
   `render`, `figure` and `layers` subcommands produce
   `paper/generated/pdb-profile-harm-pruning-v1.tex` (SHA-256
-  `6e0068fdd564f5417b4f89d9fbd17c41524902bed0036d97f2e243295129914e`),
+  `156812a792514b9d1e64c535fca21f4b774f7f3577b73b9337d3585308afb245`),
   `paper/generated/pdb-profile-harm-pruning-v1.pdf` (SHA-256
   `4e11361977391d69cbee4b42f6ec9a4b42abe5dcf112a35311f24084fb34963c`) and
   `paper/generated/pdb-profile-harm-layers-v1.pdf` (SHA-256
