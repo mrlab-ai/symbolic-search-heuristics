@@ -1,10 +1,11 @@
 # Protocol: pruning and fragmentation in GHSETA* with operator potentials
 
-Status: **draft, fixed before the development pilot.**  The configurations,
-the analysis and the decision rule are fixed before any run of this study.
-Section 8 will record the pilot; the document will then be frozen and its
-SHA-256 pinned in `analyze_cpddl_ghseta_study.py` before Stage 2.  The pilot
-selects nothing.
+Status: **frozen on 2026-10-15 by author decision, after the development pilot
+and before Stage 2.**  The configurations, the analysis and the decision rule
+were fixed before any run of this study (draft SHA-256
+`1bc79c4eb38f7498ef81a2b82da6f0f5f65f3ab478b6709872fc47f1fd418cac`, recorded
+in `symk-cpddl/dev/pilot-inputs.sha256`); only Section 8 and this status were
+added since.  The pilot selected nothing.
 
 ## 1. Motivation and claims
 
@@ -117,4 +118,20 @@ account `naiss2026-3-660-cpu`, `fat` partition, one CPU and 9 GiB per task.
 
 ## 8. Development pilot results
 
-To be added after the pilot.
+A first attempt (Slurm job 3862687) exposed two harness defects: the runner
+crashed on the truncated last line of the log of a run killed by its limits,
+which aborted the remaining cells of its array task, and 7 cells of up to 420
+seconds of wall-clock time exceeded the 45 minutes per array task.  The
+runner now skips malformed log lines and records how many it skipped, and an
+array task gets 60 minutes; the first attempt is kept in `runs-attempt1`.
+The second attempt (Slurm job 3863283, 236 array tasks, all `COMPLETED`)
+produced all 1,650 cells.  No solution costs disagree, and all 244 solved
+profiled runs logged complete layers.  CPDDL's PDDL parser rejects the domain
+files of logistics00, storage and zenotravel (exit code 255), so these tasks
+are unsolved for every configuration.  Summary:
+`experiments/artifacts/cpddl-ghseta/pilot-v1.json` (SHA-256
+`190b776af248dfee12396ac57e6f109744f22734311edb74d54d3c4b0419f241`).
+
+Coverage on the 275 development tasks: `cp_blind_fw` 113, `cp_pot_fw` 133,
+`cp_blind_bi` 132, `cp_pot_bi` 138, `cp_blind_fw_prof` 113, `cp_pot_fw_prof`
+131.

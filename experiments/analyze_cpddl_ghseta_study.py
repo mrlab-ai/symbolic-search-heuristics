@@ -31,7 +31,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = Path("/nobackup/proj/disk/dfsplan/personal/jendrik/symk-cpddl")
 ARTIFACT_DIR = SCRIPT_DIR / "artifacts" / "cpddl-ghseta"
 PROTOCOL_PATH = SCRIPT_DIR / "cpddl_ghseta_protocol.md"
-PROTOCOL_SHA256 = "TO_PIN"
+PROTOCOL_SHA256 = (
+    "c6a350176349389a9b301af0cd500150fb89dd2cf182662a7f2a9312a1a53ddc"
+)
 LABELS = ("cp_blind_fw", "cp_pot_fw", "cp_blind_bi", "cp_pot_bi",
           "cp_blind_fw_prof", "cp_pot_fw_prof")
 PRIMARY = (("H-A", "cp_pot_fw", "cp_blind_fw"),
