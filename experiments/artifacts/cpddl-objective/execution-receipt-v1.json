@@ -1,0 +1,11 @@
+{
+ "array_tasks": 602,
+ "cell_records_sha256": "099e856e8eac3593d2ed1f1d5bcc1a94e278ef101f3b4baa393f53c57ce4fcc7",
+ "cells": 4208,
+ "inputs_sha256_file": "1b21dfe9dc7ec750b35a7fc7840b3db073c3ee17091d577233354e017d4a0ff3",
+ "scheduler_states": {
+  "COMPLETED": 602
+ },
+ "schema": "symbolic-search-heuristics/cpddl-objective-execution/v1",
+ "slurm_job": "3878971"
+}

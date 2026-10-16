@@ -517,7 +517,42 @@ Lab data are in the `symk-representation-safe` workspace under
   `e011a14034efb934027d38f6f59e8f597156388ea5dd38153a83cb4b5056afa2`), and
   `experiments/render_cpddl_ghseta_paper.py` renders
   `paper/generated/cpddl-ghseta-v1.tex` (SHA-256
-  `58ff37b13023e958a82016ff7971cf5cc6eda84d62a2178411e06a37e29c18c9`) only if both primary tests favor the potentials, as the paper states.
+  `3b83a67bdd1d9368870eec41b7f6ef063552384f3ec6534fbb98677ffa8d9ed6`) only if both primary tests favor the potentials, as the paper states.
+- Prospective strong-heuristics study (frozen protocol
+  `experiments/strong_heuristics_protocol.md`, pinned in
+  `experiments/strong_heuristics_protocol.py` with the harm-generality
+  binary): 1,052 holdout tasks x 3 configurations (profiled blind search,
+  potentials optimized for all states with weights in [-1000, 1000], M&S
+  with 200,000 states) = 3,156 cells, launched by
+  `experiments/exp_strong_heuristics.py` (Slurm job 3878954, 789 array tasks,
+  all completed, no recovery) and sealed by
+  `experiments/audit_strong_heuristics.py --seal`.  The frozen
+  `experiments/analyze_strong_heuristics.py analyze` reads the fetched
+  properties (SHA-256
+  `3a400cde7aead94cc0cf0726c7ce299ee88fed7dfa794cf12b75082f92990f68`, backed up
+  in `symk-representation-safe/experiments/data/exp_strong_heuristics-eval`)
+  and writes `experiments/artifacts/strong-heuristics/analysis-v1.json`
+  (SHA-256 `f9e81416777a4618ef0f1341ba3cb7bec90bfa3820e2f07eb98d3affa4debfa9`).
+  `experiments/render_strong_heuristics_paper.py` renders
+  `paper/generated/strong-heuristics-v1.tex` (SHA-256 `8cd593531d3a515e377fbe457e2d009dbdff01116f4cfff43afb6df85ff7175c`), counting post
+  hoc from the pinned properties the failing runs that did not complete the
+  construction of the heuristic, and refuses to render unless the decision
+  rule holds for both heuristics, as the paper states.
+- Prospective CPDDL objective study (frozen protocol
+  `experiments/cpddl_objective_protocol.md`, pinned in its analysis script
+  below): the CPDDL binary and
+  runner of the GHSETA* study with operator potentials for the initial state,
+  1,052 holdout tasks x 4 configurations = 4,208 cells (Slurm job 3878971,
+  602 array tasks, all completed;
+  `experiments/artifacts/cpddl-objective/execution-receipt-v1.json` hashes all
+  cell records, backed up with the logs in
+  `symk-representation-safe/experiments/data/symk-cpddl/holdout-objective-I`).
+  `experiments/analyze_cpddl_objective_study.py analyze` writes
+  `experiments/artifacts/cpddl-objective/analysis-v1.json` (SHA-256
+  `8334e5717572a33d877f7401e011ee1d31004a184ee1da75eeb1aed2467086ad`), and
+  `experiments/render_cpddl_objective_paper.py` renders
+  `paper/generated/cpddl-objective-v1.tex` (SHA-256 `30bb8a591dd5c19e5d61a8e9564325211d8ff775588b294f52e3a31b4b499a74`) only if the
+  primary test favors the potentials, as the paper states.
 
 ## Exclusions and claim boundary
 

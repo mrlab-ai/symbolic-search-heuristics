@@ -77,7 +77,7 @@ def render(data, digest):
         ("CpHighPairs", str(d["high_pairs"])),
         ("CpHighHelpful", str(d["high_helpful"])),
         ("CpBlindFrag", f2(d["blind_frag_median"])),
-        ("CpRow", "Operator potentials (CPDDL) & \\num{{{}}} & \\num{{{}}} ({}) & {} & {}/{} & {} & {} & {} & {} \\\\".format(
+        ("CpRow", "Operator potentials, A+I (CPDDL) & \\num{{{}}} & \\num{{{}}} ({}) & {} & {}/{} & {} & {} & {} & {} \\\\".format(
             d["pairs"], d["harmful"], harmful_domains, f2(d["share"]),
             d["strong_frag_above_unsplit"], d["strong"], f2(d["harmful_u_median"]),
             f2(d["harmful_f_median"]), f2(d["helpful_u_median"]),

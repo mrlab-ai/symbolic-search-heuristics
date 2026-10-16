@@ -107,13 +107,22 @@ CP_GENERATED_RESULT := generated/cpddl-ghseta-v1.tex
 CP_ARTIFACT_DIR := ../experiments/artifacts/cpddl-ghseta
 CP_ARTIFACT := $(CP_ARTIFACT_DIR)/analysis-v1.json
 CP_RENDERER := ../experiments/render_cpddl_ghseta_paper.py
+ST_GENERATED_RESULT := generated/strong-heuristics-v1.tex
+ST_ARTIFACT_DIR := ../experiments/artifacts/strong-heuristics
+ST_ARTIFACT := $(ST_ARTIFACT_DIR)/analysis-v1.json
+ST_RENDERER := ../experiments/render_strong_heuristics_paper.py
+CI_GENERATED_RESULT := generated/cpddl-objective-v1.tex
+CI_ARTIFACT_DIR := ../experiments/artifacts/cpddl-objective
+CI_ARTIFACT := $(CI_ARTIFACT_DIR)/analysis-v1.json
+CI_RENDERER := ../experiments/render_cpddl_objective_paper.py
 PROFILE_STUDY_RESULTS := $(HOLDOUT_GENERATED_RESULT) \
 	$(ORDER_GENERATED_RESULT) $(SEED_GENERATED_RESULT) \
 	$(SLACK_GENERATED_RESULT) $(HARM_GENERATED_RESULT) $(HARM_FIGURE) \
 	$(GEN_GENERATED_RESULT) $(GEN_FIGURE) $(REM_GENERATED_RESULT) \
 	$(REM_POSTHOC_RESULT) $(GEN_PRUNING_RESULT) $(GEN_PRUNING_FIGURE) \
 	$(GEN_LAYERS_FIGURE) $(POTALL_GENERATED_RESULT) $(UB_GENERATED_RESULT) \
-	$(BS_GENERATED_RESULT) $(CP_GENERATED_RESULT)
+	$(BS_GENERATED_RESULT) $(CP_GENERATED_RESULT) $(ST_GENERATED_RESULT) \
+	$(CI_GENERATED_RESULT)
 SUPPLEMENT_ONLY_RESULTS := $(GEN_DOMAINS_RESULT)
 
 
@@ -249,6 +258,14 @@ $(BS_GENERATED_RESULT): $(BS_RENDERER) $(BS_ARTIFACT) $(BS_ARTIFACT).sha256 \
 $(CP_GENERATED_RESULT): $(CP_RENDERER) $(CP_ARTIFACT) $(CP_ARTIFACT).sha256
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(CP_RENDERER) \
 		--analysis $(CP_ARTIFACT) --output $@ --write
+
+# Prospective strong-heuristics and CPDDL objective studies.
+$(ST_GENERATED_RESULT): $(ST_RENDERER) $(ST_ARTIFACT) $(ST_ARTIFACT).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(ST_RENDERER) \
+		--analysis $(ST_ARTIFACT) --output $@ --write
+$(CI_GENERATED_RESULT): $(CI_RENDERER) $(CI_ARTIFACT) $(CI_ARTIFACT).sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(CI_RENDERER) \
+		--analysis $(CI_ARTIFACT) --output $@ --write
 
 # The untouched AAAI 2027 files are vendored from https://aaai.org/authorkit27/.
 # Fail closed if either file is missing, replaced by a link, or byte-modified.
@@ -395,6 +412,16 @@ submission-check: $(POSTHOC_GENERATED_RESULT) $(PROFILE_GENERATED_RESULT) \
 		../experiments/analyze_cpddl_ghseta_study.py self-test
 	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(CP_RENDERER) \
 		--analysis $(CP_ARTIFACT) --output $(CP_GENERATED_RESULT) --check
+	cd $(ST_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		../experiments/analyze_strong_heuristics.py self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(ST_RENDERER) \
+		--analysis $(ST_ARTIFACT) --output $(ST_GENERATED_RESULT) --check
+	cd $(CI_ARTIFACT_DIR) && sha256sum -c analysis-v1.json.sha256
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) \
+		../experiments/analyze_cpddl_objective_study.py self-test
+	PYTHONDONTWRITEBYTECODE=1 $(PAPER_PYTHON) $(CI_RENDERER) \
+		--analysis $(CI_ARTIFACT) --output $(CI_GENERATED_RESULT) --check
 
 
 
