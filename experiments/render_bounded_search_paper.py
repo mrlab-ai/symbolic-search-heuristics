@@ -147,22 +147,35 @@ def render(all_data, digest):
         ("BdBoundSolvedMax", str(max(solved))),
     ]
     remedy, unsplit = all_data["remedy"], all_data["unsplit"]
-    rows = []
-    specs = (
-        (r"\bddastar", remedy, "{}_plain", None, None),
-        ("prune-only", remedy, "{}_prune", "H1:{}_prune", "H2:{}_prune"),
-        ("batched", remedy, "{}_batch", "H1:{}_batch", "H2:{}_batch"),
-        ("unsplit", unsplit, "{}_unsplit", "H1:{}_unsplit", "H2:{}_unsplit"),
-        ("bounded", data, "{}_bounded", "H1:{}_bounded", "H2:{}_bounded"),
+    # One group per study, each with its own \bddastar row, since coverage
+    # near the time limit varies between launches.
+    groups = (
+        (remedy, (
+            (r"\bddastar", "{}_plain", None, None),
+            ("prune-only", "{}_prune", "H1:{}_prune", "H2:{}_prune"),
+            ("batched", "{}_batch", "H1:{}_batch", "H2:{}_batch"),
+        )),
+        (unsplit, (
+            (r"\bddastar", "{}_plain", None, None),
+            ("unsplit", "{}_unsplit", "H1:{}_unsplit", "H2:{}_unsplit"),
+        )),
+        (data, (
+            (r"\bddastar", "{}_plain", None, None),
+            ("bounded", "{}_bounded", "H1:{}_bounded", "H2:{}_bounded"),
+        )),
     )
-    for name, study, label, plain_test, blind_test in specs:
-        cells = [
-            _marked(study, label.format(family),
-                    plain_test.format(family) if plain_test else None,
-                    blind_test.format(family) if blind_test else None)
-            for family, _ in FAMILIES
-        ]
-        rows.append("{} & {} \\\\".format(name, " & ".join(cells)))
+    rows = []
+    for index, (study, specs) in enumerate(groups):
+        if index:
+            rows.append(r"\midrule")
+        for name, label, plain_test, blind_test in specs:
+            cells = [
+                _marked(study, label.format(family),
+                        plain_test.format(family) if plain_test else None,
+                        blind_test.format(family) if blind_test else None)
+                for family, _ in FAMILIES
+            ]
+            rows.append("{} & {} \\\\".format(name, " & ".join(cells)))
     macros.append(("RemedySummaryRows", "\n".join(rows)))
     names = [name for name, _ in macros]
     if len(set(names)) != len(names):

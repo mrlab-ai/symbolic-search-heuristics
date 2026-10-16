@@ -1735,20 +1735,20 @@ A pair is a heuristic run and the blind run of the same task.  It is
 eligible when both runs solved the task, all profile streams are certified
 and complete, the efforts and the unsplit effort are positive, and the
 solution costs agree.  For $r$ and $u$ as above, the primary estimand per
-family and pooled is $S=\sum\ln\fragfactor/\sum\ln r$ over harmful pairs
-($r>1$).  $S$ exceeds one when the harmful pairs have, on balance, unsplit
+family and pooled is $\theta=\sum\ln\fragfactor/\sum\ln r$ over harmful pairs
+($r>1$).  $\theta$ exceeds one when the harmful pairs have, on balance, unsplit
 effort below that of blind search.
 
 \paragraph{Decision rule.}
 Fixed before launch: (1) a claim for a family requires at least
 \GenSupportPairs\ harmful pairs from at least \GenSupportDomains\ domains;
-(2) fragmentation explains harm for a family only if $S\geq\GenShareThreshold$
+(2) fragmentation explains harm for a family only if $\theta\geq\GenShareThreshold$
 and, if it has at least \GenStrongSupportPairs\ pairs with $r>2$, at least
 \GenStrongThresholdPercent\% of them have $\fragfactor>u$; (3) the claim
 extends beyond PDBs only if rule~2 holds pooled and for both M\&S and
 potentials; (4) a failed rule triggers no new threshold, subset or
 configuration.  The thresholds were calibrated on the 16 PDB configurations
-of the sealed holdout, where per-configuration $S$ ranges from 0.91 to 1.30.
+of the sealed holdout, where per-configuration $\theta$ ranges from 0.91 to 1.30.
 If no family solves at least \GenGuardTasks\ tasks (\GenGuardPercent\%) that
 blind search does not, the online fallback guard is not pursued.  Time-based quantities subtract the profiling overhead that
 the profile summary reports, since heuristic searches profile their closed
@@ -1774,14 +1774,14 @@ headroom, \GenMaxHeadroom\ tasks for M\&S, is below the threshold of
   \begin{tabular}{lrrrrrrrr}
     \toprule
     & & & & & \multicolumn{2}{c}{harmful} & \multicolumn{2}{c}{helpful} \\
-    Family & Pairs & Harmful (dom.) & $S$ & $r>2$: $\fragfactor>u$
+    Family & Pairs & Harmful (dom.) & $\theta$ & $r>2$: $\fragfactor>u$
       & $u$ & \fragfactor & $u$ & \fragfactor \\
     \midrule
     \GenFamilyRows
     \bottomrule
   \end{tabular}
   \caption{Prospective family study: eligible pairs, harmful pairs ($r>1$)
-    with their number of domains, the share $S$, pairs with $r>2$ that have
+    with their number of domains, the share $\theta$, pairs with $r>2$ that have
     $\fragfactor>u$, and medians of $u$ and \fragfactor\ among harmful and
     helpful ($r<1$) pairs.}
   \label{tab:supp-harm-families}
@@ -1793,7 +1793,7 @@ headroom, \GenMaxHeadroom\ tasks for M\&S, is below the threshold of
   \begin{tabular}{lrrrrrrrr}
     \toprule
     & & & & & \multicolumn{2}{c}{harmful} & \multicolumn{2}{c}{helpful} \\
-    Configuration & Pairs & Harmful (dom.) & $S$ & $r>2$: $\fragfactor>u$
+    Configuration & Pairs & Harmful (dom.) & $\theta$ & $r>2$: $\fragfactor>u$
       & $u$ & \fragfactor & $u$ & \fragfactor \\
     \midrule
     \GenConfigRows
@@ -1823,7 +1823,7 @@ headroom, \GenMaxHeadroom\ tasks for M\&S, is below the threshold of
 \paragraph{Per-domain view (post hoc).}
 This view was defined after the frozen analysis and changes none of its
 decisions.  Resampling domains with replacement (\GenBootstrapResamples\
-resamples) gives 95\% intervals for $S$ of [\GenMsBootLow, \GenMsBootHigh]
+resamples) gives 95\% intervals for $\theta$ of [\GenMsBootLow, \GenMsBootHigh]
 for M\&S, [\GenPdbBootLow, \GenPdbBootHigh] for the CEGAR PDB,
 [\GenPotBootLow, \GenPotBootHigh] for potentials and [\GenAllBootLow,
 \GenAllBootHigh] pooled, so no family's result rests on a few domains.
@@ -1831,7 +1831,7 @@ Table~\ref{tab:supp-harm-domains} pools all heuristics per domain.  Of the
 \GenDomainsShown\ domains with at least \GenDomainMinHarmful\ harmful pairs,
 \GenDomainsBelow\ have $S<0.9$: in \texttt{movie}, harmful runs exceed
 blind effort only slightly and partly through larger unsplit sets, and in
-\texttt{rovers} $S$ is just below the threshold although every pair with
+\texttt{rovers} $\theta$ is just below the threshold although every pair with
 $r>2$ has $\fragfactor>u$.
 
 \begin{table}[tb]
@@ -1839,14 +1839,14 @@ $r>2$ has $\fragfactor>u$.
   \small
   \begin{tabular}{lrrrr}
     \toprule
-    Domain & Pairs & Harmful & $S$ & $r>2$: $\fragfactor>u$ \\
+    Domain & Pairs & Harmful & $\theta$ & $r>2$: $\fragfactor>u$ \\
     \midrule
     \GenDomainRows
     \bottomrule
   \end{tabular}
-  \caption{Post-hoc per-domain share $S$ over all heuristics of the
+  \caption{Post-hoc per-domain share $\theta$ over all heuristics of the
     prospective family study, for domains with at least
-    \GenDomainMinHarmful\ harmful pairs, sorted by $S$.}
+    \GenDomainMinHarmful\ harmful pairs, sorted by $\theta$.}
   \label{tab:supp-harm-domains}
 \end{table}
 
