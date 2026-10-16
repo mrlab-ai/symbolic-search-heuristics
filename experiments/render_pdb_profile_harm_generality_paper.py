@@ -62,7 +62,7 @@ CONFIG_NAMES = (
     ("ms_aligned_10k", r"M\&S aligned, \num{10000}"),
     ("ms_unaligned_50k", r"M\&S unaligned, \num{50000}"),
     ("pdb_cegar_1m", r"CEGAR PDB, \num{1000000}"),
-    ("pot_m4", r"Potentials, $m=4$"),
+    ("pot_m4", r"Potentials, $M=4$"),
 )
 
 

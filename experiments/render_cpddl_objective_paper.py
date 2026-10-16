@@ -66,6 +66,8 @@ def render(data, digest):
         ("CpIHurtFrag", f2(d["harmful_f_median"])),
         ("CpIHelpUnion", f2(d["helpful_u_median"])),
         ("CpIHelpFrag", f2(d["helpful_f_median"])),
+        ("CpIStrong", str(d["strong"])),
+        ("CpIStrongFrag", str(d["strong_frag_above_unsplit"])),
         ("CpIRow", "Operator potentials, I (CPDDL) & \\num{{{}}} & \\num{{{}}} ({}) & {} & {}/{} & {} & {} & {} & {} \\\\".format(
             d["pairs"], d["harmful"], harmful_domains, f2(d["share"]),
             d["strong_frag_above_unsplit"], d["strong"], f2(d["harmful_u_median"]),

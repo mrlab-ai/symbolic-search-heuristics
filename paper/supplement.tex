@@ -33,7 +33,7 @@
 \newcommand{\values}{\ensuremath{V}}
 \newcommand{\level}[2]{\ensuremath{H_{#2}}}
 \newcommand{\effort}{\ensuremath{\mathit{effort}}}
-\newcommand{\unioneffort}{\ensuremath{\mathit{unionEffort}}}
+\newcommand{\unioneffort}{\ensuremath{\mathit{unsplit}}}
 \newcommand{\fragfactor}{\ensuremath{\mathit{frag}}}
 \newcommand{\profilescore}{\ensuremath{\mathcal{R}_{\pi}}}
 \newcommand{\profilebound}{\ensuremath{\mathcal{P}_{\pi}}}
@@ -89,8 +89,9 @@ families.
 Section 10 specifies the cap-aware exact-width selector. Section 11 discloses
 the focused development gate and the frozen full-evaluation contract. Section
 12 reports the focused full-evaluation results and representation summaries,
-Section 13 reports the two frozen predictor studies, and Section 14 expands
-the related-work comparison.
+Section 13 describes all studies of Table~1 of the main paper with their
+frozen protocols, tests and results, and Section 14 expands the related-work
+comparison.
 
 \section{Search Setup and Bucket Identity}
 
@@ -698,6 +699,53 @@ inequality of Theorem~\ref{thm-effort}, followed by summation over $g$,
 proves both inequalities.
 \end{proof}
 
+For a completed search, let $B_{\task,h}(g,v)$ be the set that \bddastar\
+expands with key $(g,v)$, or the empty set if it expands none, let $A_g(h)$
+be the set of $h$-values whose nonempty buckets are expanded with $g$-value
+$g$, let
+$S_g^h=\bigcup_{v\in A_g(h)}B_{\task,h}(g,v)$ be the expanded part of layer
+$g$, and let $\unioneffort(\task,h)=\sum_g\bddsize{S_g^h}$,
+$\fragfactor=\effort/\unioneffort$ and
+$\profilescore=\sum_g|A_g(h)|\,\cutprod{S_g^h}{h}/\unioneffort$ as in the main
+paper.
+
+\begin{corollary}[pruning and fragmentation bounds]
+\label{cor-unsplit-frag}
+Under the assumptions of Theorem~\ref{thm-effort},
+\[
+ \unioneffort(\task,h)\leq W\!\!\sum_{\substack{g<\copt\\L_g\ne\emptyset}}\!\!\cofcount(\chi_{L_g})
+ \leq2Wn\,\effort(\task,\hblind),
+\]
+and if $\unioneffort(\task,h)>0$, then
+$\fragfactor(\task,h)\leq\profilescore(\task,h)\leq2\values Wn$.
+\end{corollary}
+
+\begin{proof}
+By Lemma~\ref{lem-identity}, buckets are expanded only for $g<\copt$, and
+for such $g$, $A_g(h)$ is the set of finite values $v$ with $g+v\leq\copt$
+and $L_g\cap\level{h}{v}\ne\emptyset$, and $B_{\task,h}(g,v)=L_g\cap
+\level{h}{v}$.  Hence $S_g^h=L_g\cap h^{-1}(U_g)$ with
+$U_g=\{v\mid v\leq\copt-g\}$, and Theorem~\ref{thm-bucket} gives
+$\bddsize{S_g^h}\leq\cutprod{L_g}{h}\leq W\cofcount(\chi_{L_g})$ whenever
+$L_g\ne\emptyset$; empty layers contribute nothing.  As in the proof of
+Corollary~\ref{cor-effort}, $\cofcount(\chi_{L_g})\leq2n\bddsize{L_g}$, and
+summing over $g$ proves the first claim.
+
+For the second claim, every expanded bucket of layer $g$ is
+$B_{\task,h}(g,v)=S_g^h\cap\level{h}{v}$, a subset of $S_g^h$ selected by
+heuristic value, so Theorem~\ref{thm-bucket} with $U=\{v\}$ gives
+$\bddsize{B_{\task,h}(g,v)}\leq\cutprod{S_g^h}{h}$.  Summing over the
+$|A_g(h)|$ buckets of each layer gives
+$\effort(\task,h)\leq\sum_g|A_g(h)|\,\cutprod{S_g^h}{h}
+=\profilescore(\task,h)\,\unioneffort(\task,h)$, that is,
+$\fragfactor\leq\profilescore$.  Every nonempty $S_g^h$ is a subset of $L_g$
+and thus proper: it equals $\{\sinit\}$ for $g=0$ and omits \sinit\ for
+$g>0$.  So $\chi_{S_g^h}$ is nonconstant, and
+$\cutprod{S_g^h}{h}\leq W\cofcount(\chi_{S_g^h})\leq2Wn\bddsize{S_g^h}$ by
+Lemma~\ref{lem-qsize}.  With $|A_g(h)|\leq\values$, the numerator of
+$\profilescore$ is at most $2\values Wn\,\unioneffort(\task,h)$.
+\end{proof}
+
 This is a one-sided bound on expanded frontier representations in forward
 product-at-evaluation \bddastar. It neither bounds the primitive relational
 products of delta-partitioned methods nor gives a cumulative bidirectional
@@ -1176,11 +1224,14 @@ Thus at every cut there are at most $d(N+1)$ distinct cofactors.
 \input{cap-study.tex}
 
 \clearpage
-\section{Frozen Predictor Studies}
+\section{Empirical Studies}
 \label{sec:supp-predictors}
 
-The paper's empirical questions were evaluated in five studies under frozen
-gates.  The first study instrumented the full \ProfileTasks-task primary
+Every study below was frozen before its holdout runs, but we designed the
+later studies after seeing the results of the earlier ones on the same
+holdout tasks.  The first five studies concern PDB selection and variable
+orders; the PDB study of the main paper is the third, and its order and seed
+studies are the fourth and fifth.  The first study instrumented the full \ProfileTasks-task primary
 complement but did not measure its intended fragmentation denominator
 correctly.  The second repaired that measurement on a deterministic,
 domain-balanced cohort but missed its task-support floor.  Neither
@@ -1190,7 +1241,11 @@ hold one heuristic fixed and change only the variable order: once between two
 fixed orders and once among unseen random orders.  The fifth study failed its
 primary gate, and its frozen consequence forbids an empirical predictor claim
 for the profile.  No favorable budget, denominator, or subset was substituted
-in any study, and no rescue selector was tuned.
+in any study, and no rescue selector was tuned.  The remaining studies
+address Q1--Q3 of the main paper: the post-hoc harm decomposition of the PDB
+study, the family study, the remedy study, the unsplit-bound and
+bounded-search studies, the all-states and strong-heuristics studies and the
+two CPDDL studies.
 
 \subsection{Initial Profile and Multi-Budget Matrix}
 
@@ -1721,7 +1776,12 @@ with \num{50000} states and an unaligned merge order (all with unlimited
 construction time, so that no run falls back to blind search); a single PDB
 whose pattern CEGAR selects within at most \num{1000000} states, at most 10 seconds of CEGAR
 time and seed 2011; and integer potentials with $|P(v,w)|\leq4$ optimized for
-the initial state.  To log per-layer unsplit unions, the planner revision
+the initial state by a mixed-integer program that CPLEX solves, then
+rectified.  All M\&S heuristics use a linear merge strategy along Fast
+Downward's level variable order (unaligned) or the Gamer order (aligned),
+bisimulation shrinking that returns its current partition when it reaches
+the size limit, no label reduction and no pruning of abstract states, so
+that the abstraction maps every state.  To log per-layer unsplit unions, the planner revision
 attaches the closed lists of the M\&S and potential searches to the profile,
 as the PDB search already did.  The holdout has \num{\GenTasks} tasks from \HoldoutDomains\
 domains, giving \num{\GenCells} runs.  Of the 902 Slurm array tasks, 99
@@ -1829,7 +1889,7 @@ for M\&S, [\GenPdbBootLow, \GenPdbBootHigh] for the CEGAR PDB,
 \GenAllBootHigh] pooled, so no family's result rests on a few domains.
 Table~\ref{tab:supp-harm-domains} pools all heuristics per domain.  Of the
 \GenDomainsShown\ domains with at least \GenDomainMinHarmful\ harmful pairs,
-\GenDomainsBelow\ have $S<0.9$: in \texttt{movie}, harmful runs exceed
+\GenDomainsBelow\ have $\theta<0.9$: in \texttt{movie}, harmful runs exceed
 blind effort only slightly and partly through larger unsplit sets, and in
 \texttt{rovers} $\theta$ is just below the threshold although every pair with
 $r>2$ has $\fragfactor>u$.
@@ -2015,6 +2075,315 @@ second in images, the median ratio of image time is
 \RemPhPotPruneImageTime: the heuristic search engine images the same sets
 faster than SymK's blind forward search, which explains why prune-only search
 can solve slightly more tasks than blind forward search without pruning.
+
+\subsection{Unsplit Search: Prospective Unsplit-Bound Study}
+\label{sec:supp-unsplit}
+
+The post-hoc oracle analysis of the family study shows that a search that
+knew \copt\ and pruned without splitting the layers would beat blind search
+much more often than \bddastar.  This protocol
+(\texttt{unsplit\_\allowbreak bound\_\allowbreak protocol.md}), frozen with its option matrix and
+analysis code after its development stage and before any holdout run, asks
+whether iterative deepening on the bound obtains part of this gain.
+
+\paragraph{Configurations.}
+All runs use planner revision \texttt{4a719d8b}, the Gamer order, 300
+seconds, 8\,GiB and the expansion log.  The heuristics are those of the
+remedy study: unaligned M\&S with \num{10000} states, the CEGAR PDB and
+integer potentials with $|P(v,w)|\leq4$ optimized for the initial state.
+Unsplit search starts with the $f$-bound $\beta=h(\sinit)$.  Each iteration
+starts from \sinit\ with an empty closed list, expands the layers by
+increasing $g$, each as one BDD, and discards successors with $g+h>\beta$;
+since every plan of cost at most $\beta$ visits only states with
+$f\leq\beta$, the first plan found is optimal whenever $\beta\geq\copt$.  If
+an iteration finds no plan, the schedule \emph{next} sets $\beta$ to the
+smallest $f$-value of a discarded state, which never exceeds \copt, so its
+last iteration expands exactly the unsplit sets of \bddastar.  The schedule
+\emph{double} adds a step to this value that starts at one and doubles in
+every iteration.
+
+\paragraph{Schedule selection.}
+On the 275 development tasks, blind forward search and, for each family,
+\bddastar\ and unsplit search with both schedules ran once (\num{2750}
+runs).  The frozen rule picks per family the schedule with the higher
+coverage, then the lower PAR2 score, then \emph{next}.  Blind forward search
+solves 115 tasks, and \bddastar, \emph{next} and \emph{double} solve
+120/110/120 (M\&S), 116/100/111 (PDB) and 110/100/113 (potentials), so the
+rule selects \emph{double} for every family.
+
+\paragraph{Tests.}
+On the holdout, blind forward and bidirectional search and, per family,
+\bddastar\ and unsplit search ran as \UbCells\ cells (936 Slurm array tasks,
+all completed without recovery).  H1 compares unsplit search with \bddastar\
+and H2 with blind forward search; each counts the tasks that exactly one of
+the two configurations solves and applies an exact two-sided sign test, and
+the six $p$-values are adjusted by Holm's method at family-wise level 0.05.
+No solved runs disagree on the plan cost.
+
+\paragraph{Results.}
+Blind forward search solves \UbSolvedBlindFw\ tasks and blind bidirectional
+search \UbSolvedBlindBd.  \bddastar\ and unsplit search solve
+\UbSolvedMsPlain\ and \UbSolvedMsUnsplit\ tasks with M\&S
+(H1: +\UbMsVsPlainGains/$-$\UbMsVsPlainLosses, H2:
++\UbMsVsBlindGains/$-$\UbMsVsBlindLosses), \UbSolvedPdbPlain\ and
+\UbSolvedPdbUnsplit\ with the PDB (+\UbPdbVsPlainGains/$-$\UbPdbVsPlainLosses,
++\UbPdbVsBlindGains/$-$\UbPdbVsBlindLosses) and \UbSolvedPotPlain\ and
+\UbSolvedPotUnsplit\ with potentials
+(+\UbPotVsPlainGains/$-$\UbPotVsPlainLosses,
++\UbPotVsBlindGains/$-$\UbPotVsBlindLosses).  Only H2 for potentials is
+significant: unsplit potentials lose to blind forward search.  On the tasks
+that blind forward search, \bddastar\ and unsplit search all solve, the
+median effort ratio to blind search is \UbMsEffortPlain\ versus
+\UbMsEffortUnsplit\ (M\&S), \UbPdbEffortPlain\ versus \UbPdbEffortUnsplit\
+(PDB) and \UbPotEffortPlain\ versus \UbPotEffortUnsplit\ (potentials).
+Solved unsplit runs need a median of \UbIterationsMin--\UbIterationsMax\
+iterations, and the last iteration accounts for a median of
+\UbMinLastShare--\UbMaxLastShare\% of their effort.
+
+\subsection{Bounded Search: Prospective Bounded-Search Study}
+\label{sec:supp-bounded}
+
+This protocol (\texttt{bounded\_\allowbreak search\_\allowbreak protocol.md}), frozen with its option
+matrix and analysis code after a development pilot that selected nothing and
+before any holdout run, asks whether heuristics pay off once a satisficing
+planner supplies an upper bound on the plan cost.
+
+\paragraph{Configurations.}
+All runs use planner revision \texttt{61c12701}, the Gamer order, 300 seconds
+and 8\,GiB.  A bounded configuration runs Fast Downward's \texttt{iterated}
+search with two phases.  The first phase is LAMA-first: lazy greedy
+best-first search with the FF and landmark-sum heuristics (RHW landmarks with
+reasonable orders), both under unit costs and both used for preferred
+operators, without reopening and for at most 30 seconds.  If it finds a plan
+of cost $U$, the second phase runs prune-only forward symbolic search with
+the bound $U$ (\texttt{pass\_bound=true}): it keeps each layer as one BDD and
+discards states with $g+h\geq U$, so it either finds a plan cheaper than $U$,
+which is optimal, or proves the first plan optimal.  Otherwise, the second
+phase runs without a bound.  A bounded run solves its task if the planner
+exits with code 0 and reports a best plan cost, so that the second phase
+completed.  The configurations are blind forward and bidirectional search,
+bounded blind search and, per family, \bddastar\ and bounded search with the
+heuristics of the remedy study.  LAMA-first and the 30 seconds were fixed a
+priori and not tuned.
+
+\paragraph{Pilot.}
+On the 275 development tasks, all nine configurations ran once (\num{2475}
+runs).  All runs completed and no plan costs disagree.  Blind forward search
+solves 116 tasks, blind bidirectional search 132 and bounded blind search
+117; \bddastar\ and bounded search solve 120/117 (M\&S), 117/116 (PDB) and
+111/115 (potentials).
+
+\paragraph{Tests.}
+On the holdout, the nine configurations ran as \BdCells\ cells (947 Slurm
+array tasks, all completed without recovery).  For each family, H1 compares
+bounded search with \bddastar, H2 with blind forward search and H3 with
+bounded blind search, with exact two-sided sign tests on the tasks that
+exactly one configuration solves and Holm's adjustment over all nine tests.
+No solved runs disagree on the plan cost.  One deviation from the frozen
+analysis code: its descriptive first-phase statistics failed because Lab
+stores plan costs as floating-point numbers, and the only change converts
+both costs to exact fractions before dividing them; it affects no test.
+
+\paragraph{Results.}
+Blind forward search solves \BdSolvedBlindFw\ tasks, blind bidirectional
+search \BdSolvedBlindBd\ and bounded blind search \BdSolvedBlindBounded.
+\bddastar\ and bounded search solve \BdSolvedMsPlain\ and
+\BdSolvedMsBounded\ tasks with M\&S (H1:
++\BdMsVsPlainGains/$-$\BdMsVsPlainLosses, H2:
++\BdMsVsBlindGains/$-$\BdMsVsBlindLosses, H3:
++\BdMsVsBlindBoundedGains/$-$\BdMsVsBlindBoundedLosses), \BdSolvedPdbPlain\
+and \BdSolvedPdbBounded\ with the PDB
+(+\BdPdbVsPlainGains/$-$\BdPdbVsPlainLosses,
++\BdPdbVsBlindGains/$-$\BdPdbVsBlindLosses,
++\BdPdbVsBlindBoundedGains/$-$\BdPdbVsBlindBoundedLosses) and
+\BdSolvedPotPlain\ and \BdSolvedPotBounded\ with potentials
+(+\BdPotVsPlainGains/$-$\BdPotVsPlainLosses,
++\BdPotVsBlindGains/$-$\BdPotVsBlindLosses,
++\BdPotVsBlindBoundedGains/$-$\BdPotVsBlindBoundedLosses).  Only H1 for the
+PDB and for potentials is significant.  LAMA-first finds a plan on 969 or 970
+tasks per configuration.  Of the \BdBoundSolvedMin--\BdBoundSolvedMax\ tasks
+per configuration that bounded search solves with a first-phase plan, that
+plan is optimal on \BdBoundOptimalMin--\BdBoundOptimalMax, and its median
+cost exceeds the optimal cost by \BdBoundExcessMin--\BdBoundExcessMax\%.  On
+the tasks that blind forward search, \bddastar\ and bounded search all solve,
+the median effort ratio to blind forward search is \BdMsEffortPlain\ versus
+\BdMsEffortBounded\ (M\&S), \BdPdbEffortPlain\ versus \BdPdbEffortBounded\
+(PDB) and \BdPotEffortPlain\ versus \BdPotEffortBounded\ (potentials).
+
+\subsection{All-States Potentials: Prospective Decomposition Study}
+\label{sec:supp-pot-all}
+
+The remedy study ran integer potentials with $|P(v,w)|\leq4$ optimized for
+the average over all states, but without recording the unsplit sets.  This
+protocol (\texttt{pot\_\allowbreak all\_\allowbreak decomposition\_\allowbreak protocol.md}), frozen before any
+holdout run of its heuristic configuration, measures their decomposition.
+It uses the binary of the family study, the Gamer order, 300 seconds and
+8\,GiB, and runs profiled blind forward search and the all-states potentials
+on the holdout (\num{\PotAllCells} cells, 702 Slurm array tasks, all
+completed without recovery).  Pair eligibility, the share $\theta$, the
+timing rule and the thresholds are those of the family study.  Decision
+rule: with at least 100 harmful pairs from at least 20 domains, the paper
+may say that the diagnosis holds only if $\theta\geq0.9$ and, if at least 20
+pairs have $r>2$, at least 95\% of them have $\fragfactor>u$; a failed rule
+triggers no new threshold, subset or configuration.  The pairs with $s<0.1$
+and $s\geq0.8$ are descriptive, with the thresholds of the post-hoc pruning
+analysis of the family study.
+
+\paragraph{Results.}
+There are \PotAllPairs\ pairs from \PotAllPairDomains\ domains, of which
+\PotAllHarmful\ from \PotAllHarmfulDomains\ domains are harmful and
+\PotAllHelpful\ helpful.  The share is $\theta=\PotAllShare$, and all
+\PotAllStrong\ pairs with $r>2$ have $\fragfactor>u$, so the rule holds.
+Harmful pairs have median $u=\PotAllHurtUnion$, fragmentation factor
+\PotAllHurtFrag\ and state ratio \PotAllHurtStates; helpful pairs have
+\PotAllHelpUnion, \PotAllHelpFrag\ and \PotAllHelpStates.
+\PotAllHurtUnionAboveOne\ harmful pairs have $u>1$.  \PotAllLowHelpful\ of
+the \PotAllLowPairs\ pairs with $s<0.1$ and \PotAllHighHelpful\ of the
+\PotAllHighPairs\ pairs with $s\geq0.8$ are helpful.  The potentials solve
+\PotAllSolved\ tasks and blind forward search \PotAllBlindSolved.
+
+\subsection{Strong Heuristics: Prospective Study}
+\label{sec:supp-strong}
+
+This protocol (\texttt{strong\_\allowbreak heuristics\_\allowbreak protocol.md}), frozen before any
+holdout run of its heuristic configurations, measures the decomposition for
+two heuristics that are stronger than those of the family study: integer
+potentials with $|P(v,w)|\leq1000$ optimized for the average over all states,
+and M\&S with \num{200000} abstract states, an unaligned merge order and
+unlimited construction time.  It uses the binary of the family study, the
+Gamer order, 300 seconds and 8\,GiB, and runs profiled blind forward search
+and both heuristics on the holdout (\num{3156} cells, 789 Slurm array tasks,
+all completed without recovery).  The analysis and the decision rule are
+those of the all-states study, applied separately to each heuristic;
+coverage is descriptive.
+
+\paragraph{Results.}
+For the potentials, there are \StPotPairs\ pairs, of which \StPotHarmful\
+from 26 domains are harmful and \StPotHelpful\ helpful, and the rule holds
+($\theta=1.11$, all 52 pairs with $r>2$ have $\fragfactor>u$).  For M\&S,
+there are \StMsPairs\ pairs, of which \StMsHarmful\ from 21 domains are
+harmful and \StMsHelpful\ helpful, and the rule holds as well ($\theta=1.23$,
+40 of 40).  The medians of $u$ and the fragmentation factor are in Table~2
+of the main paper; the median state ratio of harmful and helpful pairs is
+\StPotHurtStates\ and \StPotHelpStates\ for the potentials and
+\StMsHurtStates\ and \StMsHelpStates\ for M\&S.  \StPotLowHelpful\ of the
+\StPotLowPairs\ potential pairs and \StMsLowHelpful\ of the \StMsLowPairs\
+M\&S pairs with $s<0.1$ are helpful, but only \StPotHighHelpful\ of
+\StPotHighPairs\ and \StMsHighHelpful\ of \StMsHighPairs\ with $s\geq0.8$.
+Blind forward search solves \StBlindSolved\ tasks, the potentials
+\StPotSolved\ and M\&S \StMsSolved.  The potentials solve
+\the\numexpr\StPotSolved-\StBlindSolved+\StPotLost\relax\ tasks that blind
+search does not solve and fail on \StPotLost\ that it solves (exact
+two-sided sign test, $p=0.03$, post hoc and unadjusted); M\&S fails on
+\StMsLost\ tasks that blind search solves, \StMsUnconstructed\ of them while
+constructing the heuristic.
+
+\subsection{Operator Potentials in GHSETA*: Prospective CPDDL Study}
+\label{sec:supp-cpddl}
+
+This protocol (\texttt{cpddl\_\allowbreak ghseta\_\allowbreak protocol.md}), frozen with its
+analysis code after a development pilot that selected nothing and before any
+holdout run, asks whether the diagnosis carries over to the setting in which
+heuristics are reported to help symbolic search: GHSETA* with operator
+potentials in the planner CPDDL of \citet{fiser-et-al-aij2024}.
+
+\paragraph{Planner.}
+We use CPDDL at upstream revision \texttt{2c7de0ec} with two local changes:
+a restored CUDD header that the upstream tree lacks, and an opt-in log,
+enabled by an environment variable, that records the expanded sets.  It is
+built with its bundled CUDD and CPLEX 22.11.  Every run uses
+\texttt{pddl-symba --fdr-tnfm}, 300 seconds of CPU time and 8\,GiB of
+address space.  CPDDL translates the task into a finite-domain
+representation from lifted mutex groups, prunes it with $h^2$ mutexes and
+brings it into transition normal form by multiplying preconditions.  Its
+BDD variable order starts from a causal-graph order and improves it by local
+search, and $h^2$ mutexes constrain its transition relations.  The
+configurations are blind forward search (\texttt{--symba fw}), blind
+bidirectional search (\texttt{--symba bi}) and both with operator potentials
+in the forward direction (\texttt{--symba-fw-pot --symba-fw-pot-cfg A+I}),
+plus separate profiled runs of the two forward configurations.
+
+\paragraph{Operator potentials.}
+CPDDL solves a mixed-integer program with real-valued fact potentials and an
+integer variable per operator for its potential change $\Delta h_o$, subject
+to $-\Delta h_o\leq\cost(o)$ and to the goal potential being at most zero,
+with fact potentials over disambiguated preconditions and goals.  The
+objective I maximizes the potential of the initial state.  The objective A+I
+first solves I and then maximizes the average potential over all syntactic
+states subject to the potential of the initial state being within 0.125 of
+the maximum of I (relaxed further in steps of 0.125 if this is infeasible).
+The heuristic value of the initial state is rounded up after subtracting
+0.001, and the value of a successor is that of its parent plus the integer
+$\Delta h_o$ of the operator, so the heuristic is consistent.  GHSETA* never
+evaluates the potentials on sets: it splits the transition relation by cost
+and $\Delta h_o$.  The potentials detect no dead ends.
+
+\paragraph{Search semantics.}
+GHSETA* keys each open set by its $g$- and $h$-value, selects by increasing
+$f=g+\max(h,0)$, then $g$, then $h$, merges all open sets with the same key
+before expansion, removes closed states before expanding, closes the whole
+bucket after expanding it and never reopens a state.  It tests for goals when
+it selects a bucket, so the goal bucket is not expanded.  This matches the
+assumptions of Lemma~\ref{lem-identity} for positive operator costs.  Blind
+forward search expands one BDD per $g$-value.  The log records, for every
+expanded bucket, its BDD size as \texttt{Cudd\_DagSize} (which counts the
+terminal) after closed states have been removed, and after the search the
+size of the union of the expanded buckets per $g$-value.  For a pair of a
+profiled potential run and the profiled blind run of a task, both solved
+with the same cost, $r$ and $u$ are the ratios of the summed sizes of the
+expanded sets and of the per-layer unions, the fragmentation factor is
+$r/u$, and $s$ is the ratio of the summed numbers of expanded states.
+CPDDL's parser rejects the domain files of \texttt{logistics00},
+\texttt{storage} and \texttt{zenotravel}, so their tasks are unsolved for
+every configuration.
+
+\paragraph{Pilot and tests.}
+A first pilot on the 275 development tasks exposed two harness defects: the
+runner crashed on the truncated last log line of a run killed by its limits,
+and some array tasks exceeded their time.  After both fixes, the second
+pilot produced all \num{1650} cells without cost disagreements and with
+complete logs for all 244 solved profiled runs.  On the holdout, the six
+configurations ran as \num{6312} cells (902 Slurm array tasks, all
+completed).  H-A compares forward search with potentials against blind
+forward search, and H-B bidirectional search with forward potentials against
+blind bidirectional search, each with an exact two-sided sign test on the
+tasks that exactly one configuration solves and Holm's adjustment over both
+tests.  The decomposition is descriptive.  No solved runs disagree on the
+plan cost.
+
+\paragraph{Results.}
+Forward search solves \CpSolvedPotFw\ tasks with potentials and
+\CpSolvedBlindFw\ without (+\CpFwGains/$-$\CpFwLosses), bidirectional search
+\CpSolvedPotBi\ and \CpSolvedBlindBi\ (+\CpBiGains/$-$\CpBiLosses), and both
+tests are significant.  Of the \CpPairs\ pairs, \CpHarmful\ are harmful and
+\CpHelpful\ helpful.  Harmful pairs have median $u=\CpHurtUnion$,
+fragmentation factor \CpHurtFrag\ and state ratio \CpHurtStates; helpful
+pairs have \CpHelpUnion, \CpHelpFrag\ and \CpHelpStates.  \CpLowHelpful\ of
+the \CpLowPairs\ pairs with $s<0.1$ and \CpHighHelpful\ of the \CpHighPairs\
+pairs with $s\geq0.8$ are helpful.  Blind forward search of CPDDL has median
+fragmentation \CpBlindFrag.
+
+\subsection{Objective of the Operator Potentials: Prospective CPDDL Study}
+\label{sec:supp-cpddl-objective}
+
+This protocol (\texttt{cpddl\_\allowbreak objective\_\allowbreak protocol.md}), frozen before any
+holdout run of its potential configuration, changes only the objective of
+the operator potentials to I, the objective of our potentials in SymK.  It
+uses the binary, runner and limits of the previous study, blind forward
+search and forward search with I potentials, each with and without the log,
+on the holdout (\num{4208} cells, 602 Slurm array tasks, all completed).  The
+primary test H-I compares forward search with I potentials against blind
+forward search with an exact two-sided sign test at level 0.05; the
+decomposition is descriptive and uses the definitions of the previous
+study.  No solved runs disagree on the plan cost.
+
+\paragraph{Results.}
+Forward search solves \CpISolvedPotFw\ tasks with I potentials and
+\CpISolvedBlindFw\ without (+\CpIGains/$-$\CpILosses, significant).  Of the
+\CpIPairs\ pairs, \CpIHarmful\ are harmful and \CpIHelpful\ helpful.
+Harmful pairs have median $u=\CpIHurtUnion$ and fragmentation factor
+\CpIHurtFrag, helpful pairs \CpIHelpUnion\ and \CpIHelpFrag, and
+\CpIStrongFrag\ of the \CpIStrong\ pairs with $r>2$ have $\fragfactor>u$.
 
 \FloatBarrier
 \section{Additional Related-Work Detail}
